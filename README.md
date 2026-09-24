@@ -14,5 +14,7 @@ git clone --recurse-submodules https://github.com/omerfuyar/OpenECS.git
 cd OpenECS
 ```
 
+### Dependencies
+
 ### Building from source
 Project uses SDL for OS abstraction. 
