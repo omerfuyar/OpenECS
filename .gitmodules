@@ -7,3 +7,15 @@
 [submodule "dependencies/shu"]
 	path = dependencies/shu
 	url = https://github.com/omerfuyar/shu.git
+[submodule "dependencies/SDL_net"]
+	path = dependencies/SDL_net
+	url = https://github.com/libsdl-org/SDL_net.git
+[submodule "dependencies/SDL_mixer"]
+	path = dependencies/SDL_mixer
+	url = https://github.com/libsdl-org/SDL_mixer.git
+[submodule "dependencies/SDL_ttf"]
+	path = dependencies/SDL_ttf
+	url = https://github.com/libsdl-org/SDL_ttf.git
+[submodule "dependencies/SDL_image"]
+	path = dependencies/SDL_image
+	url = https://github.com/libsdl-org/SDL_image.git
