@@ -3,6 +3,7 @@
 *.old
 ignore.*
 *.ignore
+shuild
 *.pdb
 build/
 *.o
