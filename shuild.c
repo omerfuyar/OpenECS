@@ -7,7 +7,11 @@
 
 #pragma region Platform And Setup
 
-#define PrintUsage() SHU_LogInfo("\nUsage : ./shuild [D/R/RD/SR]({Debug}/Release/RelWithDebInfo/MinSizeRel) [S/D]({Static}/Dynamic) [XL/XW/XM/AL/AW/AM](X64 Linux/X64 Windows/X64 MacOS/ARM64 Windows/ARM64 Linux/ARM64 MacOS){Default is the host platform}\n");
+#define PrintUsage() SHU_LogInfo("\nUsage : \
+    ./shuild\n\
+    [D/R/RD/SR]({Debug}/Release/RelWithDebInfo/MinSizeRel)\n\
+    [S/D]({Static}/Dynamic)\n\
+    [XL/XW/XM/AL/AW/AM](X64 Linux/X64 Windows/X64 MacOS/ARM64 Windows/ARM64 Linux/ARM64 MacOS){Default is the host platform}\n")
 
 typedef enum BuildType
 {
