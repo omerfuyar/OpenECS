@@ -1,67 +1,57 @@
 # OpenECS
+
 This is a ECS (Entity Component System) based game engine project with complete core and editor.
 
 ## Usage
+
 Just download the correct build for your setup from releases and run the executable.
 
 ## Development
 
 ### To clone the repository
-Project uses submodules for it's dependencies, so run:
 
 ``` shell
-git clone https://github.com/omerfuyar/OpenECS.git
-cd OpenECS
-git submodule update --init dependencies/shu dependencies/shuild dependencies/SDL_net dependencies/SDL_image dependencies/SDL_mixer
+git clone --recurse-submodules https://github.com/omerfuyar/OpenECS
 ```
 
-Don't use `--recurse-submodules` here. SDL_image and SDL_mixer keep the third party libraries they can
-optionally use in their own `external/` directories, around 800 MB of sources this build never touches.
+### Build Dependencies
 
-### Dependencies
-Project uses SDL for OS abstraction. SDL and SDL_ttf are installed with the package manager of your system,
-SDL_image, SDL_mixer and SDL_net are plain C and small enough that the build script compiles them from the
-submodules instead.
+#### Windows
 
-So the whole list is SDL 3.4 or newer, SDL_ttf, `git` and a C compiler, `gcc` or `clang`. No CMake, no Make.
+#### Linux
 
-| System | SDL | Command |
-| --- | --- | --- |
-| Arch, Manjaro, Omarchy | 3.4.16 | `sudo pacman -S --needed base-devel git sdl3 sdl3_ttf` |
-| Fedora 43 and newer | 3.4.16 | `sudo dnf install gcc git SDL3-devel SDL3_ttf-devel` |
-| openSUSE Tumbleweed | 3.4.16 | `sudo zypper install gcc git SDL3-devel SDL3_ttf-devel` |
-| Alpine edge | 3.4.16 | `sudo apk add build-base git sdl3-dev sdl3_ttf-dev` |
-| Debian unstable | 3.4.16 | `sudo apt install build-essential git libsdl3-dev libsdl3-ttf-dev` |
-| Ubuntu 26.04 and newer | 3.4.2 | `sudo apt install build-essential git libsdl3-dev libsdl3-ttf-dev` |
-| macOS | 3.4.16 | `xcode-select --install` and `brew install git sdl3 sdl3_ttf` |
-| Windows, MSYS2 UCRT64 | 3.4.16 | `pacman -S --needed git mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-sdl3 mingw-w64-ucrt-x86_64-sdl3_ttf` |
+##### apt
 
-Debian 13 with 3.2.10 and Ubuntu 25.10 with 3.2.20 are too old, SDL_image and SDL_mixer call SDL functions
-that arrived in 3.4. Check what you have with `pkg-config --modversion sdl3`.
-
-The two compiled libraries use the decoders that come inside them, so they need nothing installed:
-
-- Images: PNG, JPG, BMP, GIF, PNM, QOI, SVG, TGA, XCF, XPM, XV, ANI, LBM and PCX. AVIF, JXL, TIFF and WEBP
-  are off, those are the formats that need an external library.
-- Audio: WAV, AIFF, VOC, AU, FLAC, MP3, OGG Vorbis and MIDI. Opus, MOD, WavPack, GME and FluidSynth are off
-  for the same reason.
-
-To turn one of the missing ones on, install that library and add its `LOAD_<format>` or `DECODER_<name>`
-definition in `shuild.c`.
-
-### Building from source
-Project uses [shuild](https://github.com/omerfuyar/shuild) as its build system, so the build script is a C
-file. Compile it once, after that it rebuilds itself whenever it changes.
+Ubuntu 18.04, all available features enabled:
 
 ``` shell
-gcc shuild.c -o shuild
-./shuild RD
+sudo apt-get install build-essential git make pkg-config cmake ninja-build gnome-desktop-testing libasound2-dev libpulse-dev libaudio-dev libfribidi-dev libjack-dev libsndio-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev libusb-1.0-0-dev
 ```
 
-The argument is the build type, `D` for debug, `R` for release, `RD` for release with debug info and `SR`
-for minimum size. A second `S` or `D` argument is reserved for static and dynamic linking, it is accepted
-but does nothing yet. Every build type keeps its own artifacts, the executable ends up in
-`build/<type>/bin/`.
+Ubuntu 22.04+ can also add libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev to that command line.
 
-The first build compiles SDL_image, SDL_mixer and SDL_net too, 60 files and around 15 seconds. After that
-only what you changed is rebuilt.
+##### dnf
+
+Fedora 35, all available features enabled:
+
+``` shell
+sudo dnf install gcc git-core make cmake alsa-lib-devel fribidi-devel pulseaudio-libs-devel pipewire-devel libX11-devel libXext-devel libXrandr-devel libXcursor-devel libXfixes-devel libXi-devel libXScrnSaver-devel libXtst-devel dbus-devel ibus-devel systemd-devel mesa-libGL-devel libxkbcommon-devel mesa-libGLES-devel mesa-libEGL-devel vulkan-devel wayland-devel wayland-protocols-devel libdrm-devel mesa-libgbm-devel libusb1-devel libdecor-devel pipewire-jack-audio-connection-kit-devel libthai-devel
+```
+
+Fedora 39+ can also add liburing-devel to that command line.
+
+Fedora 40+ needs zlib-ng-compat-static to be added to that command line.
+
+The sndio audio target is unavailable on Fedora (but probably not what you should want to use anyhow).
+
+##### zypper
+
+``` shell
+sudo zypper in libunwind-devel libusb-1_0-devel Mesa-libGL-devel libxkbcommon-devel libdrm-devel libgbm-devel pipewire-devel libpulse-devel sndio-devel Mesa-libEGL-devel alsa-devel xwayland-devel wayland-devel wayland-protocols-devel libthai-devel fribidi-devel
+```
+
+##### pacman
+
+``` shell
+sudo pacman -S alsa-lib cmake hidapi ibus jack libdecor libthai fribidi libgl libpulse libusb libx11 libxcursor libxext libxfixes libxi libxinerama libxkbcommon libxrandr libxrender libxss libxtst mesa ninja pipewire sndio vulkan-driver vulkan-headers wayland wayland-protocols
+```

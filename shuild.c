@@ -3,20 +3,153 @@
 #define SHUC_MAX_COMMAND_BUFFER_SIZE (1024 * 16) // default 4096 truncates the object list of a module with many sources
 #include "dependencies/shuild/shuild.h"
 
-#define PrintUsage() SHU_LogInfo("\nUsage : ./shuild [D/R/RD/SR](Debug/Release/{RelWithDebInfo}/MinSizeRel) [S/D]({Static}/Dynamic)\n");
+// todo cross compilation somehow
 
-#define SDL_SetBaseFlags()             \
-    SHU_CompilerSetFlags(BUILD_FLAGS); \
-    SHU_CompilerAddFlags("-fvisibility=hidden -fno-strict-aliasing")
+#pragma region Platform And Setup
 
-void Shuild_SetupConfiguration(int argc, char **argv);
+#define PrintUsage() SHU_LogInfo("\nUsage : ./shuild [D/R/RD/SR]({Debug}/Release/RelWithDebInfo/MinSizeRel) [S/D]({Static}/Dynamic) [XL/XW/XM/AL/AW/AM](X64 Linux/X64 Windows/X64 MacOS/ARM64 Windows/ARM64 Linux/ARM64 MacOS){Default is the host platform}\n");
 
-const char *BUILD_TYPE = "RelWithDebInfo";
-const char *BUILD_FLAGS = SHUM_FLAGS_OPTIMIZATION_MID SHUM_FLAGS_DEBUG " -DNDEBUG";
-const char *LINK_TYPE = "Static";
+typedef enum BuildType
+{
+    BuildType_Debug,
+    BuildType_Release,
+    BuildType_RelWithDebInfo,
+    BuildType_MinSizeRel,
+} BuildType;
 
-char LIBRARY_DIRECTORY[SHUC_MAX_STRING_SIZE] = {0};
-char EXECUTABLE_DIRECTORY[SHUC_MAX_STRING_SIZE] = {0};
+typedef enum BuildTarget
+{
+    BuildTarget_X64_Windows,
+    BuildTarget_X64_Linux,
+    BuildTarget_X64_MacOS,
+    BuildTarget_ARM64_Windows,
+    BuildTarget_ARM64_Linux,
+    BuildTarget_ARM64_MacOS,
+} BuildTarget;
+
+BuildType BUILD_TYPE = BuildType_Debug;
+const char *BUILD_TYPE_STR = "Debug";
+
+SHUModuleType LINK_TYPE = SHUModuleType_LibraryStatic;
+const char *LINK_TYPE_STR = "Static";
+
+#ifdef __x86_64__
+#ifdef _WIN32
+BuildTarget BUILD_TARGET = BuildTarget_X64_Windows;
+const char *BUILD_TARGET_STR = "X64 Windows";
+#elif __linux__
+BuildTarget BUILD_TARGET = BuildTarget_X64_Linux;
+const char *BUILD_TARGET_STR = "X64 Linux";
+#elif __APPLE__
+BuildTarget BUILD_TARGET = BuildTarget_X64_MacOS;
+const char *BUILD_TARGET_STR = "X64 Linux";
+#else
+#error Unknown platform to build on.
+#endif
+#elif __arm64__
+#ifdef _WIN32
+BuildTarget BUILD_TARGET = BuildTarget_ARM64_Windows;
+const char *BUILD_TARGET_STR = "ARM64 Windows";
+#elif __linux__
+BuildTarget BUILD_TARGET = BuildTarget_ARM64_Linux;
+const char *BUILD_TARGET_STR = "ARM64 Linux";
+#elif __APPLE__
+BuildTarget BUILD_TARGET = BuildTarget_ARM64_MacOS;
+const char *BUILD_TARGET_STR = "ARM64 Linux";
+#else
+#error Unknown platform to build on.
+#endif
+#else
+#error Unknown architecture to build on.
+#endif
+
+SHUI_String BUILD_DIRECTORY_BASE = {0};
+
+void Shuild_SetupConfiguration(int argc, char **argv)
+{
+    if (argc < 2)
+    {
+        goto setup;
+    }
+
+    if (!strcasecmp(argv[1], "D"))
+    {
+        BUILD_TYPE = BuildType_Debug;
+        BUILD_TYPE_STR = "Debug";
+    }
+    else if (!strcasecmp(argv[1], "R"))
+    {
+        BUILD_TYPE = BuildType_Release;
+        BUILD_TYPE_STR = "Release";
+    }
+    else if (!strcasecmp(argv[1], "RD"))
+    {
+        BUILD_TYPE = BuildType_RelWithDebInfo;
+        BUILD_TYPE_STR = "RelWithDebInfo";
+    }
+    else if (!strcasecmp(argv[1], "SR"))
+    {
+        BUILD_TYPE = BuildType_MinSizeRel;
+        BUILD_TYPE_STR = "MinSizeRel";
+    }
+
+    if (argc < 3)
+    {
+        goto setup;
+    }
+
+    if (!strcasecmp(argv[2], "S"))
+    {
+        LINK_TYPE = SHUModuleType_LibraryStatic;
+        LINK_TYPE_STR = "Static";
+    }
+    else if (!strcasecmp(argv[2], "D"))
+    {
+        LINK_TYPE = SHUModuleType_LibraryDynamic;
+        LINK_TYPE_STR = "Dynamic";
+    }
+
+    if (argc < 4)
+    {
+        goto setup;
+    }
+
+    if (!strcasecmp(argv[3], "XL"))
+    {
+        BUILD_TARGET = BuildTarget_X64_Linux;
+        BUILD_TARGET_STR = "X64 Linux";
+    }
+    else if (!strcasecmp(argv[3], "XW"))
+    {
+        BUILD_TARGET = BuildTarget_X64_Windows;
+        BUILD_TARGET_STR = "X64 Windows";
+    }
+    else if (!strcasecmp(argv[3], "XM"))
+    {
+        BUILD_TARGET = BuildTarget_X64_MacOS;
+        BUILD_TARGET_STR = "X64 MacOS";
+    }
+    else if (!strcasecmp(argv[3], "AL"))
+    {
+        BUILD_TARGET = BuildTarget_ARM64_Linux;
+        BUILD_TARGET_STR = "ARM64 Linux";
+    }
+    else if (!strcasecmp(argv[3], "AW"))
+    {
+        BUILD_TARGET = BuildTarget_ARM64_Windows;
+        BUILD_TARGET_STR = "ARM64 Windows";
+    }
+    else if (!strcasecmp(argv[3], "AM"))
+    {
+        BUILD_TARGET = BuildTarget_ARM64_MacOS;
+        BUILD_TARGET_STR = "ARM64 MacOS";
+    }
+
+setup:
+    SHUI_SFormat(&BUILD_DIRECTORY_BASE, "%sbuild/%s/%s/%s/", SHU_UtilGetExecutablePath(), BUILD_TARGET_STR, LINK_TYPE_STR, BUILD_TYPE_STR);
+}
+
+#pragma endregion Platform And Setup
 
 int main(int argc, char **argv)
 {
@@ -25,38 +158,9 @@ int main(int argc, char **argv)
 
     Shuild_SetupConfiguration(argc, argv);
 
-#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_MACOS)
-    // homebrew installs outside the default search paths, /opt/homebrew on apple silicon and /usr/local on intel
-    Shuild_UtilAddSystemPrefix("/opt/homebrew");
-    Shuild_UtilAddSystemPrefix("/usr/local");
-#endif
-
-    Shuild_SDL_net();
-    Shuild_SDL_image();
-    Shuild_SDL_mixer();
-
-    SHU_CompilerSetFlags(BUILD_FLAGS);
-    SHU_CompilerAddFlags(SHUM_FLAGS_WARNING_LOW SHUM_FLAGS_STANDARD_C23);
-
     SHU_ModuleBegin("OpenECS", NULL);
     SHU_ModuleAddIncludeDirectory("include/");
     SHU_ModuleAddSourceFile("src/");
 
-    // SDL and SDL_ttf come from the package manager of the system, see README for the packages
-    SHU_ModuleAddLibraryDirectory(LIBRARY_DIRECTORY);
-    SHU_ModuleLinkLibrary("SDL3_image");
-    SHU_ModuleLinkLibrary("SDL3_mixer");
-    SHU_ModuleLinkLibrary("SDL3_net");
-    SHU_ModuleLinkLibrary("SDL3_ttf");
-    SHU_ModuleLinkLibrary("SDL3");
-
-#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
-    SHU_ModuleLinkLibrary("ws2_32");
-    SHU_ModuleLinkLibrary("iphlpapi");
-#else
-    SHU_ModuleLinkLibrary("m");
-#endif
-
-    SHU_ModuleCompile(EXECUTABLE_DIRECTORY, SHUModuleType_Executable);
     return 0;
 }
