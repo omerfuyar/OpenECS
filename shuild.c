@@ -11,7 +11,8 @@
     ./shuild\n\
     [D/R/RD/SR]({Debug}/Release/RelWithDebInfo/MinSizeRel)\n\
     [S/D]({Static}/Dynamic)\n\
-    [XL/XW/XM/AL/AW/AM](X64 Linux/X64 Windows/X64 MacOS/ARM64 Windows/ARM64 Linux/ARM64 MacOS){Default is the host platform}\n")
+    [XL/XW/XM/AL/AW/AM](X64Linux/X64Windows/X64MacOS/ARM64Windows/ARM64Linux/ARM64MacOS){Default is the host platform}\n\
+    [<Compiler Command>]{Default is gcc}\n")
 
 typedef enum BuildType
 {
@@ -40,28 +41,30 @@ const char *LINK_TYPE_STR = "Static";
 #ifdef __x86_64__
 #ifdef _WIN32
 BuildTarget BUILD_TARGET = BuildTarget_X64_Windows;
-const char *BUILD_TARGET_STR = "X64 Windows";
+const char *BUILD_TARGET_STR = "X64Windows";
 #elif __linux__
 BuildTarget BUILD_TARGET = BuildTarget_X64_Linux;
-const char *BUILD_TARGET_STR = "X64 Linux";
-#elif __APPLE__
-BuildTarget BUILD_TARGET = BuildTarget_X64_MacOS;
-const char *BUILD_TARGET_STR = "X64 Linux";
+const char *BUILD_TARGET_STR = "X64Linux";
 #else
 #error Unknown platform to build on.
 #endif
-#elif __arm64__
+#elif __aarch64__
 #ifdef _WIN32
 BuildTarget BUILD_TARGET = BuildTarget_ARM64_Windows;
-const char *BUILD_TARGET_STR = "ARM64 Windows";
+const char *BUILD_TARGET_STR = "ARM64Windows";
 #elif __linux__
 BuildTarget BUILD_TARGET = BuildTarget_ARM64_Linux;
-const char *BUILD_TARGET_STR = "ARM64 Linux";
-#elif __APPLE__
-BuildTarget BUILD_TARGET = BuildTarget_ARM64_MacOS;
-const char *BUILD_TARGET_STR = "ARM64 Linux";
+const char *BUILD_TARGET_STR = "ARM64Linux";
 #else
 #error Unknown platform to build on.
+#endif
+#elif __APPLE__
+#ifdef __arm64__
+BuildTarget BUILD_TARGET = BuildTarget_ARM64_MacOS;
+const char *BUILD_TARGET_STR = "ARM64MacOS";
+#else
+BuildTarget BUILD_TARGET = BuildTarget_X64_MacOS;
+const char *BUILD_TARGET_STR = "X64MacOS";
 #endif
 #else
 #error Unknown architecture to build on.
@@ -121,32 +124,32 @@ void Shuild_SetupConfiguration(int argc, char **argv)
     if (!strcasecmp(argv[3], "XL"))
     {
         BUILD_TARGET = BuildTarget_X64_Linux;
-        BUILD_TARGET_STR = "X64 Linux";
+        BUILD_TARGET_STR = "X64Linux";
     }
     else if (!strcasecmp(argv[3], "XW"))
     {
         BUILD_TARGET = BuildTarget_X64_Windows;
-        BUILD_TARGET_STR = "X64 Windows";
+        BUILD_TARGET_STR = "X64Windows";
     }
     else if (!strcasecmp(argv[3], "XM"))
     {
         BUILD_TARGET = BuildTarget_X64_MacOS;
-        BUILD_TARGET_STR = "X64 MacOS";
+        BUILD_TARGET_STR = "X64MacOS";
     }
     else if (!strcasecmp(argv[3], "AL"))
     {
         BUILD_TARGET = BuildTarget_ARM64_Linux;
-        BUILD_TARGET_STR = "ARM64 Linux";
+        BUILD_TARGET_STR = "ARM64Linux";
     }
     else if (!strcasecmp(argv[3], "AW"))
     {
         BUILD_TARGET = BuildTarget_ARM64_Windows;
-        BUILD_TARGET_STR = "ARM64 Windows";
+        BUILD_TARGET_STR = "ARM64Windows";
     }
     else if (!strcasecmp(argv[3], "AM"))
     {
         BUILD_TARGET = BuildTarget_ARM64_MacOS;
-        BUILD_TARGET_STR = "ARM64 MacOS";
+        BUILD_TARGET_STR = "ARM64MacOS";
     }
 
 setup:
