@@ -114,6 +114,7 @@ static void Shuild_SDLs()
 {
     const char *root = SHU_UtilGetExecutablePath();
     const char *sharedOptStr = LINK_TYPE == LinkType_Dynamic ? "ON" : "OFF";
+    const char *staticOptStr = LINK_TYPE == LinkType_Dynamic ? "OFF" : "ON";
 
     for (usz i = 0; i < sizeof(SDL_LIBRARIES) / sizeof(SDL_LIBRARIES[0]); i++)
     {
@@ -127,7 +128,7 @@ static void Shuild_SDLs()
         SHUI_String linkOptions = {0};
         if (i == 0)
         {
-            SHUI_SFormat(&linkOptions, "-DSDL_SHARED=%s -DSDL_STATIC=%s", sharedOptStr, sharedOptStr);
+            SHUI_SFormat(&linkOptions, "-DSDL_SHARED=%s -DSDL_STATIC=%s", sharedOptStr, staticOptStr);
         }
         else
         {
