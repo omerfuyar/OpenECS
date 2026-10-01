@@ -103,7 +103,7 @@ static const SDLLibrary SDL_LIBRARIES[] = {
     {"SDL3", "dependencies/SDL", "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF"},
     {"SDL3_image", "dependencies/SDL_image", "-DSDLIMAGE_VENDORED=ON -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_TIF=OFF -DSDLIMAGE_WEBP=OFF -DSDLIMAGE_JXL=OFF"},
     {"SDL3_mixer", "dependencies/SDL_mixer", "-DSDLMIXER_VENDORED=ON -DSDLMIXER_SAMPLES=OFF"},
-    {"SDL3_net", "dependencies/SDL_net", ""},
+    {"SDL3_net", "dependencies/SDL_net", "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF"},
     {"SDL3_ttf", "dependencies/SDL_ttf", "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF"},
 };
 
@@ -178,26 +178,11 @@ int main(int argc, char **argv)
 
     SHU_ModuleBegin("OpenECS", NULL);
     SHU_ModuleAddIncludeDirectory("include/");
-    // SHU_ModuleAddIncludeDirectory("build/include");
-
+    SHU_ModuleAddIncludeDirectory("build/include");
+    SHU_ModuleAddLibraryDirectory("build/lib/");
     SHU_ModuleAddSourceFile("src/");
 
     SHU_ModuleCompile(BUILD_DIRECTORY.data, SHUModuleType_Executable);
-    // SHU_ModuleAddLibraryDirectory("build/")
-
-    // SHU_ModuleCompile(BUILD_DIRECTORY.data, LINK_TYPE);
-
-    /* An executable that uses OpenECS (editor, game...) links SDL like this :
-
-    SHU_ModuleBegin("editor", NULL);
-    SHU_ModuleAddIncludeDirectory("include/");
-    Shuild_SDLAddIncludes();
-    SHU_ModuleAddSourceFile("editor/");
-    SHU_ModuleAddLibraryDirectory(BUILD_DIRECTORY);
-    SHU_ModuleLinkLibrary("OpenECS");
-    Shuild_SDLLink();
-    SHU_ModuleCompile(BUILD_DIRECTORY, SHUModuleType_Executable);
-    */
 
     return 0;
 }

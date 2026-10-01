@@ -14,11 +14,18 @@ Just download the correct build for your setup from releases and run the executa
 git clone --recurse-submodules https://github.com/omerfuyar/OpenECS
 ```
 
+or
+
+``` shell
+git clone https://github.com/omerfuyar/OpenECS
+git submodule update --init --recursive
+```
+
 ### Dependent Packages
 
 #### Windows
 
-todo winget
+todo winget, llvm or mingw
 
 #### Linux
 
@@ -27,6 +34,7 @@ todo winget
 Ubuntu 18.04, all available features enabled:
 
 ``` shell
+sudo apt-get update
 sudo apt-get install build-essential git make pkg-config cmake ninja-build gnome-desktop-testing libasound2-dev libpulse-dev libaudio-dev libfribidi-dev libjack-dev libsndio-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev libthai-dev libusb-1.0-0-dev
 ```
 
@@ -49,7 +57,7 @@ The sndio audio target is unavailable on Fedora (but probably not what you shoul
 ##### zypper
 
 ``` shell
-sudo zypper in libunwind-devel libusb-1_0-devel Mesa-libGL-devel libxkbcommon-devel libdrm-devel libgbm-devel pipewire-devel libpulse-devel sndio-devel Mesa-libEGL-devel alsa-devel xwayland-devel wayland-devel wayland-protocols-devel libthai-devel fribidi-devel
+sudo zypper in libunwind-devel libusb-1_0-devel Mesa-libGL-devel libxkbcommon-devel libdrm-devel libgbm-devel pipewire-devel libpulse-devel sndio-devel Mesa-libEGL-devel alsa-devel xwayland-devel wayland-devel wayland-protocols-devel libthai-devel fribidi-devel libXi-devel libXcursor-devel libXi-devel libX11-devel libXext-devel libXfixes-devel libXrandr-devel libXrender-devel libXss-devel libXtst-devel
 ```
 
 ##### pacman
