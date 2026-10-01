@@ -18,6 +18,8 @@ git clone --recurse-submodules https://github.com/omerfuyar/OpenECS
 
 #### Windows
 
+todo winget
+
 #### Linux
 
 ##### apt
