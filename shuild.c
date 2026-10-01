@@ -1,7 +1,6 @@
 #define SHU_IMPLEMENTATION
 #define SHUC_ENABLE_INCREMENTAL
-// #define SHUC_NO_RUN_LOG
-#define SHUC_MAX_COMMAND_BUFFER_SIZE (1024 * 16) // default 4096 truncates the object list of a module with many sources
+#define SHUC_NO_RUN_LOG
 #include "dependencies/shuild/shuild.h"
 
 #pragma region Platform And Setup
@@ -61,6 +60,7 @@ void Shuild_SetupConfiguration(int argc, char **argv)
         {
             SHU_LogError(0, "Unknown build type: " SHUM_COLOR_RED("%s"), argv[1]);
             PrintUsage();
+            exit(1);
         }
     }
 
@@ -78,6 +78,7 @@ void Shuild_SetupConfiguration(int argc, char **argv)
         {
             SHU_LogError(0, "Unknown link type: '%s'", argv[2]);
             PrintUsage();
+            exit(1);
         }
     }
 
@@ -102,8 +103,8 @@ typedef struct SDLLibrary
 static const SDLLibrary SDL_LIBRARIES[] = {
     {"SDL3", "dependencies/SDL", "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF"},
     {"SDL3_image", "dependencies/SDL_image", "-DSDLIMAGE_VENDORED=ON -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_TIF=OFF -DSDLIMAGE_WEBP=OFF -DSDLIMAGE_JXL=OFF"},
-    {"SDL3_mixer", "dependencies/SDL_mixer", "-DSDLMIXER_VENDORED=ON -DSDLMIXER_SAMPLES=OFF"},
-    {"SDL3_net", "dependencies/SDL_net", "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF"},
+    {"SDL3_mixer", "dependencies/SDL_mixer", "-DSDLMIXER_VENDORED=ON"},
+    {"SDL3_net", "dependencies/SDL_net", "-DSDLNET_SAMPLES=OFF"},
     {"SDL3_ttf", "dependencies/SDL_ttf", "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF"},
 };
 
@@ -132,18 +133,38 @@ static void Shuild_SDLs()
             SHUI_SFormat(&linkOptions, "-DBUILD_SHARED_LIBS=%s", sharedOptStr);
         }
 
-        SHU_LogInfo("Building " SHUM_COLOR_MAGENTA("'%s'") " ...", library->name);
+        SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", library->name);
 
         SHU_UtilRun("cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
                     "-DCMAKE_INSTALL_PREFIX=\"%s%s\" -DCMAKE_INSTALL_LIBDIR=lib "
-                    "-DCMAKE_PREFIX_PATH=\"%s%s\" -DCMAKE_POSITION_INDEPENDENT_CODE=ON %s %s",
+                    "-DCMAKE_PREFIX_PATH=\"%s%s\" -DCMAKE_POSITION_INDEPENDENT_CODE=ON %s %s"
+                    " --log-level=WARNING",
                     sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
                     root, OUTPUT_DIRECTORY.data,
                     root, OUTPUT_DIRECTORY.data,
                     linkOptions.data, library->options);
 
-        SHU_UtilRun("cmake --build \"%s\" --parallel", buildDir.data);
-        SHU_UtilRun("cmake --install \"%s\"", buildDir.data);
+        SHU_UtilRun(
+            "cmake --build \"%s\" --parallel > "
+#ifdef _WIN32
+            "NUL"
+#else
+            "/dev/null"
+#endif
+            ,
+            buildDir.data);
+
+        SHU_UtilRun(
+            "cmake --install \"%s\" > "
+#ifdef _WIN32
+            "NUL"
+#else
+            "/dev/null"
+#endif
+            ,
+            buildDir.data);
+
+        SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'%s'"), library->name);
     }
 }
 
@@ -177,12 +198,20 @@ int main(int argc, char **argv)
     Shuild_SDLs();
 
     SHU_ModuleBegin("OpenECS", NULL);
+
     SHU_ModuleAddIncludeDirectory("include/");
-    SHU_ModuleAddIncludeDirectory("build/include");
-    SHU_ModuleAddLibraryDirectory("build/lib/");
+
+    SHUI_String tempStr;
+    SHUI_SFormat(&tempStr, "%sinclude", OUTPUT_DIRECTORY.data);
+    SHU_ModuleAddIncludeDirectory(tempStr.data);
+
+    SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
+    SHU_ModuleAddLibraryDirectory(tempStr.data);
+
     SHU_ModuleAddSourceFile("src/");
 
-    SHU_ModuleCompile(BUILD_DIRECTORY.data, SHUModuleType_Executable);
+    SHUI_SFormat(&tempStr, "%sbin", OUTPUT_DIRECTORY.data);
+    SHU_ModuleCompile(tempStr.data, SHUModuleType_Executable);
 
     return 0;
 }
