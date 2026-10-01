@@ -35,6 +35,7 @@ BuildType BUILD_TYPE = BuildType_Debug;
 LinkType LINK_TYPE = LinkType_Static;
 
 SHUI_String BUILD_DIRECTORY = {0};
+SHUI_String OUTPUT_DIRECTORY = {0};
 
 void Shuild_SetupConfiguration(int argc, char **argv)
 {
@@ -82,13 +83,9 @@ void Shuild_SetupConfiguration(int argc, char **argv)
 
     SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'"), BuildType_String(BUILD_TYPE));
     SHU_LogInfo("Link type: " SHUM_COLOR_BLUE("'%s'"), LinkType_String(LINK_TYPE));
-    SHUI_SFormat(&BUILD_DIRECTORY, "build/%s/%s/", LinkType_String(LINK_TYPE), BuildType_String(BUILD_TYPE));
 
-    /*
-        SHUI_String tempCacheDir;
-        SHUI_SFormat(&tempCacheDir, "%s%s.shu/", SHU_UtilGetExecutablePath(), BUILD_DIRECTORY.data);
-        SHU_CacheConfigure(tempCacheDir.data);
-    */
+    SHUI_SFormat(&BUILD_DIRECTORY, ".shu/%s/%s/", LinkType_String(LINK_TYPE), BuildType_String(BUILD_TYPE));
+    SHUI_SFormat(&OUTPUT_DIRECTORY, "build/%s/%s/", LinkType_String(LINK_TYPE), BuildType_String(BUILD_TYPE));
 }
 
 #pragma endregion Platform And Setup
@@ -138,8 +135,9 @@ static void Shuild_SDLs()
         SHU_LogInfo("Building " SHUM_COLOR_MAGENTA("'%s'") " ...", library->name);
 
         SHU_UtilRun("cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
-                    "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON %s %s",
+                    "-DCMAKE_INSTALL_LIBDIR=%s%s  -DCMAKE_POSITION_INDEPENDENT_CODE=ON %s %s",
                     sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
+                    root, OUTPUT_DIRECTORY.data,
                     linkOptions.data, library->options);
 
         SHU_UtilRun("cmake --build \"%s\" --parallel", buildDir.data);
@@ -178,14 +176,11 @@ int main(int argc, char **argv)
 
     SHU_ModuleBegin("OpenECS", NULL);
     SHU_ModuleAddIncludeDirectory("include/");
-    SHU_ModuleAddIncludeDirectory("dependencies/SDL/include");
-    SHU_ModuleAddIncludeDirectory("dependencies/SDL_image/include");
-    SHU_ModuleAddIncludeDirectory("dependencies/SDL_mixer/include");
-    SHU_ModuleAddIncludeDirectory("dependencies/SDL_net/include");
-    SHU_ModuleAddIncludeDirectory("dependencies/SDL_ttf/include");
+    // SHU_ModuleAddIncludeDirectory("build/include");
 
     SHU_ModuleAddSourceFile("src/");
 
+    SHU_ModuleCompile(BUILD_DIRECTORY.data, SHUModuleType_Executable);
     // SHU_ModuleAddLibraryDirectory("build/")
 
     // SHU_ModuleCompile(BUILD_DIRECTORY.data, LINK_TYPE);
