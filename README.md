@@ -1,6 +1,6 @@
 # OpenECS
 
-This is a ECS (Entity Component System) based game engine project with complete core and editor.
+This is a editor / platform that can output programs with custom plugins using its own framework library. For example the same executable can be a text editor, or a paint, or a game engine editor program. But I am planning to develop a system / version that will output a shortcut or a standalone binary for a specific set of plugins.
 
 ## Usage
 
@@ -14,7 +14,7 @@ Just download the correct build for your setup from releases and run the executa
 git clone --recurse-submodules https://github.com/omerfuyar/OpenECS
 ```
 
-### Build Dependencies
+### Dependent Packages
 
 #### Windows
 
@@ -57,3 +57,5 @@ sudo zypper in libunwind-devel libusb-1_0-devel Mesa-libGL-devel libxkbcommon-de
 ``` shell
 sudo pacman -S alsa-lib cmake hidapi ibus jack libdecor libthai fribidi libgl libpulse libusb libx11 libxcursor libxext libxfixes libxi libxinerama libxkbcommon libxrandr libxrender libxss libxtst mesa ninja pipewire sndio vulkan-driver vulkan-headers wayland wayland-protocols
 ```
+
+### Building

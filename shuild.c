@@ -135,8 +135,10 @@ static void Shuild_SDLs()
         SHU_LogInfo("Building " SHUM_COLOR_MAGENTA("'%s'") " ...", library->name);
 
         SHU_UtilRun("cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
-                    "-DCMAKE_INSTALL_LIBDIR=%s%s  -DCMAKE_POSITION_INDEPENDENT_CODE=ON %s %s",
+                    "-DCMAKE_INSTALL_PREFIX=\"%s%s\" -DCMAKE_INSTALL_LIBDIR=lib "
+                    "-DCMAKE_PREFIX_PATH=\"%s%s\" -DCMAKE_POSITION_INDEPENDENT_CODE=ON %s %s",
                     sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
+                    root, OUTPUT_DIRECTORY.data,
                     root, OUTPUT_DIRECTORY.data,
                     linkOptions.data, library->options);
 
