@@ -67,3 +67,22 @@ sudo pacman -S alsa-lib cmake hidapi ibus jack libdecor libthai fribidi libgl li
 ```
 
 ### Building
+
+Usage:
+./shuild [TYPE [LINK]]
+
+Arguments:
+TYPE
+    D   Debug (Default)
+    R   Release
+    RD  RelWithDebInfo
+    SR  MinSizeRel
+LINK
+    S   Static (Default)
+    D   Dynamic
+
+``` shell
+cd OpenECS/
+gcc shuild.c -o shuild.ignore -O3
+./shuild.ignore
+```

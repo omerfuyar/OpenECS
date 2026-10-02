@@ -5,10 +5,12 @@
 
 #pragma region Platform And Setup
 
-#define PrintUsage() SHU_LogInfo("\nUsage:\n\
-    ./shuild\n\
-    [D/R/RD/SR]({Debug}/Release/RelWithDebInfo/MinSizeRel)\n\
-    [S/D]({Static}/Dynamic)")
+#define PrintUsage() SHU_LogInfo("\n\n\
+Usage:\n\
+./shuild [TYPE [LINK]]\n\n\
+Arguments:\n\
+TYPE\n\tD   Debug (Default)\n\tR   Release\n\tRD  RelWithDebInfo\n\tSR  MinSizeRel\n\
+LINK\n\tS   Static (Default)\n\tD   Dynamic\n")
 
 typedef enum BuildType
 {
@@ -199,7 +201,10 @@ int main(int argc, char **argv)
 
     SHU_ModuleBegin("OpenECS", NULL);
 
+    SHU_ModuleAddSourceFile("src/");
+
     SHU_ModuleAddIncludeDirectory("include/");
+    SHU_ModuleAddIncludeDirectory("dependencies/shu");
 
     SHUI_String tempStr;
     SHUI_SFormat(&tempStr, "%sinclude", OUTPUT_DIRECTORY.data);
@@ -208,7 +213,13 @@ int main(int argc, char **argv)
     SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
     SHU_ModuleAddLibraryDirectory(tempStr.data);
 
-    SHU_ModuleAddSourceFile("src/");
+    SHU_ModuleLinkLibrary("SDL3_image");
+    SHU_ModuleLinkLibrary("SDL3_mixer");
+    SHU_ModuleLinkLibrary("SDL3_mixer");
+    SHU_ModuleLinkLibrary("SDL3_net");
+    SHU_ModuleLinkLibrary("SDL3_ttf");
+    SHU_ModuleLinkLibrary("SDL3");
+    SHU_ModuleLinkLibrary("m");
 
     SHUI_SFormat(&tempStr, "%sbin", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_Executable);
