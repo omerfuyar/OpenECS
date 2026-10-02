@@ -262,19 +262,21 @@ static void Shuild_OpenECS(void)
     SHUI_String tempStr;
     SHUI_SFormat(&tempStr, "%sinclude", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
-    SHU_UtilRun("cp dependencies/shu/shu.h %s", tempStr.data);
+    SHU_UtilRun("cp -r dependencies/shu/ %s", tempStr.data);
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
     SHU_ModuleAddLibraryDirectory(tempStr.data);
 
     SHU_ModuleLinkLibrary("m");
+
     SHU_ModuleLinkLibrary("SDL3");
     SHU_ModuleLinkLibrary("SDL3_image");
     SHU_ModuleLinkLibrary("SDL3_mixer");
     SHU_ModuleLinkLibrary("SDL3_mixer");
     SHU_ModuleLinkLibrary("SDL3_net");
     SHU_ModuleLinkLibrary("SDL3_ttf");
+
     SHU_ModuleLinkLibrary("lua");
 
     SHUI_SFormat(&tempStr, "%sbin", OUTPUT_DIRECTORY.data);

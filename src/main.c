@@ -5,7 +5,8 @@
 #include "SDL3_mixer/SDL_mixer.h"
 #include "SDL3_net/SDL_net.h"
 #include "SDL3_ttf/SDL_ttf.h"
-#include "shu.h"
+#include "shu/shu.h"
+#include "lua/lua.h"
 
 #define checkSDL(fun) SHU_Assert((fun), "SDL Error: '%s'", SDL_GetError())
 

@@ -83,10 +83,10 @@ LINK
     S   Static (Default)
     D   Dynamic
 
-So this command will build the program mode statically linked debug mode.
+So this command will build the program mode statically linked release mode.
 
 ``` shell
 cd OpenECS/
 gcc shuild.c -o shuild.ignore -O3
-./shuild.ignore
+./shuild.ignore R S
 ```
