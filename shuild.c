@@ -3,7 +3,7 @@
 #define SHUC_NO_RUN_LOG
 #include "dependencies/shuild/shuild.h"
 
-#pragma region Platform And Setup
+#pragma region Setup
 
 #define PrintUsage() SHU_LogInfo("\n\n\
 Usage:\n\
@@ -23,22 +23,61 @@ typedef enum BuildType
 static const char *const _BUILD_TYPE_STRINGS[] = {"Debug", "Release", "RelWithDebInfo", "MinSizeRel"};
 #define BuildType_String(buildType) _BUILD_TYPE_STRINGS[(buildType)]
 
-typedef enum LinkType
-{
-    LinkType_Static = 1,
-    LinkType_Dynamic = 2
-} LinkType;
-
 static const char *const _LINK_TYPE_STRINGS[] = {"", "Static", "Dynamic"};
 #define LinkType_String(linkType) _LINK_TYPE_STRINGS[(linkType)]
 
 BuildType BUILD_TYPE = BuildType_Debug;
-LinkType LINK_TYPE = LinkType_Static;
+SHUModuleType LINK_TYPE = SHUModuleType_LibraryStatic;
 
 SHUI_String BUILD_DIRECTORY = {0};
 SHUI_String OUTPUT_DIRECTORY = {0};
 
-void Shuild_SetupConfiguration(int argc, char **argv)
+#pragma endregion Setup
+
+#pragma region SDLs
+
+typedef struct SDLLibrary
+{
+    const char *name;    // Library name, also what you link with (-l<name>)
+    const char *source;  // Source directory (submodule), relative to the shuild executable
+    const char *options; // Extra cmake options
+} SDLLibrary;
+
+static const SDLLibrary SDL_LIBRARIES[] = {
+    {"SDL3", "dependencies/SDL", "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF"},
+    {"SDL3_image", "dependencies/SDL_image", "-DSDLIMAGE_VENDORED=ON -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_TIF=OFF -DSDLIMAGE_WEBP=OFF -DSDLIMAGE_JXL=OFF"},
+    {"SDL3_mixer", "dependencies/SDL_mixer", "-DSDLMIXER_VENDORED=ON"},
+    {"SDL3_net", "dependencies/SDL_net", "-DSDLNET_SAMPLES=OFF"},
+    {"SDL3_ttf", "dependencies/SDL_ttf", "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF"},
+};
+
+#pragma endregion SDLs
+
+static void SetupConfiguration(int argc, char **argv);
+static void SetBuildFlags(bool warnings);
+static void Shuild_SDLs(void);
+static void Shuild_lua(void);
+static void Shuild_OpenECS(void);
+
+int main(int argc, char **argv)
+{
+    SHU_CompilerTryConfigure("gcc");
+    SHU_UtilAutomate(argc, argv);
+    SetupConfiguration(argc, argv);
+
+    // SDLs
+    Shuild_SDLs();
+
+    // lua
+    Shuild_lua();
+
+    // OpenECS
+    Shuild_OpenECS();
+
+    return 0;
+}
+
+static void SetupConfiguration(int argc, char **argv)
 {
     if (argc >= 2)
     {
@@ -70,11 +109,11 @@ void Shuild_SetupConfiguration(int argc, char **argv)
     {
         if (!strcasecmp(argv[2], "S"))
         {
-            LINK_TYPE = LinkType_Static;
+            LINK_TYPE = SHUModuleType_LibraryStatic;
         }
         else if (!strcasecmp(argv[2], "D"))
         {
-            LINK_TYPE = LinkType_Dynamic;
+            LINK_TYPE = SHUModuleType_LibraryDynamic;
         }
         else
         {
@@ -89,32 +128,48 @@ void Shuild_SetupConfiguration(int argc, char **argv)
 
     SHUI_SFormat(&BUILD_DIRECTORY, ".shu/%s/%s/", LinkType_String(LINK_TYPE), BuildType_String(BUILD_TYPE));
     SHUI_SFormat(&OUTPUT_DIRECTORY, "build/%s/%s/", LinkType_String(LINK_TYPE), BuildType_String(BUILD_TYPE));
+
+    SHU_CacheConfigure(BUILD_DIRECTORY.data);
 }
 
-#pragma endregion Platform And Setup
-
-#pragma region SDL Dependencies
-
-typedef struct SDLLibrary
+static void SetBuildFlags(bool warnings)
 {
-    const char *name;    // Library name, also what you link with (-l<name>)
-    const char *source;  // Source directory (submodule), relative to the shuild executable
-    const char *options; // Extra cmake options
-} SDLLibrary;
+    SHU_CompilerClearFlags();
 
-static const SDLLibrary SDL_LIBRARIES[] = {
-    {"SDL3", "dependencies/SDL", "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF"},
-    {"SDL3_image", "dependencies/SDL_image", "-DSDLIMAGE_VENDORED=ON -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_TIF=OFF -DSDLIMAGE_WEBP=OFF -DSDLIMAGE_JXL=OFF"},
-    {"SDL3_mixer", "dependencies/SDL_mixer", "-DSDLMIXER_VENDORED=ON"},
-    {"SDL3_net", "dependencies/SDL_net", "-DSDLNET_SAMPLES=OFF"},
-    {"SDL3_ttf", "dependencies/SDL_ttf", "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF"},
-};
+    switch (BUILD_TYPE)
+    {
+    case BuildType_Debug:
+        if (warnings)
+        {
+            SHU_CompilerAddFlags(SHUM_FLAGS_WARNING_MID);
+        }
+        SHU_CompilerAddFlags(SHUM_FLAGS_DEBUG SHUM_FLAGS_OPTIMIZATION_DEBUG);
+        SHU_CompilerAddDefinitions("DEBUG", NULL);
+        break;
+    case BuildType_Release:
+        SHU_CompilerAddFlags(SHUM_FLAGS_OPTIMIZATION_HIGH);
+        SHU_CompilerAddDefinitions("NDEBUG", NULL, "SHU_NO_ASSERT", NULL);
+        break;
+    case BuildType_RelWithDebInfo:
+        if (warnings)
+        {
+            SHU_CompilerAddFlags(SHUM_FLAGS_WARNING_LOW);
+        }
+        SHU_CompilerAddFlags(SHUM_FLAGS_DEBUG SHUM_FLAGS_OPTIMIZATION_MID);
+        SHU_CompilerAddDefinitions("NDEBUG", NULL);
+        break;
+    case BuildType_MinSizeRel:
+        SHU_CompilerAddFlags(SHUM_FLAGS_OPTIMIZATION_SIZE);
+        SHU_CompilerAddDefinitions("NDEBUG", NULL);
+        break;
+    }
+}
 
-static void Shuild_SDLs()
+static void Shuild_SDLs(void)
 {
     const char *root = SHU_UtilGetExecutablePath();
-    const char *sharedOptStr = LINK_TYPE == LinkType_Dynamic ? "ON" : "OFF";
-    const char *staticOptStr = LINK_TYPE == LinkType_Dynamic ? "OFF" : "ON";
+    const char *sharedOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "ON" : "OFF";
+    const char *staticOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "OFF" : "ON";
 
     for (usz i = 0; i < sizeof(SDL_LIBRARIES) / sizeof(SDL_LIBRARIES[0]); i++)
     {
@@ -148,7 +203,7 @@ static void Shuild_SDLs()
 
         SHU_UtilRun(
             "cmake --build \"%s\" --parallel > "
-#ifdef _WIN32
+#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
             "NUL"
 #else
             "/dev/null"
@@ -158,7 +213,7 @@ static void Shuild_SDLs()
 
         SHU_UtilRun(
             "cmake --install \"%s\" > "
-#ifdef _WIN32
+#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
             "NUL"
 #else
             "/dev/null"
@@ -170,59 +225,58 @@ static void Shuild_SDLs()
     }
 }
 
-#pragma endregion SDL Dependencies
-
-int main(int argc, char **argv)
+static void Shuild_lua(void)
 {
-    SHU_CompilerTryConfigure("gcc");
-    SHU_UtilAutomate(argc, argv);
-    Shuild_SetupConfiguration(argc, argv);
+    SetBuildFlags(false);
+    SHU_ModuleBegin("lua", "dependencies/lua");
 
-    switch (BUILD_TYPE)
-    {
-    case BuildType_Debug:
-        SHU_CompilerAddFlags(SHUM_FLAGS_DEBUG SHUM_FLAGS_WARNING_HIGH);
-        break;
-    case BuildType_Release:
-        SHU_CompilerAddFlags(SHUM_FLAGS_OPTIMIZATION_HIGH);
-        SHU_CompilerAddDefinitions("NDEBUG", NULL, "SHU_NO_ASSERT", NULL);
-        break;
-    case BuildType_RelWithDebInfo:
-        SHU_CompilerAddFlags(SHUM_FLAGS_DEBUG SHUM_FLAGS_OPTIMIZATION_DEBUG SHUM_FLAGS_WARNING_LOW);
-        SHU_CompilerAddDefinitions("NDEBUG", NULL);
-        break;
-    case BuildType_MinSizeRel:
-        SHU_CompilerAddFlags(SHUM_FLAGS_OPTIMIZATION_SIZE);
-        SHU_CompilerAddDefinitions("NDEBUG", NULL);
-        break;
-    }
+#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_LINUX)
+    SHU_CompilerAddDefinitions("LUA_USE_LINUX", NULL);
+#elif SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_MACOS)
+    SHU_CompilerAddDefinitions("LUA_USE_MACOSX", NULL);
+#endif
 
-    Shuild_SDLs();
+    SHU_CompilerAddDefinitions("MAKE_LIB", NULL);
+    SHU_ModuleAddSourceFile("onelua.c");
 
+    SHUI_String tempStr;
+    SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
+    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+
+    SHUI_SFormat(&tempStr, "%sinclude/lua", OUTPUT_DIRECTORY.data);
+    SHU_UtilCreateDirectory(tempStr.data);
+    SHU_UtilRun("cp dependencies/lua/lua.h %s", tempStr.data);
+    SHU_UtilRun("cp dependencies/lua/lauxlib.h %s", tempStr.data);
+    SHU_UtilRun("cp dependencies/lua/lualib.h %s", tempStr.data);
+    SHU_UtilRun("cp dependencies/lua/luaconf.h %s", tempStr.data);
+}
+
+static void Shuild_OpenECS(void)
+{
+    SetBuildFlags(true);
     SHU_ModuleBegin("OpenECS", NULL);
 
     SHU_ModuleAddSourceFile("src/");
-
     SHU_ModuleAddIncludeDirectory("include/");
-    SHU_ModuleAddIncludeDirectory("dependencies/shu");
 
     SHUI_String tempStr;
     SHUI_SFormat(&tempStr, "%sinclude", OUTPUT_DIRECTORY.data);
+    SHU_UtilCreateDirectory(tempStr.data);
+    SHU_UtilRun("cp dependencies/shu/shu.h %s", tempStr.data);
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
     SHU_ModuleAddLibraryDirectory(tempStr.data);
 
+    SHU_ModuleLinkLibrary("m");
+    SHU_ModuleLinkLibrary("SDL3");
     SHU_ModuleLinkLibrary("SDL3_image");
     SHU_ModuleLinkLibrary("SDL3_mixer");
     SHU_ModuleLinkLibrary("SDL3_mixer");
     SHU_ModuleLinkLibrary("SDL3_net");
     SHU_ModuleLinkLibrary("SDL3_ttf");
-    SHU_ModuleLinkLibrary("SDL3");
-    SHU_ModuleLinkLibrary("m");
+    SHU_ModuleLinkLibrary("lua");
 
     SHUI_SFormat(&tempStr, "%sbin", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_Executable);
-
-    return 0;
 }
