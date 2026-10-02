@@ -68,6 +68,8 @@ sudo pacman -S alsa-lib cmake hidapi ibus jack libdecor libthai fribidi libgl li
 
 ### Building
 
+Shuild builds the program:
+
 Usage:
 ./shuild [TYPE [LINK]]
 
@@ -80,6 +82,8 @@ TYPE
 LINK
     S   Static (Default)
     D   Dynamic
+
+So this command will build the program mode statically linked debug mode.
 
 ``` shell
 cd OpenECS/
