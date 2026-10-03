@@ -1,6 +1,8 @@
 # OpenECS
 
-This is a editor / platform that can output programs with custom plugins using its own framework library. For example the same executable can be a text editor, or a paint, or a game engine editor program. But I am planning to develop a system / version that will output a shortcut or a standalone binary for a specific set of plugins.
+OpenECS is a cross platform editor framework written in C that provide an editor featuring windows (like tabs, docking, tiling, popping out, maximizing, workspaces etc.), native and scripted (with lua) plugin support, keybindings, session serialization, OS and built in systems (like drag and drop, file explorer, copy-paste, notifications, dialogs, undo-redo etc.), look and feel (like themes, animations etc.).
+ 
+OpenECS itself does not provide any domain specific behaviour. User application register the behaviour (what is shown and done) inside a window. OpenECS is pretty close to be an executable. Even so that a minimal main function not registering any window behaviour can transform into a text editor, a paint program, or a game engine frontend with the power of plugins.
 
 ## Usage
 
