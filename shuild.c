@@ -57,6 +57,8 @@ static void SetupConfiguration(int argc, char **argv);
 static void SetBuildFlags(bool warnings);
 static void Shuild_SDLs(void);
 static void Shuild_lua(void);
+static void Shuild_clay(void);
+static void Shuild_other(void);
 static void Shuild_OpenECS(void);
 
 int main(int argc, char **argv)
@@ -65,16 +67,18 @@ int main(int argc, char **argv)
     SHU_UtilAutomate(argc, argv);
     SetupConfiguration(argc, argv);
 
-    // SDLs
     Shuild_SDLs();
-
-    // lua
     Shuild_lua();
-
-    // OpenECS
+    Shuild_clay();
+    Shuild_other();
     Shuild_OpenECS();
 
     return 0;
+}
+
+static void CopyFile(const char *file, const char *directory)
+{
+    SHU_UtilRun("cp -r %s %s", file, directory);
 }
 
 static void SetupConfiguration(int argc, char **argv)
@@ -245,10 +249,39 @@ static void Shuild_lua(void)
 
     SHUI_SFormat(&tempStr, "%sinclude/lua", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
-    SHU_UtilRun("cp dependencies/lua/lua.h %s", tempStr.data);
-    SHU_UtilRun("cp dependencies/lua/lauxlib.h %s", tempStr.data);
-    SHU_UtilRun("cp dependencies/lua/lualib.h %s", tempStr.data);
-    SHU_UtilRun("cp dependencies/lua/luaconf.h %s", tempStr.data);
+    CopyFile("dependencies/lua/lua.h", tempStr.data);
+    CopyFile("dependencies/lua/lauxlib.h", tempStr.data);
+    CopyFile("dependencies/lua/lualib.h", tempStr.data);
+    CopyFile("dependencies/lua/luaconf.h", tempStr.data);
+}
+
+static void Shuild_clay(void)
+{
+    SetBuildFlags(false);
+    SHU_ModuleBegin("clay", "dependencies/clay");
+
+    SHU_ModuleAddSourceFile("../other/clay.c");
+
+    SHUI_String tempStr;
+    SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
+    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+
+    SHUI_SFormat(&tempStr, "%sinclude/clay", OUTPUT_DIRECTORY.data);
+    SHU_UtilCreateDirectory(tempStr.data);
+    CopyFile("dependencies/clay/clay.h", tempStr.data);
+    CopyFile("dependencies/other/claySDL3.h", tempStr.data);
+}
+
+static void Shuild_other(void)
+{
+    SHUI_String tempStr;
+    SHUI_SFormat(&tempStr, "%sinclude/shu", OUTPUT_DIRECTORY.data);
+    SHU_UtilCreateDirectory(tempStr.data);
+    CopyFile("dependencies/shu/shu.h", tempStr.data);
+
+    SHUI_SFormat(&tempStr, "%s/bin/resources", OUTPUT_DIRECTORY.data);
+    SHU_UtilCreateDirectory(tempStr.data);
+    CopyFile("resources", tempStr.data);
 }
 
 static void Shuild_OpenECS(void)
@@ -261,8 +294,6 @@ static void Shuild_OpenECS(void)
 
     SHUI_String tempStr;
     SHUI_SFormat(&tempStr, "%sinclude", OUTPUT_DIRECTORY.data);
-    SHU_UtilCreateDirectory(tempStr.data);
-    SHU_UtilRun("cp -r dependencies/shu/ %s", tempStr.data);
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
@@ -278,6 +309,8 @@ static void Shuild_OpenECS(void)
     SHU_ModuleLinkLibrary("SDL3_ttf");
 
     SHU_ModuleLinkLibrary("lua");
+
+    SHU_ModuleLinkLibrary("clay");
 
     SHUI_SFormat(&tempStr, "%sbin", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_Executable);
