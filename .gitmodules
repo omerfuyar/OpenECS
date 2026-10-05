@@ -16,3 +16,6 @@
 [submodule "dependencies/shuild"]
 	path = dependencies/shuild
 	url = https://github.com/omerfuyar/shuild.git
+[submodule "dependencies/libffi"]
+	path = dependencies/libffi
+	url = https://github.com/libffi/libffi

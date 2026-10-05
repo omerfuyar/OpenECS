@@ -1,6 +1,6 @@
 #define SHU_IMPLEMENTATION
 #define SHUC_ENABLE_INCREMENTAL
-#define SHUC_NO_RUN_LOG
+// #define SHUC_NO_RUN_LOG
 #include "dependencies/shuild/shuild.h"
 
 #pragma region Setup
@@ -41,6 +41,7 @@ static void Shuild_SDL(void);
 static void Shuild_SDL_ttf(void);
 static void Shuild_lua(void);
 static void Shuild_clay(void);
+static void Shuild_libffi(void);
 static void Shuild_other(void);
 static void Shuild_OpenECS(void);
 
@@ -51,9 +52,10 @@ int main(int argc, char **argv)
     SetupConfiguration(argc, argv);
 
     Shuild_SDL();
-    Shuild_lua();
     Shuild_SDL_ttf();
+    Shuild_lua();
     Shuild_clay();
+    Shuild_libffi();
     Shuild_other();
     Shuild_OpenECS();
 
@@ -170,13 +172,13 @@ static void Shuild_SDL(void)
 
     SHU_UtilRun("cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
                 "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
-                "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
+                "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=%s "
                 "-DSDL_SHARED=%s -DSDL_STATIC=%s "                           // link type
                 "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF " // options
                 "--log-level=WARNING",                                       // logs
                 sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
                 outputPrefixDir.data, outputPrefixDir.data,
-                sharedOptStr, staticOptStr);
+                sharedOptStr, sharedOptStr, staticOptStr);
 
     SHU_UtilRun(
         "cmake --build \"%s\" --parallel > "
@@ -218,13 +220,13 @@ static void Shuild_SDL_ttf(void)
 
     SHU_UtilRun("cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
                 "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
-                "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
-                "-DBUILD_SHARED_LIBS=%s "                   // link type
-                "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF" // options
-                "--log-level=WARNING",                      // logs
+                "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=%s "
+                "-DBUILD_SHARED_LIBS=%s "                    // link type
+                "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF " // options
+                "--log-level=WARNING",                       // logs
                 sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
                 outputPrefixDir.data, outputPrefixDir.data,
-                sharedOptStr, staticOptStr);
+                sharedOptStr, sharedOptStr);
 
     SHU_UtilRun(
         "cmake --build \"%s\" --parallel > "
@@ -280,17 +282,45 @@ static void Shuild_clay(void)
     SHU_ModuleBegin("clay", "dependencies/clay");
     SetBuildFlags(false);
 
-    SHU_ModuleAddSourceFile("../other/clay.c");
+    SHU_ModuleAddSourceFile("../other/clay/clay.c");
 
     SHUI_String tempStr;
-
     SHUI_SFormat(&tempStr, "%sinclude/clay", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/clay/clay.h", tempStr.data);
-    CopyFile("dependencies/other/claySDL3.h", tempStr.data);
+    CopyFile("dependencies/other/clay/claySDL3.h", tempStr.data);
+
+    SHUI_SFormat(&tempStr, "../../%sinclude/", OUTPUT_DIRECTORY.data);
+    SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+}
+
+static void Shuild_libffi(void)
+{
+    SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'libffi'") "...");
+
+    const char *sharedOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "ON" : "OFF";
+    const char *staticOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "OFF" : "ON";
+
+    SHU_UtilRun("cd dependencies/libffi/ && autoreconf -v -i > "
+#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
+                "NUL"
+#else
+                "/dev/null"
+#endif
+    );
+
+    SHUI_String tempStr;
+    SHUI_SFormat(&tempStr, "%s%sinclude/libffi", SHU_UtilGetExecutablePath(), OUTPUT_DIRECTORY.data);
+    SHU_UtilCreateDirectory(tempStr.data);
+    SHU_UtilRun("cd dependencies/other/ && ../libffi/configure --disable-docs --srcdir=../libffi/ "
+                "--prefix=%s --exec-prefix=%s --enable-shared=%s --enable-static=%s --enable-pic=%s -q %s"
+                "CC=gcc",
+                tempStr.data, tempStr.data, sharedOptStr, staticOptStr, sharedOptStr, BUILD_TYPE == BuildType_Debug ? "--enable-debug " : "");
+
+    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'libffi'"));
 }
 
 static void Shuild_other(void)
@@ -321,16 +351,9 @@ static void Shuild_OpenECS(void)
     SHU_ModuleAddLibraryDirectory(tempStr.data);
 
     SHU_ModuleLinkLibrary("m");
-
     SHU_ModuleLinkLibrary("SDL3");
-    SHU_ModuleLinkLibrary("SDL3_image");
-    SHU_ModuleLinkLibrary("SDL3_mixer");
-    SHU_ModuleLinkLibrary("SDL3_mixer");
-    SHU_ModuleLinkLibrary("SDL3_net");
     SHU_ModuleLinkLibrary("SDL3_ttf");
-
     SHU_ModuleLinkLibrary("lua");
-
     SHU_ModuleLinkLibrary("clay");
 
     SHUI_SFormat(&tempStr, "%sbin", OUTPUT_DIRECTORY.data);

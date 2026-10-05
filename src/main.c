@@ -2,7 +2,6 @@
 #define SDL_MAIN_USE_CALLBACKS 1
 #include "SDL3/SDL_main.h"
 #include "clay/claySDL3.h"
-#include "SDL3_image/SDL_image.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
@@ -25,7 +24,6 @@ typedef struct app_state
     ClayVideoDemo_Data demoData;
 } AppState;
 
-SDL_Texture *sample_image;
 bool show_demo = true;
 
 static inline Clay_Dimensions SDL_MeasureText(Clay_StringSlice text, Clay_TextElementConfig *config, void *userData)
@@ -62,12 +60,6 @@ Clay_RenderCommandArray ClayImageSample_CreateLayout()
                                          .padding = CLAY_PADDING_ALL(16),
                                          .childGap = 16}})
     {
-        CLAY(CLAY_ID("SampleImage"), {.layout = {
-                                          .sizing = layoutExpand},
-                                      .aspectRatio = {23.0 / 42.0},
-                                      .image = {
-                                          .imageData = sample_image,
-                                      }});
     }
 
     return Clay_EndLayout(0.1f);
@@ -119,13 +111,6 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
     }
 
     state->rendererData.fonts[FONT_ID] = font;
-
-    sample_image = IMG_LoadTexture(state->rendererData.renderer, "resources/sample.png");
-    if (!sample_image)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load image: %s", SDL_GetError());
-        return SDL_APP_FAILURE;
-    }
 
     /* Initialize Clay */
     uint64_t totalMemorySize = Clay_MinMemorySize();
@@ -208,11 +193,6 @@ void SDL_AppQuit(void *appstate, SDL_AppResult result)
     }
 
     AppState *state = appstate;
-
-    if (sample_image)
-    {
-        SDL_DestroyTexture(sample_image);
-    }
 
     if (state)
     {

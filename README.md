@@ -27,7 +27,7 @@ git submodule update --init --recursive
 
 #### Windows
 
-todo winget, llvm or mingw
+todo winget, llvm or mingw, autoreconf etc.
 
 #### Linux
 

@@ -1,5 +1,5 @@
 #define CLAY_IMPLEMENTATION
-#include "../clay/clay.h"
+#include "../../clay/clay.h"
 #include "claySDL3.h"
 
 /* Global for convenience. Even in 4K this is enough for smooth curves (low radius or rect size coupled with
