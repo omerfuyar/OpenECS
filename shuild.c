@@ -34,28 +34,11 @@ SHUI_String OUTPUT_DIRECTORY = {0};
 
 #pragma endregion Setup
 
-#pragma region SDLs
-
-typedef struct SDLLibrary
-{
-    const char *name;    // Library name, also what you link with (-l<name>)
-    const char *source;  // Source directory (submodule), relative to the shuild executable
-    const char *options; // Extra cmake options
-} SDLLibrary;
-
-static const SDLLibrary SDL_LIBRARIES[] = {
-    {"SDL3", "dependencies/SDL", "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF"},
-    {"SDL3_image", "dependencies/SDL_image", "-DSDLIMAGE_VENDORED=ON -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_TIF=OFF -DSDLIMAGE_WEBP=OFF -DSDLIMAGE_JXL=OFF"},
-    {"SDL3_mixer", "dependencies/SDL_mixer", "-DSDLMIXER_VENDORED=ON"},
-    {"SDL3_net", "dependencies/SDL_net", "-DSDLNET_SAMPLES=OFF"},
-    {"SDL3_ttf", "dependencies/SDL_ttf", "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF"},
-};
-
-#pragma endregion SDLs
-
 static void SetupConfiguration(int argc, char **argv);
 static void SetBuildFlags(bool warnings);
-static void Shuild_SDLs(void);
+
+static void Shuild_SDL(void);
+static void Shuild_SDL_ttf(void);
 static void Shuild_lua(void);
 static void Shuild_clay(void);
 static void Shuild_other(void);
@@ -67,8 +50,9 @@ int main(int argc, char **argv)
     SHU_UtilAutomate(argc, argv);
     SetupConfiguration(argc, argv);
 
-    Shuild_SDLs();
+    Shuild_SDL();
     Shuild_lua();
+    Shuild_SDL_ttf();
     Shuild_clay();
     Shuild_other();
     Shuild_OpenECS();
@@ -169,70 +153,106 @@ static void SetBuildFlags(bool warnings)
     }
 }
 
-static void Shuild_SDLs(void)
+static void Shuild_SDL(void)
 {
+    SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'SDL3'") "...");
+
     const char *root = SHU_UtilGetExecutablePath();
     const char *sharedOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "ON" : "OFF";
     const char *staticOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "OFF" : "ON";
 
-    for (usz i = 0; i < sizeof(SDL_LIBRARIES) / sizeof(SDL_LIBRARIES[0]); i++)
-    {
-        const SDLLibrary *library = &SDL_LIBRARIES[i];
+    SHUI_String sourceDir;
+    SHUI_String buildDir;
+    SHUI_String outputPrefixDir;
+    SHUI_SFormat(&sourceDir, "%sdependencies/SDL", root);
+    SHUI_SFormat(&buildDir, "%s%sSDL3", root, BUILD_DIRECTORY.data);
+    SHUI_SFormat(&outputPrefixDir, "%s%s", root, OUTPUT_DIRECTORY.data);
 
-        SHUI_String sourceDir = {0};
-        SHUI_String buildDir = {0};
-        SHUI_SFormat(&sourceDir, "%s%s", root, library->source);
-        SHUI_SFormat(&buildDir, "%s%s%s", root, BUILD_DIRECTORY.data, library->name);
+    SHU_UtilRun("cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
+                "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
+                "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
+                "-DSDL_SHARED=%s -DSDL_STATIC=%s "                           // link type
+                "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF " // options
+                "--log-level=WARNING",                                       // logs
+                sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
+                outputPrefixDir.data, outputPrefixDir.data,
+                sharedOptStr, staticOptStr);
 
-        SHUI_String linkOptions = {0};
-        if (i == 0)
-        {
-            SHUI_SFormat(&linkOptions, "-DSDL_SHARED=%s -DSDL_STATIC=%s", sharedOptStr, staticOptStr);
-        }
-        else
-        {
-            SHUI_SFormat(&linkOptions, "-DBUILD_SHARED_LIBS=%s", sharedOptStr);
-        }
-
-        SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", library->name);
-
-        SHU_UtilRun("cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
-                    "-DCMAKE_INSTALL_PREFIX=\"%s%s\" -DCMAKE_INSTALL_LIBDIR=lib "
-                    "-DCMAKE_PREFIX_PATH=\"%s%s\" -DCMAKE_POSITION_INDEPENDENT_CODE=ON %s %s"
-                    " --log-level=WARNING",
-                    sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
-                    root, OUTPUT_DIRECTORY.data,
-                    root, OUTPUT_DIRECTORY.data,
-                    linkOptions.data, library->options);
-
-        SHU_UtilRun(
-            "cmake --build \"%s\" --parallel > "
+    SHU_UtilRun(
+        "cmake --build \"%s\" --parallel > "
 #if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
-            "NUL"
+        "NUL"
 #else
-            "/dev/null"
+        "/dev/null"
 #endif
-            ,
-            buildDir.data);
+        ,
+        buildDir.data);
 
-        SHU_UtilRun(
-            "cmake --install \"%s\" > "
+    SHU_UtilRun(
+        "cmake --install \"%s\" > "
 #if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
-            "NUL"
+        "NUL"
 #else
-            "/dev/null"
+        "/dev/null"
 #endif
-            ,
-            buildDir.data);
+        ,
+        buildDir.data);
 
-        SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'%s'"), library->name);
-    }
+    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'SDL3'"));
+}
+
+static void Shuild_SDL_ttf(void)
+{
+    SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'SDL3_ttf'") "...");
+
+    const char *root = SHU_UtilGetExecutablePath();
+    const char *sharedOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "ON" : "OFF";
+    const char *staticOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "OFF" : "ON";
+
+    SHUI_String sourceDir;
+    SHUI_String buildDir;
+    SHUI_String outputPrefixDir;
+    SHUI_SFormat(&sourceDir, "%sdependencies/SDL_ttf", root);
+    SHUI_SFormat(&buildDir, "%s%sSDL3_ttf", root, BUILD_DIRECTORY.data);
+    SHUI_SFormat(&outputPrefixDir, "%s%s", root, OUTPUT_DIRECTORY.data);
+
+    SHU_UtilRun("cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
+                "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
+                "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
+                "-DBUILD_SHARED_LIBS=%s "                   // link type
+                "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF" // options
+                "--log-level=WARNING",                      // logs
+                sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
+                outputPrefixDir.data, outputPrefixDir.data,
+                sharedOptStr, staticOptStr);
+
+    SHU_UtilRun(
+        "cmake --build \"%s\" --parallel > "
+#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
+        "NUL"
+#else
+        "/dev/null"
+#endif
+        ,
+        buildDir.data);
+
+    SHU_UtilRun(
+        "cmake --install \"%s\" > "
+#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
+        "NUL"
+#else
+        "/dev/null"
+#endif
+        ,
+        buildDir.data);
+
+    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'SDL3_ttf'"));
 }
 
 static void Shuild_lua(void)
 {
-    SetBuildFlags(false);
     SHU_ModuleBegin("lua", "dependencies/lua");
+    SetBuildFlags(false);
 
 #if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_LINUX)
     SHU_CompilerAddDefinitions("LUA_USE_LINUX", NULL);
@@ -244,32 +264,33 @@ static void Shuild_lua(void)
     SHU_ModuleAddSourceFile("onelua.c");
 
     SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
-
     SHUI_SFormat(&tempStr, "%sinclude/lua", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/lua/lua.h", tempStr.data);
     CopyFile("dependencies/lua/lauxlib.h", tempStr.data);
     CopyFile("dependencies/lua/lualib.h", tempStr.data);
     CopyFile("dependencies/lua/luaconf.h", tempStr.data);
+
+    SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
+    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
 }
 
 static void Shuild_clay(void)
 {
-    SetBuildFlags(false);
     SHU_ModuleBegin("clay", "dependencies/clay");
+    SetBuildFlags(false);
 
     SHU_ModuleAddSourceFile("../other/clay.c");
 
     SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
 
     SHUI_SFormat(&tempStr, "%sinclude/clay", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/clay/clay.h", tempStr.data);
     CopyFile("dependencies/other/claySDL3.h", tempStr.data);
+
+    SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
+    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
 }
 
 static void Shuild_other(void)
@@ -286,8 +307,8 @@ static void Shuild_other(void)
 
 static void Shuild_OpenECS(void)
 {
-    SetBuildFlags(true);
     SHU_ModuleBegin("OpenECS", NULL);
+    SetBuildFlags(true);
 
     SHU_ModuleAddSourceFile("src/");
     SHU_ModuleAddIncludeDirectory("include/");

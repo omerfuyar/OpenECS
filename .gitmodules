@@ -1,27 +1,18 @@
-[submodule "dependencies/SDL_image"]
-	path = dependencies/SDL_image
-	url = https://github.com/libsdl-org/SDL_image.git
-[submodule "dependencies/SDL_ttf"]
-	path = dependencies/SDL_ttf
-	url = https://github.com/libsdl-org/SDL_ttf.git
-[submodule "dependencies/SDL_mixer"]
-	path = dependencies/SDL_mixer
-	url = https://github.com/libsdl-org/SDL_mixer.git
-[submodule "dependencies/SDL_net"]
-	path = dependencies/SDL_net
-	url = https://github.com/libsdl-org/SDL_net.git
-[submodule "dependencies/shu"]
-	path = dependencies/shu
-	url = https://github.com/omerfuyar/shu.git
-[submodule "dependencies/shuild"]
-	path = dependencies/shuild
-	url = https://github.com/omerfuyar/shuild.git
 [submodule "dependencies/SDL"]
 	path = dependencies/SDL
 	url = https://github.com/libsdl-org/SDL.git
+[submodule "dependencies/SDL_ttf"]
+	path = dependencies/SDL_ttf
+	url = https://github.com/libsdl-org/SDL_ttf.git
 [submodule "dependencies/lua"]
 	path = dependencies/lua
 	url = https://github.com/lua/lua
 [submodule "dependencies/clay"]
 	path = dependencies/clay
 	url = https://github.com/nicbarker/clay
+[submodule "dependencies/shu"]
+	path = dependencies/shu
+	url = https://github.com/omerfuyar/shu.git
+[submodule "dependencies/shuild"]
+	path = dependencies/shuild
+	url = https://github.com/omerfuyar/shuild.git
