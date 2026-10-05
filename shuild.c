@@ -1,6 +1,6 @@
 #define SHU_IMPLEMENTATION
 #define SHUC_ENABLE_INCREMENTAL
-// #define SHUC_NO_RUN_LOG
+#define SHUC_NO_RUN_LOG
 #include "dependencies/shuild/shuild.h"
 
 #pragma region Setup
@@ -170,37 +170,26 @@ static void Shuild_SDL(void)
     SHUI_SFormat(&buildDir, "%s%sSDL3", root, BUILD_DIRECTORY.data);
     SHUI_SFormat(&outputPrefixDir, "%s%s", root, OUTPUT_DIRECTORY.data);
 
-    SHU_UtilRun("cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
-                "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
-                "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=%s "
-                "-DSDL_SHARED=%s -DSDL_STATIC=%s "                           // link type
-                "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF " // options
-                "--log-level=WARNING",                                       // logs
-                sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
-                outputPrefixDir.data, outputPrefixDir.data,
-                sharedOptStr, sharedOptStr, staticOptStr);
+    SHU_UtilRun(
+        "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
+        "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
+        "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=%s "
+        "-DSDL_SHARED=%s -DSDL_STATIC=%s "                           // link type
+        "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF " // options
+        "--log-level=WARNING",                                       // logs
+        sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
+        outputPrefixDir.data, outputPrefixDir.data,
+        sharedOptStr, sharedOptStr, staticOptStr);
 
     SHU_UtilRun(
-        "cmake --build \"%s\" --parallel > "
-#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
-        "NUL"
-#else
-        "/dev/null"
-#endif
-        ,
-        buildDir.data);
+        "cmake --build \"%s\" --parallel > %s",
+        buildDir.data, SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
 
     SHU_UtilRun(
-        "cmake --install \"%s\" > "
-#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
-        "NUL"
-#else
-        "/dev/null"
-#endif
-        ,
-        buildDir.data);
+        "cmake --install \"%s\" > %s",
+        buildDir.data, SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
 
-    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'SDL3'"));
+    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'SDL3'") "\n");
 }
 
 static void Shuild_SDL_ttf(void)
@@ -209,46 +198,35 @@ static void Shuild_SDL_ttf(void)
 
     const char *root = SHU_UtilGetExecutablePath();
     const char *sharedOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "ON" : "OFF";
-    const char *staticOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "OFF" : "ON";
 
     SHUI_String sourceDir;
     SHUI_String buildDir;
     SHUI_String outputPrefixDir;
-    SHUI_SFormat(&sourceDir, "%sdependencies/SDL_ttf", root);
-    SHUI_SFormat(&buildDir, "%s%sSDL3_ttf", root, BUILD_DIRECTORY.data);
-    SHUI_SFormat(&outputPrefixDir, "%s%s", root, OUTPUT_DIRECTORY.data);
 
-    SHU_UtilRun("cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
-                "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
-                "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=%s "
-                "-DBUILD_SHARED_LIBS=%s "                    // link type
-                "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF " // options
-                "--log-level=WARNING",                       // logs
-                sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
-                outputPrefixDir.data, outputPrefixDir.data,
-                sharedOptStr, sharedOptStr);
+    SHUI_SFormat(&sourceDir, "%sdependencies/SDL_ttf/", root);
+    SHUI_SFormat(&buildDir, "%s%sSDL3_ttf/", root, BUILD_DIRECTORY.data);
+    SHUI_SFormat(&outputPrefixDir, "%s%s/", root, OUTPUT_DIRECTORY.data);
 
     SHU_UtilRun(
-        "cmake --build \"%s\" --parallel > "
-#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
-        "NUL"
-#else
-        "/dev/null"
-#endif
-        ,
-        buildDir.data);
+        "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
+        "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
+        "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=%s "
+        "-DBUILD_SHARED_LIBS=%s "                    // link type
+        "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF " // options
+        "--log-level=WARNING",                       // logs
+        sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
+        outputPrefixDir.data, outputPrefixDir.data,
+        sharedOptStr, sharedOptStr);
 
     SHU_UtilRun(
-        "cmake --install \"%s\" > "
-#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
-        "NUL"
-#else
-        "/dev/null"
-#endif
-        ,
-        buildDir.data);
+        "cmake --build \"%s\" --parallel > %s",
+        buildDir.data, SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
 
-    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'SDL3_ttf'"));
+    SHU_UtilRun(
+        "cmake --install \"%s\" > %s",
+        buildDir.data, SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
+
+    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'SDL3_ttf'") "\n");
 }
 
 static void Shuild_lua(void)
@@ -297,30 +275,48 @@ static void Shuild_clay(void)
     SHU_ModuleCompile(tempStr.data, LINK_TYPE);
 }
 
+// todo maybe generate headers and compile manually
 static void Shuild_libffi(void)
 {
     SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'libffi'") "...");
 
-    const char *sharedOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "ON" : "OFF";
-    const char *staticOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "OFF" : "ON";
+    const char *sharedOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "yes" : "no";
+    const char *staticOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "no" : "yes";
 
-    SHU_UtilRun("cd dependencies/libffi/ && autoreconf -v -i > "
-#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS)
-                "NUL"
-#else
-                "/dev/null"
-#endif
-    );
+    SHUI_String buildDir;
+    SHUI_String sourceDir;
+    SHUI_String outputPrefixDir;
 
-    SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%s%sinclude/libffi", SHU_UtilGetExecutablePath(), OUTPUT_DIRECTORY.data);
-    SHU_UtilCreateDirectory(tempStr.data);
-    SHU_UtilRun("cd dependencies/other/ && ../libffi/configure --disable-docs --srcdir=../libffi/ "
-                "--prefix=%s --exec-prefix=%s --enable-shared=%s --enable-static=%s --enable-pic=%s -q %s"
-                "CC=gcc",
-                tempStr.data, tempStr.data, sharedOptStr, staticOptStr, sharedOptStr, BUILD_TYPE == BuildType_Debug ? "--enable-debug " : "");
+    SHUI_SFormat(&buildDir, "%slibffi/", BUILD_DIRECTORY.data);
+    SHU_UtilCreateDirectory(buildDir.data);
 
-    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'libffi'"));
+    SHUI_SFormat(&buildDir, "%s%slibffi/", SHU_UtilGetExecutablePath(), BUILD_DIRECTORY.data);
+    SHUI_SFormat(&sourceDir, "%sdependencies/libffi/", SHU_UtilGetExecutablePath());
+    SHUI_SFormat(&outputPrefixDir, "%s%s", SHU_UtilGetExecutablePath(), OUTPUT_DIRECTORY.data);
+
+    SetBuildFlags(false);
+    char flagBuffer[SHUC_MAX_COMMAND_BUFFER_SIZE];
+    SHU_CompilerGetFlags(cs(flagBuffer, sizeof(flagBuffer)));
+
+    SHU_UtilRun(
+        "cd dependencies/libffi/ && exec autoreconf -v -i");
+
+    SHU_UtilRun(
+        "cd %s && %sconfigure --disable-docs --quiet "
+        "--prefix=%s --libdir=%slib/ --includedir=%sinclude/libffi/ --enable-shared=%s --enable-static=%s --enable-pic=%s %s"
+        "CC=gcc CFLAGS=\"%s -w\"",
+        buildDir.data, sourceDir.data,
+        outputPrefixDir.data, outputPrefixDir.data, outputPrefixDir.data,
+        sharedOptStr, staticOptStr, sharedOptStr,
+        BUILD_TYPE == BuildType_Debug ? "--enable-debug " : "", flagBuffer);
+
+    SHU_UtilRun(
+        "cd %s && make -j$(nproc) > %s && make install > %s",
+        buildDir.data,
+        SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null",
+        SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
+
+    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'libffi'") "\n");
 }
 
 static void Shuild_other(void)
@@ -330,7 +326,7 @@ static void Shuild_other(void)
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/shu/shu.h", tempStr.data);
 
-    SHUI_SFormat(&tempStr, "%s/bin/resources", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sbin/resources", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("resources", tempStr.data);
 }
@@ -355,6 +351,7 @@ static void Shuild_OpenECS(void)
     SHU_ModuleLinkLibrary("SDL3_ttf");
     SHU_ModuleLinkLibrary("lua");
     SHU_ModuleLinkLibrary("clay");
+    SHU_ModuleLinkLibrary("ffi");
 
     SHUI_SFormat(&tempStr, "%sbin", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_Executable);
