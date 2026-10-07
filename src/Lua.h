@@ -2,7 +2,7 @@
 
 // Lua: the Lua state. Reads presets, sessions, manifests and settings files as data.
 
-#include "Global.h"
+#include "shu/shu.h"
 
 #pragma region Declarations
 

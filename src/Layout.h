@@ -2,22 +2,20 @@
 
 // Layout: the OS window, workspaces, layout trees, and the core's own interface (tab rows, grips, focus border).
 
-#include "Global.h"
-#include "tools/Platform.h"
-#include "tools/Renderer.h"
-#include "systems/Panels.h"
+#include "Panels.h"
 
 #pragma region Declarations
 
 /// @brief A node of a layout tree: a split or a group.
 typedef struct ECSI_Node ECSI_Node;
 
-/// @brief Opens the main OS window and prepares the layout.
+/// @brief Opens the main OS window, loads the font of the core's interface, and prepares the layout.
 /// @param title Title of the OS window.
-/// @return SHUResult_Ok, or the error of the window, renderer or allocation that failed.
-SHUWUR SHUResult ECSI_LayoutInitialize(const char *title);
+/// @param fontPath Path of the TrueType font of the core's interface.
+/// @return SHUResult_Ok, SHUResult_ErrFile if the font cannot be loaded, SHUResult_ErrInternal if SDL fails, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_LayoutInitialize(const char *title, const char *fontPath);
 
-/// @brief Destroys every workspace, panel and node, then closes the OS window.
+/// @brief Destroys every workspace, panel and node, then closes the OS window. Also releases what a failed ECSI_LayoutInitialize made.
 void ECSI_LayoutTerminate(void);
 
 /// @brief Creates a split node.

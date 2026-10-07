@@ -74,11 +74,11 @@ static void DemoColorEvent(void *state, const ECSEvent *event)
 {
     DemoPanel *demo = state;
 
-    if (event->kind == ECSEventKind_PointerDown)
+    if (event->type == ECSEventType_PointerDown)
     {
         demo->color = (demo->color + 1) % (sizeof(DEMO_COLORS) / sizeof(*DEMO_COLORS));
     }
-    else if (event->kind == ECSEventKind_PointerMove)
+    else if (event->type == ECSEventType_PointerMove)
     {
         demo->pointerX = event->x;
         demo->pointerY = event->y;
@@ -148,10 +148,11 @@ static void DemoCheckerDraw(void *state, ECSSurface *surface, f64 seconds)
 
 #pragma endregion Checker
 
-static SHUResult DemoInit(ECSContext context)
+#pragma endregion Source Only
+
+SHUResult ECSPlugin_Init(ECSPlugin plugin)
 {
     ECSPanelTypeDesc color = {
-        .structSize = sizeof(ECSPanelTypeDesc),
         .name = "demo.color",
         .title = "Color",
         .Create = DemoCreate,
@@ -161,7 +162,6 @@ static SHUResult DemoInit(ECSContext context)
     };
 
     ECSPanelTypeDesc gradient = {
-        .structSize = sizeof(ECSPanelTypeDesc),
         .name = "demo.gradient",
         .title = "Gradient",
         .continuous = true,
@@ -171,7 +171,6 @@ static SHUResult DemoInit(ECSContext context)
     };
 
     ECSPanelTypeDesc checker = {
-        .structSize = sizeof(ECSPanelTypeDesc),
         .name = "demo.checker",
         .title = "Checker",
         .Create = DemoCreate,
@@ -179,19 +178,10 @@ static SHUResult DemoInit(ECSContext context)
         .Draw = DemoCheckerDraw,
     };
 
-    SHU_ReturnResult(ECSPanelType_Register(context, &color));
-    SHU_ReturnResult(ECSPanelType_Register(context, &gradient));
-    SHU_ReturnResult(ECSPanelType_Register(context, &checker));
+    SHU_ReturnResult(ECSPanelType_Register(plugin, &color));
+    SHU_ReturnResult(ECSPanelType_Register(plugin, &gradient));
+    SHU_ReturnResult(ECSPanelType_Register(plugin, &checker));
 
-    ECS_LogInfo(context, "Registered 3 panel types.");
+    ECS_Log(plugin, ECSLogLevel_Info, "Registered 3 panel types.");
     return SHUResult_Ok;
 }
-
-static void DemoShutdown(ECSContext context)
-{
-    (void)context;
-}
-
-#pragma endregion Source Only
-
-ECSPlugin_Define(DemoInit, DemoShutdown)

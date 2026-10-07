@@ -1,9 +1,10 @@
-#include "systems/Session.h"
+#include "Session.h"
 
-#include "tools/Lua.h"
-#include "tools/Platform.h"
-#include "systems/Layout.h"
-#include "systems/Panels.h"
+#include "Layout.h"
+#include "Lua.h"
+#include "Panels.h"
+
+#include "SDL3/SDL.h"
 
 #pragma region Source Only
 
@@ -12,10 +13,17 @@ static void ECSI_SessionAddPlugin(const char *key, const char *value, void *user
     (void)value;
     ECSI_PresetInfo *info = userData;
 
-    if (info->pluginCount < OPENECS_MAX_PLUGINS)
+    if (info->pluginCount == OPENECS_MAX_PLUGINS)
     {
-        ECSI_TextCopy(cs(info->plugins[info->pluginCount], OPENECS_NAME_CAPACITY), key);
-        info->pluginCount++;
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The preset names too many plugins; '%s' is skipped.", key);
+        return;
+    }
+
+    char *plugin = SDL_strdup(key);
+
+    if (plugin != NULL)
+    {
+        info->plugins[info->pluginCount++] = plugin;
     }
 }
 
@@ -24,7 +32,7 @@ static SHUResult ECSI_SessionReadNode(ECSI_Node **retNode)
 {
     if (ECSI_LuaDataHas("split"))
     {
-        bool vertical = ECSI_TextEqualsIgnoreCase(ECSI_LuaDataGetText("split", "horizontal"), "vertical");
+        bool vertical = SDL_strcasecmp(ECSI_LuaDataGetText("split", "horizontal"), "vertical") == 0;
         SHU_ReturnResult(ECSI_LayoutSplitCreate(retNode, vertical));
 
         for (usz i = 1; i <= ECSI_LuaDataCount(); i++)
@@ -98,7 +106,7 @@ static SHUResult ECSI_SessionReadWorkspace(void)
     {
         if (ECSI_LuaDataCount() > 1)
         {
-            SHU_LogWarning("Pop-out windows are not implemented yet; only the first window is used.");
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Pop-out windows are not implemented yet; only the first window is used.");
         }
 
         SHUResult result = SHUResult_Ok;
@@ -120,52 +128,58 @@ static SHUResult ECSI_SessionReadWorkspace(void)
 
 #pragma endregion Source Only
 
-void ECSI_SessionFindPreset(SHUSlice retPath, const char *nameOrPath)
+SHUResult ECSI_SessionFindPreset(char **retPath, const char *nameOrPath)
 {
-    SHU_AssertNullPointer(retPath.data);
-    SHU_AssertNullPointer(nameOrPath);
+    SDL_assert(retPath != NULL);
+    SDL_assert(nameOrPath != NULL);
 
-    if (strchr(nameOrPath, '/') != NULL)
+    if (SDL_strchr(nameOrPath, '/') != NULL)
     {
-        ECSI_TextCopy(retPath, nameOrPath);
+        *retPath = SDL_strdup(nameOrPath);
+        return *retPath == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
     }
-    else
-    {
-        snprintf(retPath.data, retPath.size, "%spresets/%s.lua", ECSI_PlatformGetBaseDirectory(), nameOrPath);
-    }
+
+    return SDL_asprintf(retPath, "%spresets/%s.lua", SDL_GetBasePath(), nameOrPath) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok;
 }
 
 SHUResult ECSI_SessionReadInfo(const char *path, ECSI_PresetInfo *retInfo)
 {
-    SHU_AssertNullPointer(path);
-    SHU_AssertNullPointer(retInfo);
+    SDL_assert(path != NULL);
+    SDL_assert(retInfo != NULL);
 
-    *retInfo = (ECSI_PresetInfo){0};
+    SDL_zerop(retInfo);
     SHU_ReturnResult(ECSI_LuaDataOpen(path));
 
-    ECSI_TextCopy(cs(retInfo->name, sizeof(retInfo->name)), ECSI_LuaDataGetText("name", "preset"));
-    ECSI_TextCopy(cs(retInfo->appName, sizeof(retInfo->appName)), "OpenECS");
-
-    if (snprintf(retInfo->appId, sizeof(retInfo->appId), "openecs.%s", retInfo->name) >= (int)sizeof(retInfo->appId))
-    {
-        SHU_LogWarning("Preset name '%s' is too long for an app id; the id is cut.", retInfo->name);
-    }
+    retInfo->name = SDL_strdup(ECSI_LuaDataGetText("name", "preset"));
+    const char *appName = "OpenECS";
+    const char *appId = NULL;
 
     if (ECSI_LuaDataEnterField("app"))
     {
-        ECSI_TextCopy(cs(retInfo->appName, sizeof(retInfo->appName)), ECSI_LuaDataGetText("name", retInfo->appName));
-        ECSI_TextCopy(cs(retInfo->appId, sizeof(retInfo->appId)), ECSI_LuaDataGetText("id", retInfo->appId));
+        appName = ECSI_LuaDataGetText("name", appName);
+        appId = ECSI_LuaDataGetText("id", NULL);
         ECSI_LuaDataLeave();
     }
 
-    const char *pluginsDirectory = ECSI_LuaDataGetText("plugins_dir", "");
+    retInfo->appName = SDL_strdup(appName);
 
-    if (pluginsDirectory[0] != '\0')
+    if (appId != NULL)
+    {
+        retInfo->appId = SDL_strdup(appId);
+    }
+    else if (retInfo->name != NULL)
+    {
+        SDL_asprintf(&retInfo->appId, "openecs.%s", retInfo->name);
+    }
+
+    const char *pluginsDirectory = ECSI_LuaDataGetText("plugins_dir", NULL);
+
+    if (pluginsDirectory != NULL)
     {
         // relative to the preset's folder
-        const char *slash = strrchr(path, '/');
+        const char *slash = SDL_strrchr(path, '/');
         int folderLength = slash == NULL ? 0 : (int)(slash - path + 1);
-        snprintf(retInfo->pluginsDirectory, sizeof(retInfo->pluginsDirectory), "%.*s%s/", folderLength, path, pluginsDirectory);
+        SDL_asprintf(&retInfo->pluginsDirectory, "%.*s%s/", folderLength, path, pluginsDirectory);
     }
 
     if (ECSI_LuaDataEnterField("depends"))
@@ -175,18 +189,41 @@ SHUResult ECSI_SessionReadInfo(const char *path, ECSI_PresetInfo *retInfo)
     }
 
     ECSI_LuaDataClose();
+
+    if (retInfo->name == NULL || retInfo->appName == NULL || retInfo->appId == NULL || (pluginsDirectory != NULL && retInfo->pluginsDirectory == NULL))
+    {
+        return SHUResult_ErrAllocation;
+    }
+
     return SHUResult_Ok;
+}
+
+void ECSI_SessionFreeInfo(ECSI_PresetInfo *info)
+{
+    SDL_assert(info != NULL);
+
+    SDL_free(info->name);
+    SDL_free(info->appId);
+    SDL_free(info->appName);
+    SDL_free(info->pluginsDirectory);
+
+    for (usz i = 0; i < info->pluginCount; i++)
+    {
+        SDL_free(info->plugins[i]);
+    }
+
+    SDL_zerop(info);
 }
 
 SHUResult ECSI_SessionApply(const char *path)
 {
-    SHU_AssertNullPointer(path);
+    SDL_assert(path != NULL);
 
     SHU_ReturnResult(ECSI_LuaDataOpen(path));
 
     if (!ECSI_LuaDataEnterField("workspaces"))
     {
-        SHU_LogWarning("'%s' has no workspaces.", path);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' has no workspaces.", path);
         ECSI_LuaDataClose();
         return SHUResult_ErrBadData;
     }
