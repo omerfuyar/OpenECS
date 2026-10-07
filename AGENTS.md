@@ -6,21 +6,21 @@ This is the only file written for agents. Everything else is written for humans.
 
 ## Where things are
 
-| File | What it holds |
-|---|---|
-| [README.md](README.md) | Short introduction, cloning and building. |
-| [OVERVIEW.md](OVERVIEW.md) | What OpenECS is: scope, the line between core and plugins, principles and product decisions. |
-| [DESIGN.md](DESIGN.md) | How OpenECS is built: modules, interfaces, conventions, dependencies and rules for contributors. |
-| [TODO.md](TODO.md) | Open questions, proposals waiting for the owner, and pending tasks. |
+| File                       | What it holds                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------ |
+| [README.md](README.md)     | Short introduction, cloning and building.                                                        |
+| [OVERVIEW.md](OVERVIEW.md) | What OpenECS is: scope, the line between core and plugins, principles and product decisions.     |
+| [DESIGN.md](DESIGN.md)     | How OpenECS is built: modules, interfaces, conventions, dependencies and rules for contributors. |
+| [TODO.md](TODO.md)         | Open questions, proposals waiting for the owner, and pending tasks.                              |
 
 Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 
-| Path | What it holds |
-|---|---|
+| Path               | What it holds                              |
+| ------------------ | ------------------------------------------ |
 | `src/`, `include/` | The core's source code and public headers. |
-| `dependencies/` | Third-party git submodules. |
-| `resources/` | Files the program loads at run time. |
-| `shuild.c` | The build script (see README.md). |
+| `dependencies/`    | Third-party git submodules.                |
+| `resources/`       | Files the program loads at run time.       |
+| `shuild.c`         | The build script (see README.md).          |
 
 ## Current stage
 
@@ -55,7 +55,7 @@ The project is being designed. Work on the documents. Do not write the implement
 - Commit or push, unless the owner tells you to.
 - Stage changes (`git add`). Leave them unstaged, so the owner sees them in the editor.
 - Edit anything under `dependencies/`.
-- Invent your own code style. Follow DESIGN.md, section 1, which comes from the owner's own projects. Commit messages follow DESIGN.md, section 18.3.
+- Invent naming conventions. Follow DESIGN.md section 1, which comes from the owner's shu libraries.
 
 ## Writing documents
 

@@ -9,6 +9,7 @@ What is not decided yet, and work that is waiting. When an item is settled, writ
 ## Open questions
 
 - **Build system.** The repository builds with shuild. Decide whether it stays, then add build and test commands to README.md.
+- **Use shutil in the core?** The core needs dynamic arrays and hash maps. [shutil](https://github.com/omerfuyar/shutil) provides arrays now and plans the rest. Using it would add a dependency, so it is your call (DESIGN 1).
 
 ## Tasks
 

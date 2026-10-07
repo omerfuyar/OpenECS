@@ -97,18 +97,18 @@ Everything else, for example:
 
 *If the core's own machinery needs it, it is core. If only some panels need it, it is a plugin.*
 
-| Task | Core or plugin |
-|---|---|
-| Place a panel, split it, group it, move it to its own window | Core |
-| Put a panel's surface on screen | Core |
-| Fill the surface with shapes, text or images | Plugin |
-| Show a popup menu that may extend past the panel | Core shows it; the plugin fills it |
-| Drag something from one panel to another | Core carries it; plugins give and accept it |
-| Decide what a key does inside a panel | Plugin |
-| Remember the arrangement of panels | Core |
-| Remember what is inside a panel | The plugin provides it; the core stores it |
-| The settings window | Plugin (first-party) |
-| Load a 3D model, play a sound | Plugin |
+| Task                                                         | Core or plugin                              |
+| ------------------------------------------------------------ | ------------------------------------------- |
+| Place a panel, split it, group it, move it to its own window | Core                                        |
+| Put a panel's surface on screen                              | Core                                        |
+| Fill the surface with shapes, text or images                 | Plugin                                      |
+| Show a popup menu that may extend past the panel             | Core shows it; the plugin fills it          |
+| Drag something from one panel to another                     | Core carries it; plugins give and accept it |
+| Decide what a key does inside a panel                        | Plugin                                      |
+| Remember the arrangement of panels                           | Core                                        |
+| Remember what is inside a panel                              | The plugin provides it; the core stores it  |
+| The settings window                                          | Plugin (first-party)                        |
+| Load a 3D model, play a sound                                | Plugin                                      |
 
 ### 4.4 First-party plugins
 
@@ -267,13 +267,13 @@ Every layout change is a function: open, split, move, group, close, pop out, swa
 
 While a panel is dragged, the core highlights where it will land:
 
-| Pointer position | Result |
-|---|---|
-| Centre of a panel | Group with that panel. |
-| Near an edge of a panel | Split in that direction. |
-| Over a tab row | Insert between tabs. |
+| Pointer position              | Result                      |
+| ----------------------------- | --------------------------- |
+| Centre of a panel             | Group with that panel.      |
+| Near an edge of a panel       | Split in that direction.    |
+| Over a tab row                | Insert between tabs.        |
 | Near an edge of the OS window | Dock along that whole edge. |
-| Outside every OS window | Move into a new OS window. |
+| Outside every OS window       | Move into a new OS window.  |
 
 On Wayland, the display system decides where a new OS window appears. A menu entry and a key always offer the same moves as dragging.
 
@@ -381,12 +381,12 @@ A panel shows data, but it does not have to own it. Data that several panels sha
 
 To make this work:
 
-- **Plugin events.** A plugin can declare its own events, such as `canvas.selectionChanged`, and send them. Other plugins subscribe to them.
+- **Plugin events.** A plugin can declare its own events, such as `canvas.selection_changed`, and send them. Other plugins subscribe to them.
 - **Plugin state.** A plugin, not only a panel, can save state into the session. When a session is loaded, plugin state is restored before panels, so panels find their data.
 
 ### 11.3 Drag and drop of data
 
-A panel can start dragging data, labelled with a type such as `fileList` or `color`. Panels say which types they accept. The core highlights the panels that accept the dragged type and delivers the data to the one it is dropped on. Files and text dropped from other applications arrive the same way.
+A panel can start dragging data, labelled with a type such as `file-list` or `color`. Panels say which types they accept. The core highlights the panels that accept the dragged type and delivers the data to the one it is dropped on. Files and text dropped from other applications arrive the same way.
 
 ## 12. Presets, sessions and settings
 
@@ -457,13 +457,14 @@ The user's hand-edited file is the top layer, and the core never rewrites it, so
 
 ## 15. Dependencies
 
-| Library | Used for |
-|---|---|
-| SDL3 | OS windows, input, graphics, clipboard, dialogs, drag and drop, threads, loading plugins, loading PNG images. |
-| SDL3_ttf | Text in the core's own interface. |
-| Clay | Computing the sizes and positions of areas on screen. |
-| Lua | Lua plugins, and the format of presets, sessions, settings and manifests. |
-| libffi | Calling functions by their signature, so that C and Lua functions can call each other. |
+| Library  | Used for                                                                                                      |
+| -------- | ------------------------------------------------------------------------------------------------------------- |
+| SDL3     | OS windows, input, graphics, clipboard, dialogs, drag and drop, threads, loading plugins, loading PNG images. |
+| SDL3_ttf | Text in the core's own interface.                                                                             |
+| Clay     | Computing the sizes and positions of areas on screen.                                                         |
+| Lua      | Lua plugins, and the format of presets, sessions, settings and manifests.                                     |
+| libffi   | Calling functions by their signature, so that C and Lua functions can call each other.                        |
+| shu      | The owner's shared C conventions: basic types, result codes, assertions.                                      |
 
 SDL3_image is not needed, because SDL3 loads PNG files itself. Libraries such as SDL3_mixer, SDL3_net or cgltf are used by plugins, not by the core.
 
