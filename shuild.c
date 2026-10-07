@@ -386,7 +386,6 @@ static void Shuild_OpenECS(void)
 
     SHU_ModuleAddSourceFile("src/");
     SHU_ModuleAddIncludeDirectory("include/");
-    SHU_ModuleAddIncludeDirectory("src/");
 
     SHUI_String tempStr;
     SHUI_SFormat(&tempStr, "%sinclude/", OUTPUT_DIRECTORY.data);

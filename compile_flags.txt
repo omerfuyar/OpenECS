@@ -1,4 +1,3 @@
 -std=c23
 -Iinclude
--Isrc
 -Ibuild/Static/Debug/include
