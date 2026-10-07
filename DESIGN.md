@@ -447,6 +447,7 @@ return {
 
 - Versions follow semantic versioning. A dependency's version means "this version, or a later one with the same major number": `"1.2"` accepts 1.2.0 up to, but not including, 2.0.0.
 - Manifests are read as data, without running plugin code (11.2).
+- A manifest describes the plugin to the core. It holds no build settings.
 - Presets follow the same rules as manifests: they name the plugins they depend on.
 
 ### 9.3 Search path and load order
@@ -777,9 +778,10 @@ OpenECS follows the XDG Base Directory specification:
 ### 17.2 Linking
 
 - SDL3 and SDL3_ttf are shared libraries shipped next to the executable and found through an `$ORIGIN` run path. So the core, the sdl plugin and any plugin that links an SDL library, such as SDL3_mixer or SDL3_net, share one copy of SDL.
-- Lua, Clay and libffi are linked statically into the executable.
+- Lua, Clay, libffi and stb are linked statically into the executable.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.
 - Native plugins are shared libraries, built against the plugin header only. They do not link against the core; their calls to it are resolved when they are loaded.
+- A first-party plugin is built from every C file in its folder, `plugins/<name>/`, so the build needs no settings for each plugin.
 
 ### 17.3 Compiler
 
