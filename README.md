@@ -1,12 +1,19 @@
 # OpenECS
 
-OpenECS is a cross platform editor framework written in C that provide an editor featuring windows (like tabs, docking, tiling, popping out, maximizing, workspaces etc.), native and scripted (with lua) plugin support, keybindings, session serialization, OS and built in systems (like drag and drop, file explorer, copy-paste, notifications, dialogs, undo-redo etc.), look and feel (like themes, animations etc.).
+OpenECS (Editor Composition System) is a cross platform editor program written in C that provide an editor featuring windows (like tabs, docking, tiling, popping out, maximizing, workspaces etc.), native and scripted (with lua) plugin support, keybindings, session serialization, OS and built in systems (like drag and drop, file explorer, copy-paste, notifications, dialogs, undo-redo etc.), look and feel (like themes, animations etc.).
  
-OpenECS itself does not provide any domain specific behaviour. User application register the behaviour (what is shown and done) inside a window. OpenECS is pretty close to be an executable. Even so that a minimal main function not registering any window behaviour can transform into a text editor, a paint program, or a game engine frontend with the power of plugins.
+OpenECS itself does not provide any domain specific behaviour. User application register the behaviour (what is shown and done) inside a window. OpenECS an executable and not a library. User creates plugins to define a behaviour. That makes the same executable to be able to transform into a text editor, a paint program, a game engine frontend or even a game itself.
+
+## Documents
+
+- [OVERVIEW.md](OVERVIEW.md): what OpenECS is, its scope, and its product decisions.
+- [DESIGN.md](DESIGN.md): how OpenECS is built.
+- [TODO.md](TODO.md): open questions and pending work.
+- [AGENTS.md](AGENTS.md): instructions for AI agents working in this repository.
 
 ## Usage
 
-Just download the correct build for your setup from releases and run the executable.
+Just download the correct build for your setup from releases and run the executable. See [Releases](https://github.com/omerfuyar/OpenECS/releases)
 
 ## Development
 
