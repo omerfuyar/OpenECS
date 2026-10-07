@@ -1,222 +1,132 @@
-#include <stdio.h>
-#define SDL_MAIN_USE_CALLBACKS 1
-#include "SDL3/SDL_main.h"
-#include "clay/claySDL3.h"
+#include "Global.h"
+#include "tools/Lua.h"
+#include "tools/Platform.h"
+#include "tools/Renderer.h"
+#include "systems/Input.h"
+#include "systems/Layout.h"
+#include "systems/Plugins.h"
+#include "systems/Session.h"
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wsign-conversion"
-#pragma GCC diagnostic ignored "-Woverlength-strings"
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#pragma GCC diagnostic ignored "-Wsign-compare"
-#include "../dependencies/clay/examples/shared-layouts/clay-video-demo.c"
-#pragma GCC diagnostic pop
+/// @brief Preset used when the command line names none.
+#define OPENECS_DEFAULT_PRESET "default"
 
-static const Uint32 FONT_ID = 0;
+/// @brief Default core prefix: the default of the setting ecs.prefix.
+#define OPENECS_DEFAULT_PREFIX "Alt+W"
 
-static const Clay_Color COLOR_ORANGE = (Clay_Color){225, 138, 50, 255};
-static const Clay_Color COLOR_BLUE = (Clay_Color){111, 173, 162, 255};
-static const Clay_Color COLOR_LIGHT = (Clay_Color){224, 215, 210, 255};
+/// @brief Font of the core's interface, relative to the executable.
+#define OPENECS_FONT_FILE "resources/Roboto-Regular.ttf"
 
-typedef struct app_state
+/// @brief What the command line asks for.
+typedef struct ECSI_Arguments
 {
-    SDL_Window *window;
-    Clay_SDL3RendererData rendererData;
-    ClayVideoDemo_Data demoData;
-} AppState;
+    const char *preset;
+} ECSI_Arguments;
 
-bool show_demo = true;
-
-static inline Clay_Dimensions SDL_MeasureText(Clay_StringSlice text, Clay_TextElementConfig *config, void *userData)
+static ECSI_Arguments ECSI_ReadArguments(int argc, char **argv)
 {
-    TTF_Font **fonts = userData;
-    TTF_Font *font = fonts[config->fontId];
-    int width, height;
+    ECSI_Arguments arguments = {.preset = OPENECS_DEFAULT_PRESET};
 
-    TTF_SetFontSize(font, config->fontSize);
-    if (!TTF_GetStringSize(font, text.chars, text.length, &width, &height))
+    for (int i = 1; i < argc; i++)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to measure text: %s", SDL_GetError());
-    }
-
-    return (Clay_Dimensions){(float)width, (float)height};
-}
-
-void HandleClayErrors(Clay_ErrorData errorData)
-{
-    printf("%s", errorData.errorText.chars);
-}
-
-Clay_RenderCommandArray ClayImageSample_CreateLayout()
-{
-    Clay_BeginLayout();
-
-    Clay_Sizing layoutExpand = {
-        .width = CLAY_SIZING_GROW(0),
-        .height = CLAY_SIZING_GROW(0)};
-
-    CLAY(CLAY_ID("OuterContainer"), {.layout = {
-                                         .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                                         .sizing = layoutExpand,
-                                         .padding = CLAY_PADDING_ALL(16),
-                                         .childGap = 16}})
-    {
-    }
-
-    return Clay_EndLayout(0.1f);
-}
-
-SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
-{
-    (void)argc;
-    (void)argv;
-
-    if (!TTF_Init())
-    {
-        return SDL_APP_FAILURE;
-    }
-
-    AppState *state = SDL_calloc(1, sizeof(AppState));
-    if (!state)
-    {
-        return SDL_APP_FAILURE;
-    }
-    *appstate = state;
-
-    if (!SDL_CreateWindowAndRenderer("Clay Demo", 640, 480, 0, &state->window, &state->rendererData.renderer))
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create window and renderer: %s", SDL_GetError());
-        return SDL_APP_FAILURE;
-    }
-    SDL_SetWindowResizable(state->window, true);
-
-    state->rendererData.textEngine = TTF_CreateRendererTextEngine(state->rendererData.renderer);
-    if (!state->rendererData.textEngine)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to create text engine from renderer: %s", SDL_GetError());
-        return SDL_APP_FAILURE;
-    }
-
-    state->rendererData.fonts = SDL_calloc(1, sizeof(TTF_Font *));
-    if (!state->rendererData.fonts)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to allocate memory for the font array: %s", SDL_GetError());
-        return SDL_APP_FAILURE;
-    }
-
-    TTF_Font *font = TTF_OpenFont("resources/Roboto-Regular.ttf", 24);
-    if (!font)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Failed to load font: %s", SDL_GetError());
-        return SDL_APP_FAILURE;
-    }
-
-    state->rendererData.fonts[FONT_ID] = font;
-
-    /* Initialize Clay */
-    uint64_t totalMemorySize = Clay_MinMemorySize();
-    Clay_Arena clayMemory = (Clay_Arena){
-        .memory = SDL_malloc(totalMemorySize),
-        .capacity = totalMemorySize};
-
-    int width, height;
-    SDL_GetWindowSize(state->window, &width, &height);
-    Clay_Initialize(clayMemory, (Clay_Dimensions){(float)width, (float)height}, (Clay_ErrorHandler){HandleClayErrors});
-    Clay_SetMeasureTextFunction(SDL_MeasureText, state->rendererData.fonts);
-
-    state->demoData = ClayVideoDemo_Initialize();
-
-    *appstate = state;
-    return SDL_APP_CONTINUE;
-}
-
-SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
-{
-    SDL_AppResult ret_val = SDL_APP_CONTINUE;
-
-    switch (event->type)
-    {
-    case SDL_EVENT_QUIT:
-        ret_val = SDL_APP_SUCCESS;
-        break;
-    case SDL_EVENT_KEY_UP:
-        if (event->key.scancode == SDL_SCANCODE_SPACE)
+        if (strcmp(argv[i], "--preset") == 0 && i + 1 < argc)
         {
-            show_demo = !show_demo;
+            arguments.preset = argv[++i];
         }
-        break;
-    case SDL_EVENT_WINDOW_RESIZED:
-        Clay_SetLayoutDimensions((Clay_Dimensions){(float)event->window.data1, (float)event->window.data2});
-        break;
-    case SDL_EVENT_MOUSE_WHEEL:
-        Clay_UpdateScrollContainers(true, (Clay_Vector2){event->wheel.x, event->wheel.y}, 0.01f);
-        break;
-    default:
-        break;
-    };
-
-    return ret_val;
-}
-
-SDL_AppResult SDL_AppIterate(void *appstate)
-{
-    AppState *state = appstate;
-
-    float mouse_x, mouse_y;
-
-    Uint32 buttons = SDL_GetMouseState(&mouse_x, &mouse_y);
-
-    Clay_SetPointerState(
-        (Clay_Vector2){.x = mouse_x, .y = mouse_y},
-        buttons & SDL_BUTTON_LMASK);
-
-    Clay_RenderCommandArray render_commands = (show_demo
-                                                   ? ClayVideoDemo_CreateLayout(&state->demoData)
-                                                   : ClayImageSample_CreateLayout());
-
-    SDL_SetRenderDrawColor(state->rendererData.renderer, 0, 0, 0, 255);
-    SDL_RenderClear(state->rendererData.renderer);
-
-    SDL_Clay_RenderClayCommands(&state->rendererData, &render_commands);
-
-    SDL_RenderPresent(state->rendererData.renderer);
-
-    return SDL_APP_CONTINUE;
-}
-
-void SDL_AppQuit(void *appstate, SDL_AppResult result)
-{
-    (void)result;
-
-    if (result != SDL_APP_SUCCESS)
-    {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Application failed to run");
+        else
+        {
+            SHU_LogWarning("Unknown argument '%s'. Usage: openecs [--preset NAME|FILE]", argv[i]);
+        }
     }
 
-    AppState *state = appstate;
+    return arguments;
+}
 
-    if (state)
+/// @brief Stops the program if a start-up step failed.
+static void ECSI_CheckStart(SHUResult result, const char *step)
+{
+    if (result)
     {
-        if (state->rendererData.renderer)
-            SDL_DestroyRenderer(state->rendererData.renderer);
+        SHU_LogError(result, "Start-up failed: %s (%s).", step, SHUResult_String(result));
+    }
+}
 
-        if (state->window)
-            SDL_DestroyWindow(state->window);
+int main(int argc, char **argv)
+{
+    ECSI_Arguments arguments = ECSI_ReadArguments(argc, argv);
 
-        if (state->rendererData.fonts)
+    // read the preset first, because SDL needs the tool's identity before it starts
+    ECSI_CheckStart(ECSI_LuaInitialize(), "starting Lua");
+
+    char presetPath[OPENECS_PATH_CAPACITY];
+    ECSI_SessionFindPreset(cs(presetPath, sizeof(presetPath)), arguments.preset);
+
+    ECSI_PresetInfo preset;
+    ECSI_CheckStart(ECSI_SessionReadInfo(presetPath, &preset), "reading the preset");
+    ECSI_CheckStart(ECSI_PlatformInitialize(preset.appName, preset.appId), "starting SDL");
+
+    char fontPath[OPENECS_PATH_CAPACITY];
+    snprintf(fontPath, sizeof(fontPath), "%s%s", ECSI_PlatformGetBaseDirectory(), OPENECS_FONT_FILE);
+    ECSI_CheckStart(ECSI_RendererInitialize(fontPath), "loading the font");
+    ECSI_CheckStart(ECSI_LayoutInitialize(preset.appName), "opening the window");
+    ECSI_CheckStart(ECSI_InputInitialize(OPENECS_DEFAULT_PREFIX), "reading the core keys");
+
+    // plugin search order: the preset's directory, the user's plugins, the first-party plugins
+    char userPlugins[OPENECS_PATH_CAPACITY];
+    char firstPartyPlugins[OPENECS_PATH_CAPACITY];
+    ECSI_PathUserData(cs(userPlugins, sizeof(userPlugins)), "openecs/plugins/");
+    snprintf(firstPartyPlugins, sizeof(firstPartyPlugins), "%splugins/", ECSI_PlatformGetBaseDirectory());
+
+    const char *directories[3];
+    usz directoryCount = 0;
+
+    if (preset.pluginsDirectory[0] != '\0')
+    {
+        directories[directoryCount++] = preset.pluginsDirectory;
+    }
+
+    directories[directoryCount++] = userPlugins;
+    directories[directoryCount++] = firstPartyPlugins;
+
+    const char *plugins[OPENECS_MAX_PLUGINS];
+
+    for (usz i = 0; i < preset.pluginCount; i++)
+    {
+        plugins[i] = preset.plugins[i];
+    }
+
+    if (ECSI_PluginsLoad(directories, directoryCount, plugins, preset.pluginCount))
+    {
+        SHU_LogWarning("Some plugins failed to load; their panels are shown as placeholders.");
+    }
+
+    ECSI_CheckStart(ECSI_SessionApply(presetPath), "building the layout");
+
+    // event-driven loop: it waits for events, unless a frame is needed
+    bool running = true;
+
+    while (running)
+    {
+        ECSI_PlatformEvent event;
+        i32 timeoutMs = ECSI_LayoutWantsFrame() ? 0 : -1;
+
+        while (running && ECSI_PlatformEventWait(&event, timeoutMs))
         {
-            for (size_t i = 0; i < sizeof(state->rendererData.fonts) / sizeof(*state->rendererData.fonts); i++)
-            {
-                TTF_CloseFont(state->rendererData.fonts[i]);
-            }
-
-            SDL_free(state->rendererData.fonts);
+            running = ECSI_InputHandle(&event);
+            timeoutMs = 0;
         }
 
-        if (state->rendererData.textEngine)
-            TTF_DestroyRendererTextEngine(state->rendererData.textEngine);
-
-        SDL_free(state);
+        if (running && ECSI_LayoutWantsFrame())
+        {
+            ECSI_LayoutRender(ECSI_PlatformGetTicks());
+        }
     }
 
-    TTF_Quit();
+    // panels are destroyed before their plugins are unloaded
+    ECSI_LayoutTerminate();
+    ECSI_PluginsUnload();
+    ECSI_RendererTerminate();
+    ECSI_PlatformTerminate();
+    ECSI_LuaTerminate();
+
+    return 0;
 }

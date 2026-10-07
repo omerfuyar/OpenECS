@@ -44,6 +44,8 @@ static void Shuild_clay(void);
 static void Shuild_libffi(void);
 static void Shuild_other(void);
 static void Shuild_OpenECS(void);
+static void Shuild_Plugins(void);
+static bool IsBuilt(const char *library);
 
 int main(int argc, char **argv)
 {
@@ -51,15 +53,47 @@ int main(int argc, char **argv)
     SHU_UtilAutomate(argc, argv);
     SetupConfiguration(argc, argv);
 
-    Shuild_SDL();
-    Shuild_SDL_ttf();
-    Shuild_lua();
-    Shuild_clay();
-    Shuild_libffi();
+    // dependencies are built only once; delete their libraries to build them again
+    if (!IsBuilt("SDL3"))
+    {
+        Shuild_SDL();
+    }
+
+    if (!IsBuilt("SDL3_ttf"))
+    {
+        Shuild_SDL_ttf();
+    }
+
+    if (!IsBuilt("lua"))
+    {
+        Shuild_lua();
+    }
+
+    if (!IsBuilt("clay"))
+    {
+        Shuild_clay();
+    }
+
+    if (!IsBuilt("ffi"))
+    {
+        Shuild_libffi();
+    }
+
     Shuild_other();
     Shuild_OpenECS();
+    Shuild_Plugins();
 
     return 0;
+}
+
+/// @brief First-party plugins, built from plugins/<name>/ into bin/plugins/<name>/.
+static const char *const PLUGINS[] = {"demo"};
+
+static bool IsBuilt(const char *library)
+{
+    SHUI_String path;
+    SHUI_SFormat(&path, "%slib/lib%s.%s", OUTPUT_DIRECTORY.data, library, LINK_TYPE == SHUModuleType_LibraryDynamic ? "so" : "a");
+    return SHU_UtilFileExists(path.data) == SHUFileType_Regular;
 }
 
 static void CopyFile(const char *file, const char *directory)
@@ -328,16 +362,22 @@ static void Shuild_other(void)
 
     SHUI_SFormat(&tempStr, "%sbin/resources", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
-    CopyFile("resources", tempStr.data);
+    CopyFile("resources/*", tempStr.data);
+
+    SHUI_SFormat(&tempStr, "%sbin/presets", OUTPUT_DIRECTORY.data);
+    SHU_UtilCreateDirectory(tempStr.data);
+    CopyFile("presets/*", tempStr.data);
 }
 
 static void Shuild_OpenECS(void)
 {
     SHU_ModuleBegin("OpenECS", NULL);
     SetBuildFlags(true);
+    SHU_CompilerAddFlags(SHUM_FLAGS_STANDARD_C23);
 
     SHU_ModuleAddSourceFile("src/");
     SHU_ModuleAddIncludeDirectory("include/");
+    SHU_ModuleAddIncludeDirectory("src/");
 
     SHUI_String tempStr;
     SHUI_SFormat(&tempStr, "%sinclude", OUTPUT_DIRECTORY.data);
@@ -346,13 +386,39 @@ static void Shuild_OpenECS(void)
     SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
     SHU_ModuleAddLibraryDirectory(tempStr.data);
 
-    SHU_ModuleLinkLibrary("m");
-    SHU_ModuleLinkLibrary("SDL3");
-    SHU_ModuleLinkLibrary("SDL3_ttf");
-    SHU_ModuleLinkLibrary("lua");
+    // static libraries come before the libraries they use
     SHU_ModuleLinkLibrary("clay");
+    SHU_ModuleLinkLibrary("SDL3_ttf");
+    SHU_ModuleLinkLibrary("SDL3");
+    SHU_ModuleLinkLibrary("lua");
     SHU_ModuleLinkLibrary("ffi");
+    SHU_ModuleLinkLibrary("m");
 
     SHUI_SFormat(&tempStr, "%sbin", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_Executable);
+}
+static void Shuild_Plugins(void)
+{
+    for (usz i = 0; i < sizeof(PLUGINS) / sizeof(*PLUGINS); i++)
+    {
+        SHUI_String root;
+        SHUI_String output;
+        SHUI_String include;
+        SHUI_SFormat(&root, "plugins/%s/", PLUGINS[i]);
+        SHUI_SFormat(&output, "%sbin/plugins/%s/", OUTPUT_DIRECTORY.data, PLUGINS[i]);
+        SHUI_SFormat(&include, "../../%sinclude/", OUTPUT_DIRECTORY.data);
+
+        SHU_ModuleBegin(PLUGINS[i], root.data);
+        SetBuildFlags(true);
+        SHU_CompilerAddFlags(SHUM_FLAGS_STANDARD_C23);
+
+        // include directories are relative to the plugin's folder
+        SHU_ModuleAddSourceFile("./");
+        SHU_ModuleAddIncludeDirectory("../../include/");
+        SHU_ModuleAddIncludeDirectory(include.data);
+        SHU_ModuleCompile(output.data, SHUModuleType_LibraryDynamic);
+
+        SHUI_SFormat(&root, "plugins/%s/manifest.lua", PLUGINS[i]);
+        CopyFile(root.data, output.data);
+    }
 }
