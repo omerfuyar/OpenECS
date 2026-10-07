@@ -423,10 +423,8 @@ static void Shuild_Plugins(void)
         SetBuildFlags(true);
         SHU_CompilerAddFlags(" -fvisibility=hidden");
 
-        // include directories are relative to the plugin's folder
-        // todo make this more robust by using the plugin's manifest file to specify include directories and source files
+        // plugins see only the copied plugin header and the dependencies' headers, never the core's headers
         SHU_ModuleAddSourceFile("./");
-        SHU_ModuleAddIncludeDirectory("../../include/");
         SHU_ModuleAddIncludeDirectory(include.data);
         SHU_ModuleCompile(output.data, SHUModuleType_LibraryDynamic);
 
@@ -442,6 +440,9 @@ static void Shuild_other(void)
     SHUI_SFormat(&tempStr, "%sinclude/shu/", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/shu/shu.h", tempStr.data);
+
+    SHUI_SFormat(&tempStr, "%sinclude/", OUTPUT_DIRECTORY.data);
+    CopyFile("include/OpenECS.h", tempStr.data);
 
     SHUI_SFormat(&tempStr, "%sbin/", OUTPUT_DIRECTORY.data);
 
