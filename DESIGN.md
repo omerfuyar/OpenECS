@@ -1,616 +1,870 @@
-# OpenECS: Design Overview
+# OpenECS: Technical Design
 
 **Status:** draft. The project is under development.
 
-**Purpose of this document:** to explain, in plain language, what OpenECS is, what it covers, what it deliberately does not cover, and how it is meant to work. It is written so that a person with no background in the project, or an AI agent, can read it and understand the scope.
+**Purpose of this document:** to describe how OpenECS is meant to be built in a real codebase: modules, programming interfaces, data structures, rules, error handling and build details. It is written for developers and AI agents who will implement or review the code.
 
-**What this document is not:** it is not the implementation specification. Function-level APIs, error handling rules and code-level conventions belong in a separate technical document (see the TODO list in section 16).
+**Relationship to the overview:** `OpenECS-design-overview.md` explains in plain language what OpenECS is and what is in scope. This document assumes that overview and does not repeat it. Words such as *behaviour*, *plugin*, *service*, *manifest*, *register*, *preset*, *session* and *workspace* are defined there. Technical terms are explained in Appendix A of this document.
 
-**How to read it:**
+**How to read it:** every statement carries one of three status tags.
 
-- Statements written as facts are decisions that have been made.
-- Anything that is not decided is listed in section 16 ("Open questions and TODO"). Where a section touches an undecided point, it refers to the question by number, for example (Q4).
-- Technical words are explained when they first appear and again in the glossary (Appendix A).
+- **[Decided]**: a decision that has been made.
+- **[Proposed]**: a suggested design that has been discussed or follows from decisions, but is not confirmed. It may change.
+- **[Open]**: not decided. All open points are collected in section 19.
+
+Code samples are **illustrative**. They show the shape of an interface, not final names or signatures.
 
 ---
 
 ## Contents
 
-1. Summary
-2. What can be built with OpenECS
-3. A walk-through from the user's point of view
-4. Scope
-5. Core vocabulary
-6. Architecture overview
-7. Windows and behaviours
-8. Layout and workspaces
-9. Input, focus and keybindings
-10. Events and actions
-11. Plugins
-12. Services and registration
-13. Presets, sessions and settings
-14. Design principles
-15. Dependencies
-16. Open questions and TODO
-- Appendix A: Glossary
+1. Conventions
+2. Program structure
+3. Main loop and threading
+4. Windows and behaviours
+5. Surfaces and drawing
+6. Layout
+7. Input, focus and keybindings
+8. Events and actions
+9. Plugin system
+10. Services and function registration
+11. Lua integration
+12. Settings
+13. Presets and sessions
+14. Error handling
+15. Memory and ownership
+16. Build and dependencies
+17. Rules for contributors
+18. Platform notes
+19. Open questions and TODO
+- Appendix A: Technical terms
 
 ---
 
-## 1. Summary
+## 1. Conventions
 
-OpenECS is a program, written in the C programming language, that provides the *empty shell* of an editor-style application.
+### 1.1 Naming
 
-Think of the layout of a modern editor or creative tool: panels that can be split side by side, stacked as tabs, dragged around, maximized, grouped into workspaces, and pulled out into their own operating-system windows. OpenECS provides exactly that machinery, plus keyboard shortcuts, saving and restoring of the arrangement, settings, and plugin loading.
+- **[Decided]** The core uses the prefix `ECS_` for C names and `ecs.` for Lua names. Every public C function, type and macro of the core starts with `ECS_`. Every Lua function of the core lives under the global table `ecs`.
+- **[Open]** Other naming conventions (case style, file names, how plugins name their own things) will be provided by the project owner and added here.
 
-**OpenECS itself does not know what any panel is for.** It has no idea what a text editor, a paint program or a game engine is. What appears inside each panel, and what it does, is supplied by **plugins**: small add-on modules written either in C or in the Lua scripting language. A plugin tells OpenECS "here is a new kind of window, and here is how it behaves".
+### 1.2 Languages and versions
 
-Because of this, the same OpenECS program can become a text editor, a paint program, or the front end of a game engine, depending only on which plugins are loaded and how they are arranged.
+- **[Decided]** The core is written in C.
+- **[Decided]** Lua: the standard (reference) Lua implementation, latest release. LuaJIT may be reconsidered.
+- **[Open]** C language standard, compiler and warning settings.
 
-OpenECS is distributed as an **executable** (a program you run), not as a library that other programs link against.
+### 1.3 Platform
 
-In one sentence: *OpenECS is the frame, and plugins are the pictures.*
+- **[Decided]** Linux only. Other operating systems are not addressed in this document.
 
-## 2. What can be built with OpenECS
+### 1.4 Out of scope
 
-Examples of tools that could be assembled from OpenECS plus plugins:
+- **[Decided]** Security: no permission system, no sandboxing, no protection against malicious plugins or files. Plugin and file contents are trusted.
+- **[Decided]** Accessibility is not a priority.
+- **[Decided]** Look and feel (themes, animations) is not designed.
 
-- A text editor.
-- A paint or drawing program.
-- The editor front end of a game engine, with 3D views, asset browsers and property panels.
-- A custom tool for any other specialized job.
+---
 
-None of these ship as part of the OpenECS core. Each one is a combination of plugins and a **preset** (a configuration file that says which plugins to use and how the windows are arranged; see section 13).
+## 2. Program structure
 
-## 3. A walk-through from the user's point of view
+### 2.1 Modules
 
-This is a description of the intended experience, not a tutorial.
-
-1. The user starts OpenECS and chooses a preset (for example one for painting).
-2. OpenECS loads the plugins that the preset names, together with any plugins those plugins depend on.
-3. A window opens, divided into areas. Each area has a tab row at the top. Each tab holds a **window** (a panel, such as a canvas or a colour palette) supplied by a plugin.
-4. The user drags a tab to split the screen differently, stacks it with another tab, maximizes it, or pulls it out into a separate operating-system window.
-5. The user switches between **workspaces**, which are saved arrangements of windows (for example "drawing" and "organizing files"). Switching is instant, and windows in the workspace that was left keep running in the background.
-6. The user presses keyboard shortcuts. Some belong to OpenECS itself and always work. Others belong to whichever window currently has focus.
-7. The user opens a settings window. Settings are layered, and a setting that a higher layer overrides is shown faded, with a hint about where to change it.
-8. The user presses a button to **serialize** (save) the current arrangement and state as a session file, and can load it later.
-
-## 4. Scope
-
-### 4.1 What OpenECS provides
-
-- Windows: tabs, docking, tiling, maximizing, pop-out into separate operating-system windows, and workspaces.
-- Drawing support for windows, including text and images.
-- Keyboard focus handling and keybindings.
-- Events and actions for everything related to windows.
-- A plugin system for native (C) plugins and Lua plugins.
-- Services: a way for plugins to offer functions to other plugins and to scripts.
-- Presets, sessions and settings, with saving and restoring.
-- Operating-system integration provided by the platform library: for example drag and drop, copy and paste, and dialogs (see Q18 for exactly what is included).
-- A scripting interface: **everything OpenECS can do is also available from Lua scripts.**
-
-### 4.2 What OpenECS does not provide
-
-OpenECS has **no domain-specific behaviour**. In particular, none of the following is part of the core. All of it comes from plugins:
-
-- Text editing, painting, or any other tool logic.
-- Audio playback and decoding.
-- Networking.
-- Loading and rendering 3D models.
-- Media playback.
-
-Some plugins are ideas for a **standard plugin** collection (plugins that are expected to be commonly useful): a glTF 3D model loader, networking, and audio with file loaders. How they are provided is not decided (Q28).
-
-A test that decides whether something belongs in the core: *if OpenECS's own machinery (layout, focus, plugins, settings, drawing, sessions) needs it, it is core; if only some windows need it, it is a plugin.*
-
-### 4.3 Target platform
-
-The design is written for **Linux**. Support for other operating systems is intended but is not addressed in this document (Q23).
-
-### 4.4 Deliberately deprioritized
-
-Look and feel (themes, animations) is wanted but has not been designed. Functionality and structure take priority (Q20).
-
-## 5. Core vocabulary
-
-These are the words used throughout the document. Each is explained in everyday terms. The glossary in Appendix A has short definitions for more technical terms.
-
-**Core.** The OpenECS program itself, without any plugins. It contains only the "frame" functionality listed in section 4.1.
-
-**Window.** A rectangular area inside OpenECS's layout, with a tab in a tab row, whose contents are defined by a plugin. Note that this word does *not* mean an operating-system window; for that, this document says **OS window**.
-
-**OS window.** A window as the operating system sees it: the thing with a title bar on your desktop. OpenECS can open several. Each OS window contains its own arrangement of OpenECS windows.
-
-**Behaviour.** A description of *what a kind of window does*: what it shows, how it reacts to the mouse and keyboard, how it keeps its state. A behaviour has a name, for example `test`. Many windows can use the same behaviour, each with its own state. If a window is a room, the behaviour is the floor plan and the purpose of the room.
-
-**Plugin.** A package that adds functionality to OpenECS. A plugin can provide behaviours (new kinds of windows), services (functions for others to call), and settings. A plugin is either **native** (compiled C code, delivered as a shared library file) or **Lua** (a script).
-
-**To register.** To tell OpenECS, by calling one of its functions, that something exists. When a plugin registers a behaviour, it gives OpenECS the behaviour's name together with the functions OpenECS should call to make it work. Registration is how plugins connect to OpenECS: OpenECS never guesses what a plugin contains; the plugin announces it.
-
-**Service.** A named group of functions that one plugin offers so that other plugins and scripts can use them. For example, an audio plugin could register a service called `audio` containing functions such as `play` and `stop`. A game plugin that needs sound asks OpenECS for the `audio` service and calls its functions. The caller does not need to know whether the service was written in C or Lua.
-
-**Manifest.** A small description file that sits with a plugin (or with a preset). It states the plugin's name, version, which version of the OpenECS plugin interface it was written for, and which other plugins it depends on. OpenECS reads manifests to find out what exists and in what order to load things. A manifest is a Lua file.
-
-**Dependency.** Something one piece of software needs in order to work. If plugin A depends on plugin B, OpenECS loads B first.
-
-**Preset.** A hand-written file that describes a complete working setup: which plugins to use, how settings are configured, which workspaces and windows exist. Different presets turn the same OpenECS into different tools.
-
-**Session.** The state of OpenECS at one moment: which plugins are in use, which workspaces exist, which windows are in each, and the saved state of each window. A session can be written to a file and loaded again. A preset and a session use the same file format; the difference is only in how the file was made (see section 13).
-
-**Workspace.** A named arrangement of windows that can be switched to instantly, like a virtual desktop.
-
-**Setting.** A named, typed value that configures the core or a plugin. Keybindings are settings.
-
-**Event.** A notification that something happened (a window was resized, popped out, docked, and so on).
-
-**Action.** A function that makes something happen (close a window, pop one out, maximize it).
-
-**Focus.** The one window that currently receives keyboard input.
-
-## 6. Architecture overview
+**[Proposed]** OpenECS is one executable built from these modules:
 
 ```
-+--------------------------------------------------------------+
-|  Plugins: native C shared libraries and Lua scripts          |
-|  (behaviours, services, settings, supplied by plugin authors)|
-+--------------------------------------------------------------+
-|  Plugin API: the only way plugins interact with OpenECS      |
-+--------------------------------------------------------------+
-|  Framework logic                                             |
-|  layout tree, workspaces, focus, input dispatch, events,     |
-|  settings, presets and sessions, plugin loading              |
-+------------------------------+-------------------------------+
-|  Rendering backend           |  Platform layer               |
-|  (turns drawing commands     |  (OS windows, input,          |
-|   into pixels; replaceable)  |   clipboard, dialogs)         |
-+------------------------------+-------------------------------+
-|  Dependencies: SDL3, SDL3_image, SDL3_ttf, Clay, Lua, libffi |
-+--------------------------------------------------------------+
++----------------------------------------------------------------+
+|  Plugin API (C context table + Lua `ecs` table)                |
++----------------------------------------------------------------+
+|  Plugin host   | Script host | Service registry | Settings     |
+|  Session       | Layout      | Input and focus  | Events       |
++----------------------------------------------------------------+
+|  Render backend interface        |  Platform layer              |
++----------------------------------------------------------------+
+|  SDL3, SDL3_ttf, (SDL3_image), Clay, Lua, libffi               |
++----------------------------------------------------------------+
 ```
 
-Three rules shape this layering:
-
-1. **Plugins talk only to the plugin API.** They never see the libraries underneath. A plugin never receives an SDL object, a Lua interpreter handle, or a Clay structure through the normal API. If a plugin needs access to one of those libraries, it depends on a separate **binding plugin** that offers the library as a service.
-2. **The rendering backend is replaceable.** The framework logic only talks to the backend through a small fixed interface, so the way pixels are produced can change without breaking any plugin (Q4).
-3. **Platform-specific details stay in one place**, the platform layer.
-
-## 7. Windows and behaviours
-
-**What a window is.** A window is a box in OpenECS's layout. OpenECS decides where the box is and how large it is, and whether it is visible or focused. The window's behaviour decides everything inside the box.
-
-**Behaviours can do anything inside the box.** A behaviour can run any code and react to events. Examples of what a behaviour might show: a plain colour fill, a text display like a terminal, a 3D scene rendered on the graphics card, or an image whose pixels it controls directly. OpenECS does not need to know which.
-
-**How behaviours are made available.** A plugin registers a behaviour under a name. The same registration mechanism is used by native plugins and by Lua plugins.
-
-**What a behaviour registers.** A behaviour hands OpenECS a set of functions (for example one that draws, one that handles events, one that does periodic work). The exact set has not been decided (Q2).
-
-**How windows are opened.** A window of a given behaviour can be opened from a menu, from a keyboard shortcut, or by a workspace preset.
-
-**Drawing.** Every window draws into its own **off-screen surface** (a private picture that is not yet on screen), owned by OpenECS. OpenECS then assembles these surfaces into what the user sees. The consequences:
-
-- One window cannot paint over another.
-- OpenECS can move, scale or fade windows without their cooperation.
-- A window that moves into another OS window can be given a new surface without the window noticing.
-
-Drawing is abstracted: plugins describe what to draw through OpenECS's own drawing interface, and OpenECS turns that into pixels through the rendering backend. The exact drawing commands, and whether windows can render directly with the graphics card, are open (Q3, Q4).
-
-**Redraw policy.** Each window declares how often it needs to be drawn. A game-like window may ask to be redrawn every frame (**continuous**). A text-like window may ask to be redrawn only when something changed (**on demand**). This avoids wasting power on idle windows.
-
-**Background behaviour.** Windows in a workspace that is not on screen keep receiving their periodic updates, but are not drawn. A behaviour can declare that it wants to **sleep** (pause) instead.
-
-**State.** Each window has its own state. Because sessions are saved and restored, a behaviour needs a way to save and load its own state. The format of a behaviour's state belongs to that behaviour, and the behaviour records a version for it so it can read older saves.
-
-## 8. Layout and workspaces
-
-### 8.1 The layout tree
-
-Every OS window is a **root** that holds one **layout tree**. A tree has three kinds of node:
-
-- **Split:** divides an area horizontally or vertically among its children. The children's sizes are stored as fractions of the whole, so resizing keeps proportions.
-- **Tab group:** an ordered row of tabs, with one tab active.
-- **Window:** one behaviour instance, as described in section 7.
-
-**Every window always lives in a tab group, even if it is the only one.** The tab row (the header) is the place where the user drags the window and opens its right-click menu.
-
-### 8.2 Layout is computed with a library; docking is OpenECS's own
-
-The sizes and positions of areas are computed by **Clay**, a layout library. The layout tree, the docking logic, and the handling of pointer drags (working out what the pointer is over and where a dragged window should land) are written as part of OpenECS.
-
-### 8.3 Operations are plain functions
-
-Everything that changes the layout is a function: split, move a window to a tab group, close, pop out, swap, resize a divider, move focus, maximize, switch workspace. The mouse only supplies the arguments. A drag works out a *target* and a *zone* and then calls the same function that a script would call. This keeps the tree logic separate from mouse handling and gives Lua the same powers.
-
-### 8.4 Drag-and-drop docking
-
-While a window is dragged, OpenECS finds the tab group under the pointer and uses the pointer's position inside it to pick a landing zone:
-
-| Pointer position | Result |
+| Module | Responsibility |
 |---|---|
-| Centre of a tab group | Add the window as a tab. |
-| Near an edge of a tab group | Split in that direction. |
-| Over a tab row | Insert at that position between tabs. |
-| Near the edge of the whole root | Dock along the whole edge. |
-| Outside the OS window | Pop out into a new OS window. |
+| Platform layer | OS windows, raw input, clipboard, dialogs, loading of shared libraries. The only place that talks to the operating system. |
+| Render backend | Shows window surfaces on screen and draws the core's own interface parts. Behind a small fixed interface so it can be replaced (section 5.3). |
+| Layout | Layout tree, workspaces, hit testing and drag-and-drop docking. Uses Clay to compute rectangles. |
+| Input and focus | Turns raw input into focus changes, keybinding dispatch and window events. |
+| Events | Creation and delivery of events; actions on windows. |
+| Plugin host | Finds, orders, loads and unloads-at-exit plugins. |
+| Script host | Owns the Lua state or states; runs all Lua code under protected calls. |
+| Service registry | Names, signatures and handles for services (section 10). |
+| Settings | Setting declarations, layers, explanation of values. |
+| Session | Reading presets and sessions, applying them, serializing the current state. |
 
-A highlight shows the zone while dragging, and the move happens on release. On Wayland (a Linux display system), the compositor decides where new OS windows go, so dragging out to pop out may not work there; a menu entry or a keybinding is always available as an alternative.
+### 2.2 Boundary rule
 
-### 8.5 Keeping the tree tidy
+- **[Decided]** No header that plugins include, and no function plugins call, exposes a type from SDL, Lua, Clay or libffi. These libraries are hidden behind the plugin API.
+- **[Decided]** Anything beyond that wrapper is reached through a binding plugin that offers a library as a service.
 
-After each operation, OpenECS restores these rules:
+### 2.3 Startup sequence
 
-- A split with a single child is replaced by that child.
-- A split nested directly in a split of the same direction is merged into it.
+**[Proposed]**
+
+1. Initialize the platform layer and the script host.
+2. Read the command line and find the preset to use (details open, section 19).
+3. Read the preset's manifest part (name, dependencies) without running plugin code.
+4. Discover plugins; read their manifests; resolve dependencies; compute a load order.
+5. Load each plugin in order and call its init function. Plugins register behaviours, services and settings.
+6. Build the settings layers: core defaults, plugin defaults, preset, user file, generated file.
+7. Apply the preset's session (create workspaces, layout, windows).
+8. Enter the main loop.
+
+### 2.4 Shutdown sequence
+
+**[Proposed]** Leave the main loop; destroy windows; call each plugin's shutdown function in reverse load order; release services; shut down the script host; shut down the platform layer.
+
+---
+
+## 3. Main loop and threading
+
+### 3.1 Loop
+
+**[Proposed]** One iteration ("frame"):
+
+1. Collect operating-system events from the platform layer.
+2. Translate them: pointer events go through hit testing, key events go through key dispatch (section 7).
+3. Deliver window events (section 8).
+4. Call `update` on every window that is active, including windows in workspaces that are not visible and that are not asleep.
+5. Recompute layout where needed.
+6. For each visible window whose redraw policy requires it, call its draw function so it fills its surface.
+7. Compose all surfaces and the core's own interface parts, and present.
+8. Wait: sleep until the next frame or until an event arrives, depending on whether any visible window has the continuous redraw policy.
+
+### 3.2 Threading rules
+
+- **[Proposed]** All of these happen on the **main thread** only: OS window and input calls, layout, event delivery, every call into Lua, and every callback that a behaviour registers. SDL expects window and event calls on the main thread, and a Lua state must not be used by two threads at once.
+- **[Proposed]** Every public API function documents which threads may call it. Most are main-thread only. A few are explicitly thread-safe (for example posting a message to the main thread, submitting background work, logging).
+- **[Open]** The mechanism for background work: running a function on a worker thread and delivering its result to the main thread as an event. SDL3 offers threads and a function to run code on the main thread, which would be the basis (to be verified, see TODO).
+- **[Open]** What native plugins may do on their own threads.
+
+---
+
+## 4. Windows and behaviours
+
+### 4.1 Behaviour descriptor
+
+**[Proposed]** A behaviour is registered by passing a descriptor to the core. Illustrative C form:
+
+```c
+typedef struct ECS_BehaviourDesc {
+    uint32_t     struct_size;      /* sizeof this struct; see ABI rules, 9.5 */
+    const char  *name;             /* behaviour name, for example "test"     */
+    uint32_t     state_version;    /* version of this behaviour's saved state */
+    ECS_RedrawPolicy redraw;       /* ECS_REDRAW_CONTINUOUS or ECS_REDRAW_ON_DEMAND */
+
+    void *(*create)(ECS_Window *win, const ECS_Value *saved_state);
+    void  (*destroy)(void *state);
+    void  (*update)(void *state, double seconds);
+    void  (*event)(void *state, const ECS_Event *ev);
+    void  (*draw)(void *state, ECS_Surface *surface);
+    ECS_Value (*save_state)(void *state);
+} ECS_BehaviourDesc;
+```
+
+A Lua behaviour is a table with the same field names.
+
+- **[Open]** Which functions are required and which are optional, and what `event` returns (see 8.3).
+- **[Open]** Whether minimum size and similar hints belong in the descriptor.
+
+### 4.2 Window instances
+
+- **[Proposed]** Each window instance has a stable id, its behaviour, a state pointer owned by the behaviour, its current size, visibility, and redraw bookkeeping.
+- **[Proposed]** Lifecycle: `create` (with saved state if restoring) → repeated `update`, `event`, `draw` → `destroy`.
+- **[Decided]** Many instances can share one behaviour, each with its own state.
+
+### 4.3 Redraw and sleep
+
+- **[Decided]** Each window declares a redraw policy: continuous, or on demand.
+- **[Proposed]** For on-demand windows the behaviour asks to be redrawn with a function such as `ECS_WindowInvalidate(win)`. The core also invalidates a window when its size changes.
+- **[Decided]** Windows in workspaces that are not visible still receive `update` but are not drawn. A behaviour can declare that it sleeps, in which case it receives no `update`.
+- **[Proposed]** Sleep is controlled with a function such as `ECS_WindowSetSleep(win, bool)`.
+
+### 4.4 Registration point
+
+- **[Proposed]** Behaviours are registered inside a plugin's init function with `ECS_RegisterBehaviour(ctx, &desc)`, and in Lua with `ecs.window.register_behaviour(desc)`.
+
+---
+
+## 5. Surfaces and drawing
+
+### 5.1 What the core provides
+
+- **[Decided]** The core gives each window a **pixel surface** and shows it. It offers **no high-level drawing commands**: no rectangle, text, image or widget functions for plugins.
+- **[Decided]** High-level drawing and user-interface elements come from plugins, for example a drawing or UI plugin that offers a service.
+- **[Proposed]** The core draws its own interface parts itself and does not expose them: tab rows, dividers, drag highlights and menus. Layout comes from Clay, text from SDL3_ttf.
+
+### 5.2 Surface interface
+
+**[Proposed]** Illustrative:
+
+```c
+typedef struct ECS_Surface {
+    int      width, height;
+    int      pitch;        /* bytes per row */
+    void    *pixels;       /* writable for the duration of the draw call */
+    ECS_PixelFormat format;
+} ECS_Surface;
+```
+
+The core creates a surface per visible window, hands it to `draw`, then uploads and composes it.
+
+- **[Open]** Pixel format, whether pixels are written directly or through a lock and unlock pair, and whether windows can report which part changed (dirty rectangles).
+- **[Proposed]** When a window's size changes, its surface is recreated at the new size and the window gets a resize event.
+- **[Decided]** A window moving to a different OS window can be given a new surface without noticing (for plain pixel windows).
+
+### 5.3 Render backend interface
+
+**[Proposed]** The framework talks to the backend through a small fixed set of functions, for example: create a target of a given size, destroy it, resize it, update its pixels, draw the core's interface parts from Clay's output, present a frame.
+
+- **[Decided]** The backend is replaceable without breaking plugins, because plugins only see surfaces.
+- **[Open]** Which backend is used: SDL's 2D renderer (simpler) or SDL_GPU (modern, can serve GPU-rendering windows).
+
+### 5.4 GPU windows
+
+- **[Open]** Whether the core offers windows a GPU-renderable surface, what that surface is, and what a window is told when it must be recreated. As far as is known, SDL renderer textures belong to one OS window's renderer, so a surface may need recreating when a window moves between OS windows (to be verified).
+
+### 5.5 Drawing plugins
+
+- **[Proposed]** A standard drawing plugin offers 2D functions (shapes, text, images) as a service that other plugins call to fill their surfaces. Tools that draw their own way (a terminal-style text grid, a 3D scene, direct pixel writes) do not need it.
+- **[Open]** Which libraries a drawing plugin uses for text and images, given that plugins do not use SDL directly (see 16.2).
+
+---
+
+## 6. Layout
+
+### 6.1 Data structures
+
+**[Proposed]** Each OS window is a **root**: `{ OS window handle, tree root node, id of the maximized tab group (or none), geometry }`. A node has: `id`, `kind`, `parent`, and by kind:
+
+| Kind | Fields |
+|---|---|
+| Split | direction (horizontal or vertical), ordered children, a fraction for each child (fractions sum to 1) |
+| Tab group | ordered tabs (windows), index of the active tab |
+| Window | the window instance |
+
+**[Decided]** Every window is in a tab group, even alone.
+
+A **workspace** is `{ name, list of roots }`. **[Decided]** Pop-out roots belong to the workspace in which they were created.
+
+### 6.2 Tree invariants
+
+**[Decided]** After every operation the tree is cleaned up:
+
+- A split with one child is replaced by that child.
+- A split directly inside a split of the same direction is merged into it.
 - An empty tab group is removed.
-- Every node and every window has a stable identifier, so sessions can refer to them.
+- Node and window ids are stable and unique within a session.
 
-A behaviour may declare a **minimum size** so that splits cannot shrink it to nothing.
+**[Open]** Minimum sizes: whether windows can declare them, and how splits behave at the limit.
 
-### 8.6 Maximize
+### 6.3 Operations
 
-Maximizing marks one tab group as filling the whole root. The other windows stay alive but hidden. The mark is part of the saved session.
+**[Decided]** Every change to the layout is a plain function, and every function has a Lua counterpart. Pointer gestures only compute arguments and call these functions.
 
-### 8.7 Pop-out windows
+**[Proposed]** Operations: split a window against a target on a side; move a window to a target and zone; close; pop out; swap; resize a divider; move focus in a direction; toggle maximize; switch workspace; add a tab; cycle tabs.
 
-A window that is "popped out" becomes its own **OS window**. This is the only way for a window to leave the main OS window, because a program cannot draw outside its own OS windows. A pop-out holds a full layout tree of its own, so windows can be split and tabbed inside it exactly as in the main OS window. Floating panels that overlap windows *inside* the main OS window are not part of the design.
+Example shape (illustrative): `ECS_LayoutMove(win_id, target_node_id, ECS_ZONE_LEFT)` and `ecs.layout.move(win_id, target_id, "left")`.
 
-Pop-outs **belong to their workspace**: they are hidden when the user leaves the workspace and shown when the user returns.
+### 6.4 Pointer hit testing and drop zones
 
-### 8.8 Workspaces
+**[Decided]** OpenECS implements this itself. Clay computes rectangles only.
 
-A workspace is a named arrangement of windows (and of pop-outs). Workspaces can be saved and restored. Switching is instant because nothing is rebuilt: the windows of the workspace that was left keep existing and keep running in the background (see section 7).
+**[Proposed]** Algorithm while a window is dragged:
 
-### 8.9 Right-click menus
+1. Find the deepest tab group whose rectangle contains the pointer.
+2. Compute the pointer's position relative to that rectangle.
+3. Choose the zone:
+   - over the tab row: insert between tabs, using the midpoints of the existing tabs;
+   - in the outer band of an edge (for example the outer quarter of the width or height): split in that direction;
+   - otherwise (centre): add as a tab;
+   - near the edge of the root: dock along the whole edge;
+   - outside every OS window: pop out.
+4. Draw a highlight for the zone; on release call the matching operation.
 
-Windows and tab rows have right-click menus with entries such as close, pop out and add tab. Who may add entries is open (Q12).
+**[Open]** The exact band sizes and the handling of overlapping bands in small areas.
 
-## 9. Input, focus and keybindings
+### 6.5 Use of Clay
 
-### 9.1 Focus
+- **[Decided]** Clay computes the layout. Clay is a pinned git submodule.
+- **[Proposed]** One Clay context per OS window (Clay supports selecting a current context), recomputed when the layout or size changes. Clay's output is used for the core's own interface parts and to get the rectangle of each tab group and window.
+- **[Proposed]** Because Clay's API has changed between versions, only one module (Layout) calls Clay.
 
-Exactly one window has focus at any time. Focus is decided in two ways:
+### 6.6 Maximize and pop-out
 
-- **Pointer hover:** the window under the pointer gets focus.
-- **A keybinding with arrow keys** moves focus to the neighbouring window.
+- **[Decided]** Maximize marks one tab group as filling its root. Other windows stay alive but are hidden. The mark is saved in the session.
+- **[Decided]** Pop-out creates a new OS window that holds a new root containing one tab group with the window. A pop-out root holds a full tree like the main root.
+- **[Decided]** Pop-outs are hidden when their workspace is left and shown when it returns.
+- **[Open]** On Wayland, placement of new OS windows is controlled by the compositor, so dragging out may not work; a menu entry and a key binding always do.
 
-**Focus stays on a window during a pointer drag**, even if the pointer crosses other windows.
+### 6.7 Workspaces
 
-Further details are open (Q11).
+- **[Decided]** Switching is instant. Windows of the workspace that is left are not destroyed and keep receiving `update` (unless asleep) but are not drawn.
+- **[Decided]** Workspaces are serializable.
 
-### 9.2 Keybindings are settings
+---
 
-A keybinding is a setting of the type "key combination". It therefore follows the same layering rules as every other setting (section 13.4). Rebinding keys once changes them for every preset.
+## 7. Input, focus and keybindings
 
-### 9.3 Scopes and precedence
+### 7.1 Focus
 
-When a key is pressed, these scopes are consulted, **most specific first**, and the first match wins:
+- **[Decided]** Exactly one window has focus. It changes by pointer hover, and by a keybinding with arrow keys that moves focus to the neighbouring window.
+- **[Decided]** Focus is locked to a window during a pointer drag.
+- **[Proposed]** Directional focus uses geometry: choose the nearest window in the given direction by rectangle overlap. It does not need to understand the tree.
+- **[Open]** Details: pointer over gaps; whether only real pointer motion changes focus; windows that capture the pointer; focus across OS windows on Wayland.
 
-1. The core's reserved keys (see 9.4). These are always checked before anything else.
-2. The focused window.
+### 7.2 Key dispatch order
+
+**[Decided]** When a key combination is pressed, the first match wins in this order:
+
+1. Keys reserved for the core.
+2. The focused window instance.
 3. The focused window's behaviour (all windows of that kind).
 4. The workspace.
 5. Global.
 
-Workspace and global keybindings belong to the core only.
+Workspace and global bindings belong to the core only. If nothing matches, the raw key event is delivered to the focused window.
 
-**Plugins can only bind keys for windows that they themselves provide, and those bindings are only active while such a window has focus.** Plugins cannot create global keybindings. A plugin that wants the same key for several of its own windows records that in a shared settings file.
+### 7.3 Reserved keys
 
-If no binding handles a key press, the key event is delivered to the focused window, so a window can implement its own input logic (for example modal editing) without involving the core.
+- **[Decided]** A set of key combinations is reserved for the core and is always checked first, **when the key is pressed**, not only when a binding is registered. Therefore a change of the reserved prefix at runtime cannot give plugins access to core keys. A plugin binding that now falls in the reserved set is not triggered and is reported.
+- **[Proposed]** The reserved set is defined by a *core modifier*: a named setting that maps to a physical modifier key. Everything reserved is "core modifier plus something".
+- **[Open]** The exact reserved set, the default modifier (Alt was used as an example), and interaction with keyboard layouts that type characters using Alt.
 
-### 9.4 Keys reserved for the core
+### 7.4 Binding keys
 
-A set of key combinations is reserved for the core. This also marks the line between core and plugin behaviour. As an example, any combination that starts with the Alt key could be reserved; the exact rule is open (Q10).
+- **[Decided]** Keybindings are settings of the type "key combination" and follow the settings layers (section 12).
+- **[Decided]** A plugin can bind keys only for windows or behaviours it registered. These bindings are active only while such a window has focus. Plugins have no function for creating workspace or global bindings.
+- **[Proposed]** The setting holds the key combination, and the plugin supplies the function: `ECS_BindKey(ctx, behaviour, setting_name, fn)`.
+- **[Decided]** The core handles only keys pressed together. No multi-key sequences in the core.
+- **[Open]** Key representation: physical key position versus layout-dependent key meaning, modifier handling and encoding.
 
-Because reserved keys are checked *when a key is pressed*, and not only when a plugin registers a binding, the core always wins. If the reserved prefix is changed while OpenECS is running, plugins cannot gain access to core keys: a plugin binding that now collides with the reserved set is simply not triggered.
+---
 
-### 9.5 No key sequences in the core
+## 8. Events and actions
 
-The core only handles keys pressed together (for example Ctrl+S), not sequences pressed one after another (like Emacs chords). A window may implement sequences inside itself.
+### 8.1 Events
 
-## 10. Events and actions
+**[Proposed]** An event has a type, the window id it concerns, a timestamp and a payload. Types include: window created, destroyed, resized, moved, focused, unfocused, shown, hidden, popped out, docked, tab changed, maximized, workspace switched, surface recreated; plus input events (key, pointer, text input) delivered to the focused window.
 
-**Events** tell code that something happened. **Actions** are functions that make something happen. For windows there are events and actions for anything that matters: created, resized, moved, focused, popped out, docked, tiled, maximized, hidden or shown by a workspace switch, closed.
+### 8.2 Delivery
 
-Rules:
+- **[Proposed]** Events are delivered synchronously on the main thread to the window's own `event` function. A behaviour may also subscribe to events of its own windows.
+- **[Proposed]** Destructive actions requested while an event is being delivered (closing a window, for example) are carried out after delivery finishes, so handlers never run on destroyed objects.
+- **[Open]** Whether a plugin may subscribe to events of windows it does not own.
 
-- **No behaviour can refuse a window operation.** A plugin cannot stop a window from being closed, maximized, popped out, and so on. Events are notifications only. How a window with unsaved work should signal this to the core is open (Q7).
-- **Actions are plain functions that are called directly.** There is no separate layer of named commands between code and functionality.
-- **Everything is available from Lua.** Anything OpenECS can do can also be done from a Lua script: registering behaviours, binding keys to windows, serializing a session, and so on.
+### 8.3 Refusing operations
 
-## 11. Plugins
+- **[Open]** Whether a behaviour can refuse an operation (for example closing). If it can, events carry a flag saying whether they may be cancelled, and the handler returns a verdict. If it cannot, events are pure notifications and handlers return nothing. Related: a way for a window to report unsaved work.
 
-### 11.1 Kinds of plugin
+### 8.4 Actions
 
-- **Native plugin:** compiled C code in a **shared library** (a file with the extension `.so` on Linux that a program can load while it is running). It has more control and speed, and in exchange must follow written contracts about how it is built and how it behaves (to be defined in the technical document).
-- **Lua plugin:** a script. Easier to write and restricted by what OpenECS gives it.
+- **[Decided]** Actions are plain functions called directly. There is no registry of named commands.
+- **[Decided]** Each action has a Lua counterpart with the same meaning.
 
-The two kinds are **interchangeable**: a service written in Lua can be called from a native plugin, and the other way round. A native function can be called from Lua without anyone writing extra wrapper code (see section 12).
+---
 
-Plugins are used for essentially anything domain-specific.
+## 9. Plugin system
 
-### 11.2 Where plugins live and how they are found
+### 9.1 Layout on disk
 
-Plugins are placed in a plugins directory. Each plugin is a folder holding its manifest and its code (a shared library, a Lua file, or both). OpenECS scans the plugins directory, reads the manifests, works out the order in which to load things from their dependencies, and loads them. A manifest or preset can name a different plugins directory, and directory locations are meant to be configurable.
+**[Proposed]**
 
-Paths written inside a manifest are relative to the manifest file itself, not to where OpenECS was started.
+```
+plugins/
+  gltf/
+    manifest.lua      -- description and dependencies
+    plugin.so         -- native code (optional)
+    init.lua          -- Lua code (optional)
+```
 
-### 11.3 How a native plugin connects
+- **[Decided]** Plugins are found by scanning a plugins directory. A manifest or preset can name another plugins directory.
+- **[Proposed]** Paths inside a manifest are relative to the manifest file, not to the working directory.
 
-A native plugin exports a small number of fixed, well-known names that OpenECS looks for when it loads the file:
+### 9.2 Manifest
 
-- A name that reports which version of the plugin interface it was built for. OpenECS checks this *before* calling anything else, so an incompatible plugin is refused cleanly instead of crashing.
-- An **init** function. OpenECS calls it once. Inside it the plugin registers all its behaviours, services and settings.
-- A **shutdown** function.
+**[Proposed]** A manifest is a Lua file that returns a table:
 
-Fixed names are used only for these once-per-plugin steps. Everything else (behaviours, services) is registered explicitly inside init. This is because one plugin may offer many behaviours, and fixed names could only describe one.
+```lua
+return {
+  name = "gltf",
+  version = "1.0",
+  api = 1,                                  -- plugin interface version it was built for
+  description = "glTF model loader",
+  plugins = { { name = "drawing", version = ">=1.0" } },   -- dependencies
+  native = "plugin.so",                     -- optional
+  lua = "init.lua",                         -- optional
+}
+```
 
-### 11.4 Dependencies and loading order
+- **[Decided]** Presets follow the same rules as plugin manifests: they can depend on plugins (see section 13).
+- **[Proposed]** Manifests are evaluated without running plugin code, so that the list of available plugins can be shown without loading them.
+- **[Open]** The exact fields and version-constraint syntax.
 
-A plugin's manifest lists the plugins it depends on. OpenECS loads plugins in dependency order, reports missing dependencies and circular dependencies clearly, and plugin authors never manage order by hand.
+### 9.3 Discovery and load order
 
-### 11.5 Which plugins are active
+- **[Decided]** Plugins are loaded in dependency order, computed by the core. Plugin authors never manage order by hand.
+- **[Proposed]** Build a dependency graph and order it topologically. Report missing dependencies, version mismatches and cycles clearly (section 14).
 
-The active plugins are decided when OpenECS starts: those named by the preset, together with their dependencies. Enabling or disabling plugins while OpenECS runs is not supported. The design aims to leave room for it (Q15).
+### 9.4 Native plugin interface
 
-### 11.6 Trust
+- **[Decided]** A native plugin exports a few well-known names that the core looks up when it loads the file: a query for the plugin interface version, an **init** function and a **shutdown** function. The version is checked before anything else is called. Everything else is registered explicitly inside init.
+- **[Proposed]** Loading uses SDL3's functions for opening a shared library and looking up a symbol.
+- **[Proposed]** `init` receives a **context** (`ECS_Context *`): a versioned table of function pointers belonging to that plugin. Plugins do not link against the core.
+- **[Open]** The exact exported names and the header that defines them.
 
-A native plugin runs inside the OpenECS program with full access to it; it is trusted. A Lua plugin runs in an environment that OpenECS controls and limits. Plugin permissions and further details are open (Q8).
+### 9.5 ABI rules for native plugins
 
-## 12. Services and registration
+**[Proposed]**
 
-### 12.1 Registration
+- A structure that crosses the boundary starts with its own size (`struct_size`) so the core can tell which fields exist.
+- Structures only grow by adding fields at the end. Fields are never removed, reordered or changed in meaning.
+- Structures are never passed or returned by value across the boundary; pointers are used.
+- Enumeration values are never renumbered.
+- Plain C types only. No C++ exceptions and no `longjmp` across the boundary.
 
-As defined in section 5, to register means to tell OpenECS that something exists by calling one of its functions. Plugins register behaviours, services, settings and keybindings.
+### 9.6 Lua plugin interface
 
-### 12.2 Services
+- **[Proposed]** The plugin's Lua entry file runs in an environment that has the global `ecs` table (section 11.4). It registers its behaviours, services and settings through that table.
+- **[Open]** Whether all plugins share one Lua state with a separate environment each, or each plugin has its own state (section 11.2).
 
-A plugin makes functionality available to others by registering a service. The caller asks OpenECS for the service by name, and OpenECS gives it a handle to use. Because OpenECS stands in the middle, it can check that a plugin declared the dependency in its manifest, and it can tell users of a service if its provider goes away.
+### 9.7 Lifecycle and activation
 
-### 12.3 Declared signatures
+- **[Decided]** The active plugins are fixed at startup by the preset plus dependencies. No activating or deactivating plugins at runtime for now.
+- **[Proposed]** Native plugins are never unloaded while the program runs (function pointers, threads and static state may still be in use). Lua plugins could be unloaded or reloaded if runtime activation is added.
+- **[Decided]** Plugins use each other through services.
 
-When a function is registered as part of a service, the registering plugin also **declares its signature**: a short description of what the function takes and returns, for example "takes a piece of text and a decimal number, returns a whole number". OpenECS checks the declaration when the function is registered. Declarations that make no sense (unknown types, unsupported shapes) are rejected right then, not later when somebody calls the function.
+### 9.8 Built-in plugins
 
-With the declared signature, OpenECS can convert values between Lua and C on its own and call the real C function. This is what makes it possible for Lua to call a plain C function without any hand-written wrapper. The conversion relies on **libffi**, a small library that can call a C function when only its description is known at runtime.
+- **[Open]** Whether binding plugins for the core's own dependencies are compiled into the executable and registered like any plugin. This would keep a single copy of each dependency (16.2).
 
-What registration cannot check: whether the C function really matches its declared signature. A wrong declaration is a bug in the plugin that made it.
+---
 
-Details of supported types, buffers, handles and lifetimes are open (Q14).
+## 10. Services and function registration
 
-### 12.4 Dependencies are never exposed
+### 10.1 Registration
 
-The API that plugins use does not expose OpenECS's own dependencies (SDL, Lua, Clay, libffi). OpenECS wraps them. Anything beyond what OpenECS wraps is reached through a binding plugin that offers the library as a service (for example, one that wraps a specific library for scripts).
+**[Proposed]** Illustrative:
 
-## 13. Presets, sessions and settings
+```c
+ECS_RegisterFunction(ctx, "audio.play", audio_play, "int(string, float)");
+```
 
-### 13.1 Presets and sessions
+```lua
+ecs.service.register("audio", {
+  play = { sig = "int(string, float)", fn = function(path, volume) ... end },
+})
+```
 
-A **preset** and a **session** are files in the same format: a Lua file that follows the same rules as a plugin manifest. It has a name and version, depends on plugins, and returns a table describing a session: **workspaces**, each holding **windows** with their saved state.
+- **[Decided]** Functions are registered with a **declared signature**, and the declaration is validated at registration. An invalid declaration is rejected at that moment.
+- **[Decided]** A plain C function can be registered without a hand-written wrapper.
 
-- A **preset** is written by hand. Because it is a Lua file, it can contain logic (for example loops or conditions) to build its result.
-- A **session** is generated: pressing the **serialize** button (also available as an action from Lua) writes the current state to a file in a location other than the presets, so a hand-written preset is never overwritten.
-- A saved session is a *snapshot* of the state, not a link back to the preset it started from.
-- Presets in one directory can share one plugins directory, so one set of plugins can serve many presets.
-- There is no automatic saving (Q21).
+### 10.2 Signature grammar and types
 
-Lua is used as the file format because OpenECS already contains a Lua interpreter, so no separate file parser has to be written.
+**[Proposed]** Signature strings describe the return type and parameter types. Supported types:
 
-Which restrictions apply when such files are loaded is open (Q9, Q27).
+| Type | Meaning |
+|---|---|
+| `void` | No value (return only) |
+| `bool` | true or false |
+| `int`, `int64` | Whole numbers |
+| `float`, `double` | Decimal numbers |
+| `string` | Pointer to text ending in zero |
+| `buffer` | A pointer together with a length |
+| `handle<name>` | A typed handle (10.5) |
+| `value` | A generic value (10.3) |
+
+Structures by value are not supported; they are passed by pointer, as a handle or a buffer.
+
+**[Open]** The final list of types, a limit on the number of parameters, and whether function-valued parameters (callbacks) are supported.
+
+### 10.3 Values
+
+**[Proposed]** A generic value is one of: nil, boolean, integer, number, string, buffer, handle, table (an ordered or named group of values). `ECS_Value` is the C representation. Values are what behaviours return from `save_state`, and what generic calls use.
+
+### 10.4 How calls work
+
+**[Proposed]**
+
+- **Lua calls a native function:** the core creates one generic Lua-callable function per registered native function and attaches the function's descriptor to it (Lua supports attaching data to a C function). When called, it reads the arguments from the Lua stack, converts them according to the signature, calls the real function through libffi, and pushes the result.
+- **Native calls a native function:** the caller asks for the function and receives the raw C function pointer with its signature, and calls it directly at full speed.
+- **Native calls a Lua function:** through a generic call, `ECS_Call(fn, args, count, &result)`, which converts values, calls the Lua function under a protected call, and converts the result.
+- **Lua calls a Lua function:** an ordinary Lua call.
+
+**[Open]** Whether a Lua function can be given to native code as a raw C function pointer (libffi can create such callable pointers, but this adds complexity).
+
+### 10.5 Handles
+
+**[Proposed]**
+
+- A handle stands for an object owned by its provider: a pointer plus a **type name** and a **destructor** registered with `ECS_RegisterHandleType`.
+- In Lua a handle is a block of memory managed by Lua whose type is named by its metatable. Passing a handle of the wrong type is rejected with a clear error.
+- When Lua no longer uses the handle, Lua's garbage collector calls the destructor.
+- When a provider goes away, its handles become invalid; the core tells the users.
+
+### 10.6 Buffers
+
+- **[Proposed]** A buffer is a pointer plus a length. Native code reads it directly; Lua gets it as a typed array.
+- **[Open]** The lifetime rule: documented per function (for example "valid until the handle is released"), and whether the core enforces anything.
+
+### 10.7 libffi
+
+- **[Decided]** libffi is used to call functions by declared signature. It is a git submodule.
+- **[Proposed]** libffi is kept behind the service module only. Per function, the call description is prepared once at registration and reused for every call.
+- **Limits that must be documented:** the core cannot check that a C function really matches its declared signature. A wrong declaration is a bug in the plugin and may crash.
+- **[Open]** Behaviour on platforms and architectures other than the current Linux build.
+
+### 10.8 Lookup and dependencies
+
+- **[Proposed]** A plugin asks for a service by name and minimum version and receives a handle. The core allows this only for plugins named in the plugin's manifest dependencies, and informs users of a service if the provider goes away.
+
+### 10.9 Namespaces
+
+- **[Decided]** The prefix `ECS_` / `ecs.` belongs to the core.
+- **[Open]** How plugins name what they register, so names cannot collide.
+
+---
+
+## 11. Lua integration
+
+### 11.1 Version
+
+- **[Decided]** Standard latest Lua.
+
+### 11.2 State model
+
+- **[Open]** One shared Lua state with a separate environment (table of visible globals) per plugin, or one Lua state per plugin. A per-plugin state isolates plugins better; a shared state makes passing values simpler.
+
+### 11.3 Protected calls
+
+- **[Proposed, to become a rule]** Every call from the core into Lua uses a protected call. Lua reports errors by jumping out of the current function, so an unprotected call could unwind through core code. A caught error becomes an error report (section 14), never a crash.
+
+### 11.4 The `ecs` table
+
+**[Proposed]** Layout of the Lua interface:
+
+| Table | Contents |
+|---|---|
+| `ecs.window` | Behaviour registration, window actions and queries |
+| `ecs.layout` | Layout operations |
+| `ecs.workspace` | Workspace operations |
+| `ecs.input` | Key binding, focus |
+| `ecs.settings` | Declare, get, set, explain |
+| `ecs.session` | Serialize, load |
+| `ecs.service` | Register and look up services |
+| `ecs.plugin` | Information about plugins |
+| `ecs.log` | Logging |
+
+### 11.5 Parity
+
+- **[Decided]** Everything the core can do is also available from Lua.
+- **[Proposed]** Keep a list of every public C function with its Lua counterpart, and check that list as part of the build or tests.
+
+### 11.6 Storing and calling Lua values from C
+
+- **[Proposed]** Lua functions and values that C code must keep are stored in Lua's registry and referenced by an integer; they are released when the owner is destroyed.
+
+---
+
+## 12. Settings
+
+### 12.1 Declaration
+
+- **[Proposed]** The core and plugins declare settings with a name, type, default value and description.
+- **[Open]** The list of types. Planned: boolean, integer, number, string, choice, key combination, list, table.
+
+### 12.2 Layers
+
+**[Decided]** From lowest to highest priority; a higher layer overrides a lower one:
+
+1. Core defaults.
+2. Plugin defaults.
+3. The preset.
+4. The user's hand-edited settings file.
+5. A generated file holding changes made through the settings window.
+
+- **[Decided]** User settings override all other layers, including the preset.
+- **[Decided]** The core never rewrites the hand-edited file.
+- **[Decided]** Unknown keys (for example for a plugin that is not available) are kept, not dropped.
+- **[Decided]** Keybindings are settings.
+
+### 12.3 Interface
+
+- **[Proposed]** `get(key)`, `set(key, value)` (writes to the generated layer), and `explain(key)`, which returns the value in effect, the layer it came from and what each layer says. The settings window uses `explain` to show locked (faded) settings with a hint.
+- **[Proposed]** Owners are notified when their settings change.
+
+### 12.4 Files
+
+- **[Decided]** The user's hand-edited file may live under `~/.config`.
+- **[Open]** File names, the location of the generated file, and how `$XDG_CONFIG_HOME` is resolved. As far as is known, SDL3's helper for per-user directories returns the data directory on Linux, not the configuration directory (to be verified).
+
+---
+
+## 13. Presets and sessions
+
+### 13.1 Format
+
+- **[Decided]** Presets and sessions are one file format: a Lua file following the same rules as a plugin manifest. It depends on plugins and returns a table describing a session: workspaces, each containing windows with their saved state.
+- **[Decided]** A preset is hand-written and may contain logic. A session is generated by serialization. A saved session is a snapshot, not a link to its preset.
+- **[Decided]** Lua is the format, so no separate parser is written.
+- **[Proposed]** Illustrative:
+
+```lua
+return {
+  name = "paint", version = "1.0",
+  plugins_dir = "plugins",
+  plugins = { { name = "canvas", version = ">=1.0" }, { name = "palette" } },
+  settings = { ["canvas.grid"] = true },
+  workspaces = {
+    { name = "main",
+      roots = { { layout = { type = "split", dir = "h", fractions = { 0.7, 0.3 },
+                  children = { ... } } } } },
+  },
+}
+```
+
+- **[Open]** The exact fields and the file format version.
 
 ### 13.2 Applying a session
 
-When a session is loaded, OpenECS creates the layout, creates each window, and gives each window its saved state. These rules apply:
+**[Proposed]** Steps:
 
-- **Nothing that cannot be understood is destroyed.** If a window's behaviour is not available (for example its plugin is missing), OpenECS shows a placeholder window and keeps the window's saved state untouched, so that saving again writes it back.
-- **One bad window does not stop the rest.** If restoring a window fails, that window falls back to a default state or an error placeholder, and everything else loads.
-- **Every behaviour owns its state format.** The behaviour declares a version for its state and is told which version it is reading, so it can convert older data. OpenECS only converts the layout parts.
-- **Saving is safe.** A file is not left half-written if something goes wrong while saving.
+1. Evaluate the file and check its shape (version, required fields, types); report errors with the path of the problem.
+2. Make sure the plugins it needs are active.
+3. Build the layout hidden: roots, splits with fractions, tab groups with the active tab, workspaces, the focused window, the maximized group.
+4. Create each window: call its behaviour's `create` with the saved state.
+5. Show everything at once.
 
-### 13.3 Where files live
+**[Decided]** Rules:
 
-On Linux, user-level settings may live under the user's configuration directory (`~/.config`). Generated sessions are written to a location other than the presets. The layout of directories is configurable; for example, a manifest can name its plugins directory (Q16).
+- Nothing that cannot be understood is destroyed. If a behaviour is missing, a placeholder window is created that keeps the saved state unchanged, so saving writes it back.
+- One failing window does not stop the rest. It falls back to a default state or an error placeholder.
+- Each behaviour owns its state format and version; it is told which version it is reading. The core converts only layout data.
 
-### 13.4 Settings
+### 13.3 Serialization
 
-Settings are **layered**. Each later layer overrides the layers before it. From lowest to highest:
+- **[Decided]** There is a serialize action (button, and callable from Lua). It writes the current state to a file in a location other than the presets. There is no automatic saving.
+- **[Proposed]** Only plain data is written: numbers, strings, booleans and tables. Functions and reference cycles are rejected with an error. Strings use Lua's own quoting so any content is stored correctly. Numbers are written so that reading them gives back the same value.
+- **[Proposed]** The file is written to a temporary file and then renamed, so a failure never leaves a half-written file.
+- **[Open]** Whether the writer is C code or a small embedded Lua function.
 
-1. Core defaults.
-2. Plugin defaults, declared by each plugin when it registers a setting (name, type, default value, description).
-3. The preset.
-4. The user's hand-edited settings file.
-5. A generated file that holds changes made through the settings window.
+### 13.4 Loading and trust
 
-**The user's settings override everything else**, including the preset.
+- **[Decided]** Security is out of scope (1.4): files are loaded as ordinary Lua.
 
-Rules and behaviour:
+---
 
-- Settings have types, so values can be checked, and a wrong value in a hand-edited file produces a clear message.
-- A setting that belongs to a plugin that is not currently available is kept in the file, not removed.
-- The core never rewrites the hand-edited file. Changes made in the settings window go to the separate generated file, which avoids destroying the user's comments and formatting.
-- The settings window shows a setting as **faded (locked)** if a higher layer overrides it, with a **hint** pointing to the layer or file where it can be changed. To support this, the settings system can explain a value (the value in effect and which layer it came from), not only return it.
-- Keybindings are settings.
+## 14. Error handling
 
-## 14. Design principles
+### 14.1 Principles
 
-1. **Shallow core.** The core provides mechanisms (how things work). Policies (what is shown, which keys do what) come from plugins and settings. Domain-specific functionality never goes into the core.
-2. **Everything is available from Lua.** The scripting interface can do everything the C interface can do.
-3. **Least authority.** A plugin can act only through what it was handed. For example, a plugin can bind keys for its own windows only, and has no function for creating global keybindings at all.
-4. **One front door.** All interaction between plugins and the core goes through the plugin API. The core decides at the moment something is used, not only when it is registered (for example, the reserved-key check in section 9.4).
-5. **Small, uniform API.** Few concepts, consistently applied, are easier to learn, keep stable, and expose to Lua.
-6. **Hide dependencies.** Plugins never see SDL, Lua, Clay or libffi directly, so those can be changed without breaking plugins.
-7. **Design for replacement.** Places that are likely to change, such as the rendering backend, sit behind small fixed interfaces.
-8. **Do not lose what is not understood.** Unknown settings, missing behaviours and unreadable window state are preserved, not discarded.
-9. **Errors do not take the whole program down.** A broken script or window affects only itself (specified in the technical document, Q17).
+- **[Decided]** A native plugin that crashes takes the whole program down; this cannot be isolated and is accepted.
+- **[Proposed]** Everything else is contained: a Lua error or a failing plugin or window must not crash the core. Errors are collected as reports and shown, not hidden.
+- **[Proposed]** An error report contains: the plugin, the kind of error, a message, and for Lua a stack trace.
+- **[Proposed]** Reports go to the log and, for the user, to a message dialog (notifications are not available yet).
 
-## 15. Dependencies
+### 14.2 Policies by situation
 
-| Library | Used for |
+**[Proposed]**
+
+| Situation | Behaviour |
 |---|---|
-| Lua | The scripting language for plugins, presets, sessions and settings files. |
-| Clay | Computing the layout (sizes and positions) of the areas on screen. |
-| SDL3 | Creating OS windows, receiving input, graphics output, clipboard, dialogs, drag and drop, threads, and loading shared libraries. |
-| SDL3_ttf | Text rendering. |
-| SDL3_image | Loading images. |
-| libffi | Calling functions in plugins by their declared signature. |
+| Manifest cannot be read or is invalid | The plugin is skipped and reported. Its dependents are skipped. |
+| Missing dependency or version mismatch | The plugin and its dependents are skipped and reported. |
+| Dependency cycle | The plugins in the cycle are skipped and reported. |
+| Plugin interface version mismatch | The plugin is refused before any of its code runs. |
+| Init fails | The plugin is marked failed; what it registered so far is removed. |
+| An invalid registration (bad signature, duplicate name, reserved key) | That registration is rejected and the error is returned to the plugin, which can continue. |
+| A Lua callback raises an error | The error is reported, and the window is marked faulted according to a policy (see below). |
+| Session restoring finds a missing behaviour or a failing window | Section 13.2. |
 
-Libraries that are **not** part of the core and are expected to be used by plugins: SDL3_mixer or another audio library, SDL3_net or another networking library, and cgltf (a glTF 3D model reader).
+- **[Open]** The policy for a window whose callback raises errors: mark it faulted after the first error, or after a number of errors; what a faulted window shows; whether it can be retried.
 
-How SDL3 is shared between OpenECS and plugins that depend on it is open (Q5).
+### 14.3 Error interface
 
----
+- **[Open]** C functions: return codes (for example an `ECS_Result` enumeration) plus a way to read the last error message. Lua: raise an error, or return nil plus a message.
 
-## 16. Open questions and TODO
+### 14.4 Logging
 
-Questions are not decided. Each is listed with the context needed to answer it.
-
-### Open questions
-
-**Q1. What does "ECS" in the name stand for?** This document does not define it. If it is meant to be read as "entity component system", that is not an architecture used in this design as described here.
-
-**Q2. Which functions does a behaviour register?** Candidates under consideration: create, destroy, draw, handle event, periodic update, save state, load state. It is not decided which are required and which are optional, or how redraw policy and sleep are declared.
-
-**Q3. What are the drawing commands?** The set of 2D commands (rectangles, text, images, clipping), how a window uploads pixel data, and whether helpers such as a text-grid (terminal-style) display exist in the core or in plugins.
-
-**Q4. Rendering backend, and GPU windows.** Two options were discussed: SDL's 2D renderer, which is simpler, and SDL_GPU, which is the modern graphics API in SDL3 and can serve windows that render 3D scenes themselves. It is not decided which to use or whether "raw GPU" windows (windows that issue their own graphics-card commands) are supported from the start. Related: a surface may have to be recreated when a window moves to another OS window; whether windows are told about this is undecided. Some SDL3 details assumed during design still need to be verified (see TODO).
-
-**Q5. One copy of SDL.** SDL keeps global state, so two copies in one process conflict. SDL3_mixer and SDL3_net plugins depend on SDL3 themselves. Options: link SDL3 dynamically in the executable so all libraries share one copy; and/or build binding plugins for the core's own dependencies into the executable. Not decided.
-
-**Q6. Threading.** Proposed: everything involving OS windows, input, layout and Lua runs on the main thread, with a mechanism for running background work whose result is delivered back to the main thread. Not decided, nor what is allowed in native plugins.
-
-**Q7. Unsaved work.** Since behaviours cannot refuse to close, how does a window with unsaved changes say so? An idea: a "dirty" flag that the core reads and uses to decide whether to ask the user. Not decided.
-
-**Q8. Plugin permissions and trust.** What a manifest can ask for, who grants it, and how a very powerful capability (for example a generic binding plugin that lets scripts call arbitrary native libraries) is controlled.
-
-**Q9. Safety when loading files.** Proposed: files in the presets directory are trusted like an initialization script; generated sessions and files from elsewhere are evaluated in a restricted environment (no file or operating-system access, no compiled bytecode, limits on how long they may run). Not decided.
-
-**Q10. Reserved keys.** The exact set, the default for the core modifier (Alt was used as an example), whether the modifier is a named setting that can be changed, and how this interacts with keyboard layouts that use Alt-based combinations to type characters.
-
-**Q11. Focus details.** What happens when the pointer is over a gap or border; whether only real pointer movement changes focus (not layout changes under a still pointer); how a window that captures the pointer (for example a 3D view) interacts with focus; how focus moves between several OS windows on Wayland, where the application may not be able to force it.
-
-**Q12. Right-click menus.** The default entries, and whether and how a behaviour can add entries for its own windows.
-
-**Q13. Naming.** Proposed: each plugin owns a name prefix for everything it registers and the core owns a reserved prefix, so names cannot collide. Not decided.
-
-**Q14. Service calls in detail.** Which value types can cross the boundary between plugins; how pointers, structures and large buffers are passed (for example as typed handles and buffers); who owns and frees them; how services written in Lua are called from native code; what happens on errors.
-
-**Q15. Activating and removing plugins at runtime.** Not supported for now. Open: how far the design should prepare for it. Native plugins cannot be safely unloaded while running, so reloading may apply only to Lua plugins.
-
-**Q16. Launching and file locations.** The command-line interface (for example how a preset is chosen), the exact directories for presets, sessions, plugins and settings, and the names of the files.
-
-**Q17. Error handling and diagnostics.** What happens when a plugin fails to load, when a script raises an error, or when a native plugin misbehaves; logging; how problems are shown to the user. To be defined in the technical document.
-
-**Q18. Operating-system integration.** Exactly which of these are included in the core: clipboard, drag and drop, file dialogs, message dialogs, system tray. Desktop notifications are not part of the current design; whether they will be in-application, native to the operating system, or a plugin is open.
-
-**Q19. Undo and redo.** Wanted, but not designed. Open: whether history is per window or global, and how plugins take part.
-
-**Q20. Look and feel.** Themes and animations. Not designed.
-
-**Q21. Automatic saving and crash recovery.** Not part of the current design. Only manual serialization exists.
-
-**Q22. A library form of OpenECS.** Not part of the current design; a version that other programs link against may be considered later.
-
-**Q23. Other operating systems and processor architectures.** Not addressed. In particular, building libffi and handling OS windows differ across platforms.
-
-**Q24. Which Lua.** Standard Lua 5.4 or LuaJIT (faster, but based on older Lua 5.1 semantics).
-
-**Q25. Accessibility and text input.** Windows are drawn by OpenECS rather than by the operating system, so screen-reader support and input methods for complex scripts need explicit consideration.
-
-**Q26. Layout details.** Whether tab rows offer further behaviours (reordering rules, scrolling of long rows), the default minimum sizes, and what the tab row shows.
-
-**Q27. File format details.** The exact fields of presets, sessions and manifests, and how their format versions are handled.
-
-**Q28. Standard plugins.** Which ones exist, where they live, and how they are distributed.
-
-### TODO
-
-- Write the technical document: the plugin API for C and Lua, the exact behaviour interface, drawing commands, error handling, threading rules, file formats and the contracts native plugins must follow.
-- Verify details of SDL3 that were assumed during design: sharing of graphics resources between OS windows, which operating-system integration it offers on Linux (especially notifications), and which directory function applies to configuration versus data.
-- Verify how libffi behaves in the target build setup.
-- Decide each open question above and move the answer into the relevant section.
+- **[Open]** Levels, destination (terminal, file), file location, format.
 
 ---
 
-## Appendix A: Glossary
+## 15. Memory and ownership
 
-**Action.** A function that makes something happen, such as closing or maximizing a window.
+- **[Proposed]** The rule is: whoever allocates frees, unless a function's documentation says otherwise. The core does not free memory a plugin allocated, and plugins do not free memory the core allocated.
+- **[Proposed]** Strings passed into a function are valid for the duration of the call. A function that needs them longer copies them.
+- **[Proposed]** Objects that cross plugins are handles with destructors (10.5). Buffers follow a documented lifetime (10.6).
+- **[Open]** Whether the core provides an allocator for memory that crosses the boundary, so both sides use the same allocator.
 
-**Behaviour.** A named description of what a kind of window shows and does. Many windows can share one behaviour.
+---
 
-**Binding plugin.** A plugin whose purpose is to make a library usable by other plugins as a service.
+## 16. Build and dependencies
 
-**Clay.** A layout library. It computes the sizes and positions of rectangles on screen, and produces drawing commands as data, without drawing anything itself.
+### 16.1 Dependencies
 
-**Compositing.** Assembling several pictures (here, the off-screen surfaces of windows) into the one picture shown on screen.
+| Dependency | Status |
+|---|---|
+| Lua | **[Decided]** core |
+| Clay | **[Decided]** core, git submodule, layout |
+| libffi | **[Decided]** core, git submodule, calling functions by signature |
+| SDL3 | **[Decided]** core: OS windows, input, graphics output, clipboard, dialogs, drag and drop, threads, loading shared libraries |
+| SDL3_ttf | **[Decided]** core: text for the core's own interface |
+| SDL3_image | **[Open]** whether the core needs it (overview Q3) |
+| SDL3_mixer, SDL3_net, cgltf | **[Decided]** not core; plugin dependencies |
 
-**Core.** OpenECS without plugins.
+### 16.2 One copy of SDL
 
-**Dependency.** Something a piece of software needs in order to work, such as a library or another plugin.
+SDL keeps global state, so two copies in one process conflict. SDL3_mixer and SDL3_net depend on SDL3 themselves.
 
-**Docking.** Attaching a window to an area of the layout, by splitting an area or adding a tab.
+- **[Open]** Link SDL3 dynamically in the executable so all libraries share one copy; and/or compile binding plugins for the core's dependencies into the executable (9.8).
 
-**Event.** A notification that something happened.
+### 16.3 Output
 
-**Executable.** A program that can be run directly, as opposed to a library that other programs link against.
+- **[Proposed]** One executable. Native plugins are separate shared libraries built against the plugin interface header.
+- **[Proposed]** Build the executable with hidden symbols, exporting only what plugins need, so internal libraries cannot clash with a plugin's own.
 
-**Focus.** The one window that currently receives keyboard input.
+### 16.4 Open build details
 
-**Handle.** A token that stands for an object owned by someone else, such as a service or a loaded model, so that it can be passed around without exposing its inner structure.
+- **[Open]** Build system, C standard, compiler flags, how SDL3 and Lua are obtained (system package or submodule), how libffi is built.
 
-**Init.** The function a plugin exports that OpenECS calls once after loading it. The plugin registers everything it provides inside it.
+---
 
-**Keybinding.** An association between a key combination and a function. In OpenECS it is a setting.
+## 17. Rules for contributors
 
-**Layout tree.** The structure of splits, tab groups and windows inside one OS window.
+### 17.1 For core developers
 
-**libffi.** A library that can call a C function at runtime when only the function's description (its signature) is known.
+**[Proposed]** These rules apply to every change:
 
-**Lua.** A small scripting language, used here for plugins and for presets, sessions and settings files.
+1. Never expose a type from SDL, Lua, Clay or libffi in a header that plugins include.
+2. Every public function has a Lua counterpart (or a documented reason it does not).
+3. Every public function documents its thread rule and the ownership of what it takes and returns.
+4. Every call into Lua is a protected call.
+5. Only the Layout module calls Clay; only the Service module calls libffi; only the Platform layer calls SDL.
+6. Core code never checks a plugin's name to decide behaviour. Plugins get no special treatment.
+7. If something is needed by the core's own machinery it is core; otherwise it is a plugin (overview, section 4.3).
 
-**Manifest.** A description file that gives a plugin's (or preset's) name, version, interface version and dependencies.
+### 17.2 For native plugin authors
 
-**Native plugin.** A plugin made of compiled C code in a shared library.
+**[Proposed]**
 
-**Off-screen surface (render target).** A picture that a window draws into that is not directly on screen; OpenECS later assembles these into the screen picture.
+1. Check the interface version and register things only inside init.
+2. Do not call the plugin API from threads other than those documented as allowed.
+3. Do not free memory owned by the core, and do not keep core pointers beyond their documented lifetime.
+4. No C++ exceptions and no `longjmp` across the boundary.
+5. Declare function signatures accurately.
 
-**OS window.** A window as seen by the operating system, with its own title bar. Contains one layout tree.
+---
 
-**Plugin.** A package that adds behaviours, services or settings to OpenECS.
+## 18. Platform notes
 
-**Pop-out.** Moving a window out of its OS window into a new OS window of its own.
+- **[Decided]** Linux only. SDL3 supports both X11 and Wayland.
+- **[Open]** Wayland: the compositor decides where new OS windows appear and an application may not be able to force focus onto another of its own windows. Pop-out by dragging and focus across OS windows are therefore best effort; menu entries and keybindings must always work.
+- **[Open]** Libffi build and behaviour on other platforms and architectures.
 
-**Preset.** A hand-written file that describes a working setup: plugins, settings, workspaces and windows.
+---
 
-**Redraw policy.** A window's declaration of whether it needs to be redrawn continuously or only on demand.
+## 19. Open questions and TODO
 
-**Register.** To tell OpenECS, by calling one of its functions, that something (a behaviour, service, setting or keybinding) exists.
+### 19.1 Open questions
 
-**Rendering backend.** The replaceable part of OpenECS that turns drawing commands into pixels.
+Each is also marked **[Open]** in the section named.
 
-**Root.** The top of a layout tree, one per OS window.
+- **T1. Behaviour interface (4.1).** Which functions are required; what `event` returns; whether hints such as minimum size are in the descriptor.
+- **T2. Surfaces (5.2).** Pixel format; writing pixels directly or through lock and unlock; dirty rectangles.
+- **T3. Backend and GPU (5.3, 5.4).** SDL 2D renderer or SDL_GPU; GPU-renderable surfaces; telling a window its surface was recreated.
+- **T4. Drawing plugin and SDL sharing (5.5, 9.8, 16.2).** Libraries for text and images in plugins; static or dynamic SDL; built-in binding plugins.
+- **T5. Threading (3.2).** Background work mechanism; list of thread-safe functions; native plugin threads.
+- **T6. Exported names and naming (1.1, 9.4, 10.9).** Exact names native plugins export; how plugins name what they register; the project owner's naming conventions.
+- **T7. Services (10.2, 10.4, 10.6).** Final type list; parameter limit; callbacks; buffer lifetime; Lua functions as native pointers.
+- **T8. Lua (11.2, 14.3).** One state or one per plugin; error convention for the Lua API.
+- **T9. File formats and locations (9.2, 12.4, 13.1).** Exact fields of manifests, presets and sessions; version syntax; settings types; file names and directories; the command-line interface.
+- **T10. Keys (7.3, 7.4).** Key representation; the reserved set and the core modifier; layouts that use Alt to type characters.
+- **T11. Focus (7.1) and layout (6.2, 6.4).** Focus details; minimum sizes; drop-zone band sizes.
+- **T12. Events (8.2, 8.3).** Subscriptions to events of windows a plugin does not own; whether handlers can refuse operations (overview Q2).
+- **T13. Errors (14.2 to 14.4).** Policy for failing windows; C error convention; logging.
+- **T14. Memory (15).** Shared allocator or not.
+- **T15. Build (16.4).** Build system, C standard, flags, how dependencies are obtained.
+- **T16. Settings (12.1, 12.4).** Type list; file names; location of the generated file.
+- **T17. Serialization (13.3).** C writer or embedded Lua writer; file format version.
+- **T18. Other platforms (18).** libffi and OS-window behaviour elsewhere.
 
-**Sandbox (restricted environment).** A running environment from which code cannot reach files, the operating system or other dangerous functionality.
+### 19.2 TODO
 
-**SDL3.** A cross-platform library for windows, input, graphics, audio and many system functions. SDL3_ttf adds text rendering, SDL3_image adds image loading, SDL3_mixer adds audio mixing, SDL3_net adds basic networking.
+- Verify assumptions about SDL3: whether renderer textures belong to one OS window and cannot be shared; which function gives a per-user directory on Linux and whether it is the data or the configuration directory; that desktop notifications are not offered; the functions for opening a shared library, looking up a symbol and running code on the main thread; GPU text support in SDL3_ttf.
+- Verify how libffi behaves in the chosen build setup, including creating callable pointers for Lua functions.
+- Receive and write down the naming conventions.
+- Decide each open question above, remove its **[Open]** tag and write the decision into the section.
+- Keep this document and the overview consistent whenever a decision is made.
 
-**Service.** A named group of functions a plugin offers to other plugins and scripts.
+---
 
-**Session.** The saved state of OpenECS: plugins in use, workspaces, windows and their states.
+## Appendix A: Technical terms
 
-**Setting.** A named, typed value that configures the core or a plugin.
+**ABI (application binary interface).** The rules for how compiled code fits together: where each field of a structure sits in memory, how large each type is, how functions receive arguments. Compiled code that disagrees about the ABI breaks even though no compiler complained.
 
-**Shared library.** A compiled code file that a program can load while it is running (extension `.so` on Linux).
+**API (application programming interface).** The functions and types that one piece of code offers to another, as written in source code.
 
-**Signature.** A short description of the inputs and outputs of a function.
+**Buffer.** A pointer to memory together with its length.
 
-**Sleep.** A behaviour's request to pause its periodic work while it is not visible.
+**Callback.** A function passed to other code so that it can be called later.
 
-**Split.** A layout node that divides an area horizontally or vertically among its children.
+**Clay.** A layout library. It computes rectangles and produces drawing commands as data; it draws nothing itself.
 
-**Standard plugin.** A plugin that is expected to be generally useful, such as a 3D model loader, an audio plugin or a networking plugin. Not part of the core.
+**Context.** A table of function pointers that the core gives to a plugin, which is how a native plugin calls the core without linking against it.
 
-**Tab group.** A layout node holding an ordered row of tabs, one of which is active.
+**Destructor.** A function that releases an object when it is no longer needed.
 
-**Tiling.** Arranging windows side by side without overlap.
+**Dirty rectangle.** The part of a surface that changed and needs updating on screen.
 
-**Update.** The periodic work a window does, independent of drawing.
+**Environment (Lua).** The table of global names visible to a piece of Lua code. Giving code a restricted environment limits what it can see.
 
-**Window.** A rectangular area of OpenECS's layout whose contents are defined by a behaviour. Not the same as an OS window.
+**Frame.** One pass of the main loop that updates and draws.
 
-**Workspace.** A named arrangement of windows that can be switched to instantly.
+**Function pointer.** A value that holds the address of a function so it can be called through it.
+
+**Handle.** A token that stands for an object owned by someone else, so it can be passed around without exposing its structure.
+
+**Hit testing.** Finding which element is under a given point, such as the pointer.
+
+**Invariant.** A condition that must be true every time a piece of data is at rest, for example "no split has only one child".
+
+**libffi.** A library that calls a C function when only its description (signature) is known at run time.
+
+**Lua stack.** The area through which C code and Lua exchange values: C pushes values onto it and reads values from it.
+
+**Main thread.** The thread on which the program starts. Window and input calls and all Lua calls run there.
+
+**Manifest.** A description file of a plugin or preset: name, version, interface version, dependencies.
+
+**Metatable (Lua).** A table that defines how a Lua value behaves. For handles it carries the type name.
+
+**Ownership.** The rule about which code is responsible for freeing an object.
+
+**Protected call (Lua).** A way to call Lua code so that an error is caught and returned instead of jumping out through the caller.
+
+**Registry (Lua).** A table Lua keeps for C code to store values it needs to keep alive.
+
+**Root.** The top of a layout tree; one per OS window.
+
+**Shared library.** A compiled code file that a program can load while it is running (`.so` on Linux).
+
+**Signature.** A description of a function's parameter and return types.
+
+**Struct (structure).** A group of named fields stored together in memory.
+
+**Submodule (git).** A way to include another repository, at a fixed version, inside a repository.
+
+**Surface.** A picture in memory that a window fills with pixels.
+
+**Symbol.** A name in a compiled file that other code can look up, such as the name of an exported function.
+
+**Topological order.** An ordering of items such that every item comes after the items it depends on.
+
+**Userdata (Lua).** A block of memory managed by Lua's garbage collector that holds data from C. Handles are represented this way.
