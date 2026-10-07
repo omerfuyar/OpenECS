@@ -17,8 +17,8 @@ Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 
 | Path               | What it holds                              |
 | ------------------ | ------------------------------------------ |
-| `include/`         | The plugin header.                         |
-| `src/`             | The core: one header and source file per module (DESIGN.md, section 1.5). |
+| `include/`         | Headers: the plugin header and the core's module headers (DESIGN.md, section 1.5). |
+| `src/`             | The core's source files.                   |
 | `plugins/`         | First-party plugins.                       |
 | `presets/`         | First-party presets.                       |
 | `dependencies/`    | Third-party git submodules.                |

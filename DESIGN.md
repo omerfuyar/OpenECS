@@ -80,8 +80,9 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 ### 1.5 Files
 
-- `include/OpenECS.h` is the one header that plugins include. It holds every public type and function, with documentation. `include/` holds nothing else.
-- The core's sources are in `src/`. Each module (2.1) is a pair of files there: a header with the module's declarations and their documentation, and a source file with the definitions. `src/main.c` holds start-up, the main loop and shutdown.
+- Headers are in `include/`, source files in `src/`.
+- `include/OpenECS.h` is the one header that plugins include. It holds every public type and function, with documentation. The build copies only this header to the build's `include/` folder, and plugins are built against that copy, so they never see the core's headers.
+- Each module (2.1) is a pair of files: `include/<Module>.h` with the module's declarations and their documentation, and `src/<Module>.c` with the definitions. `src/main.c` holds start-up, the main loop and shutdown.
 - A module includes only the modules listed before it in 2.1, so modules never depend on each other in a cycle.
 - Headers hold declarations only: types, function declarations and macros. Function and variable definitions, including `static inline` functions, are in source files.
 - Headers start with `#pragma once` and group their contents with `#pragma region`. A source file keeps its internal elements in a `Source Only` region.
