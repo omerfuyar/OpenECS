@@ -99,3 +99,16 @@ cd OpenECS/
 gcc shuild.c -o shuild.ignore -O3
 ./shuild.ignore R S
 ```
+
+Dependencies are built the first time only. To build one again, delete its library from `build/<LINK>/<TYPE>/lib/`.
+
+### Running
+
+The build puts the executable, the first-party plugins and presets in `build/<LINK>/<TYPE>/bin/`.
+
+``` shell
+./build/Static/Release/bin/OpenECS
+./build/Static/Release/bin/OpenECS --preset path/to/preset.lua
+```
+
+Press Alt+W to see the core's keys.

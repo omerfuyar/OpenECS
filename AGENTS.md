@@ -17,7 +17,10 @@ Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 
 | Path               | What it holds                              |
 | ------------------ | ------------------------------------------ |
-| `src/`, `include/` | The core's source code and public headers. |
+| `include/`         | The plugin header.                         |
+| `src/`             | The core, in layers (DESIGN.md, section 1.5).|
+| `plugins/`         | First-party plugins.                       |
+| `presets/`         | First-party presets.                       |
 | `dependencies/`    | Third-party git submodules.                |
 | `resources/`       | Files the program loads at run time.       |
 | `shuild.c`         | The build script (see README.md).          |

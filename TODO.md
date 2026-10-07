@@ -14,7 +14,8 @@ What is not decided yet, and work that is waiting. When an item is settled, writ
 
 ## Tasks
 
-- **Rendering prototype.** One GPU device for several OS windows, a 2D GPU renderer per window, a panel's GPU texture shown in any window, and an offscreen renderer drawing into that texture (DESIGN 5.3, 5.5).
+- **Implement the rest of DESIGN.md.** Not done yet: GPU surfaces, pop-out windows, docking by dragging, timers, events for plugins, services and libffi, Lua plugins, settings, saving sessions, popups, drag and drop of data, the unsaved-work question, and the first-party ui, settings and launcher plugins.
+- **Rendering prototype.** The main window draws with a 2D GPU renderer. Still to confirm: one GPU device for several OS windows, a panel's GPU texture shown in any window, and an offscreen renderer drawing into that texture (DESIGN 5.3, 5.5).
 - **libffi closure prototype.** Expose a Lua function as a typed C function pointer (DESIGN 10.4).
 - **Wayland test on Hyprland.** Dragging a panel out of its window, popups, and moving focus between OS windows (DESIGN 7.1, 7.2, 18).
 - **Pin submodules to release tags** (DESIGN 17.4). They point to development snapshots: SDL 3.5.0-dev, SDL_ttf 3.3.0-dev, Lua v5.5.1 plus 6 commits, Clay v0.14 plus 99 commits. The design needs SDL 3.4.0 or later.

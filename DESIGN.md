@@ -55,8 +55,10 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 | Struct field, parameter, local variable | camelCase                | `stateVersion`, `minWidth`                              |
 | Function pointer field                  | PascalCase               | `Create`, `Draw`, `SaveState`                           |
 | Output parameter                        | `ret` + name             | `retPanel`, `retTimer`                                  |
-| File                                    | lowercase                | `openecs.h`, `layout.c`                                 |
+| File                                    | PascalCase               | `OpenECS.h`, `Layout.c`                                 |
+| File-level state                        | one `static` struct, UPPER_CASE| `LAYOUT`, `RENDERER`                                    |
 
+- `main.c` and Lua files, such as `manifest.lua` and presets, keep lowercase names.
 - Lua names use snake_case: `ecs.panel.register_type`, `save_state`. The core's Lua names live under the global table `ecs`. The core's own settings, events and bindable functions start with `ecs.`, for example the setting `ecs.focus`.
 
 ### 1.3 Types and results
@@ -77,10 +79,20 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 ### 1.5 Files
 
-- `include/openecs.h` is the one header that plugins include. It holds every public type and function, with documentation.
-- Each core module (2.1) is a pair of files in `src/`: a header with the module's declarations and their documentation, and a source file with the definitions.
-- Headers start with `#pragma once` and group their contents with `#pragma region` (for example `Declarations` and `Definitions`).
-- Internal functions are `static` and use the `ECSI_` prefix.
+- `include/OpenECS.h` is the one header that plugins include. It holds every public type and function, with documentation.
+- The core's sources are in layers. A module uses modules of its own layer or of lower layers, never of a higher one, and modules of one layer do not depend on each other in a cycle.
+
+| Layer | Place | Holds |
+|---|---|---|
+| 0 | `src/Global.h`, `src/Global.c` | Definitions shared by every module. |
+| 1 | `src/tools/` | Wrappers of third-party libraries: Platform, Renderer, Lua. |
+| 2 | `src/systems/` | The core's machinery: Panels, Layout, Input, Events, Plugins, Services, Settings, Session. |
+| 3 | `src/main.c` | Start-up, the main loop and shutdown. |
+
+- Each module (2.1) is a pair of files: a header with the module's declarations and their documentation, and a source file with the definitions.
+- Headers start with `#pragma once` and group their contents with `#pragma region`. A source file keeps its internal elements in a `Source Only` region.
+- Functions used by only one source file are `static`.
+- First-party plugins are in `plugins/<name>/`, and first-party presets in `presets/`.
 
 ### 1.6 Style
 
@@ -97,6 +109,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Platform | OS windows, raw input, clipboard, dialogs, loading shared libraries. The only module that talks to the operating system. |
 | Renderer | Puts surfaces and the core's own interface on screen, behind a small interface (5.4).                                    |
+| Panels   | Panel types, panels, and the pixels each panel draws.                                                                    |
 | Layout   | Layout trees, workspaces, hit testing, docking. The only module that calls Clay.                                         |
 | Input    | Focus, pointer routing, key dispatch, text input.                                                                        |
 | Events   | Core and plugin events, the event queue, timers.                                                                         |
@@ -328,7 +341,8 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 6.8 Clay
 
-- Clay computes the rectangles, with one Clay context per OS window (`Clay_SetCurrentContext`).
+- The core computes the rectangles of the layout tree itself.
+- Clay lays out the core's own interface on top of them: tab rows, grips and the list of prefix keys. There is one Clay context per OS window (`Clay_SetCurrentContext`).
 
 ### 6.9 Maximize, pop-out and workspaces
 
@@ -462,6 +476,7 @@ typedef struct ECSPluginInfo
 const ECSPluginInfo *ECSPlugin_Main(void);
 ```
 
+- A plugin defines `ECSPlugin_Main` with `ECSPlugin_Define(Init, Shutdown)`, which also keeps the plugin's context for the wrapper functions.
 - The plugin header wraps every core function in a `static inline` function that calls through the context. So plugin code calls `ECSPanel_SetTitle(panel, "main.c")` like any other function.
 - Plugins are loaded with `SDL_LoadObject` and `SDL_LoadFunction`.
 
@@ -760,7 +775,7 @@ OpenECS follows the XDG Base Directory specification:
 | --------------------------- | ----------------------------------------------------- |
 | SDL3                        | core                                                  |
 | SDL3_ttf                    | core: text in the core's interface                    |
-| Clay                        | core: layout                                          |
+| Clay                        | core: the core's own interface                        |
 | Lua                         | core                                                  |
 | libffi                      | core: calls by signature                              |
 | shu                         | core: basic types, results, assertions                |
