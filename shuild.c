@@ -44,6 +44,7 @@ static void Shuild_SDL(void);
 static void Shuild_SDL_ttf(void);
 static void Shuild_lua(void);
 static void Shuild_clay(void);
+static void Shuild_stb(void);
 static void Shuild_libffi(void);
 static void Shuild_OpenECS(void);
 static void Shuild_Plugins(void);
@@ -79,6 +80,11 @@ int main(int argc, char **argv)
     if (!IsBuilt("ffi"))
     {
         Shuild_libffi();
+    }
+
+    if (!IsBuilt("stb"))
+    {
+        Shuild_stb();
     }
 
     Shuild_other();
@@ -296,6 +302,7 @@ static void Shuild_clay(void)
 
     SHU_ModuleAddSourceFile("../other/clay/clay.c");
 
+    // todo move copy after compile, fix system
     SHUI_String tempStr;
     SHUI_SFormat(&tempStr, "%sinclude/clay/", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
@@ -307,6 +314,22 @@ static void Shuild_clay(void)
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+}
+
+static void Shuild_stb(void)
+{
+    SHU_ModuleBegin("stb", "dependencies/other/stb");
+    SetBuildFlags(false);
+
+    SHU_ModuleAddSourceFile("stb.c");
+
+    SHUI_String tempStr;
+    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
+    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+
+    SHUI_SFormat(&tempStr, "%sinclude/stb/", OUTPUT_DIRECTORY.data);
+    SHU_UtilCreateDirectory(tempStr.data);
+    CopyFile("dependencies/stb/stb_ds.h", tempStr.data);
 }
 
 // todo maybe generate headers and compile manually

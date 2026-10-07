@@ -19,3 +19,6 @@
 [submodule "dependencies/libffi"]
 	path = dependencies/libffi
 	url = https://github.com/libffi/libffi
+[submodule "dependencies/stb"]
+	path = dependencies/stb
+	url = https://github.com/nothings/stb
