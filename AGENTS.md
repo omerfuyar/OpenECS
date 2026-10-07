@@ -24,7 +24,7 @@ Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 
 ## Current stage
 
-The project is being designed. Work on the documents. Do not write the implementation unless the owner asks.
+The implementation has started. Build it in small milestones, and keep DESIGN.md in step with the code.
 
 ## How to work with the owner
 
@@ -47,14 +47,19 @@ The project is being designed. Work on the documents. Do not write the implement
 
 - Changing anything that is marked as decided.
 - Adding a dependency.
-- Changing code, build files or submodules.
+- Changing submodules.
 
 **Never**
 
-- Commit or push, unless the owner tells you to.
-- Stage changes (`git add`). Leave them unstaged, so the owner sees them in the editor.
+- Push, unless the owner tells you to.
 - Edit anything under `dependencies/`.
 - Invent naming conventions. Follow DESIGN.md section 1.
+
+## Git
+
+- Commit each finished piece of work. Do not leave changes uncommitted.
+- Work on a branch: `feature/<feature>`, `fix/<bug>`, `refactor/<area>` or `docs/<area>`.
+- Commit messages have one line per change, starting with `-`. Details go on lines starting with `--`.
 
 ## Writing documents
 
