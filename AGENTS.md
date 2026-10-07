@@ -18,7 +18,7 @@ Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 | Path               | What it holds                              |
 | ------------------ | ------------------------------------------ |
 | `include/`         | The plugin header.                         |
-| `src/`             | The core, in layers (DESIGN.md, section 1.5).|
+| `src/`             | The core: one header and source file per module (DESIGN.md, section 1.5). |
 | `plugins/`         | First-party plugins.                       |
 | `presets/`         | First-party presets.                       |
 | `dependencies/`    | Third-party git submodules.                |
@@ -39,6 +39,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 6. **Do not be afraid** to delete things, to propose the opposite, or to change the design when it makes sense.
 7. **Examples are ideas, not constraints.** Think widely and long term.
 8. **Keep one source of truth.** When a decision is made, write it in the one place it belongs and remove it from TODO.md.
+9. **Recommend libraries.** When a trusted, widely used library would make development or maintenance easier, for example for strings or containers, recommend it. Check SDL first; it may already have what is needed.
 
 ## Boundaries
 
@@ -56,7 +57,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 
 - Push, unless the owner tells you to.
 - Edit anything under `dependencies/`.
-- Invent naming conventions. Follow DESIGN.md section 1.
+- Break or invent code conventions. Follow DESIGN.md section 1.
 
 ## Git
 
