@@ -57,7 +57,7 @@ None of these is part of OpenECS. Each is a set of plugins plus a preset: a file
 
 ## 3. The user's view
 
-1. The user starts a tool, for example "Paint" from the desktop's application menu. This runs OpenECS with the paint preset. **Proposed:** started without a preset, OpenECS shows a launcher that lists presets and saved sessions.
+1. The user starts a tool, for example "Paint" from the desktop's application menu. This runs OpenECS with the paint preset. Started without a preset, OpenECS shows a launcher that lists presets and saved sessions.
 2. OpenECS loads the preset's plugins and the plugins they depend on.
 3. If the user used this tool before, OpenECS restores the arrangement from last time. Otherwise it builds the arrangement the preset describes.
 4. The window is divided into **panels**: a canvas, a colour palette, a layer list. Panels grouped in the same place show a **tab row**; a panel on its own shows none.
@@ -116,8 +116,8 @@ Some plugins are made and shipped together with OpenECS because the product need
 
 - **sdl:** built into the executable. Gives native plugins access to SDL, the platform library (section 6).
 - **ui:** drawing (shapes, text, images) and user-interface elements, offered as a service to other plugins.
-- **settings:** the settings window, built on **ui**. **Proposed:** written in Lua, which also proves that Lua plugins can do what C plugins can.
-- **launcher** (**Proposed**): picks a preset or session when OpenECS starts without one.
+- **settings:** the settings window, built on **ui**. It is written in Lua, which also proves that Lua plugins can do what C plugins can.
+- **launcher:** picks a preset or session when OpenECS starts without one.
 
 **Proposed:** plugins for specific domains, such as glTF models, audio or networking, are not first-party. They live in their own repositories.
 
@@ -129,8 +129,8 @@ OpenECS targets Linux only.
 
 - **Security.** There is no permission system and no protection against malicious plugins or files.
 - **Accessibility.**
-- **Look and feel.** **Proposed:** a theme is a few core settings (colours, font, sizes) that the core's interface uses and plugins can read. The core has no animations.
-- **Undo and redo.** **Proposed:** each panel or plugin keeps its own history and binds its own keys; the core keeps no global history. The core can reopen a recently closed panel, because it keeps the closed panel's saved state.
+- **Look and feel.** A theme is a few core settings (colours, font, sizes) that the core's interface uses and plugins can read. The core has no animations.
+- **Undo and redo.** Each panel or plugin keeps its own history and binds its own keys; the core keeps no global history. The core can reopen a recently closed panel, because it keeps the closed panel's saved state.
 - **Not in the design:** automatic saving while OpenECS runs, crash recovery, enabling or disabling plugins while OpenECS runs, a library version of OpenECS, and other operating systems.
 
 ## 5. Vocabulary
@@ -257,7 +257,7 @@ A panel type can declare a **minimum size**. Splits never make a panel smaller t
 - A group with one panel shows no tab row.
 - Dropping a panel onto the centre of another panel groups them, and the tab row appears. When a group is left with one panel, the tab row disappears.
 - When the pointer comes near the top edge of a panel that has no tab row, the core shows a small **grip** at the top centre of the panel. Dragging the grip moves the panel; clicking it opens the panel's menu.
-- **Proposed:** tabs can be reordered by dragging, and a long tab row scrolls. A tab shows the panel's title, a mark for unsaved work and a close button.
+- Tabs can be reordered by dragging, and a long tab row scrolls. A tab shows the panel's title, a mark for unsaved work and a close button.
 
 ### 8.3 Operations are plain functions
 
@@ -279,7 +279,7 @@ On Wayland, the display system decides where a new OS window appears. A menu ent
 
 ### 8.5 Panels opened by code
 
-When a plugin opens a panel, for example when a file browser asks the text plugin to open a file, the panel goes to a predictable place. The caller can name a different place. **Proposed:** by default, the panel joins the group of the most recently focused panel of the same type; if there is none, it joins the focused group.
+When a plugin opens a panel, for example when a file browser asks the text plugin to open a file, the panel goes to a predictable place. The caller can name a different place. By default, the panel joins the group of the most recently focused panel of the same type; if there is none, it joins the focused group.
 
 ### 8.6 Maximize, pop-out and workspaces
 
@@ -293,7 +293,7 @@ A preset can lock parts of the layout, for example a toolbar or a 3D view that m
 
 ### 8.8 Menus
 
-**Proposed:** a panel's menu, opened from its tab or grip, has the core's entries (close, maximize, pop out, split, move to workspace) plus entries that the panel's type adds for its own panels. Inside its own area, a panel shows its own menus with popups.
+A panel's menu, opened from its tab or grip, has the core's entries (close, maximize, pop out, split, move to workspace) plus entries that the panel's type adds for its own panels. Inside its own area, a panel shows its own menus with popups.
 
 ## 9. Keys and focus
 
@@ -308,7 +308,7 @@ Keys can also move focus to a neighbouring panel.
 
 Pointer events always go to the panel under the pointer, whatever has focus. During a drag, they keep going to the panel where the drag started.
 
-**Proposed:** the default is *click*. In hover mode, only real pointer movement changes focus, not a layout change under a still pointer.
+The default is *click*. In hover mode, only real pointer movement changes focus, not a layout change under a still pointer.
 
 ### 9.2 Keybindings are settings
 
@@ -364,8 +364,8 @@ A plugin's power depends on what it touches:
 
 - **Input:** a plugin receives input and binds keys only for its own panels.
 - **Panel state:** only a panel's own plugin can see or change it.
-- **Layout:** any plugin may open, move, focus or close any panel. The arrangement belongs to the user, not to one plugin, and closing still asks about unsaved work. **Proposed:** any plugin may also observe layout events.
-- **Names (Proposed):** everything a plugin registers starts with the plugin's name, such as `canvas.new` or `canvas.grid`, so names cannot collide.
+- **Layout:** any plugin may open, move, focus or close any panel. The arrangement belongs to the user, not to one plugin, and closing still asks about unsaved work. Any plugin may also observe layout events.
+- **Names:** everything a plugin registers starts with the plugin's name, such as `canvas.new` or `canvas.grid`, so names cannot collide.
 
 This is not a security boundary. Its purpose is to stop plugins from getting in each other's way by accident. Native plugins run with full access to the program.
 
@@ -381,12 +381,12 @@ A panel shows data, but it does not have to own it. Data that several panels sha
 
 To make this work:
 
-- **Plugin events.** A plugin can declare its own events, such as `canvas.selection_changed`, and send them. Other plugins subscribe to them.
+- **Plugin events.** A plugin can declare its own events, such as `canvas.selectionChanged`, and send them. Other plugins subscribe to them.
 - **Plugin state.** A plugin, not only a panel, can save state into the session. When a session is loaded, plugin state is restored before panels, so panels find their data.
 
 ### 11.3 Drag and drop of data
 
-A panel can start dragging data, labelled with a type such as `file-list` or `color`. Panels say which types they accept. The core highlights the panels that accept the dragged type and delivers the data to the one it is dropped on. Files and text dropped from other applications arrive the same way.
+A panel can start dragging data, labelled with a type such as `fileList` or `color`. Panels say which types they accept. The core highlights the panels that accept the dragged type and delivers the data to the one it is dropped on. Files and text dropped from other applications arrive the same way.
 
 ## 12. Presets, sessions and settings
 
@@ -430,12 +430,10 @@ The user's hand-edited file is the top layer, and the core never rewrites it, so
 
 - Settings have types, so a wrong value in a hand-edited file produces a clear message.
 - Settings of plugins that are not loaded are kept, not removed.
-- **Proposed:** the user's files can hold settings for every tool and, in a separate section, settings for one tool only.
-- **Proposed:** the user's settings can name extra plugins to load in every tool, for example the user's own Lua scripts.
+- The user's files can hold settings for every tool and, in a separate section, settings for one tool only.
+- The user's settings can name extra plugins to load in every tool, for example the user's own Lua scripts.
 
 ## 13. Operating-system integration
-
-**Proposed:**
 
 - The core provides the clipboard (text and other typed data), drag and drop with other applications, file open and save dialogs, and message dialogs.
 - Plugins provide a system tray icon and desktop notifications.

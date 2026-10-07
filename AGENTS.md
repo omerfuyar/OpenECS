@@ -55,7 +55,7 @@ The project is being designed. Work on the documents. Do not write the implement
 - Commit or push, unless the owner tells you to.
 - Stage changes (`git add`). Leave them unstaged, so the owner sees them in the editor.
 - Edit anything under `dependencies/`.
-- Invent naming conventions. The owner provides them (DESIGN.md, section 1).
+- Invent your own code style. Follow DESIGN.md, section 1, which comes from the owner's own projects. Commit messages follow DESIGN.md, section 18.3.
 
 ## Writing documents
 
@@ -63,7 +63,7 @@ The project is being designed. Work on the documents. Do not write the implement
 - Explain every term where it first appears, and add it to that document's glossary.
 - No roadmaps, phases or schedules.
 - Product decisions go in OVERVIEW.md, technical decisions in DESIGN.md, and everything undecided or pending in TODO.md.
-- Mark what still waits for the owner. OVERVIEW.md marks it with **Proposed**; DESIGN.md tags statements **[Decided]** or **[Proposed]**.
+- Everything written in OVERVIEW.md and DESIGN.md is decided. Mark only what still waits for the owner: **Proposed** in OVERVIEW.md, **[Proposed]** in DESIGN.md, and list it in TODO.md.
 - Use short sentences and plain words:
   - Good: "A group with one panel shows no tab row."
   - Bad: "It should be noted that, in cases where a group contains only a single panel, the tab row is not displayed."
