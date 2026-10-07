@@ -1,0 +1,3 @@
+-std=c23
+-Iinclude
+-Ibuild/Static/Debug/include

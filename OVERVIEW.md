@@ -107,11 +107,7 @@ OpenECS targets Linux only for now.
 +--------------------------------------------------------------+
 |  Core logic: layout, workspaces, input, events, services,    |
 |  settings, presets and sessions, plugin loading              |
-+------------------------------+-------------------------------+
-|  Renderer                    |  Platform layer               |
-|  (shows surfaces and the     |  (OS windows, input,          |
-|   core's own interface)      |   clipboard, dialogs)         |
-+------------------------------+-------------------------------+
++--------------------------------------------------------------+
 |  Libraries: SDL3, SDL3_ttf, Clay, Lua, libffi                |
 +--------------------------------------------------------------+
 ```
@@ -364,14 +360,13 @@ The user's hand-edited file is the top layer, and the core never rewrites it, so
 4. **One front door.** Plugins reach the core only through the plugin API. The core checks its rules when something is used, not only when it is registered.
 5. **Small, uniform API.** Few concepts, used the same way everywhere.
 6. **Hide dependencies.** Plugins never get SDL, Lua, Clay or libffi from the API, so these can change without breaking plugins.
-7. **Design for replacement.** Parts likely to change, such as the renderer, sit behind small interfaces.
-8. **Least authority.** A plugin can do only what its job needs (section 8.4). Presets and the user can do more, because they assemble the tool.
-9. **The user decides.** The user's settings and keybindings win, the core's keys are always reachable, and no plugin can block closing.
-10. **Panels are views.** Shared data lives in services, not inside panels.
-11. **Nothing runs without a reason.** Code runs because of input, timers, visible animation or finished background work, never by polling.
-12. **Do not lose what is not understood.** Unknown settings, missing panel types and unreadable state are kept.
-13. **Errors stay local.** A broken script or panel affects only itself.
-14. **The core's own tools are plugins.** Rich windows, such as the settings window, are built on the plugin API, which proves that the API is complete.
+7. **Least authority.** A plugin can do only what its job needs (section 8.4). Presets and the user can do more, because they assemble the tool.
+8. **The user decides.** The user's settings and keybindings win, the core's keys are always reachable, and no plugin can block closing.
+9. **Panels are views.** Shared data lives in services, not inside panels.
+10. **Nothing runs without a reason.** Code runs because of input, timers, visible animation or finished background work, never by polling.
+11. **Do not lose what is not understood.** Unknown settings, missing panel types and unreadable state are kept.
+12. **Errors stay local.** A broken script or panel affects only itself.
+13. **The core's own tools are plugins.** Rich windows, such as the settings window, are built on the plugin API, which proves that the API is complete.
 
 ## Glossary
 
@@ -438,8 +433,6 @@ The user's hand-edited file is the top layer, and the core never rewrites it, so
 **Preset.** A hand-written file that describes a tool.
 
 **Register.** To tell OpenECS, by calling one of its functions, that something exists.
-
-**Renderer.** The replaceable part of the core that puts surfaces and the core's own interface on screen.
 
 **Scale.** How many screen pixels make one unit of the layout.
 

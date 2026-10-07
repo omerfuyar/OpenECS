@@ -26,24 +26,29 @@ static const char *const _BUILD_TYPE_STRINGS[] = {"Debug", "Release", "RelWithDe
 static const char *const _LINK_TYPE_STRINGS[] = {"", "Static", "Dynamic"};
 #define LinkType_String(linkType) _LINK_TYPE_STRINGS[(linkType)]
 
-BuildType BUILD_TYPE = BuildType_Debug;
-SHUModuleType LINK_TYPE = SHUModuleType_LibraryStatic;
+static BuildType BUILD_TYPE = BuildType_Debug;
+static SHUModuleType LINK_TYPE = SHUModuleType_LibraryStatic;
 
-SHUI_String BUILD_DIRECTORY = {0};
-SHUI_String OUTPUT_DIRECTORY = {0};
+static SHUI_String BUILD_DIRECTORY = {0};
+static SHUI_String OUTPUT_DIRECTORY = {0};
+
+static const char *const PLUGINS[] = {"demo"};
 
 #pragma endregion Setup
 
 static void SetupConfiguration(int argc, char **argv);
 static void SetBuildFlags(bool warnings);
+static bool IsBuilt(const char *library);
 
 static void Shuild_SDL(void);
 static void Shuild_SDL_ttf(void);
 static void Shuild_lua(void);
 static void Shuild_clay(void);
+static void Shuild_stb(void);
 static void Shuild_libffi(void);
-static void Shuild_other(void);
 static void Shuild_OpenECS(void);
+static void Shuild_Plugins(void);
+static void Shuild_other(void);
 
 int main(int argc, char **argv)
 {
@@ -51,13 +56,40 @@ int main(int argc, char **argv)
     SHU_UtilAutomate(argc, argv);
     SetupConfiguration(argc, argv);
 
-    Shuild_SDL();
-    Shuild_SDL_ttf();
-    Shuild_lua();
-    Shuild_clay();
-    Shuild_libffi();
+    // dependencies are built only once
+    if (!IsBuilt("SDL3"))
+    {
+        Shuild_SDL();
+    }
+
+    if (!IsBuilt("SDL3_ttf"))
+    {
+        Shuild_SDL_ttf();
+    }
+
+    if (!IsBuilt("lua"))
+    {
+        Shuild_lua();
+    }
+
+    if (!IsBuilt("clay"))
+    {
+        Shuild_clay();
+    }
+
+    if (!IsBuilt("ffi"))
+    {
+        Shuild_libffi();
+    }
+
+    if (!IsBuilt("stb"))
+    {
+        Shuild_stb();
+    }
+
     Shuild_other();
     Shuild_OpenECS();
+    Shuild_Plugins();
 
     return 0;
 }
@@ -125,6 +157,7 @@ static void SetupConfiguration(int argc, char **argv)
 static void SetBuildFlags(bool warnings)
 {
     SHU_CompilerClearFlags();
+    SHU_CompilerAddFlags(SHUM_FLAGS_STANDARD_C23);
 
     switch (BUILD_TYPE)
     {
@@ -155,6 +188,13 @@ static void SetBuildFlags(bool warnings)
     }
 }
 
+static bool IsBuilt(const char *library)
+{
+    SHUI_String path;
+    SHUI_SFormat(&path, "%slib/lib%s.%s", OUTPUT_DIRECTORY.data, library, LINK_TYPE == SHUModuleType_LibraryDynamic ? "so" : "a");
+    return SHU_UtilFileExists(path.data) == SHUFileType_Regular;
+}
+
 static void Shuild_SDL(void)
 {
     SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'SDL3'") "...");
@@ -166,8 +206,8 @@ static void Shuild_SDL(void)
     SHUI_String sourceDir;
     SHUI_String buildDir;
     SHUI_String outputPrefixDir;
-    SHUI_SFormat(&sourceDir, "%sdependencies/SDL", root);
-    SHUI_SFormat(&buildDir, "%s%sSDL3", root, BUILD_DIRECTORY.data);
+    SHUI_SFormat(&sourceDir, "%sdependencies/SDL/", root);
+    SHUI_SFormat(&buildDir, "%s%sSDL3/", root, BUILD_DIRECTORY.data);
     SHUI_SFormat(&outputPrefixDir, "%s%s", root, OUTPUT_DIRECTORY.data);
 
     SHU_UtilRun(
@@ -244,14 +284,14 @@ static void Shuild_lua(void)
     SHU_ModuleAddSourceFile("onelua.c");
 
     SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%sinclude/lua", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sinclude/lua/", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/lua/lua.h", tempStr.data);
     CopyFile("dependencies/lua/lauxlib.h", tempStr.data);
     CopyFile("dependencies/lua/lualib.h", tempStr.data);
     CopyFile("dependencies/lua/luaconf.h", tempStr.data);
 
-    SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, LINK_TYPE);
 }
 
@@ -262,8 +302,9 @@ static void Shuild_clay(void)
 
     SHU_ModuleAddSourceFile("../other/clay/clay.c");
 
+    // todo move copy after compile, fix system
     SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%sinclude/clay", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sinclude/clay/", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/clay/clay.h", tempStr.data);
     CopyFile("dependencies/other/clay/claySDL3.h", tempStr.data);
@@ -271,8 +312,24 @@ static void Shuild_clay(void)
     SHUI_SFormat(&tempStr, "../../%sinclude/", OUTPUT_DIRECTORY.data);
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
-    SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+}
+
+static void Shuild_stb(void)
+{
+    SHU_ModuleBegin("stb", "dependencies/other/stb");
+    SetBuildFlags(false);
+
+    SHU_ModuleAddSourceFile("stb.c");
+
+    SHUI_String tempStr;
+    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
+    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+
+    SHUI_SFormat(&tempStr, "%sinclude/stb/", OUTPUT_DIRECTORY.data);
+    SHU_UtilCreateDirectory(tempStr.data);
+    CopyFile("dependencies/stb/stb_ds.h", tempStr.data);
 }
 
 // todo maybe generate headers and compile manually
@@ -319,40 +376,79 @@ static void Shuild_libffi(void)
     SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'libffi'") "\n");
 }
 
-static void Shuild_other(void)
-{
-    SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%sinclude/shu", OUTPUT_DIRECTORY.data);
-    SHU_UtilCreateDirectory(tempStr.data);
-    CopyFile("dependencies/shu/shu.h", tempStr.data);
-
-    SHUI_SFormat(&tempStr, "%sbin/resources", OUTPUT_DIRECTORY.data);
-    SHU_UtilCreateDirectory(tempStr.data);
-    CopyFile("resources", tempStr.data);
-}
-
 static void Shuild_OpenECS(void)
 {
     SHU_ModuleBegin("OpenECS", NULL);
     SetBuildFlags(true);
 
+    // the executable exports only the plugin interface: the OPENECS_EXPORT functions, whose names start with ECS
+    SHU_CompilerAddFlags(" -fvisibility=hidden '-Wl,--export-dynamic-symbol=ECS*'");
+
     SHU_ModuleAddSourceFile("src/");
     SHU_ModuleAddIncludeDirectory("include/");
 
     SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%sinclude", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sinclude/", OUTPUT_DIRECTORY.data);
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
-    SHUI_SFormat(&tempStr, "%slib", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
     SHU_ModuleAddLibraryDirectory(tempStr.data);
 
-    SHU_ModuleLinkLibrary("m");
-    SHU_ModuleLinkLibrary("SDL3");
-    SHU_ModuleLinkLibrary("SDL3_ttf");
-    SHU_ModuleLinkLibrary("lua");
     SHU_ModuleLinkLibrary("clay");
+    SHU_ModuleLinkLibrary("SDL3_ttf");
+    SHU_ModuleLinkLibrary("SDL3");
+    SHU_ModuleLinkLibrary("lua");
     SHU_ModuleLinkLibrary("ffi");
+    SHU_ModuleLinkLibrary("m");
 
-    SHUI_SFormat(&tempStr, "%sbin", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sbin/", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_Executable);
+}
+
+static void Shuild_Plugins(void)
+{
+    for (usz i = 0; i < sizeof(PLUGINS) / sizeof(*PLUGINS); i++)
+    {
+        const char *currentPlugin = PLUGINS[i];
+
+        SHUI_String root;
+        SHUI_String output;
+        SHUI_String include;
+
+        SHUI_SFormat(&root, "plugins/%s/", currentPlugin);
+        SHUI_SFormat(&output, "%sbin/plugins/%s/", OUTPUT_DIRECTORY.data, currentPlugin);
+        SHUI_SFormat(&include, "../../%sinclude/", OUTPUT_DIRECTORY.data);
+
+        SHU_ModuleBegin(currentPlugin, root.data);
+        SetBuildFlags(true);
+        SHU_CompilerAddFlags(" -fvisibility=hidden");
+
+        // plugins see only the copied plugin header and the dependencies' headers, never the core's headers
+        SHU_ModuleAddSourceFile("./");
+        SHU_ModuleAddIncludeDirectory(include.data);
+        SHU_ModuleCompile(output.data, SHUModuleType_LibraryDynamic);
+
+        SHUI_String tempStr;
+        SHUI_SFormat(&tempStr, "plugins/%s/manifest.lua", currentPlugin);
+        CopyFile(tempStr.data, output.data);
+    }
+}
+
+static void Shuild_other(void)
+{
+    SHUI_String tempStr;
+    SHUI_SFormat(&tempStr, "%sinclude/shu/", OUTPUT_DIRECTORY.data);
+    SHU_UtilCreateDirectory(tempStr.data);
+    CopyFile("dependencies/shu/shu.h", tempStr.data);
+
+    SHUI_SFormat(&tempStr, "%sinclude/", OUTPUT_DIRECTORY.data);
+    CopyFile("include/OpenECS.h", tempStr.data);
+
+    SHUI_SFormat(&tempStr, "%sbin/", OUTPUT_DIRECTORY.data);
+
+    SHU_UtilCreateDirectory(tempStr.data);
+    CopyFile("resources/", tempStr.data);
+
+    SHU_UtilCreateDirectory(tempStr.data);
+    CopyFile("presets/", tempStr.data);
 }
