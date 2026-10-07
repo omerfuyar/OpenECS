@@ -256,7 +256,7 @@ A panel type can declare a **minimum size**. Splits never make a panel smaller t
 - A group with two or more panels shows a **tab row**. The user drags a tab to move its panel and right-clicks it for the panel's menu.
 - A group with one panel shows no tab row.
 - Dropping a panel onto the centre of another panel groups them, and the tab row appears. When a group is left with one panel, the tab row disappears.
-- **Proposed:** when the pointer comes near the top edge of a panel that has no tab row, the core shows a small **grip** at the top centre of the panel. Dragging the grip moves the panel; clicking it opens the panel's menu.
+- When the pointer comes near the top edge of a panel that has no tab row, the core shows a small **grip** at the top centre of the panel. Dragging the grip moves the panel; clicking it opens the panel's menu.
 - **Proposed:** tabs can be reordered by dragging, and a long tab row scrolls. A tab shows the panel's title, a mark for unsaved work and a close button.
 
 ### 8.3 Operations are plain functions
@@ -325,9 +325,11 @@ A key press that triggers a binding types no text.
 
 ### 9.4 The core's keys
 
-The core reserves a short, explicit, configurable list of key combinations, never a whole modifier key. Reserved keys are checked when the key is pressed, so they always win, even if the list changes while OpenECS runs.
+The core reserves one key combination, the **core prefix**. After it, one more key chooses a core action: arrows move focus, Shift+arrows move the panel, numbers switch workspace, and so on. While the core waits for that key, it shows the available keys; Escape cancels.
 
-**Proposed:** the list holds a single combination, the **core prefix** (default Ctrl+Alt+Space). After it, one more key chooses a core action: arrows move focus, Shift+arrows move the panel, numbers switch workspace, and so on. While the core waits for that key, it shows the available keys; Escape cancels. This takes only one combination away from plugins. It is the approach of tmux's prefix key, Vim's Ctrl+W window commands and VS Code's Ctrl+K chords. The user can also bind core actions to direct keys in their settings. This proposal changes the rule in 9.6.
+So the core takes only one combination away from plugins. tmux's prefix key, Vim's Ctrl+W window commands and VS Code's Ctrl+K chords work the same way. The prefix is checked when the key is pressed, so it always wins, even if it is changed while OpenECS runs. The prefix is a setting, and the user can also bind core actions to direct keys.
+
+The default prefix is **Alt+W**, "W" for window. It types no text, and GNOME, KDE, Omarchy and VS Code do not use it by default. Other short combinations are taken: Ctrl+Space is grabbed by the fcitx5 input method before applications see it, Alt+Space opens the window menu in GNOME and the launcher in KDE, and Ctrl+W, Ctrl+G and Ctrl+B are common editor shortcuts.
 
 ### 9.5 Keyboard layouts
 
@@ -337,7 +339,7 @@ Bindings follow what a key means on the user's layout, not where it sits: Ctrl+Z
 
 ### 9.6 Sequences
 
-The core handles only keys pressed together, not sequences of keys pressed one after another. A panel can implement sequences itself.
+Apart from the core prefix and the key after it, the core handles only keys pressed together. Longer sequences of keys pressed one after another are up to panels.
 
 ## 10. Plugins
 
@@ -483,7 +485,7 @@ SDL3_image is not needed, because SDL3 loads PNG files itself. Libraries such as
 
 **Core.** OpenECS without plugins.
 
-**Core prefix.** (Proposed) The one key combination reserved for the core. The key pressed after it chooses a core action.
+**Core prefix.** The one key combination reserved for the core. The key pressed after it chooses a core action.
 
 **Dependency.** Something that a piece of software needs in order to work.
 
@@ -499,7 +501,7 @@ SDL3_image is not needed, because SDL3 loads PNG files itself. Libraries such as
 
 **GPU.** The graphics card.
 
-**Grip.** (Proposed) A small handle that the core shows on a panel without a tab row, used to move the panel or open its menu.
+**Grip.** A small handle that the core shows on a panel without a tab row, used to move the panel or open its menu.
 
 **Group.** One or more panels that share one place in the layout; one of them is shown at a time.
 

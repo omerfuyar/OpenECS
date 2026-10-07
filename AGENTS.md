@@ -28,8 +28,8 @@ The project is being designed. Work on the documents. Do not write the implement
 
 ## How to work with the owner
 
-1. **Ask when unsure.** Do not assume; the project must not be misunderstood.
-2. **Discuss one decision at a time.** Explain the options and trade-offs, then recommend one.
+1. **Apply good solutions, then inform.** When research gives you a working, well-supported solution, write it into the documents as decided and tell the owner what you decided and why. Do not ask first.
+2. **Ask when it is really unsure,** or when it is a matter of the owner's taste. Then explain the options and trade-offs, recommend one, and raise one decision at a time. Do not assume; the project must not be misunderstood.
 3. **Research before proposing.** Check the facts in documentation, source code or on the web, and show the evidence.
 4. **Design first.** Focus on the design of the product, not on implementation, unless asked otherwise.
 5. **Correct the owner** when an idea would cause problems, and say why. Do not follow any idea blindly, including the owner's.
@@ -52,7 +52,8 @@ The project is being designed. Work on the documents. Do not write the implement
 
 **Never**
 
-- Commit or push. Stage your changes with `git add`, so the owner can review them with `git diff --cached`.
+- Commit or push, unless the owner tells you to.
+- Stage changes (`git add`). Leave them unstaged, so the owner sees them in the editor.
 - Edit anything under `dependencies/`.
 - Invent naming conventions. The owner provides them (DESIGN.md, section 1).
 
@@ -62,7 +63,7 @@ The project is being designed. Work on the documents. Do not write the implement
 - Explain every term where it first appears, and add it to that document's glossary.
 - No roadmaps, phases or schedules.
 - Product decisions go in OVERVIEW.md, technical decisions in DESIGN.md, and everything undecided or pending in TODO.md.
-- Never present a proposal as a decision. OVERVIEW.md marks proposals with **Proposed**; DESIGN.md tags statements **[Decided]** or **[Proposed]**.
+- Mark what still waits for the owner. OVERVIEW.md marks it with **Proposed**; DESIGN.md tags statements **[Decided]** or **[Proposed]**.
 - Use short sentences and plain words:
   - Good: "A group with one panel shows no tab row."
   - Bad: "It should be noted that, in cases where a group contains only a single panel, the tab row is not displayed."

@@ -53,18 +53,18 @@
 
 ### 2.1 Modules [Proposed]
 
-| Module | Job |
-|---|---|
+| Module   | Job                                                                                                                      |
+| -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Platform | OS windows, raw input, clipboard, dialogs, loading shared libraries. The only module that talks to the operating system. |
-| Renderer | Puts surfaces and the core's own interface on screen, behind a small interface (5.4). |
-| Layout | Layout trees, workspaces, hit testing, docking. The only module that calls Clay. |
-| Input | Focus, pointer routing, key dispatch, text input. |
-| Events | Core and plugin events, the event queue, timers. |
-| Plugins | Finding, ordering and loading plugins. |
-| Services | Function registry, signatures, calls between C and Lua. The only module that calls libffi. |
-| Lua | The Lua state. Runs all Lua code in protected calls. |
-| Settings | Declarations, layers, explanations. |
-| Session | Reading presets and sessions, applying them, writing them. |
+| Renderer | Puts surfaces and the core's own interface on screen, behind a small interface (5.4).                                    |
+| Layout   | Layout trees, workspaces, hit testing, docking. The only module that calls Clay.                                         |
+| Input    | Focus, pointer routing, key dispatch, text input.                                                                        |
+| Events   | Core and plugin events, the event queue, timers.                                                                         |
+| Plugins  | Finding, ordering and loading plugins.                                                                                   |
+| Services | Function registry, signatures, calls between C and Lua. The only module that calls libffi.                               |
+| Lua      | The Lua state. Runs all Lua code in protected calls.                                                                     |
+| Settings | Declarations, layers, explanations.                                                                                      |
+| Session  | Reading presets and sessions, applying them, writing them.                                                               |
 
 ### 2.2 The boundary [Decided]
 
@@ -182,7 +182,7 @@ typedef struct ECS_PanelTypeDesc {
 
 - **Popups.** A panel opens a popup anchored to a rectangle in its own area. A popup has its own surface, may extend past the panel and the OS window, and closes on Escape, on a click outside it, or when its panel closes.
   - [Proposed] Popups are SDL popup windows (`SDL_CreatePopupWindow`). SDL keeps them inside the display and hides them with their parent. Menus take keyboard focus; tooltips do not.
-- **Pointer.** A panel sets the pointer's shape while the pointer is over it: a system shape or an image. A focused panel can lock the pointer (relative mode, for 3D cameras). The lock ends when the panel loses focus. [Proposed] Pressing a reserved key also ends it.
+- **Pointer.** A panel sets the pointer's shape while the pointer is over it: a system shape or an image. A focused panel can lock the pointer (relative mode, for 3D cameras). The lock ends when the panel loses focus. [Proposed] Pressing the core prefix also ends it.
 - **Text input.** A panel says whether it accepts text and where its text cursor is. The core turns text input on for the focused panel and tells the input method where to show its window (`SDL_StartTextInput`, `SDL_SetTextInputArea`).
 
 ## 5. Surfaces and rendering
@@ -241,11 +241,11 @@ typedef struct ECS_Surface {
 - Each OS window is a **root**: the OS window, its layout tree, and its maximized group, if any.
 - Node kinds:
 
-| Kind | Holds |
-|---|---|
+| Kind  | Holds                                                                                                         |
+| ----- | ------------------------------------------------------------------------------------------------------------- |
 | Split | a direction; ordered children; for each child, a fixed size in layout units or a share of the remaining space |
-| Group | ordered panels; the panel shown; whether it is locked |
-| Panel | a panel |
+| Group | ordered panels; the panel shown; whether it is locked                                                         |
+| Panel | a panel                                                                                                       |
 
 - [Decided] Every panel is in a group, even when it is alone.
 - [Decided] Split children have a fixed size or a share. Groups can be locked.
@@ -270,7 +270,7 @@ After every operation:
 
 - [Decided] A group shows a tab row when it holds two or more panels. A group with one panel shows none.
 - [Decided] The user cannot move or close the panels of a locked group.
-- [Proposed] A panel without a tab row shows a grip at its top centre while the pointer is within a few pixels of its top edge. Dragging the grip moves the panel; clicking it opens the panel's menu. While the grip is shown, pointer events over it go to the core.
+- [Decided] A panel without a tab row shows a grip at its top centre while the pointer is within a few pixels of its top edge. Dragging the grip moves the panel; clicking it opens the panel's menu. While the grip is shown, pointer events over it go to the core.
 - [Proposed] Locked groups show no grip and accept no dropped panels.
 
 ### 6.5 Operations [Decided]
@@ -333,30 +333,33 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 When a key is pressed:
 
-1. The core's reserved keys (7.5) are checked first, at the moment of the key press. So a change to the reserved list while OpenECS runs can never hand reserved keys to plugins. A plugin binding that collides with a reserved key is not triggered and is reported.
+1. The core prefix (7.5) is checked first, at the moment of the key press. So changing the prefix while OpenECS runs can never hand it to plugins. A plugin binding that uses the prefix's combination is not triggered and is reported. After the prefix, the next key press goes to the core.
 2. Among the bindings whose scope is active (the focused panel, its panel type, the current workspace, the whole tool), the binding whose key was set in the highest settings layer wins (12.2). On a tie, the most specific scope wins.
 3. If nothing matches, the key goes to the focused panel as a raw key event.
 
 A key press that triggers a binding produces no text input event.
 
-### 7.5 Reserved keys
+### 7.5 The core prefix
 
-- [Decided] The core reserves a short, explicit list of key combinations, kept in a setting. It never reserves a whole modifier.
-- [Proposed] The list holds one combination, the **core prefix**, with the default `Ctrl+Alt+Space`. It types no text, and it avoids `Alt+Space`, which GNOME and KDE use. After the prefix, the next key runs a core action from the setting `ecs.prefix_keys`:
+- [Decided] The core reserves one key combination, the **core prefix**, kept in the setting `ecs.prefix`. It never reserves a whole modifier.
+- [Decided] After the prefix, the next key runs a core action from the setting `ecs.prefix_keys`. While the core waits for that key, it shows the available keys; Escape cancels. Presets and the user can add entries that run service functions.
+- [Decided] The prefix and the key after it are the only key sequence the core handles. Everything else is keys pressed together; longer sequences are up to panels.
+- [Decided] The default prefix is `Alt+W`. It types no text, and GNOME, KDE, Omarchy and VS Code do not use it by default. Other two-key choices are taken:
+  - `Ctrl+Space` is grabbed by the fcitx5 input method before applications see it. Omarchy hit this conflict with its own tmux prefix.
+  - `Alt+Space` is reserved by GNOME (window menu) and KDE (launcher).
+  - `Ctrl+W`, `Ctrl+G` and `Ctrl+B` are common editor shortcuts: close, go to line, toggle sidebar.
+- [Decided] The default `ecs.prefix_keys`:
 
-  | Key | Action |
-  |---|---|
-  | Arrows | Move focus |
+  | Key          | Action                 |
+  | ------------ | ---------------------- |
+  | Arrows       | Move focus             |
   | Shift+Arrows | Move the focused panel |
-  | 1 to 9 | Switch workspace |
-  | Tab | Show the next tab |
-  | M | Maximize or restore |
-  | P | Pop out |
-  | X | Close the panel |
-  | Escape | Cancel |
-
-  While waiting for the key, the core shows this list. Presets and the user can add entries that run service functions. This proposal makes the prefix the only key sequence in the core, which changes the decision below.
-- [Decided] The core handles only keys pressed together, not sequences.
+  | 1 to 9       | Switch workspace       |
+  | Tab          | Show the next tab      |
+  | M            | Maximize or restore    |
+  | P            | Pop out                |
+  | X            | Close the panel        |
+  | Escape       | Cancel                 |
 
 ### 7.6 Binding keys [Decided]
 
@@ -498,18 +501,18 @@ ecs.service.register("audio", {
 
 ### 10.2 Signature types [Proposed]
 
-| Type | Meaning |
-|---|---|
-| `void` | no value (return only) |
-| `bool` | true or false |
-| `int`, `int64` | whole numbers |
-| `float`, `double` | decimal numbers |
-| `string` | text ending in a zero byte |
-| `buffer` | a pointer and a length |
-| `handle<name>` | a typed handle (10.6) |
-| `value` | a generic value (10.3) |
-| `fn<signature>` | a function to call back |
-| `out <type>` | an output parameter; in Lua, an extra return value |
+| Type              | Meaning                                            |
+| ----------------- | -------------------------------------------------- |
+| `void`            | no value (return only)                             |
+| `bool`            | true or false                                      |
+| `int`, `int64`    | whole numbers                                      |
+| `float`, `double` | decimal numbers                                    |
+| `string`          | text ending in a zero byte                         |
+| `buffer`          | a pointer and a length                             |
+| `handle<name>`    | a typed handle (10.6)                              |
+| `value`           | a generic value (10.3)                             |
+| `fn<signature>`   | a function to call back                            |
+| `out <type>`      | an output parameter; in Lua, an extra return value |
 
 - [Decided] Callbacks and output parameters are supported.
 - Structures are passed as handles or buffers, never by value.
@@ -577,20 +580,20 @@ Every call from the core into Lua is a protected call. Lua reports errors by jum
 
 ### 11.5 The `ecs` table [Proposed]
 
-| Table | Contents |
-|---|---|
-| `ecs.panel` | panel types and panel functions |
-| `ecs.layout` | layout operations |
-| `ecs.workspace` | workspaces |
-| `ecs.input` | key bindings and focus |
-| `ecs.event` | declare, emit and subscribe |
-| `ecs.timer` | timers |
-| `ecs.service` | register and look up functions |
-| `ecs.settings` | declare, get, set, list and explain |
-| `ecs.session` | save and load |
-| `ecs.plugin` | information about plugins |
-| `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs |
-| `ecs.log` | logging |
+| Table                         | Contents                            |
+| ----------------------------- | ----------------------------------- |
+| `ecs.panel`                   | panel types and panel functions     |
+| `ecs.layout`                  | layout operations                   |
+| `ecs.workspace`               | workspaces                          |
+| `ecs.input`                   | key bindings and focus              |
+| `ecs.event`                   | declare, emit and subscribe         |
+| `ecs.timer`                   | timers                              |
+| `ecs.service`                 | register and look up functions      |
+| `ecs.settings`                | declare, get, set, list and explain |
+| `ecs.session`                 | save and load                       |
+| `ecs.plugin`                  | information about plugins           |
+| `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs               |
+| `ecs.log`                     | logging                             |
 
 ### 11.6 Parity
 
@@ -726,17 +729,17 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [FILE...]
 
 ### 14.2 Policies [Proposed]
 
-| Situation | What happens |
-|---|---|
-| Manifest unreadable or invalid | The plugin is skipped and reported, and so are its dependents. |
-| Missing dependency or version mismatch | The plugin and its dependents are skipped and reported. |
-| Dependency cycle | The plugins in the cycle are skipped and reported. |
-| Plugin API version mismatch | The plugin is refused before any of its code runs. |
-| `init` fails | The plugin is marked failed and its registrations are removed. |
-| Invalid registration (bad signature, bad or duplicate name, reserved key) | That registration is rejected and the error is returned to the plugin, which continues. |
-| A panel callback raises an error | The panel becomes a faulted placeholder that shows the error. Its menu has a "Restart" entry, which recreates the panel from its last saved state. |
-| A plugin callback (timer, event handler) raises an error | The error is reported. Repeats of the same error are counted, not reported again. |
-| Problems while restoring a session | See 13.3. |
+| Situation                                                                             | What happens                                                                                                                                       |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Manifest unreadable or invalid                                                        | The plugin is skipped and reported, and so are its dependents.                                                                                     |
+| Missing dependency or version mismatch                                                | The plugin and its dependents are skipped and reported.                                                                                            |
+| Dependency cycle                                                                      | The plugins in the cycle are skipped and reported.                                                                                                 |
+| Plugin API version mismatch                                                           | The plugin is refused before any of its code runs.                                                                                                 |
+| `init` fails                                                                          | The plugin is marked failed and its registrations are removed.                                                                                     |
+| Invalid registration (bad signature, bad or duplicate name, the core prefix as a key) | That registration is rejected and the error is returned to the plugin, which continues.                                                            |
+| A panel callback raises an error                                                      | The panel becomes a faulted placeholder that shows the error. Its menu has a "Restart" entry, which recreates the panel from its last saved state. |
+| A plugin callback (timer, event handler) raises an error                              | The error is reported. Repeats of the same error are counted, not reported again.                                                                  |
+| Problems while restoring a session                                                    | See 13.3.                                                                                                                                          |
 
 ### 14.3 Error convention [Proposed]
 
@@ -761,16 +764,16 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [FILE...]
 
 OpenECS follows the XDG Base Directory specification:
 
-| What | Where |
-|---|---|
-| The user's hand-edited settings | `$XDG_CONFIG_HOME/openecs/settings.lua` (default `~/.config`) |
-| The settings window's file | `$XDG_CONFIG_HOME/openecs/settings-window.lua` |
-| The user's presets | `$XDG_CONFIG_HOME/openecs/presets/` |
-| The user's plugins | `$XDG_DATA_HOME/openecs/plugins/` (default `~/.local/share`) |
-| Saved sessions (default folder) | `$XDG_DATA_HOME/openecs/sessions/` |
-| A tool's last session | `$XDG_STATE_HOME/openecs/<app id>/session.lua` (default `~/.local/state`) |
-| The log | `$XDG_STATE_HOME/openecs/openecs.log` |
-| First-party plugins and presets | `plugins/` and `presets/` next to the executable |
+| What                            | Where                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------- |
+| The user's hand-edited settings | `$XDG_CONFIG_HOME/openecs/settings.lua` (default `~/.config`)             |
+| The settings window's file      | `$XDG_CONFIG_HOME/openecs/settings-window.lua`                            |
+| The user's presets              | `$XDG_CONFIG_HOME/openecs/presets/`                                       |
+| The user's plugins              | `$XDG_DATA_HOME/openecs/plugins/` (default `~/.local/share`)              |
+| Saved sessions (default folder) | `$XDG_DATA_HOME/openecs/sessions/`                                        |
+| A tool's last session           | `$XDG_STATE_HOME/openecs/<app id>/session.lua` (default `~/.local/state`) |
+| The log                         | `$XDG_STATE_HOME/openecs/openecs.log`                                     |
+| First-party plugins and presets | `plugins/` and `presets/` next to the executable                          |
 
 - The specification names "layout, open files" as examples of what belongs in `$XDG_STATE_HOME`, which is exactly a tool's last session.
 - SDL has no function for these directories (`SDL_GetPrefPath` returns a data directory), so the core reads the XDG variables itself.
@@ -779,15 +782,15 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.1 Dependencies
 
-| Library | Status |
-|---|---|
-| SDL3 | [Decided] core |
-| SDL3_ttf | [Decided] core: text in the core's interface |
-| Clay | [Decided] core: layout; a git submodule |
-| Lua | [Decided] core |
-| libffi | [Decided] core: calls by signature; a git submodule |
-| SDL3_image | [Decided] not used: SDL 3.4 loads PNG files itself (`SDL_LoadPNG`) |
-| SDL3_mixer, SDL3_net, cgltf | [Decided] not core; plugins may use them |
+| Library                     | Status                                                             |
+| --------------------------- | ------------------------------------------------------------------ |
+| SDL3                        | [Decided] core                                                     |
+| SDL3_ttf                    | [Decided] core: text in the core's interface                       |
+| Clay                        | [Decided] core: layout; a git submodule                            |
+| Lua                         | [Decided] core                                                     |
+| libffi                      | [Decided] core: calls by signature; a git submodule                |
+| SDL3_image                  | [Decided] not used: SDL 3.4 loads PNG files itself (`SDL_LoadPNG`) |
+| SDL3_mixer, SDL3_net, cgltf | [Decided] not core; plugins may use them                           |
 
 ### 17.2 Linking [Proposed]
 

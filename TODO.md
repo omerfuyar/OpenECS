@@ -6,8 +6,6 @@ What is not decided yet, and work that is waiting. When an item is settled, writ
 
 Everything marked **Proposed** in OVERVIEW.md or **[Proposed]** in DESIGN.md waits for a decision. These are the ones that change how the product behaves:
 
-- **Core prefix key** (OVERVIEW 9.4, DESIGN 7.5). One reserved key combination, then one key for a core action. This changes the decided rule "no key sequences in the core".
-- **Grip** on panels that have no tab row (OVERVIEW 8.2, DESIGN 6.4).
 - **Focus details:** `click` as the default, and how hover mode behaves (OVERVIEW 9.1, DESIGN 7.1).
 - **Default place** for panels opened by code (OVERVIEW 8.5, DESIGN 6.6).
 - **Panel menus** (OVERVIEW 8.8) and **tab row details** (OVERVIEW 8.2).
