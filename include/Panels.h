@@ -15,6 +15,7 @@ typedef struct ECSI_PanelType
     char *name;
     char *title;
     ECSPlugin plugin;
+    void *typeData; // what the Bindings module keeps for a Lua panel type, or NULL
 } ECSI_PanelType;
 
 /// @brief A panel: one instance of a panel type, placed in the layout.
@@ -36,7 +37,20 @@ struct ECSI_Panel
     SDL_Texture *texture; // the pixels on the GPU, made by the renderer of the OS window that shows the panel
     u64 lastDrawTicks;
     bool closed; // out of the layout, waiting for ECSI_PanelsDestroyClosed; it gets no more events
+    char *fault; // the error of a callback, or NULL; a faulted panel shows it and its type is not called again, except Destroy
 };
+
+/// @brief Registers a panel type like ECSPanelType_Register, with data for the Bindings module.
+/// @param plugin The plugin that provides the panel type.
+/// @param desc Description of the panel type.
+/// @param typeData Kept in the type, or NULL.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_PanelTypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc, void *typeData);
+
+/// @brief Makes a panel faulted: it shows the error instead of its pixels, and its type is not called again, except Destroy. A panel keeps its first fault.
+/// @param panel The panel.
+/// @param message The error. The core copies it.
+void ECSI_PanelFault(ECSPanel panel, const char *message);
 
 /// @brief Destroys the closed panels, then frees every registered panel type. Call it after every other panel is destroyed.
 void ECSI_PanelsTerminate(void);

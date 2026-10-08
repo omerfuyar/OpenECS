@@ -53,7 +53,7 @@ static void ECSI_PanelDeliverEvent(void *target, const ECSEvent *event)
 {
     ECSPanel panel = target;
 
-    if (!panel->closed && panel->type != NULL && panel->type->desc.Event != NULL)
+    if (!panel->closed && panel->fault == NULL && panel->type != NULL && panel->type->desc.Event != NULL)
     {
         panel->type->desc.Event(panel->state, event);
     }
@@ -119,7 +119,9 @@ SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName, const ECSVa
 
         if (type->desc.Create(panel, panel->savedState, stateVersion, &panel->state))
         {
+            // the panel has no state to destroy, so it becomes a placeholder that keeps its saved state
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' failed to create a panel; showing a placeholder.", typeName);
+            ECSI_PanelFault(panel, "The panel type failed to create the panel.");
             panel->type = NULL;
             panel->state = NULL;
         }
@@ -148,6 +150,7 @@ void ECSI_PanelDestroy(ECSPanel *panel)
 
     SDL_DestroySurface(target->pixels);
     ECSI_ValueDestroy(&target->savedState);
+    SDL_free(target->fault);
     SDL_free(target->typeName);
     SDL_free(target->title);
     SDL_free(target);
@@ -203,7 +206,7 @@ SHUResult ECSI_PanelSave(ECSPanel panel, ECSValue *retPanel)
     u32 version = panel->stateVersion;
     ECSValue *saved = NULL;
 
-    if (panel->type != NULL && panel->type->desc.SaveState != NULL)
+    if (panel->fault == NULL && panel->type != NULL && panel->type->desc.SaveState != NULL)
     {
         SHU_ReturnResult(ECSI_ValueCreate(&saved));
 
@@ -256,7 +259,7 @@ bool ECSI_PanelWantsFrame(ECSPanel panel)
 {
     SDL_assert(panel != NULL);
 
-    return panel->needsDraw || (panel->type != NULL && panel->type->desc.continuous);
+    return panel->needsDraw || (panel->fault == NULL && panel->type != NULL && panel->type->desc.continuous);
 }
 
 void ECSI_PanelRender(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
@@ -264,8 +267,8 @@ void ECSI_PanelRender(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
     SDL_assert(panel != NULL);
     SDL_assert(renderer != NULL);
 
-    // placeholders have no pixels; the layout draws their text
-    if (panel->type == NULL || panel->type->desc.Draw == NULL || panel->width < 1.0f || panel->height < 1.0f)
+    // placeholders and faulted panels have no pixels; the layout draws their text
+    if (panel->type == NULL || panel->fault != NULL || panel->type->desc.Draw == NULL || panel->width < 1.0f || panel->height < 1.0f)
     {
         return;
     }
@@ -329,7 +332,24 @@ void ECSI_PanelPostEvent(ECSPanel panel, const ECSEvent *event)
     ECSI_EventsPost(ECSI_PanelDeliverEvent, panel, event);
 }
 
+void ECSI_PanelFault(ECSPanel panel, const char *message)
+{
+    SDL_assert(panel != NULL);
+    SDL_assert(message != NULL);
+
+    if (panel->fault == NULL)
+    {
+        panel->fault = SDL_strdup(message);
+        panel->needsDraw = true;
+    }
+}
+
 SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc)
+{
+    return ECSI_PanelTypeRegister(plugin, desc, NULL);
+}
+
+SHUResult ECSI_PanelTypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc, void *typeData)
 {
     SDL_assert(plugin != NULL);
     SDL_assert(desc != NULL);
@@ -371,7 +391,7 @@ SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc)
         return SHUResult_ErrAllocation;
     }
 
-    *type = (ECSI_PanelType){.desc = *desc, .name = name, .title = title, .plugin = plugin};
+    *type = (ECSI_PanelType){.desc = *desc, .name = name, .title = title, .plugin = plugin, .typeData = typeData};
     type->desc.name = name;
     type->desc.title = title;
     shput(PANELS.types, name, type);

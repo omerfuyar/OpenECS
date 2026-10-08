@@ -902,7 +902,7 @@ static void ECSI_LayoutDeclareGroup(ECSI_Node *group, void *userData)
 
     ECSPanel panel = group->panels[group->shown];
 
-    if (panel->type == NULL)
+    if (panel->type == NULL || panel->fault != NULL)
     {
         CLAY_AUTO_ID({
             .layout = {
@@ -916,8 +916,14 @@ static void ECSI_LayoutDeclareGroup(ECSI_Node *group, void *userData)
             .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {panel->x, panel->y}},
         })
         {
-            CLAY_TEXT(CLAY_STRING("Missing panel type"), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
+            Clay_String heading = panel->fault != NULL ? CLAY_STRING("Panel failed") : CLAY_STRING("Missing panel type");
+            CLAY_TEXT(heading, CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
             CLAY_TEXT(ECSI_LayoutClayText(panel->typeName), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE}));
+
+            if (panel->fault != NULL)
+            {
+                CLAY_TEXT(ECSI_LayoutClayText(panel->fault), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
+            }
         }
     }
 }
