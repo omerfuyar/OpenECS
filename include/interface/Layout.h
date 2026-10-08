@@ -6,9 +6,6 @@
 
 #pragma region Declarations
 
-/// @brief Height of a tab row.
-#define OPENECS_TAB_ROW_HEIGHT 26.0f
-
 /// @brief A node of a layout tree: a split or a group.
 typedef struct ECSINode ECSINode;
 
@@ -76,6 +73,14 @@ typedef void (*ECSILayoutForgetFunction)(void);
 /// @brief Sets the function that runs after the trees change, so the window forgets the nodes it points to.
 /// @param function The function, or NULL.
 void ECSILayout_SetForget(ECSILayoutForgetFunction function);
+
+/// @brief Declares the layout's settings: the tab row height, the divider width and how many closed panels can be reopened.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the core's settings file gives a setting no value, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSILayout_Initialize(void);
+
+/// @brief Gets the height of a tab row, from ecs.tab_row_height.
+/// @return The height in layout units.
+f32 ECSILayout_GetTabRowHeight(void);
 
 /// @brief Destroys every workspace, panel and node.
 void ECSILayout_Terminate(void);

@@ -110,17 +110,24 @@ static bool ECSISetting_Check(const ECSISetting *setting, const ECSValue *value)
     return false;
 }
 
+/// @brief Writes a choice setting's choices for a message, after a space; nothing for other settings.
+static void ECSISetting_WriteChoices(const ECSISetting *setting, SHUSlice text)
+{
+    SDL_strlcpy(text.data, "", text.size);
+
+    for (usz i = 0; i < arrlenu(setting->choices); i++)
+    {
+        SDL_strlcat(text.data, i == 0 ? " " : ", ", text.size);
+        SDL_strlcat(text.data, setting->choices[i], text.size);
+    }
+}
+
 /// @brief Reports a value of the wrong type for a setting.
 /// @param file The file that gave the value, or NULL if a plugin did.
 static void ECSISetting_ReportType(const ECSISetting *setting, const char *file)
 {
-    char choices[256] = "";
-
-    for (usz i = 0; i < arrlenu(setting->choices); i++)
-    {
-        SDL_strlcat(choices, i == 0 ? " " : ", ", sizeof(choices));
-        SDL_strlcat(choices, setting->choices[i], sizeof(choices));
-    }
+    char choices[256];
+    ECSISetting_WriteChoices(setting, cs(choices, sizeof(choices)));
 
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Setting '%s'%s%s%s must be %s%s; that value is ignored.", setting->name, file == NULL ? "" : " in '", file == NULL ? "" : file, file == NULL ? "" : "'", OPENECS_SETTING_TYPE_TEXTS[setting->type], choices);
 }
@@ -258,7 +265,9 @@ static SHUResult ECSISettings_Declare(ECSPlugin owner, const ECSSettingDesc *des
     {
         if (!ECSISetting_Check(setting, defaultValue))
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The default of setting '%s' must be %s.", desc->name, OPENECS_SETTING_TYPE_TEXTS[desc->type]);
+            char choices[256];
+            ECSISetting_WriteChoices(setting, cs(choices, sizeof(choices)));
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The default of setting '%s' must be %s%s.", desc->name, OPENECS_SETTING_TYPE_TEXTS[desc->type], choices);
             ECSISetting_Free(setting);
             return SHUResult_ErrBadData;
         }
@@ -414,10 +423,24 @@ static ECSISetting *ECSISettings_Find(const char *name)
 
 #pragma endregion Source Only
 
-SHUResult ECSISettings_Initialize(const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder)
+SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder)
 {
+    SDL_assert(corePath != NULL);
     SDL_assert(presetPath != NULL);
     SDL_assert(appId != NULL);
+
+    // the core's settings file is required: the core's settings have no other values
+    ECSValue *coreFile = NULL;
+    SHU_ReturnResult(ECSValue_Create(&coreFile));
+    SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[ECSISettingsLayer_Core]), ECSValue_Destroy(&coreFile););
+    ECSValue_SetTable(SETTINGS.layers[ECSISettingsLayer_Core]);
+    SETTINGS.paths[ECSISettingsLayer_Core] = SDL_strdup(corePath);
+
+    ECSISettingsFileReader reader = {.layer = SETTINGS.layers[ECSISettingsLayer_Core], .result = SHUResult_Ok};
+    reader.result = SETTINGS.paths[ECSISettingsLayer_Core] == NULL ? SHUResult_ErrAllocation : ECSILua_ReadData(corePath, coreFile);
+    ECSIValue_TableForEachField(reader.result ? NULL : coreFile, ECSISettings_ReadField, &reader);
+    ECSValue_Destroy(&coreFile);
+    SHU_ReturnResult(reader.result);
 
     SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[ECSISettingsLayer_Preset]));
     SHU_ReturnResult(ECSIValue_Copy(SETTINGS.layers[ECSISettingsLayer_Preset], presetSettings));
@@ -474,7 +497,23 @@ SHUResult ECSISettings_DeclareCore(const ECSSettingDesc *desc)
     SDL_assert(desc != NULL);
     SDL_assert(desc->name != NULL && SDL_strncmp(desc->name, "ecs.", 4) == 0);
 
-    return ECSISettings_Declare(NULL, desc, NULL);
+    const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[ECSISettingsLayer_Core], desc->name);
+
+    if (value == NULL)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The core's settings file '%s' has no value for '%s'.", SETTINGS.paths[ECSISettingsLayer_Core], desc->name);
+        return SHUResult_ErrBadData;
+    }
+
+    return ECSISettings_Declare(NULL, desc, value);
+}
+
+const ECSValue *ECSISettings_GetDefault(const char *name)
+{
+    SDL_assert(name != NULL);
+
+    ECSISetting *setting = ECSISettings_Find(name);
+    return setting == NULL ? NULL : setting->defaultValue;
 }
 
 void ECSISettings_RemovePlugin(ECSPlugin plugin)

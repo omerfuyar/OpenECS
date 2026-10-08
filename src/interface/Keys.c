@@ -9,38 +9,6 @@
 
 #pragma region Source Only
 
-/// @brief Default of the setting ecs.prefix.
-#define OPENECS_DEFAULT_PREFIX "Alt+W"
-
-/// @brief The default keys after the core prefix, with the functions they run. The setting ecs.prefix_keys adds to them and changes them.
-static const char *const OPENECS_PREFIX_KEYS[][2] = {
-    {"Left", "ecs.focus_left"},
-    {"Right", "ecs.focus_right"},
-    {"Up", "ecs.focus_up"},
-    {"Down", "ecs.focus_down"},
-    {"Shift+Left", "ecs.move_left"},
-    {"Shift+Right", "ecs.move_right"},
-    {"Shift+Up", "ecs.move_up"},
-    {"Shift+Down", "ecs.move_down"},
-    {"Tab", "ecs.next_tab"},
-    {"M", "ecs.maximize"},
-    {"X", "ecs.close"},
-    {"Shift+X", "ecs.close_group"},
-    {"L", "ecs.lock"},
-    {"1", "ecs.workspace_1"},
-    {"2", "ecs.workspace_2"},
-    {"3", "ecs.workspace_3"},
-    {"4", "ecs.workspace_4"},
-    {"5", "ecs.workspace_5"},
-    {"6", "ecs.workspace_6"},
-    {"7", "ecs.workspace_7"},
-    {"8", "ecs.workspace_8"},
-    {"9", "ecs.workspace_9"},
-    {"0", "ecs.workspace_10"},
-    {"T", "ecs.reopen"},
-    {"R", "ecs.restart"},
-};
-
 /// @brief A plugin's binding for its panel type. The key is the value of a key setting, so the user can change it.
 typedef struct ECSIPanelBinding
 {
@@ -92,9 +60,10 @@ static void ECSIKeys_ReadPrefix(void)
 
     KEYS.prefixDirty = false;
 
-    if (ECSIKeys_Parse(ECSValue_GetString(ECSSetting_Get("ecs.prefix"), OPENECS_DEFAULT_PREFIX), true, &KEYS.prefixKey, &KEYS.prefixModifiers))
+    // the default is checked when the setting is declared
+    if (ECSIKeys_Parse(ECSValue_GetString(ECSSetting_Get("ecs.prefix"), ""), true, &KEYS.prefixKey, &KEYS.prefixModifiers))
     {
-        SHUResult result = ECSIKeys_Parse(OPENECS_DEFAULT_PREFIX, true, &KEYS.prefixKey, &KEYS.prefixModifiers);
+        SHUResult result = ECSIKeys_Parse(ECSValue_GetString(ECSISettings_GetDefault("ecs.prefix"), ""), true, &KEYS.prefixKey, &KEYS.prefixModifiers);
         SDL_assert(result == SHUResult_Ok);
         (void)result;
     }
@@ -177,11 +146,8 @@ static void ECSIKeys_ReadPrefixKeys(void)
     KEYS.prefixKeysDirty = false;
     ECSIKeys_FreeBindings(&KEYS.prefixKeys);
 
-    for (usz i = 0; i < SDL_arraysize(OPENECS_PREFIX_KEYS); i++)
-    {
-        ECSIKeys_PutBinding(&KEYS.prefixKeys, OPENECS_PREFIX_KEYS[i][0], OPENECS_PREFIX_KEYS[i][1]);
-    }
-
+    // the value in effect adds to the core's default, so a layer above it changes keys without repeating the others
+    ECSIValue_TableForEachField(ECSISettings_GetDefault("ecs.prefix_keys"), ECSIKeys_AddPrefixKey, NULL);
     ECSIValue_TableForEachField(ECSSetting_Get("ecs.prefix_keys"), ECSIKeys_AddPrefixKey, NULL);
 }
 
@@ -263,6 +229,8 @@ SHUResult ECSIKeys_Parse(const char *text, bool report, u32 *retKey, u32 *retMod
     *retKey = SDLK_UNKNOWN;
     *retModifiers = ECSModifier_None;
 
+    // the parts before the key are modifiers, so a word that is neither makes the text invalid
+    usz keyParts = 0;
     char *save = NULL;
 
     for (char *part = SDL_strtok_r(copy, "+", &save); part != NULL; part = SDL_strtok_r(NULL, "+", &save))
@@ -286,12 +254,13 @@ SHUResult ECSIKeys_Parse(const char *text, bool report, u32 *retKey, u32 *retMod
         else
         {
             *retKey = SDL_GetKeyFromName(part);
+            keyParts++;
         }
     }
 
     SDL_free(copy);
 
-    if (*retKey == SDLK_UNKNOWN)
+    if (*retKey == SDLK_UNKNOWN || keyParts != 1)
     {
         if (report)
         {
@@ -310,7 +279,6 @@ SHUResult ECSIKeys_Initialize(void)
         .name = "ecs.prefix",
         .type = ECSSettingType_Key,
         .description = "The key combination before a core action",
-        .defaultString = OPENECS_DEFAULT_PREFIX,
         .Changed = ECSIKeys_SettingChanged,
         .data = &KEYS.prefixDirty,
     };
@@ -325,6 +293,11 @@ SHUResult ECSIKeys_Initialize(void)
 
     SHU_ReturnResult(ECSISettings_DeclareCore(&prefix));
     SHU_ReturnResult(ECSISettings_DeclareCore(&prefixKeys));
+
+    // a prefix that cannot be read falls back to the default, so the default must be a key combination
+    u32 key = 0;
+    u32 modifiers = 0;
+    SHU_ReturnResult(ECSIKeys_Parse(ECSValue_GetString(ECSISettings_GetDefault("ecs.prefix"), ""), true, &key, &modifiers));
 
     KEYS.prefixDirty = true;
     KEYS.prefixKeysDirty = true;
@@ -443,7 +416,7 @@ char *ECSIKeys_PrefixTextOf(const char *function)
 {
     SDL_assert(function != NULL);
 
-    const char *prefix = ECSValue_GetString(ECSSetting_Get("ecs.prefix"), OPENECS_DEFAULT_PREFIX);
+    const char *prefix = ECSValue_GetString(ECSSetting_Get("ecs.prefix"), "");
     const ECSIKeyBinding *keys = ECSIKeys_GetPrefixKeys();
     char *text = NULL;
 

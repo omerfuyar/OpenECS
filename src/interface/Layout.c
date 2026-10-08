@@ -2,16 +2,13 @@
 
 #include "runtime/Events.h"
 #include "runtime/Plugins.h"
+#include "runtime/Settings.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
 
 #pragma region Source Only
 
-/// @brief Gap between the children of a split; dragging it resizes them.
-#define OPENECS_DIVIDER_SIZE 4.0f
-/// @brief How many closed panels ecs.reopen remembers.
-#define OPENECS_REOPEN_LIMIT 20
 /// @brief Smallest size a divider drag leaves to a child.
 #define OPENECS_MIN_CHILD_SIZE 32.0f
 
@@ -38,6 +35,11 @@ static struct
     ECSIClosedPanel *closed; // stb_ds array of the panels ecs.reopen can open again, the last closed last
     bool frameNeeded;
     ECSILayoutForgetFunction Forget; // the window's, or NULL
+
+    // from the settings
+    f32 tabRowHeight;
+    f32 dividerSize; // gap between the children of a split; dragging it resizes them
+    i64 reopenLimit; // how many closed panels ecs.reopen remembers
 } LAYOUT = {0};
 
 static ECSIWorkspace *ECSILayout_Current(void)
@@ -60,7 +62,7 @@ static void ECSILayout_Place(ECSINode *node, f32 x, f32 y, f32 width, f32 height
 
     if (node->type == ECSINodeType_Group)
     {
-        f32 top = arrlenu(node->panels) >= 2 ? OPENECS_TAB_ROW_HEIGHT : 0.0f;
+        f32 top = arrlenu(node->panels) >= 2 ? LAYOUT.tabRowHeight : 0.0f;
 
         if (arrlenu(node->panels) > 0)
         {
@@ -71,7 +73,7 @@ static void ECSILayout_Place(ECSINode *node, f32 x, f32 y, f32 width, f32 height
     }
 
     f32 total = node->vertical ? height : width;
-    f32 available = total - OPENECS_DIVIDER_SIZE * (f32)(arrlenu(node->children) - 1);
+    f32 available = total - LAYOUT.dividerSize * (f32)(arrlenu(node->children) - 1);
     f32 fixedSum = 0.0f;
     f32 shareSum = 0.0f;
 
@@ -110,7 +112,7 @@ static void ECSILayout_Place(ECSINode *node, f32 x, f32 y, f32 width, f32 height
             ECSILayout_Place(child, position, y, size, height);
         }
 
-        position += size + OPENECS_DIVIDER_SIZE;
+        position += size + LAYOUT.dividerSize;
     }
 }
 
@@ -731,8 +733,8 @@ static void ECSILayout_FindDivider(ECSINode *node, ECSIDividerHit *hit)
     {
         ECSINode *child = node->children[i];
         bool over = node->vertical
-                        ? ECSILayout_Contains(hit->x, hit->y, node->x, child->y + child->height, node->width, OPENECS_DIVIDER_SIZE)
-                        : ECSILayout_Contains(hit->x, hit->y, child->x + child->width, node->y, OPENECS_DIVIDER_SIZE, node->height);
+                        ? ECSILayout_Contains(hit->x, hit->y, node->x, child->y + child->height, node->width, LAYOUT.dividerSize)
+                        : ECSILayout_Contains(hit->x, hit->y, child->x + child->width, node->y, LAYOUT.dividerSize, node->height);
 
         if (over)
         {
@@ -916,7 +918,39 @@ static void ECSILayout_CollectPanels(const ECSINode *node, ECSPanel **panels)
 
 #pragma endregion Saving
 
+/// @brief Reads the layout's settings; a negative value counts as 0. Also their Changed function.
+static void ECSILayout_ReadSettings(void *data)
+{
+    (void)data;
+    LAYOUT.tabRowHeight = (f32)SDL_max(0.0, ECSValue_GetNumber(ECSSetting_Get("ecs.tab_row_height"), 0.0));
+    LAYOUT.dividerSize = (f32)SDL_max(0.0, ECSValue_GetNumber(ECSSetting_Get("ecs.divider_size"), 0.0));
+    LAYOUT.reopenLimit = SDL_max(0, ECSValue_GetInteger(ECSSetting_Get("ecs.reopen_limit"), 0));
+    LAYOUT.frameNeeded = true;
+}
+
 #pragma endregion Source Only
+
+SHUResult ECSILayout_Initialize(void)
+{
+    const ECSSettingDesc settings[] = {
+        {.name = "ecs.tab_row_height", .type = ECSSettingType_Number, .description = "Height of a tab row, in layout units", .Changed = ECSILayout_ReadSettings},
+        {.name = "ecs.divider_size", .type = ECSSettingType_Number, .description = "Gap between the children of a split, which dragging resizes them, in layout units", .Changed = ECSILayout_ReadSettings},
+        {.name = "ecs.reopen_limit", .type = ECSSettingType_Integer, .description = "How many closed panels ecs.reopen remembers", .Changed = ECSILayout_ReadSettings},
+    };
+
+    for (usz i = 0; i < SDL_arraysize(settings); i++)
+    {
+        SHU_ReturnResult(ECSISettings_DeclareCore(&settings[i]));
+    }
+
+    ECSILayout_ReadSettings(NULL);
+    return SHUResult_Ok;
+}
+
+f32 ECSILayout_GetTabRowHeight(void)
+{
+    return LAYOUT.tabRowHeight;
+}
 
 void ECSILayout_SetForget(ECSILayoutForgetFunction function)
 {
@@ -1214,14 +1248,14 @@ void ECSILayout_MoveDivider(ECSINode *split, usz divider, f32 x, f32 y)
 
     f32 start = split->vertical ? first->y : first->x;
     f32 end = split->vertical ? second->y + second->height : second->x + second->width;
-    f32 room = end - start - OPENECS_DIVIDER_SIZE;
+    f32 room = end - start - LAYOUT.dividerSize;
 
     if (room < OPENECS_MIN_CHILD_SIZE * 2.0f)
     {
         return;
     }
 
-    f32 position = (split->vertical ? y : x) - start - OPENECS_DIVIDER_SIZE / 2.0f;
+    f32 position = (split->vertical ? y : x) - start - LAYOUT.dividerSize / 2.0f;
     f32 firstSize = SDL_min(SDL_max(position, OPENECS_MIN_CHILD_SIZE), room - OPENECS_MIN_CHILD_SIZE);
     f32 secondSize = room - firstSize;
 
@@ -1458,13 +1492,21 @@ void ECSILayout_ClosePanel(ECSPanel panel)
 
     if (ECSValue_Create(&closed.saved) == SHUResult_Ok && ECSIPanel_Save(panel, closed.saved) == SHUResult_Ok)
     {
-        if (arrlenu(LAYOUT.closed) == OPENECS_REOPEN_LIMIT)
+        // a limit made smaller drops the oldest panels too
+        while (arrlenu(LAYOUT.closed) > 0 && (i64)arrlenu(LAYOUT.closed) >= LAYOUT.reopenLimit)
         {
             ECSValue_Destroy(&LAYOUT.closed[0].saved);
             arrdel(LAYOUT.closed, 0);
         }
 
-        arrput(LAYOUT.closed, closed);
+        if (LAYOUT.reopenLimit > 0)
+        {
+            arrput(LAYOUT.closed, closed);
+        }
+        else
+        {
+            ECSValue_Destroy(&closed.saved);
+        }
     }
     else
     {

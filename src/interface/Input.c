@@ -16,7 +16,7 @@
 /// @brief Start of the names of the functions that switch workspaces; the workspace's number follows.
 #define OPENECS_WORKSPACE_FUNCTION "ecs.workspace_"
 
-/// @brief Choices of the setting ecs.focus; the first is the default.
+/// @brief Choices of the setting ecs.focus; its value comes from the core's settings file.
 static const char *const OPENECS_FOCUS_CHOICES[] = {"click", "hover", NULL};
 
 /// @brief Headings of the sections of the list of prefix keys, in the order ECSIInput_SectionOf numbers them.
@@ -276,6 +276,17 @@ static char *ECSIInput_FoldWorkspaces(bool *listed)
     return SDL_asprintf(&text, "%s...%s", firstKey, lastKey) < 0 ? NULL : text;
 }
 
+/// @brief Orders two keys after the prefix by the order of their functions among the core's, then by their key texts. userData is the keys.
+static int SDLCALL ECSIInput_CompareKeys(void *userData, const void *first, const void *second)
+{
+    const ECSIKeyBinding *keys = userData;
+    const ECSIKeyBinding *a = &keys[*(const usz *)first];
+    const ECSIKeyBinding *b = &keys[*(const usz *)second];
+    usz orderA = ECSIMenus_GetOrder(a->function);
+    usz orderB = ECSIMenus_GetOrder(b->function);
+    return orderA != orderB ? (orderA < orderB ? -1 : 1) : SDL_strcmp(a->text, b->text);
+}
+
 /// @brief Starts or ends waiting for the key after the prefix, and shows or hides the keys with what they do now, in sections.
 static void ECSIInput_SetPrefix(bool active)
 {
@@ -297,6 +308,17 @@ static void ECSIInput_SetPrefix(bool active)
         arrsetlen(listed, arrlenu(keys));
         SDL_memset(listed, 0, arrlenu(listed) * sizeof(bool));
 
+        // the keys are listed in the order of the core's functions, whatever order the settings files give them in
+        usz *order = NULL;
+        arrsetlen(order, arrlenu(keys));
+
+        for (usz i = 0; i < arrlenu(order); i++)
+        {
+            order[i] = i;
+        }
+
+        SDL_qsort_r(order, arrlenu(order), sizeof(usz), ECSIInput_CompareKeys, (void *)keys);
+
         for (usz section = 0; section < SDL_arraysize(OPENECS_PREFIX_SECTIONS); section++)
         {
             // a section without keys has no heading
@@ -304,8 +326,9 @@ static void ECSIInput_SetPrefix(bool active)
             arrput(INPUT.prefixLines, NULL);
             arrput(INPUT.prefixLines, OPENECS_PREFIX_SECTIONS[section]);
 
-            for (usz i = 0; i < arrlenu(keys); i++)
+            for (usz position = 0; position < arrlenu(order); position++)
             {
+                usz i = order[position];
                 const char *function = keys[i].function;
 
                 if (listed[i] || ECSIInput_SectionOf(function) != section || !ECSIMenus_Offers(function, focus))
@@ -334,6 +357,7 @@ static void ECSIInput_SetPrefix(bool active)
         }
 
         arrfree(listed);
+        arrfree(order);
         arrput(INPUT.prefixLines, "Escape");
         arrput(INPUT.prefixLines, "Cancel");
     }

@@ -343,7 +343,7 @@ After every operation:
 
 ### 6.4 Grips and locked groups
 
-- A grip appears when the pointer is within 24 layout units of a panel's top edge. It shows the panel's title. While it is shown, pointer events over it go to the core.
+- A grip appears when the pointer is within `ecs.grip_zone` layout units of a panel's top edge. It shows the panel's title. While it is shown, pointer events over it go to the core.
 - A locked group's grip also shows "locked". It opens the panel's menu, but it cannot be dragged, and pulling it is not a click.
 - Locked groups accept no dropped panels. Their panels cannot be dragged, moved with keys or closed by the user.
 - `ecs.lock` locks or unlocks the focused group.
@@ -351,7 +351,7 @@ After every operation:
 ### 6.5 Operations
 
 - Besides the operations in OVERVIEW 6.3, there are cycling tabs, reopening the last closed panel, and moving a panel to another workspace.
-- The core remembers the last 20 closed panels with their type and saved state. `ecs.reopen` opens the last one again next to a panel that stayed in its group, wherever that panel is now, or else in the focused group, and shows its workspace.
+- The core remembers the last `ecs.reopen_limit` closed panels with their type and saved state. `ecs.reopen` opens the last one again next to a panel that stayed in its group, wherever that panel is now, or else in the focused group, and shows its workspace.
 - `ecs.move_to_workspace_1` to `ecs.move_to_workspace_10` move the focused panel into that workspace's focused group; the current workspace stays shown.
 - `ecs.split_right` and `ecs.split_down` open another panel of the focused panel's type beside it.
 - Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)` (also from another workspace), `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles.
@@ -370,14 +370,14 @@ After every operation:
 While a panel is dragged, the zones are checked in this order:
 
 1. Outside every OS window: pop out.
-2. Within 16 layout units of an OS window's edge: dock along that whole edge.
+2. Within `ecs.dock_edge` layout units of an OS window's edge: dock along that whole edge.
 3. Over a tab row: insert between tabs, at the nearest gap between tab midpoints.
-4. In the outer quarter of a panel, at most 80 layout units deep: split toward that side.
+4. In the outer quarter of a panel, at most `ecs.split_depth` layout units deep: split toward that side.
 5. Anywhere else over a panel: group with it.
 
 On release, the matching operation is called. In small panels, the edge bands shrink so that the centre stays at least a third of the panel.
 
-- A press on a tab or a grip starts a drag once the pointer moves 6 layout units. A press on the empty part of a tab row drags the whole group the same way. Escape cancels the drag.
+- A press on a tab or a grip starts a drag once the pointer moves `ecs.drag_threshold` layout units. A press on the empty part of a tab row drags the whole group the same way. Escape cancels the drag.
 - A drop that would change nothing is not highlighted and does nothing: a panel on its own group or next to its own tab, a whole group on itself, or a group that fills the OS window on an edge of it.
 - The pointer shows a resize arrow over a divider and while it is dragged, and a move arrow while a panel or group is dragged.
 - The drop place is highlighted while the panel is dragged.
@@ -395,7 +395,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The group's menu: the submenu Tabs, which shows any of its panels and marks the shown one with `•`; then maximize, lock, close the group's panels, and reopen.
 - Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. Escape in the first menu, or a press outside the menus, closes them. While a menu is open, pointer and key events go to the menus only.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
-- The wheel over a tab row scrolls it, 40 layout units a step; down and right go toward the last tab. When a group shows another panel, its tab scrolls into view.
+- The wheel over a tab row scrolls it by `ecs.tab_scroll_step` layout units a step; down and right go toward the last tab. When a group shows another panel, its tab scrolls into view.
 
 ### 6.9 Clay
 
@@ -434,26 +434,27 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 7.5 The core prefix
 
 - The prefix is the setting `ecs.prefix`. It is one key combination, never a whole modifier.
-- The keys after the prefix are the setting `ecs.prefix_keys`: a table of key combinations and the names of the functions they run. Its entries are added to the core's defaults, and `false` removes a key. So presets and the user can add entries that run service functions.
-- While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's other functions) and More (service functions). Like the menus (6.8), the list leaves out what cannot be done now.
+- The keys after the prefix are the setting `ecs.prefix_keys`: a table of key combinations and the names of the functions they run. Its entries are added to its value in the core's settings file (12.1), and `false` removes a key. So presets and the user can add entries that run service functions.
+- While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's other functions) and More (service functions). Within a section, the keys follow the order of the core's functions below. Like the menus (6.8), the list leaves out what cannot be done now.
 - Keys of one kind share a line. The keys that switch workspaces show the first workspace's key to the last one's: `1...0`. Focus and move show `Arrows` and `Shift+Arrows` when their four functions are on the four arrows with the same modifiers.
 - The prefix and the key after it are the only key sequence the core handles.
-- The default `ecs.prefix_keys`:
+- The core's functions after the prefix, in the order the list shows them. Their keys are the value of `ecs.prefix_keys` in the core's settings file (12.1).
 
-  | Key          | Function                                     | Action                                                                                                  |
-  | ------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-  | Arrows       | `ecs.focus_left` and so on                   | Move focus                                                                                              |
-  | Shift+Arrows | `ecs.move_left` and so on                    | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
-  | 1 to 9, 0    | `ecs.workspace_1` to `ecs.workspace_10`      | Switch to workspace 1 to 10; 0 is workspace 10                                                          |
-  | Tab          | `ecs.next_tab`                               | Show the next tab                                                                                       |
-  | M            | `ecs.maximize`                               | Maximize or restore                                                                                     |
-  | P            | `ecs.pop_out`                                | Pop out                                                                                                 |
-  | X            | `ecs.close`                                  | Close the panel                                                                                         |
-  | Shift+X      | `ecs.close_group`                            | Close the group's panels                                                                                |
-  | L            | `ecs.lock`                                   | Lock or unlock the group                                                                                |
-  | T            | `ecs.reopen`                                 | Reopen the last closed panel                                                                            |
-  | R            | `ecs.restart`                                | Restart the failed panel                                                                                |
-  | Escape       |                                              | Cancel; it is not a function, so it always works                                                        |
+  | Function                                | Action                                                                                                   |
+  | --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+  | `ecs.focus_left` and so on              | Move focus                                                                                               |
+  | `ecs.move_left` and so on               | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
+  | `ecs.next_tab`                          | Show the next tab                                                                                        |
+  | `ecs.maximize`                          | Maximize or restore                                                                                      |
+  | `ecs.pop_out`                           | Pop out                                                                                                  |
+  | `ecs.close`                             | Close the panel                                                                                          |
+  | `ecs.close_group`                       | Close the group's panels                                                                                 |
+  | `ecs.lock`                              | Lock or unlock the group                                                                                 |
+  | `ecs.reopen`                            | Reopen the last closed panel                                                                             |
+  | `ecs.restart`                           | Restart the failed panel                                                                                 |
+  | `ecs.workspace_1` to `ecs.workspace_10` | Switch to workspace 1 to 10                                                                              |
+
+- Escape after the prefix cancels. It is not a function, so it always works.
 
 ### 7.6 Clipboard
 
@@ -732,8 +733,10 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 
 ### 12.1 Declaring
 
-- The core and plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. Owners are told when their settings change: the description's `Changed` function runs after the queued events (3.1, step 4), and only when the value in effect really changed.
+- Plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. The core declares its own with a name, a type and a description; their defaults are in the core's settings file. Owners are told when their settings change: the description's `Changed` function runs after the queued events (3.1, step 4), and only when the value in effect really changed.
 - Types: `bool`, `integer`, `number`, `string`, `choice` (one of a list), `key` (a key combination), `list` and `table`.
+- The core's settings hold the core's choices of look and behaviour: the keys, focus and vsync, the window's size, font and colours, the sizes of tab rows, dividers and grips, the distances that start drags and drops, and the reopen limit.
+- The core's settings file is `resources/settings.lua` next to the executable, in the format of the user's file (12.3). It is the core layer, and the only place that gives the core's settings their defaults. OpenECS does not start if the file cannot be read, or if it gives a core setting no value of its type. Its `ecs.prefix` must be a key combination, because a prefix that cannot be read falls back to it.
 - `ECSSetting_Get(name)` returns the value in effect as a value (10.3). It comes from the highest layer that sets the setting with a value of its type; otherwise it is the default. A value of another type is reported with its file and skipped.
 - The core reads a key combination when it uses it. A key text that cannot be read is reported, and the default is used.
 
@@ -883,6 +886,7 @@ OpenECS follows the XDG Base Directory specification:
 | A tool's last session           | `$XDG_STATE_HOME/openecs/<app id>/session.lua` (default `~/.local/state`) |
 | The log                         | `$XDG_STATE_HOME/openecs/openecs.log`                                     |
 | First-party plugins and presets | `plugins/` and `presets/` next to the executable                          |
+| The core's settings             | `resources/settings.lua` next to the executable                           |
 
 - The data folders come from `SDL_GetPrefPath`, which follows `XDG_DATA_HOME`. SDL has no function for the configuration and state folders, so the core reads `XDG_CONFIG_HOME` and `XDG_STATE_HOME` itself.
 

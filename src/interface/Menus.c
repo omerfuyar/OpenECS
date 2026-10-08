@@ -527,6 +527,20 @@ const char *ECSIMenus_LabelOf(const char *function, ECSPanel panel)
     return description != NULL ? description : function;
 }
 
+usz ECSIMenus_GetOrder(const char *function)
+{
+    SDL_assert(function != NULL);
+
+    usz position = 0;
+
+    while (position < SDL_arraysize(OPENECS_CORE_FUNCTIONS) && SDL_strcmp(OPENECS_CORE_FUNCTIONS[position].name, function) != 0)
+    {
+        position++;
+    }
+
+    return position;
+}
+
 void ECSIMenus_Open(ECSPanel panel, f32 x, f32 y, bool group)
 {
     ECSIMenus_CloseFrom(0);
