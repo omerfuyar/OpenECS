@@ -430,8 +430,8 @@ static void SketchCanvasDraw(void *state, ECSSurface *surface, f64 seconds)
     canvas->width = surface->width;
     canvas->height = surface->height;
 
-    // the surface's rows may be padded, so each row is painted on its own
-    u32 *pixels = malloc((usz)surface->width * (usz)surface->height * sizeof(u32));
+    // the surface's rows may be padded, so each row is copied on its own
+    u32 *pixels = calloc((usz)surface->width * (usz)surface->height, sizeof(u32));
 
     if (pixels == NULL)
     {

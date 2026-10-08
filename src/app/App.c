@@ -141,6 +141,12 @@ static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Some plugins failed to load; their panels are shown as placeholders.");
     }
 
+    // a last session keeps the plugins it was saved with, even when the preset has changed since
+    if (result && APP.sessionPath != NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The plugins are named by the session '%s'. Start with --fresh to use the preset instead.", APP.sessionPath);
+    }
+
     SDL_free(userData);
     SDL_free(userPlugins);
     SDL_free(firstPartyPlugins);
