@@ -108,17 +108,37 @@ typedef enum ECSEventType
     ECSEventType_Unfocused,
 } ECSEventType;
 
-/// @brief An event sent to a panel. Only the fields that belong to its type are set.
+/// @brief An event sent to a panel. Its type chooses the member of the union that is set.
 typedef struct ECSEvent
 {
     ECSEventType type;
-    f32 x;         // pointer events: position in surface pixels
-    f32 y;         // pointer events: position in surface pixels
-    f32 wheelX;    // wheel events
-    f32 wheelY;    // wheel events
-    i32 button;    // pointer buttons: 1 left, 2 middle, 3 right
-    u32 key;       // key events: SDL key code
-    u32 modifiers; // ECSModifier bits
+    u32 modifiers; // ECSModifier bits held when the event happened
+
+    union
+    {
+        // PointerDown, PointerUp and PointerMove
+        struct
+        {
+            f32 x;      // position in surface pixels
+            f32 y;      // position in surface pixels
+            i32 button; // PointerDown and PointerUp: 1 left, 2 middle, 3 right
+        } pointer;
+
+        // Wheel
+        struct
+        {
+            f32 x;       // pointer position in surface pixels
+            f32 y;       // pointer position in surface pixels
+            f32 amountX; // scrolled amount; positive is to the right
+            f32 amountY; // scrolled amount; positive is away from the user
+        } wheel;
+
+        // KeyDown and KeyUp
+        struct
+        {
+            u32 code; // SDL key code
+        } key;
+    };
 } ECSEvent;
 
 /// @brief Describes a panel type. Passed to ECSPanelType_Register.

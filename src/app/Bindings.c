@@ -954,23 +954,28 @@ static void ECSI_BindingsPushEvent(lua_State *state, const ECSEvent *event)
     {
     case ECSEventType_PointerDown:
     case ECSEventType_PointerUp:
-        lua_pushinteger(state, event->button);
+        lua_pushinteger(state, event->pointer.button);
         lua_setfield(state, -2, "button");
         // fall through
     case ECSEventType_PointerMove:
-    case ECSEventType_Wheel:
-        lua_pushnumber(state, (lua_Number)event->x);
+        lua_pushnumber(state, (lua_Number)event->pointer.x);
         lua_setfield(state, -2, "x");
-        lua_pushnumber(state, (lua_Number)event->y);
+        lua_pushnumber(state, (lua_Number)event->pointer.y);
         lua_setfield(state, -2, "y");
-        lua_pushnumber(state, (lua_Number)event->wheelX);
+        break;
+    case ECSEventType_Wheel:
+        lua_pushnumber(state, (lua_Number)event->wheel.x);
+        lua_setfield(state, -2, "x");
+        lua_pushnumber(state, (lua_Number)event->wheel.y);
+        lua_setfield(state, -2, "y");
+        lua_pushnumber(state, (lua_Number)event->wheel.amountX);
         lua_setfield(state, -2, "wheel_x");
-        lua_pushnumber(state, (lua_Number)event->wheelY);
+        lua_pushnumber(state, (lua_Number)event->wheel.amountY);
         lua_setfield(state, -2, "wheel_y");
         break;
     case ECSEventType_KeyDown:
     case ECSEventType_KeyUp:
-        lua_pushstring(state, SDL_GetKeyName(event->key));
+        lua_pushstring(state, SDL_GetKeyName(event->key.code));
         lua_setfield(state, -2, "key");
         break;
     default:

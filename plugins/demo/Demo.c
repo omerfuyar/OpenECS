@@ -110,8 +110,8 @@ static void DemoColorEvent(void *state, const ECSEvent *event)
     }
     else if (event->type == ECSEventType_PointerMove)
     {
-        demo->pointerX = event->x;
-        demo->pointerY = event->y;
+        demo->pointerX = event->pointer.x;
+        demo->pointerY = event->pointer.y;
     }
     else
     {

@@ -400,12 +400,26 @@ static void ECSI_InputSettingChanged(void *data)
 }
 
 /// @brief Sends a pointer event to a panel, with the position made relative to the panel.
-static void ECSI_InputSendPointer(ECSPanel panel, ECSEventType type, f32 x, f32 y, const ECSEvent *details)
+static void ECSI_InputSendPointer(ECSPanel panel, ECSEventType type, f32 x, f32 y, i32 button)
 {
-    ECSEvent event = details == NULL ? (ECSEvent){0} : *details;
-    event.type = type;
-    event.x = x - panel->x;
-    event.y = y - panel->y;
+    ECSEvent event = {
+        .type = type,
+        .modifiers = ECSI_InputModifiers(SDL_GetModState()),
+        .pointer = {.x = x - panel->x, .y = y - panel->y, .button = button},
+    };
+
+    ECSI_PanelPostEvent(panel, &event);
+}
+
+/// @brief Sends a wheel event to a panel. The amount is turned back if the system flips the wheel, so positive is always away from the user.
+static void ECSI_InputSendWheel(ECSPanel panel, const SDL_MouseWheelEvent *wheel)
+{
+    f32 direction = wheel->direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
+    ECSEvent event = {
+        .type = ECSEventType_Wheel,
+        .modifiers = ECSI_InputModifiers(SDL_GetModState()),
+        .wheel = {.x = wheel->mouse_x - panel->x, .y = wheel->mouse_y - panel->y, .amountX = wheel->x * direction, .amountY = wheel->y * direction},
+    };
 
     ECSI_PanelPostEvent(panel, &event);
 }
@@ -414,8 +428,8 @@ static void ECSI_InputSendKey(ECSPanel panel, ECSEventType type, const SDL_Keybo
 {
     ECSEvent event = {
         .type = type,
-        .key = key->key,
         .modifiers = ECSI_InputModifiers(key->mod),
+        .key = {.code = key->key},
     };
 
     ECSI_PanelPostEvent(panel, &event);
@@ -889,8 +903,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
             ECSI_InputFocus(panel);
             INPUT.pointerPanel = panel;
 
-            ECSEvent details = {.button = button->button, .modifiers = ECSI_InputModifiers(SDL_GetModState())};
-            ECSI_InputSendPointer(panel, ECSEventType_PointerDown, button->x, button->y, &details);
+            ECSI_InputSendPointer(panel, ECSEventType_PointerDown, button->x, button->y, button->button);
         }
 
         break;
@@ -918,7 +931,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
             ECSI_InputFocus(panel);
         }
 
-        ECSI_InputSendPointer(panel, ECSEventType_PointerMove, motion->x, motion->y, NULL);
+        ECSI_InputSendPointer(panel, ECSEventType_PointerMove, motion->x, motion->y, 0);
 
         break;
     }
@@ -930,8 +943,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
 
         if (ECSI_InputPointerPanel() != NULL)
         {
-            ECSEvent details = {.button = button->button, .modifiers = ECSI_InputModifiers(SDL_GetModState())};
-            ECSI_InputSendPointer(INPUT.pointerPanel, ECSEventType_PointerUp, button->x, button->y, &details);
+            ECSI_InputSendPointer(INPUT.pointerPanel, ECSEventType_PointerUp, button->x, button->y, button->button);
             INPUT.pointerPanel = NULL;
         }
 
@@ -945,8 +957,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
 
         if (panel != NULL)
         {
-            ECSEvent details = {.wheelX = wheel->x, .wheelY = wheel->y};
-            ECSI_InputSendPointer(panel, ECSEventType_Wheel, wheel->mouse_x, wheel->mouse_y, &details);
+            ECSI_InputSendWheel(panel, wheel);
         }
 
         break;
