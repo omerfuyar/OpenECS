@@ -257,10 +257,11 @@ static char *SketchStrokesToText(const SketchStroke *strokes, usz count)
 
 /// @brief Reads strokes written by SketchStrokesToText and adds them to a canvas.
 /// @return Number of strokes read.
-static usz SketchStrokesFromText(SketchCanvas *canvas, const char *text, usz length)
+static usz SketchStrokesFromText(SketchCanvas *canvas, SHUSliceView bytes)
 {
     usz added = 0;
-    const char *end = text + length;
+    const char *text = bytes.data;
+    const char *end = text + bytes.size;
 
     while (text < end)
     {
@@ -910,12 +911,12 @@ static void SketchPaste(ECSPanel panel)
 
     if (ECSClipboard_GetData(SKETCH_CLIPBOARD_TYPE, &data) == SHUResult_Ok)
     {
-        added = SketchStrokesFromText(canvas, data.data, data.size);
+        added = SketchStrokesFromText(canvas, csv(data));
     }
     else
     {
         const char *text = ECSClipboard_GetText();
-        added = text == NULL ? 0 : SketchStrokesFromText(canvas, text, strlen(text));
+        added = text == NULL ? 0 : SketchStrokesFromText(canvas, (SHUSliceView){.data = text, .size = strlen(text)});
     }
 
     ECS_Log(SKETCH.plugin, ECSLogLevel_Info, "Pasted %zu strokes.", added);

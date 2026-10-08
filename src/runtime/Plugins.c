@@ -144,15 +144,15 @@ static bool ECSIPlugin_VersionMatches(const char *version, const char *minimum)
 }
 
 /// @brief Names what needs the plugin being looked for: the plugin whose dependencies are loading, or what names the plugins.
-static void ECSIPlugin_NeededBy(char *buffer, usz size)
+static void ECSIPlugin_NeededBy(SHUSlice buffer)
 {
     if (arrlenu(PLUGINS.loading) > 0)
     {
-        SDL_snprintf(buffer, size, "plugin '%s'", arrlast(PLUGINS.loading));
+        SDL_snprintf(buffer.data, buffer.size, "plugin '%s'", arrlast(PLUGINS.loading));
     }
     else
     {
-        SDL_strlcpy(buffer, PLUGINS.neededBy, size);
+        SDL_strlcpy(buffer.data, PLUGINS.neededBy, buffer.size);
     }
 }
 
@@ -160,7 +160,7 @@ static void ECSIPlugin_NeededBy(char *buffer, usz size)
 static void ECSIManifest_ReportMissing(const char *name)
 {
     char neededBy[OPENECS_PLUGINS_REPORT_SIZE];
-    ECSIPlugin_NeededBy(neededBy, sizeof(neededBy));
+    ECSIPlugin_NeededBy(cs(neededBy, sizeof(neededBy)));
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not found. It is needed by %s.", name, neededBy);
 
     for (usz i = 0; i < PLUGINS.directoryCount; i++)
@@ -354,7 +354,7 @@ static SHUResult ECSIPlugin_Load(const char *name, const char *minimum)
     if (minimum != NULL && !ECSIPlugin_VersionMatches(version, minimum))
     {
         char neededBy[OPENECS_PLUGINS_REPORT_SIZE];
-        ECSIPlugin_NeededBy(neededBy, sizeof(neededBy));
+        ECSIPlugin_NeededBy(cs(neededBy, sizeof(neededBy)));
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' has version %s, but %s needs version %s or a later one with the same major number.", name, version, neededBy, minimum);
         ECSIManifest_Free(&manifest);
         return SHUResult_ErrBadData;
