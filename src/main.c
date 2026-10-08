@@ -141,9 +141,8 @@ static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
     }
 
     // the preset's plugins first, then the extra plugins that the user's settings name
-    const char *const *extraPlugins = ECSI_SettingsGetPlugins();
-    SHUResult result = ECSI_PluginsLoad(directories, directoryCount, (const char *const *)preset->plugins, arrlenu(preset->plugins));
-    SHUResult extraResult = ECSI_PluginsLoad(directories, directoryCount, extraPlugins, arrlenu(extraPlugins));
+    SHUResult result = ECSI_PluginsLoad(directories, directoryCount, ECSValue_GetField(preset->file, "depends"));
+    SHUResult extraResult = ECSI_PluginsLoad(directories, directoryCount, ECSI_SettingsGetPlugins());
 
     if (result || extraResult)
     {

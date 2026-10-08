@@ -53,7 +53,7 @@ static struct
     } *settings;                                // stb_ds hash map, in declaration order
     ECSValue *layers[ECSI_SettingsLayer_Count]; // the preset, window and user layers: tables of setting names and values
     char *paths[ECSI_SettingsLayer_Count];      // the file of each of those layers
-    char **plugins;                             // stb_ds array of extra plugins
+    ECSValue *plugins;                          // list of extra plugin names
 } SETTINGS = {0};
 
 /// @brief Checks that a value has the type of a setting.
@@ -253,20 +253,13 @@ static SHUResult ECSI_SettingsReadPlugins(const ECSValue *part)
     for (usz i = 0; i < ECSValue_GetCount(plugins); i++)
     {
         const char *name = ECSValue_GetString(ECSValue_GetItem(plugins, i), NULL);
+        ECSValue *item = NULL;
 
-        if (name == NULL)
+        if (name != NULL)
         {
-            continue;
+            SHU_ReturnResult(ECSValue_AddItem(SETTINGS.plugins, &item));
+            SHU_ReturnResult(ECSValue_SetString(item, name));
         }
-
-        char *copy = SDL_strdup(name);
-
-        if (copy == NULL)
-        {
-            return SHUResult_ErrAllocation;
-        }
-
-        arrput(SETTINGS.plugins, copy);
     }
 
     return SHUResult_Ok;
@@ -327,6 +320,9 @@ SHUResult ECSI_SettingsInitialize(const ECSValue *presetSettings, const char *pr
         return SHUResult_ErrAllocation;
     }
 
+    SHU_ReturnResult(ECSI_ValueCreate(&SETTINGS.plugins));
+    ECSValue_SetTable(SETTINGS.plugins);
+
     if (configFolder == NULL)
     {
         return SHUResult_Ok;
@@ -349,13 +345,8 @@ void ECSI_SettingsTerminate(void)
         SDL_free(SETTINGS.paths[i]);
     }
 
-    for (usz i = 0; i < arrlenu(SETTINGS.plugins); i++)
-    {
-        SDL_free(SETTINGS.plugins[i]);
-    }
-
     shfree(SETTINGS.settings);
-    arrfree(SETTINGS.plugins);
+    ECSI_ValueDestroy(&SETTINGS.plugins);
     SDL_zero(SETTINGS);
 }
 
@@ -367,9 +358,9 @@ SHUResult ECSI_SettingsDeclareCore(const ECSSettingDesc *desc)
     return ECSI_SettingsDeclare(NULL, desc);
 }
 
-const char *const *ECSI_SettingsGetPlugins(void)
+const ECSValue *ECSI_SettingsGetPlugins(void)
 {
-    return (const char *const *)SETTINGS.plugins;
+    return SETTINGS.plugins;
 }
 
 SHUResult ECSSetting_Declare(ECSPlugin plugin, const ECSSettingDesc *desc)

@@ -35,7 +35,7 @@ void ECSI_SettingsTerminate(void);
 SHUWUR SHUResult ECSI_SettingsDeclareCore(const ECSSettingDesc *desc);
 
 /// @brief Gets the plugins that the user's files name for every tool and for this tool.
-/// @return stb_ds array of plugin names. Valid until ECSI_SettingsTerminate.
-const char *const *ECSI_SettingsGetPlugins(void);
+/// @return A list of plugin names, for ECSI_PluginsLoad. Valid until ECSI_SettingsTerminate.
+const ECSValue *ECSI_SettingsGetPlugins(void);
 
 #pragma endregion Declarations

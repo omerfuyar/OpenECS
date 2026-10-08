@@ -65,22 +65,6 @@ static void ECSI_SessionLeave(ECSI_SessionReader *reader, usz length)
     reader->path[length] = '\0';
 }
 
-/// @brief Adds a plugin that the depends table names.
-static void ECSI_SessionAddPlugin(const char *name, const ECSValue *field, void *userData)
-{
-    (void)field;
-    ECSI_PresetInfo *info = userData;
-    char *plugin = SDL_strdup(name);
-
-    if (plugin == NULL)
-    {
-        info->incomplete = true;
-        return;
-    }
-
-    arrput(info->plugins, plugin);
-}
-
 /// @brief Reads a number field that must not be negative.
 static f32 ECSI_SessionGetSize(ECSI_SessionReader *reader, const ECSValue *node, const char *name, f32 fallback)
 {
@@ -289,9 +273,7 @@ SHUResult ECSI_SessionReadInfo(const char *path, ECSI_PresetInfo *retInfo)
         }
     }
 
-    ECSI_ValueForEachField(ECSValue_GetField(file, "depends"), ECSI_SessionAddPlugin, retInfo);
-
-    if (retInfo->name == NULL || retInfo->appName == NULL || retInfo->appId == NULL || retInfo->incomplete)
+    if (retInfo->name == NULL || retInfo->appName == NULL || retInfo->appId == NULL)
     {
         return SHUResult_ErrAllocation;
     }
@@ -307,13 +289,6 @@ void ECSI_SessionFreeInfo(ECSI_PresetInfo *info)
     SDL_free(info->appId);
     SDL_free(info->appName);
     SDL_free(info->pluginsDirectory);
-
-    for (usz i = 0; i < arrlenu(info->plugins); i++)
-    {
-        SDL_free(info->plugins[i]);
-    }
-
-    arrfree(info->plugins);
     ECSI_ValueDestroy(&info->file);
     SDL_zerop(info);
 }
