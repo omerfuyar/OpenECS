@@ -511,6 +511,53 @@ static const luaL_Reg ECSI_BINDINGS_WORKSPACE[] = {
 
 #pragma endregion Layout
 
+#pragma region Clipboard
+
+static int ECSI_BindingsClipboardSetText(lua_State *state)
+{
+    lua_pushboolean(state, ECSClipboard_SetText(luaL_checkstring(state, 1)) == SHUResult_Ok);
+    return 1;
+}
+
+static int ECSI_BindingsClipboardGetText(lua_State *state)
+{
+    lua_pushstring(state, ECSClipboard_GetText());
+    return 1;
+}
+
+static int ECSI_BindingsClipboardSetData(lua_State *state)
+{
+    usz size = 0;
+    const char *mimeType = luaL_checkstring(state, 1);
+    const char *bytes = luaL_checklstring(state, 2, &size);
+    lua_pushboolean(state, ECSClipboard_SetData(mimeType, (SHUSliceView){.data = bytes, .size = size}) == SHUResult_Ok);
+    return 1;
+}
+
+static int ECSI_BindingsClipboardGetData(lua_State *state)
+{
+    SHUSlice data = cs0;
+
+    if (ECSClipboard_GetData(luaL_checkstring(state, 1), &data))
+    {
+        lua_pushnil(state);
+        return 1;
+    }
+
+    lua_pushlstring(state, data.data, data.size);
+    return 1;
+}
+
+static const luaL_Reg ECSI_BINDINGS_CLIPBOARD[] = {
+    {"set_text", ECSI_BindingsClipboardSetText},
+    {"get_text", ECSI_BindingsClipboardGetText},
+    {"set_data", ECSI_BindingsClipboardSetData},
+    {"get_data", ECSI_BindingsClipboardGetData},
+    {NULL, NULL},
+};
+
+#pragma endregion Clipboard
+
 #pragma region Input
 
 static int ECSI_BindingsInputBind(lua_State *state)
@@ -1093,6 +1140,7 @@ static void ECSI_BindingsPushEcs(lua_State *state, ECSPlugin plugin)
     ECSI_BindingsAddTable(state, plugin, "input", ECSI_BINDINGS_INPUT);
     ECSI_BindingsAddTable(state, plugin, "layout", ECSI_BINDINGS_LAYOUT);
     ECSI_BindingsAddTable(state, plugin, "workspace", ECSI_BINDINGS_WORKSPACE);
+    ECSI_BindingsAddTable(state, plugin, "clipboard", ECSI_BINDINGS_CLIPBOARD);
 
     lua_newtable(state);
     lua_pushstring(state, ECSI_PluginGetName(plugin));

@@ -413,6 +413,27 @@ OPENECS_EXPORT const char *ECSWorkspace_GetName(usz index);
 /// @param index Position of the workspace, starting at 0. Ignored if there is no such workspace.
 OPENECS_EXPORT void ECSWorkspace_Switch(usz index);
 
+/// @brief Puts text on the clipboard. Main thread only.
+/// @param text The text. The core copies it.
+/// @return SHUResult_Ok, or SHUResult_ErrInternal if the system refuses it.
+OPENECS_EXPORT SHUWUR SHUResult ECSClipboard_SetText(const char *text);
+
+/// @brief Gets the text on the clipboard. Main thread only.
+/// @return The text; empty if there is none. Valid until the next call of a clipboard function.
+OPENECS_EXPORT const char *ECSClipboard_GetText(void);
+
+/// @brief Puts typed data on the clipboard, such as an image as "image/png". Main thread only.
+/// @param mimeType The data's type.
+/// @param data The data. The core copies it.
+/// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if the system refuses it.
+OPENECS_EXPORT SHUWUR SHUResult ECSClipboard_SetData(const char *mimeType, SHUSliceView data);
+
+/// @brief Gets typed data from the clipboard. Main thread only.
+/// @param mimeType The type wanted.
+/// @param retData The data; empty if the clipboard has none of that type. Valid until the next call of a clipboard function.
+/// @return SHUResult_Ok, or SHUResult_ErrNotFound if the clipboard has no data of that type.
+OPENECS_EXPORT SHUWUR SHUResult ECSClipboard_GetData(const char *mimeType, SHUSlice *retData);
+
 /// @brief Starts a timer that calls a function on the main thread, once or repeatedly. Main thread only.
 /// @param plugin The plugin that owns the timer.
 /// @param retTimer The new timer. A one-shot timer's handle is invalid after its function returns.

@@ -92,7 +92,16 @@ static struct
     ECSValue *toolKeys;               // the preset's bindings for the whole tool, or NULL
     ECSValue **workspaceKeys;         // stb_ds array of the preset's bindings for each workspace; NULL for none
     ECSPanel pointerPanel;            // panel that got the press; it gets pointer events until the release
+    void *clipboard;                  // what a clipboard getter returned last, freed by the next call
 } INPUT = {0};
+
+/// @brief Typed data that the core offers on the clipboard.
+typedef struct ECSI_ClipboardData
+{
+    char *mimeType;
+    usz size;
+    u8 bytes[]; // the data
+} ECSI_ClipboardData;
 
 /// @brief Converts SDL's modifier bits to ECSModifier bits.
 static u32 ECSI_InputModifiers(SDL_Keymod modifiers)
@@ -617,6 +626,34 @@ static const struct
 
 #pragma endregion Core Functions
 
+static const void *ECSI_InputClipboardProvide(void *userData, const char *mimeType, size_t *retSize)
+{
+    ECSI_ClipboardData *data = userData;
+
+    if (SDL_strcmp(mimeType, data->mimeType) != 0)
+    {
+        *retSize = 0;
+        return NULL;
+    }
+
+    *retSize = data->size;
+    return data->bytes;
+}
+
+static void ECSI_InputClipboardRelease(void *userData)
+{
+    ECSI_ClipboardData *data = userData;
+    SDL_free(data->mimeType);
+    SDL_free(data);
+}
+
+/// @brief Frees what a clipboard getter returned last.
+static void ECSI_InputForgetClipboard(void)
+{
+    SDL_free(INPUT.clipboard);
+    INPUT.clipboard = NULL;
+}
+
 #pragma endregion Source Only
 
 SHUResult ECSI_InputInitialize(void)
@@ -720,6 +757,7 @@ void ECSI_InputTerminate(void)
 
     arrfree(INPUT.panelBindings);
     arrfree(INPUT.workspaceKeys);
+    ECSI_InputForgetClipboard();
     ECSValue_Destroy(&INPUT.toolKeys);
     arrfree(INPUT.prefixLines);
     SDL_zero(INPUT);
@@ -940,3 +978,74 @@ SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *setti
     arrput(INPUT.panelBindings, binding);
     return SHUResult_Ok;
 }
+
+#pragma region Clipboard
+
+SHUResult ECSClipboard_SetText(const char *text)
+{
+    SDL_assert(text != NULL);
+
+    ECSI_InputForgetClipboard();
+
+    if (!SDL_SetClipboardText(text))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot set the clipboard: %s", SDL_GetError());
+        return SHUResult_ErrInternal;
+    }
+
+    return SHUResult_Ok;
+}
+
+const char *ECSClipboard_GetText(void)
+{
+    ECSI_InputForgetClipboard();
+    INPUT.clipboard = SDL_GetClipboardText();
+    return INPUT.clipboard == NULL ? "" : INPUT.clipboard;
+}
+
+SHUResult ECSClipboard_SetData(const char *mimeType, SHUSliceView data)
+{
+    SDL_assert(mimeType != NULL);
+    SDL_assert(data.data != NULL || data.size == 0);
+
+    ECSI_InputForgetClipboard();
+    ECSI_ClipboardData *copy = SDL_malloc(sizeof(ECSI_ClipboardData) + data.size);
+    char *type = SDL_strdup(mimeType);
+
+    if (copy == NULL || type == NULL)
+    {
+        SDL_free(copy);
+        SDL_free(type);
+        return SHUResult_ErrAllocation;
+    }
+
+    copy->mimeType = type;
+    copy->size = data.size;
+    SDL_memcpy(copy->bytes, data.data, data.size);
+
+    // SDL asks for the data when another program pastes it, and releases it when the clipboard changes
+    const char *types[] = {copy->mimeType};
+
+    if (!SDL_SetClipboardData(ECSI_InputClipboardProvide, ECSI_InputClipboardRelease, copy, types, 1))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot set the clipboard: %s", SDL_GetError());
+        ECSI_InputClipboardRelease(copy);
+        return SHUResult_ErrInternal;
+    }
+
+    return SHUResult_Ok;
+}
+
+SHUResult ECSClipboard_GetData(const char *mimeType, SHUSlice *retData)
+{
+    SDL_assert(mimeType != NULL);
+    SDL_assert(retData != NULL);
+
+    ECSI_InputForgetClipboard();
+    usz size = 0;
+    INPUT.clipboard = SDL_HasClipboardData(mimeType) ? SDL_GetClipboardData(mimeType, &size) : NULL;
+    *retData = cs(INPUT.clipboard, INPUT.clipboard == NULL ? 0 : size);
+    return INPUT.clipboard == NULL ? SHUResult_ErrNotFound : SHUResult_Ok;
+}
+
+#pragma endregion Clipboard

@@ -1,6 +1,6 @@
 #pragma once
 
-// Input: focus, pointer routing, the core prefix and key dispatch.
+// Input: focus, pointer routing, the core prefix, key bindings and the clipboard.
 
 #include "Values.h"
 
