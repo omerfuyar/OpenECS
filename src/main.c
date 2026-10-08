@@ -212,6 +212,7 @@ int main(int argc, char **argv)
     ECSI_CheckStart(ECSI_InputInitialize(), "declaring the input settings");
     SDL_free(fontPath);
 
+    ECSI_BindingsInitialize();
     ECSI_PluginsSetLuaStarter(ECSI_BindingsStartPlugin);
     ECSI_LoadPlugins(&preset);
     ECSI_CheckStart(ECSI_SessionApply(sourcePath, &preset), "building the layout");
@@ -257,6 +258,7 @@ int main(int argc, char **argv)
     ECSI_EventsTerminate();
     ECSI_PluginsUnload();
     ECSI_SettingsTerminate();
+    ECSI_BindingsTerminate();
     ECSI_SessionFreeInfo(&preset);
     SDL_free(presetPath);
     SDL_free(sessionPath);

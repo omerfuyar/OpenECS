@@ -34,6 +34,13 @@ void ECSI_SettingsTerminate(void);
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid or the name is taken, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_SettingsDeclareCore(const ECSSettingDesc *desc);
 
+/// @brief Declares a plugin's setting, like ECSSetting_Declare, with its default given as a value. The Bindings module uses it for Lua.
+/// @param plugin The plugin that owns the setting.
+/// @param desc Description of the setting; its default fields are ignored if defaultValue is given, except the choices.
+/// @param defaultValue The default, or NULL to take it from the description.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the description or the default is invalid or the name is taken, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_SettingsDeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *desc, const ECSValue *defaultValue);
+
 /// @brief Gets the plugins that the user's files name for every tool and for this tool.
 /// @return A list of plugin names, for ECSI_PluginsLoad. Valid until ECSI_SettingsTerminate.
 const ECSValue *ECSI_SettingsGetPlugins(void);

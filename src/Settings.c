@@ -191,7 +191,8 @@ static SHUResult ECSI_SettingSetDefault(ECSI_Setting *setting, const ECSSettingD
 }
 
 /// @brief Declares a setting for the core or a plugin; the caller has checked the name.
-static SHUResult ECSI_SettingsDeclare(ECSPlugin owner, const ECSSettingDesc *desc)
+/// @param defaultValue The default as a value, or NULL to take it from the description.
+static SHUResult ECSI_SettingsDeclare(ECSPlugin owner, const ECSSettingDesc *desc, const ECSValue *defaultValue)
 {
     if (desc->type > ECSSettingType_Table || (desc->type == ECSSettingType_Choice && (desc->choices == NULL || desc->choices[0] == NULL)))
     {
@@ -224,6 +225,18 @@ static SHUResult ECSI_SettingsDeclare(ECSPlugin owner, const ECSSettingDesc *des
     }
 
     SHU_ReturnResult(ECSI_SettingSetDefault(setting, desc), ECSI_SettingFree(setting););
+
+    if (defaultValue != NULL)
+    {
+        if (!ECSI_SettingCheck(setting, defaultValue))
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The default of setting '%s' must be %s.", desc->name, ECSI_SETTING_TYPE_TEXTS[desc->type]);
+            ECSI_SettingFree(setting);
+            return SHUResult_ErrBadData;
+        }
+
+        SHU_ReturnResult(ECSI_ValueCopy(setting->defaultValue, defaultValue), ECSI_SettingFree(setting););
+    }
 
     shput(SETTINGS.settings, setting->name, setting);
     ECSI_SettingResolve(setting);
@@ -355,7 +368,7 @@ SHUResult ECSI_SettingsDeclareCore(const ECSSettingDesc *desc)
     SDL_assert(desc != NULL);
     SDL_assert(desc->name != NULL && SDL_strncmp(desc->name, "ecs.", 4) == 0);
 
-    return ECSI_SettingsDeclare(NULL, desc);
+    return ECSI_SettingsDeclare(NULL, desc, NULL);
 }
 
 const ECSValue *ECSI_SettingsGetPlugins(void)
@@ -368,12 +381,20 @@ SHUResult ECSSetting_Declare(ECSPlugin plugin, const ECSSettingDesc *desc)
     SDL_assert(plugin != NULL);
     SDL_assert(desc != NULL);
 
+    return ECSI_SettingsDeclarePlugin(plugin, desc, NULL);
+}
+
+SHUResult ECSI_SettingsDeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *desc, const ECSValue *defaultValue)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(desc != NULL);
+
     if (desc->name == NULL || !ECSI_PluginOwnsName(plugin, desc->name))
     {
         return SHUResult_ErrBadData;
     }
 
-    return ECSI_SettingsDeclare(plugin, desc);
+    return ECSI_SettingsDeclare(plugin, desc, defaultValue);
 }
 
 const ECSValue *ECSSetting_Get(const char *name)
