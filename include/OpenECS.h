@@ -620,6 +620,12 @@ OPENECS_EXPORT void ECSWorkspace_Switch(usz number);
 /// @lua ecs.session.save
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_Save(const char *path);
 
+/// @brief Opens a session in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session. Main thread only.
+/// @param path Path of the session file.
+/// @return SHUResult_Ok if OpenECS restarts into the session, SHUResult_ErrFile or SHUResult_ErrBadData if the file is not a session, SHUResult_Err if the user keeps the unsaved work, or SHUResult_ErrPrivileges during a test, which cannot restart.
+/// @lua ecs.session.open
+OPENECS_EXPORT SHUWUR SHUResult ECSSession_Open(const char *path);
+
 /// @brief Puts text on the clipboard. Main thread only.
 /// @param text The text. The core copies it.
 /// @return SHUResult_Ok, or SHUResult_ErrInternal if the system refuses it.

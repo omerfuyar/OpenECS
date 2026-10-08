@@ -148,7 +148,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 
 ### 2.3 Start-up
 
-1. Read the command line (13.5) and find the preset or session.
+1. Read the command line (13.6) and find the preset or session.
 2. Start Lua. Read the preset's identity, plugins and settings as data (11.2).
 3. Give SDL the tool's identity (name, icon, app id) with `SDL_SetAppMetadata`. This happens before any OS window exists, because SDL needs the identity before it starts.
 4. Start SDL, and open the main OS window and its renderer.
@@ -157,7 +157,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 7. Build the settings layers (OVERVIEW 10.4).
 8. Restore plugin state, then build the layout and panels, from this tool's last session or from the preset (OVERVIEW 10.2).
 9. Report the settings and keys whose names nothing registered (7.8, 12.1).
-10. Pass the files of the command line to the `open` function (13.5).
+10. Pass the files of the command line to the `open` function (13.6).
 11. Enter the main loop.
 
 ### 2.4 Shutdown
@@ -455,6 +455,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | `ecs.reopen`                          | Reopen the last closed panel                                                                             |
   | `ecs.restart`                         | Restart the failed panel                                                                                 |
   | `ecs.saveSession`                     | Save the session to a file, which a save dialog asks for                                                 |
+  | `ecs.openSession`                     | Open a saved session (13.5), which an open dialog asks for                                               |
   | `ecs.workspace1` to `ecs.workspace10` | Switch to workspace 1 to 10                                                                              |
 
 - Escape after the prefix cancels. It is not a function, so it always works.
@@ -715,7 +716,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 | `ecs.timer`                   | timers                              |
 | `ecs.service`                 | register and look up functions      |
 | `ecs.settings`                | declare, get, set, list and explain |
-| `ecs.session`                 | saving the session                  |
+| `ecs.session`                 | saving and opening sessions         |
 | `ecs.plugin`                  | information about plugins           |
 | `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs               |
 | `ecs.log`                     | `debug`, `info`, `warn` and `error` |
@@ -832,7 +833,15 @@ The core converts only layout data.
 - A file is written to a temporary file, then renamed over the old one, so it is never left half-written.
 - `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. `ecs.saveSession` asks for the file with a save dialog that starts in the folder of saved sessions (16). Quitting still saves the tool's last session.
 
-### 13.5 Command line
+### 13.5 Opening a session
+
+- `ECSSession_Open(path)`, and in Lua `ecs.session.open(path)`, open a session in place of the current one. `ecs.openSession` asks for the file with an open dialog that starts in the folder of saved sessions (16).
+- A file without a list of workspaces is reported, and nothing changes.
+- The core asks about unsaved work (4.5). When the dialog cannot be shown, the work is kept and the session is not opened.
+- When the current pass of the main loop ends, OpenECS shuts down from step 2 of 2.4, so the tool's last session is saved. Then the program replaces itself with `openecs --session FILE`. So the session's identity, plugins and settings apply as at a start.
+- A test cannot open a session (17.5).
+
+### 13.6 Command line
 
 ```
 openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [FILE...]
@@ -944,7 +953,7 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 ### 17.5 Tests
 
 - A test is a Lua file in `tests/`. Debug builds run it with `openecs --test FILE`; other builds refuse the option.
-- The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `default` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.5), and `run`, a function that gets the `test` table.
+- The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `default` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.6), and `run`, a function that gets the `test` table.
 - Tests keep their presets and test plugins in `tests/presets/` and `tests/plugins/`, so a change to a first-party preset does not change a test.
 - A test starts from its preset alone. It reads none of the user's settings, plugins or sessions, and writes no session and no log file. SDL's offscreen video driver and software renderer are the defaults, so a test needs no display; the variables `SDL_VIDEO_DRIVER` and `SDL_RENDER_DRIVER` choose others, for example to watch a test.
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).

@@ -307,7 +307,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
         sessionsFolder = NULL;
     }
 
-    ECSIApp_CheckStart(ECSISession_Initialize(sessionsFolder), "registering the session functions");
+    ECSIApp_CheckStart(ECSISession_Initialize(sessionsFolder, !APP.test), "registering the session functions");
     SDL_free(dataFolder);
     SDL_free(sessionsFolder);
 
@@ -366,13 +366,14 @@ int ECSIApp_Run(void)
             ECSIWindow_Render(SDL_GetTicksNS());
         }
 
-        running = ECSITest_Step();
+        // a session opened in this pass replaces the program once it stops
+        running = ECSITest_Step() && ECSISession_GetNext() == NULL;
     }
 
     return ECSITest_GetStatus();
 }
 
-void ECSIApp_Stop(void)
+char *ECSIApp_Stop(void)
 {
     ECSISanitizers_KeepLibraries();
     ECSITest_Terminate();
@@ -397,6 +398,7 @@ void ECSIApp_Stop(void)
     ECSIPlugins_Unload();
     ECSISettings_Terminate();
     ECSIBindings_Terminate();
+    char *next = ECSISession_GetNext() == NULL ? NULL : SDL_strdup(ECSISession_GetNext());
     ECSISession_Terminate();
     ECSISession_FreeInfo(&APP.preset);
     SDL_free(APP.presetPath);
@@ -411,4 +413,5 @@ void ECSIApp_Stop(void)
 
     SDL_Quit();
     ECSILog_Terminate();
+    return next;
 }

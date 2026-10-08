@@ -22,7 +22,9 @@
 static struct
 {
     const ECSIPresetInfo *info; // the preset or session in use, which saved sessions are written from
-    char *folder;               // where the dialog of ecs.saveSession starts, or NULL
+    char *folder;               // where the dialogs of ecs.saveSession and ecs.openSession start, or NULL
+    bool canOpen;               // false during a test
+    char *next;                 // the session that OpenECS starts again from once it stops, or NULL
 } SESSION = {0};
 
 /// @brief State while the workspaces of a file are built.
@@ -246,8 +248,19 @@ static void ECSISession_SaveChosen(void *data, const char *const *files, usz cou
     }
 }
 
-/// @brief ecs.saveSession: asks for a file and saves the session to it.
-static void ECSISession_SaveWithDialog(void)
+/// @brief Opens the session the user chose; a cancelled dialog gives no file. ECSSession_Open reports the other reasons a file is not opened.
+static void ECSISession_OpenChosen(void *data, const char *const *files, usz count)
+{
+    (void)data;
+
+    if (count > 0 && ECSSession_Open(files[0]) == SHUResult_ErrAllocation)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot open the session '%s': out of memory.", files[0]);
+    }
+}
+
+/// @brief Shows a dialog of saved sessions, which starts in the sessions folder.
+static void ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunction Done)
 {
     if (SESSION.folder != NULL && !SDL_CreateDirectory(SESSION.folder))
     {
@@ -255,12 +268,24 @@ static void ECSISession_SaveWithDialog(void)
     }
 
     ECSDialogFilter filter = {"OpenECS sessions", "lua"};
-    ECSDialogDesc desc = {.type = ECSDialogType_SaveFile, .filters = &filter, .filterCount = 1, .location = SESSION.folder, .Done = ECSISession_SaveChosen};
+    ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = SESSION.folder, .Done = Done};
 
     if (ECSIInput_ShowDialog(NULL, &desc))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask where to save the session.");
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot show the dialog of sessions.");
     }
+}
+
+/// @brief ecs.saveSession: asks for a file and saves the session to it.
+static void ECSISession_SaveWithDialog(void)
+{
+    ECSISession_ShowDialog(ECSDialogType_SaveFile, ECSISession_SaveChosen);
+}
+
+/// @brief ecs.openSession: asks for a session file and opens it.
+static void ECSISession_OpenWithDialog(void)
+{
+    ECSISession_ShowDialog(ECSDialogType_OpenFile, ECSISession_OpenChosen);
 }
 
 #pragma endregion Source Only
@@ -431,22 +456,77 @@ SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
     return result;
 }
 
-SHUResult ECSISession_Initialize(const char *folder)
+SHUResult ECSISession_Initialize(const char *folder, bool canOpen)
 {
     SESSION.folder = folder == NULL ? NULL : SDL_strdup(folder);
+    SESSION.canOpen = canOpen;
 
     if (folder != NULL && SESSION.folder == NULL)
     {
         return SHUResult_ErrAllocation;
     }
 
-    return ECSIServices_RegisterCore("ecs.saveSession", (ECSFunction)ECSISession_SaveWithDialog, "void()", "Save the session to a file");
+    SHU_ReturnResult(ECSIServices_RegisterCore("ecs.saveSession", (ECSFunction)ECSISession_SaveWithDialog, "void()", "Save the session to a file"));
+    return ECSIServices_RegisterCore("ecs.openSession", (ECSFunction)ECSISession_OpenWithDialog, "void()", "Open a saved session");
+}
+
+const char *ECSISession_GetNext(void)
+{
+    return SESSION.next;
 }
 
 void ECSISession_Terminate(void)
 {
     SDL_free(SESSION.folder);
+    SDL_free(SESSION.next);
     SDL_zero(SESSION);
+}
+
+SHUResult ECSSession_Open(const char *path)
+{
+    SDL_assert(path != NULL);
+
+    if (!SESSION.canOpen)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A test starts from its preset alone, so it cannot open the session '%s'.", path);
+        return SHUResult_ErrPrivileges;
+    }
+
+    // the file is checked first, so a file that is not a session never stops OpenECS
+    ECSIPresetInfo info = {0};
+    SHUResult result = ECSISession_ReadInfo(path, &info);
+    bool hasWorkspaces = ECSValue_GetListCount(ECSValue_GetTableField(info.file, "workspaces")) > 0;
+    ECSISession_FreeInfo(&info);
+
+    if (!result && !hasWorkspaces)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a session: it has no list of workspaces.", path);
+        result = SHUResult_ErrBadData;
+    }
+
+    SHU_ReturnResult(result);
+
+    // like closing panels, opening a session keeps the unsaved work when the user cannot be asked
+    ECSPanel *panels = ECSILayout_GetPanels();
+    bool confirmed = ECSIPanels_ConfirmClose(panels, arrlenu(panels), false);
+    arrfree(panels);
+
+    if (!confirmed)
+    {
+        return SHUResult_Err;
+    }
+
+    char *next = SDL_strdup(path);
+
+    if (next == NULL)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    SDL_free(SESSION.next);
+    SESSION.next = next;
+    SDL_Log("OpenECS starts again from the session '%s'.", path);
+    return SHUResult_Ok;
 }
 
 SHUResult ECSSession_Save(const char *path)

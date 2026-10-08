@@ -26,6 +26,7 @@ void ECSIApp_Start(const ECSIArguments *arguments);
 int ECSIApp_Run(void);
 
 /// @brief Saves the session for the next start, then stops every module.
-void ECSIApp_Stop(void);
+/// @return The session that ECSSession_Open chose, which the program starts again from, or NULL. Free it with SDL_free.
+char *ECSIApp_Stop(void);
 
 #pragma endregion Declarations

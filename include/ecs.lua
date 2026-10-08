@@ -301,6 +301,12 @@ ecs.session = {}
 ---@return string? message Why the session is not saved.
 function ecs.session.save(path) end
 
+---Opens a session in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
+---@param path string
+---@return true|nil ok
+---@return string? message Why the session is not opened: the file is not a session, the user keeps the unsaved work, or a test runs.
+function ecs.session.open(path) end
+
 -- Input
 
 ---@class ecs.input

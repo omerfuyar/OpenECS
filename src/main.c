@@ -3,6 +3,8 @@
 
 #include "SDL3/SDL.h"
 
+#include <unistd.h>
+
 #pragma region Source Only
 
 /// @brief Preset used when the command line names none.
@@ -53,7 +55,16 @@ int main(int argc, char **argv)
 
     ECSIApp_Start(&arguments);
     int status = ECSIApp_Run();
-    ECSIApp_Stop();
+    char *next = ECSIApp_Stop();
+
+    // a session opened while OpenECS ran starts a new OpenECS in place of this one; SDL can start a process but not replace one
+    if (next != NULL)
+    {
+        execv("/proc/self/exe", (char *[]){argv[0], "--session", next, NULL});
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot start again from the session '%s'.", next);
+        SDL_free(next);
+        return 1;
+    }
 
     return status;
 }

@@ -827,8 +827,25 @@ static int ECSIBindings_SessionSave(lua_State *state)
     return 1;
 }
 
+static int ECSIBindings_SessionOpen(lua_State *state)
+{
+    const char *path = luaL_checkstring(state, 1);
+    SHUResult result = ECSSession_Open(path);
+
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "the session '%s' is not opened (%s)", path, result == SHUResult_Err ? "the unsaved work is kept" : SHUResult_String(result));
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
 static const luaL_Reg OPENECS_BINDINGS_SESSION[] = {
     {"save", ECSIBindings_SessionSave},
+    {"open", ECSIBindings_SessionOpen},
     {NULL, NULL},
 };
 
