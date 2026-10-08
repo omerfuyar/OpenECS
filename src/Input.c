@@ -864,6 +864,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
     case SDL_EVENT_WINDOW_EXPOSED:
     case SDL_EVENT_WINDOW_SHOWN:
+    case SDL_EVENT_WINDOW_RESTORED:
         ECSI_LayoutRequestFrame();
         break;
 

@@ -15,6 +15,10 @@
 #define OPENECS_WINDOW_HEIGHT 800
 /// @brief Size of the core's font when it is loaded, in layout units.
 #define OPENECS_FONT_SIZE 14
+/// @brief Refresh rate assumed when the display's is unknown.
+#define OPENECS_FALLBACK_FRAME_RATE 60.0f
+/// @brief How far the frame limit is above the refresh rate.
+#define OPENECS_FRAME_RATE_MARGIN 1.1f
 /// @brief Gap between the children of a split; dragging it resizes them.
 #define OPENECS_DIVIDER_SIZE 4.0f
 /// @brief Height of a tab row.
@@ -133,6 +137,8 @@ static struct
     usz current;
 
     bool frameNeeded;
+    u64 frameNanoseconds; // shortest time between frames, from the display's refresh rate
+    u64 lastFrameTicks;
     const char *const *prefixLines; // keys after the prefix and what they do, in pairs, or NULL when the prefix is not pressed
     usz prefixLineCount;
     ECSI_TabRef *tabs; // stb_ds array
@@ -1584,15 +1590,34 @@ void ECSI_LayoutRequestFrame(void)
     LAYOUT.frameNeeded = true;
 }
 
-bool ECSI_LayoutWantsFrame(void)
+i32 ECSI_LayoutGetFrameWait(void)
 {
+    // a window that cannot be seen is not drawn; showing it again asks for a frame
+    if ((SDL_GetWindowFlags(LAYOUT.window) & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED)) != 0)
+    {
+        return -1;
+    }
+
     bool wants = LAYOUT.frameNeeded;
     ECSI_LayoutForEachGroup(ECSI_LayoutWantsFrameIn, &wants);
-    return wants;
+
+    if (!wants)
+    {
+        return -1;
+    }
+
+    u64 next = LAYOUT.lastFrameTicks + LAYOUT.frameNanoseconds;
+    u64 now = SDL_GetTicksNS();
+    return now >= next ? 0 : (i32)((next - now + SDL_NS_PER_MS - 1) / SDL_NS_PER_MS);
 }
 
 void ECSI_LayoutRender(u64 nowTicks)
 {
+    // some drivers accept vsync but do not wait for it, so frames are limited a little above the refresh rate; a working vsync still sets the pace
+    const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(LAYOUT.window));
+    f32 rate = mode != NULL && mode->refresh_rate > 0.0f ? mode->refresh_rate : OPENECS_FALLBACK_FRAME_RATE;
+    LAYOUT.frameNanoseconds = (u64)((f64)SDL_NS_PER_SECOND / (f64)(rate * OPENECS_FRAME_RATE_MARGIN));
+    LAYOUT.lastFrameTicks = nowTicks;
     ECSI_LayoutUpdate();
 
     // the interface's commands point to the panels' titles, so panels draw first; their Draw may change a title

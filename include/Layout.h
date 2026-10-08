@@ -80,9 +80,9 @@ usz ECSI_LayoutGetCurrentWorkspace(void);
 /// @brief Asks for the window to be drawn again.
 void ECSI_LayoutRequestFrame(void);
 
-/// @brief Checks whether the window needs a new frame.
-/// @return true if the layout changed or a visible panel needs drawing.
-bool ECSI_LayoutWantsFrame(void);
+/// @brief Gets how long the main loop may wait before the window is drawn again.
+/// @return -1 if no frame is needed or the window cannot be seen, 0 if a frame is due, or the milliseconds until the frame limit allows the next frame.
+i32 ECSI_LayoutGetFrameWait(void);
 
 /// @brief Draws the current workspace: panels first, then the core's own interface.
 /// @param nowTicks Current time in nanoseconds.
