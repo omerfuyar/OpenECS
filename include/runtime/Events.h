@@ -9,9 +9,22 @@
 /// @brief Function that delivers a queued event to its target.
 typedef void (*ECSI_EventDeliverFunction)(void *target, const ECSPanelEvent *event);
 
-/// @brief Prepares the lock and condition of the worker threads, which start when background work first comes.
+/// @brief Prepares the lock and condition of the worker threads, which start when background work first comes, and declares the core's named events.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_EventsInitialize(void);
+
+/// @brief Emits one of the core's named events, whose names start with "ecs.".
+/// @param name Name of the event.
+/// @param value What the event carries, or NULL. The core copies it.
+void ECSI_EventsEmitCore(const char *name, const ECSValue *value);
+
+/// @brief Subscribes to a named event like ECSEvent_Subscribe, with a function that releases the data when the subscription is freed. The Bindings module uses it for Lua.
+/// @param release Function called with the data when the subscription is freed, or NULL.
+SHUWUR SHUResult ECSI_EventsSubscribe(ECSPlugin plugin, const char *name, ECSSubscription *retSubscription, ECSEventFunction function, ECSTimerFunction release, void *data);
+
+/// @brief Removes a plugin's named events and subscriptions, and the subscriptions to its events.
+/// @param plugin The plugin.
+void ECSI_EventsRemovePlugin(ECSPlugin plugin);
 
 /// @brief Queues an event. ECSI_EventsDeliver delivers it, after the current callback returns.
 /// @param deliver Function that delivers the event.

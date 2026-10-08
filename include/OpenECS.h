@@ -30,6 +30,9 @@ typedef struct ECSI_Panel *ECSPanel;
 /// @brief Handle of a timer.
 typedef struct ECSI_Timer *ECSTimer;
 
+/// @brief A plugin's subscription to a named event.
+typedef struct ECSI_Subscription *ECSSubscription;
+
 /// @brief A function of a service, of any signature. Cast it to its real type before calling it.
 typedef void (*ECSFunction)(void);
 
@@ -43,6 +46,12 @@ typedef void (*ECSTimerFunction)(void *data);
 
 /// @brief A generic value: nil, a boolean, an integer, a number, a string, or a table that holds a list and named fields. Saved state, settings and services use values.
 typedef struct ECSI_Value ECSValue;
+
+/// @brief Function called with a named event that a plugin subscribed to.
+/// @param data The data given to ECSEvent_Subscribe.
+/// @param name Name of the event.
+/// @param value What the event carries; nil if it carries nothing. Valid only during the call.
+typedef void (*ECSEventFunction)(void *data, const char *name, const ECSValue *value);
 
 /// @brief Type of a value.
 typedef enum ECSValueType
@@ -473,6 +482,11 @@ OPENECS_EXPORT void ECSLayout_Focus(ECSPanel panel);
 /// @return The panel, or NULL if the workspace has none.
 OPENECS_EXPORT ECSPanel ECSLayout_GetFocus(void);
 
+/// @brief Finds a panel in any workspace by its id. Main thread only.
+/// @param id The panel's id, as ECSPanel_GetId gives it and the core's events carry it.
+/// @return The panel, or NULL if no open panel has the id.
+OPENECS_EXPORT ECSPanel ECSLayout_FindPanel(u32 id);
+
 /// @brief Counts the workspaces. Main thread only.
 /// @return Number of workspaces.
 OPENECS_EXPORT usz ECSWorkspace_GetCount(void);
@@ -534,6 +548,33 @@ OPENECS_EXPORT SHUWUR SHUResult ECSDialog_ShowMessage(const char *title, const c
 /// @param function Function to call.
 /// @param data Passed to the function.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @brief Declares a named event that a plugin emits. Main thread only.
+/// @param plugin The plugin that emits the event.
+/// @param name Name of the event: the plugin's name, a dot and a local name, such as "canvas.selection_changed".
+/// @param description One line about the event.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the name is taken or does not belong to the plugin, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *description);
+
+/// @brief Emits a named event that the plugin declared. Subscribers get it after the current callback returns. Main thread only.
+/// @param plugin The plugin that declared the event.
+/// @param name Name of the event.
+/// @param value What the event carries, or NULL. The core copies it.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if the plugin declared no such event, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name, const ECSValue *value);
+
+/// @brief Subscribes to a named event. The event must be declared by the core, by the plugin itself, or by a plugin its manifest depends on. Main thread only.
+/// @param plugin The plugin that subscribes.
+/// @param name Name of the event.
+/// @param retSubscription The new subscription.
+/// @param function Function called with each emission.
+/// @param data Passed to the function.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if no such event is declared, SHUResult_ErrBadData if the plugin does not depend on the event's plugin, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Subscribe(ECSPlugin plugin, const char *name, ECSSubscription *retSubscription, ECSEventFunction function, void *data);
+
+/// @brief Ends a subscription and sets the handle to NULL. Main thread only.
+/// @param subscription The subscription, or a handle to NULL.
+OPENECS_EXPORT void ECSEvent_Unsubscribe(ECSSubscription *subscription);
+
 OPENECS_EXPORT SHUWUR SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data);
 
 /// @brief Stops a timer and sets the handle to NULL. A timer may stop itself from its own function. Main thread only.
@@ -568,5 +609,15 @@ OPENECS_EXPORT const char *ECSPanel_GetTitle(ECSPanel panel);
 /// @param panel Panel to change.
 /// @param title New title.
 OPENECS_EXPORT void ECSPanel_SetTitle(ECSPanel panel, const char *title);
+
+/// @brief Gets a panel's id, which is unique and stable within a session. Main thread only.
+/// @param panel The panel.
+/// @return The id.
+OPENECS_EXPORT u32 ECSPanel_GetId(ECSPanel panel);
+
+/// @brief Gets the name of a panel's type, such as "canvas.view". Main thread only.
+/// @param panel The panel.
+/// @return The name. Valid while the panel exists.
+OPENECS_EXPORT const char *ECSPanel_GetType(ECSPanel panel);
 
 #pragma endregion Core Functions

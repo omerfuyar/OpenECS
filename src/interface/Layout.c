@@ -1,5 +1,6 @@
 #include "interface/Layout.h"
 
+#include "runtime/Events.h"
 #include "runtime/Plugins.h"
 #include "runtime/Settings.h"
 
@@ -417,6 +418,26 @@ static bool ECSI_LayoutLocate(ECSPanel panel, ECSI_Workspace **retWorkspace, ECS
 }
 
 /// @brief Changes a workspace's focus. In the current workspace, the panel that loses focus and the one that gets it are told.
+/// @brief Emits ecs.focus_changed with the panel that has the focus now, or none.
+static void ECSI_LayoutEmitFocus(ECSPanel panel)
+{
+    ECSValue *value = NULL;
+    ECSValue *field = NULL;
+
+    if (ECSValue_Create(&value) == SHUResult_Ok)
+    {
+        ECSValue_SetTable(value);
+
+        if (panel == NULL || ECSValue_TableSetField(value, "panel", &field) == SHUResult_Ok)
+        {
+            ECSValue_SetInteger(field, panel == NULL ? 0 : ECSPanel_GetId(panel));
+            ECSI_EventsEmitCore("ecs.focus_changed", value);
+        }
+    }
+
+    ECSValue_Destroy(&value);
+}
+
 static void ECSI_LayoutChangeFocus(ECSI_Workspace *workspace, ECSPanel panel)
 {
     ECSPanel old = workspace->focus;
@@ -451,6 +472,8 @@ static void ECSI_LayoutChangeFocus(ECSI_Workspace *workspace, ECSPanel panel)
         event.type = ECSPanelEventType_Focused;
         ECSI_PanelPostEvent(panel, &event);
     }
+
+    ECSI_LayoutEmitFocus(panel);
 }
 
 /// @brief Finds the first panel of a tree.
@@ -565,6 +588,12 @@ static ECSI_Node *ECSI_LayoutTidyNode(ECSI_Workspace *workspace, ECSI_Node *node
     return only;
 }
 
+/// @brief Emits ecs.layout_changed, which carries nothing.
+static void ECSI_LayoutEmitLayoutChanged(void)
+{
+    ECSI_EventsEmitCore("ecs.layout_changed", NULL);
+}
+
 /// @brief Tidies a workspace's tree after an operation. Nodes may be freed, so the core's interface forgets the nodes it pointed to.
 static void ECSI_LayoutTidy(ECSI_Workspace *workspace)
 {
@@ -583,6 +612,7 @@ static void ECSI_LayoutTidy(ECSI_Workspace *workspace)
     LAYOUT.dragPanel = NULL;
     LAYOUT.dragging = false;
     LAYOUT.frameNeeded = true;
+    ECSI_LayoutEmitLayoutChanged();
 }
 
 #pragma region Moving
@@ -1736,6 +1766,7 @@ void ECSI_LayoutGroupAdd(ECSI_Node *group, ECSPanel panel)
     SDL_assert(group->type == ECSI_NodeType_Group);
 
     arrput(group->panels, panel);
+    ECSI_PanelEmit("ecs.panel_opened", panel);
 }
 
 void ECSI_LayoutGroupShow(ECSI_Node *group, usz index)
@@ -1829,6 +1860,18 @@ void ECSI_LayoutWorkspaceSwitch(usz index)
     }
 
     LAYOUT.current = index;
+    ECSI_LayoutEmitFocus(focus);
+
+    ECSValue *value = NULL;
+    ECSValue *field = NULL;
+
+    if (ECSValue_Create(&value) == SHUResult_Ok && ECSValue_TableSetField(value, "workspace", &field) == SHUResult_Ok)
+    {
+        ECSValue_SetInteger(field, (i64)index + 1);
+        ECSI_EventsEmitCore("ecs.workspace_switched", value);
+    }
+
+    ECSValue_Destroy(&value);
     LAYOUT.gripGroup = NULL;
     LAYOUT.dragSplit = NULL;
     LAYOUT.dragPanel = NULL;
@@ -2241,6 +2284,7 @@ void ECSI_LayoutToggleLock(void)
         group->locked = !group->locked;
         LAYOUT.gripGroup = NULL;
         LAYOUT.frameNeeded = true;
+        ECSI_LayoutEmitLayoutChanged();
         SDL_Log("The group of '%s' is %s.", workspace->focus->title, group->locked ? "locked" : "unlocked");
     }
 }
@@ -2258,6 +2302,7 @@ void ECSI_LayoutToggleMaximize(void)
     workspace->maximized = workspace->maximized == group ? NULL : group;
     LAYOUT.gripGroup = NULL;
     LAYOUT.frameNeeded = true;
+    ECSI_LayoutEmitLayoutChanged();
 }
 
 void ECSI_LayoutClosePanel(ECSPanel panel)
@@ -2428,6 +2473,7 @@ SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type,
     // the panel joins the group, then a side zone moves it beside the group
     arrput(group->panels, panel);
     group->shown = arrlenu(group->panels) - 1;
+    ECSI_PanelEmit("ecs.panel_opened", panel);
     ECSI_Drop drop = {.zone = ECSI_LayoutZone(zone), .group = group};
 
     if (drop.zone != ECSI_Zone_Center)
@@ -2498,6 +2544,21 @@ void ECSLayout_Focus(ECSPanel panel)
     }
 
     ECSI_LayoutChangeFocus(workspace, panel);
+}
+
+ECSPanel ECSLayout_FindPanel(u32 id)
+{
+    // every panel is in a group, so a search of every workspace finds it
+    ECSPanel *panels = ECSI_LayoutGetPanels();
+    ECSPanel found = NULL;
+
+    for (usz i = 0; found == NULL && i < arrlenu(panels); i++)
+    {
+        found = ECSPanel_GetId(panels[i]) == id ? panels[i] : NULL;
+    }
+
+    arrfree(panels);
+    return found;
 }
 
 ECSPanel ECSLayout_GetFocus(void)

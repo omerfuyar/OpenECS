@@ -135,6 +135,11 @@ void ECSI_PanelShow(ECSPanel panel, SDL_Renderer *renderer);
 /// @param visible true if the panel is shown in the current workspace.
 void ECSI_PanelSetVisible(ECSPanel panel, bool visible);
 
+/// @brief Emits one of the core's named events about a panel, with the value { panel = id, type = name }.
+/// @param name Name of the event, such as "ecs.panel_opened".
+/// @param panel The panel.
+void ECSI_PanelEmit(const char *name, ECSPanel panel);
+
 /// @brief Queues an event for a panel's type.
 /// @param panel Panel that receives the event.
 /// @param event The event.

@@ -112,3 +112,12 @@ ecs.service.register("hello", {
     fn = function() ecs.layout.open("hello.stripes", { color = 3 }, ecs.layout.get_focus(), "right") end,
   },
 })
+
+-- named events: one of the core's, and one that the demo plugin declares; hello depends on demo, so it may hear it
+ecs.event.subscribe("ecs.workspace_switched", function(name, value)
+  ecs.log.info("Workspace " .. value.workspace .. " is shown.")
+end)
+
+ecs.event.subscribe("demo.color_changed", function(name, value)
+  ecs.log.info("A demo color panel changed to colour " .. value .. ".")
+end)

@@ -17,6 +17,8 @@
 
 /// @brief Name of the metatable of timer handles.
 #define OPENECS_LUA_TIMER "ecs.timer"
+/// @brief Name of the metatable of subscription handles.
+#define OPENECS_LUA_SUBSCRIPTION "ecs.subscription"
 /// @brief Name of the handle type of panels.
 #define OPENECS_LUA_PANEL "ecs.panel"
 /// @brief Name of the metatable of surfaces given to draw.
@@ -55,6 +57,15 @@ typedef struct ECSI_LuaTimer
     int function; // registry reference of the Lua function
     int handle;   // registry reference of the handle, so it lives while the timer runs
 } ECSI_LuaTimer;
+
+/// @brief A subscription made from Lua.
+typedef struct ECSI_LuaSubscription
+{
+    ECSPlugin plugin;
+    ECSSubscription subscription;
+    int function; // registry reference of the Lua function
+    int handle;   // registry reference of the handle, so it lives while the subscription does
+} ECSI_LuaSubscription;
 
 static struct
 {
@@ -390,6 +401,129 @@ static const luaL_Reg ECSI_BINDINGS_TIMER_METHODS[] = {
 
 #pragma endregion Timers
 
+#pragma region Events
+
+/// @brief Calls a Lua subscriber with the event's name and value.
+static void ECSI_BindingsEventCall(void *data, const char *name, const ECSValue *value)
+{
+    ECSI_LuaSubscription *subscription = data;
+    lua_State *state = ECSI_LuaGetState();
+
+    lua_rawgeti(state, LUA_REGISTRYINDEX, subscription->function);
+    lua_pushstring(state, name);
+    ECSI_LuaPushValue(value);
+
+    if (ECSI_LuaCall(2, 0))
+    {
+        ECSI_PluginReportError(subscription->plugin, lua_tostring(state, -1));
+        lua_pop(state, 1);
+    }
+}
+
+/// @brief Frees a Lua subscription when the core frees its subscription, and clears its handle.
+static void ECSI_BindingsEventRelease(void *data)
+{
+    ECSI_LuaSubscription *subscription = data;
+    lua_State *state = ECSI_LuaGetState();
+
+    ECSI_BindingsClearHandle(state, subscription->handle);
+    luaL_unref(state, LUA_REGISTRYINDEX, subscription->function);
+    luaL_unref(state, LUA_REGISTRYINDEX, subscription->handle);
+    SDL_free(subscription);
+}
+
+static int ECSI_BindingsEventDeclare(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+    const char *description = luaL_optstring(state, 2, "");
+
+    if (ECSEvent_Declare(ECSI_BindingsPlugin(state), name, description))
+    {
+        return luaL_error(state, "event '%s' cannot be declared", name);
+    }
+
+    return 0;
+}
+
+static int ECSI_BindingsEventEmit(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+    ECSValue *value = NULL;
+
+    SHUResult result = ECSValue_Create(&value);
+    result = result ? result : ECSI_LuaGetValue(2, value);
+    result = result ? result : ECSEvent_Emit(ECSI_BindingsPlugin(state), name, value);
+    ECSValue_Destroy(&value);
+
+    if (result)
+    {
+        return luaL_error(state, "event '%s' cannot be emitted (%s)", name, SHUResult_String(result));
+    }
+
+    return 0;
+}
+
+static int ECSI_BindingsEventSubscribe(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+    luaL_checktype(state, 2, LUA_TFUNCTION);
+    ECSPlugin plugin = ECSI_BindingsPlugin(state);
+
+    ECSI_LuaSubscription *subscription = SDL_malloc(sizeof(ECSI_LuaSubscription));
+
+    if (subscription == NULL)
+    {
+        return luaL_error(state, "out of memory");
+    }
+
+    ECSI_LuaSubscription **handle = lua_newuserdatauv(state, sizeof(ECSI_LuaSubscription *), 0);
+    *handle = subscription;
+    luaL_setmetatable(state, OPENECS_LUA_SUBSCRIPTION);
+
+    lua_pushvalue(state, 2);
+    subscription->function = luaL_ref(state, LUA_REGISTRYINDEX);
+    lua_pushvalue(state, -1);
+    subscription->handle = luaL_ref(state, LUA_REGISTRYINDEX);
+    subscription->plugin = plugin;
+
+    SHUResult result = ECSI_EventsSubscribe(plugin, name, &subscription->subscription, ECSI_BindingsEventCall, ECSI_BindingsEventRelease, subscription);
+
+    if (result)
+    {
+        ECSI_BindingsEventRelease(subscription);
+        return luaL_error(state, "cannot subscribe to '%s' (%s)", name, SHUResult_String(result));
+    }
+
+    return 1;
+}
+
+static int ECSI_BindingsEventCancel(lua_State *state)
+{
+    ECSI_LuaSubscription **handle = luaL_checkudata(state, 1, OPENECS_LUA_SUBSCRIPTION);
+
+    // a subscription that already ended has nothing to cancel
+    if (*handle != NULL)
+    {
+        ECSEvent_Unsubscribe(&(*handle)->subscription);
+    }
+
+    return 0;
+}
+
+static const luaL_Reg ECSI_BINDINGS_EVENT[] = {
+    {"declare", ECSI_BindingsEventDeclare},
+    {"emit", ECSI_BindingsEventEmit},
+    {"subscribe", ECSI_BindingsEventSubscribe},
+    {NULL, NULL},
+};
+
+static const luaL_Reg ECSI_BINDINGS_SUBSCRIPTION_METHODS[] = {
+    {"cancel", ECSI_BindingsEventCancel},
+    {NULL, NULL},
+};
+
+#pragma endregion Events
+
 #pragma region Layout
 
 /// @brief Names of the zones in Lua, in the order of ECSZone.
@@ -461,7 +595,15 @@ static int ECSI_BindingsLayoutGetFocus(lua_State *state)
     return 1;
 }
 
+static int ECSI_BindingsLayoutFind(lua_State *state)
+{
+    lua_Integer id = luaL_checkinteger(state, 1);
+    ECSI_ServicesPushHandle(OPENECS_LUA_PANEL, id > 0 && id <= SDL_MAX_UINT32 ? ECSLayout_FindPanel((u32)id) : NULL);
+    return 1;
+}
+
 static const luaL_Reg ECSI_BINDINGS_LAYOUT[] = {
+    {"find", ECSI_BindingsLayoutFind},
     {"open", ECSI_BindingsLayoutOpen},
     {"move", ECSI_BindingsLayoutMove},
     {"close", ECSI_BindingsLayoutClose},
@@ -1154,6 +1296,18 @@ static int ECSI_BindingsPanelSetTitle(lua_State *state)
     return 0;
 }
 
+static int ECSI_BindingsPanelGetId(lua_State *state)
+{
+    lua_pushinteger(state, ECSPanel_GetId(ECSI_BindingsCheckPanel(state, 1)));
+    return 1;
+}
+
+static int ECSI_BindingsPanelGetType(lua_State *state)
+{
+    lua_pushstring(state, ECSPanel_GetType(ECSI_BindingsCheckPanel(state, 1)));
+    return 1;
+}
+
 static int ECSI_BindingsPanelSetUnsaved(lua_State *state)
 {
     ECSPanel_SetUnsaved(ECSI_BindingsCheckPanel(state, 1), lua_toboolean(state, 2));
@@ -1171,6 +1325,8 @@ static const luaL_Reg ECSI_BINDINGS_PANEL_METHODS[] = {
     {"redraw", ECSI_BindingsPanelRedraw},
     {"get_title", ECSI_BindingsPanelGetTitle},
     {"set_title", ECSI_BindingsPanelSetTitle},
+    {"get_id", ECSI_BindingsPanelGetId},
+    {"get_type", ECSI_BindingsPanelGetType},
     {"set_unsaved", ECSI_BindingsPanelSetUnsaved},
     {"start_timer", ECSI_BindingsPanelStartTimer},
     {NULL, NULL},
@@ -1314,6 +1470,7 @@ static void ECSI_BindingsPushEcs(lua_State *state, ECSPlugin plugin)
     ECSI_BindingsAddTable(state, plugin, "workspace", ECSI_BINDINGS_WORKSPACE);
     ECSI_BindingsAddTable(state, plugin, "clipboard", ECSI_BINDINGS_CLIPBOARD);
     ECSI_BindingsAddTable(state, plugin, "dialog", ECSI_BINDINGS_DIALOG);
+    ECSI_BindingsAddTable(state, plugin, "event", ECSI_BINDINGS_EVENT);
 
     lua_newtable(state);
     lua_pushstring(state, ECSI_PluginGetName(plugin));
@@ -1331,6 +1488,11 @@ void ECSI_BindingsInitialize(void)
 
     luaL_newmetatable(state, OPENECS_LUA_TIMER);
     luaL_newlib(state, ECSI_BINDINGS_TIMER_METHODS);
+    lua_setfield(state, -2, "__index");
+    lua_pop(state, 1);
+
+    luaL_newmetatable(state, OPENECS_LUA_SUBSCRIPTION);
+    luaL_newlib(state, ECSI_BINDINGS_SUBSCRIPTION_METHODS);
     lua_setfield(state, -2, "__index");
     lua_pop(state, 1);
 

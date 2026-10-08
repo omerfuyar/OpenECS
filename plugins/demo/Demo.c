@@ -107,6 +107,21 @@ static void DemoColorEvent(void *state, const ECSPanelEvent *event)
         // a changed colour is unsaved work, to show the question before closing
         demo->color = (demo->color + 1) % (sizeof(DEMO_COLORS) / sizeof(*DEMO_COLORS));
         ECSPanel_SetUnsaved(demo->panel, true);
+
+        // other plugins hear about the new colour
+        ECSValue *value = NULL;
+
+        if (ECSValue_Create(&value) == SHUResult_Ok)
+        {
+            ECSValue_SetInteger(value, (i64)demo->color);
+
+            if (ECSEvent_Emit(DEMO.plugin, "demo.color_changed", value))
+            {
+                ECS_Log(DEMO.plugin, ECSLogLevel_Warning, "Cannot emit demo.color_changed.");
+            }
+
+            ECSValue_Destroy(&value);
+        }
     }
     else if (event->type == ECSPanelEventType_PointerMove)
     {
@@ -422,6 +437,7 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.counter", (ECSFunction)DemoCounterCreate, "handle<demo.counter>(int64)", "Makes a counter"));
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.counter_add", (ECSFunction)DemoCounterAdd, "int64(handle<demo.counter>, int64)", "Adds to a counter and gives its count"));
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.reverse", (ECSFunction)DemoReverse, "buffer(buffer)", "Reverses the bytes of a buffer"));
+    SHU_ReturnResult(ECSEvent_Declare(plugin, "demo.color_changed", "A color panel changed its colour; carries the colour's index"));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &color));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &gradient));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &checker));

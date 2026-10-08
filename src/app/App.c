@@ -83,6 +83,7 @@ static void ECSI_RemoveRegistrations(ECSPlugin plugin)
     ECSI_ServicesRemovePlugin(plugin);
     ECSI_SettingsRemovePlugin(plugin);
     ECSI_EventsStopTimersOfPlugin(plugin);
+    ECSI_EventsRemovePlugin(plugin);
     ECSI_InputRemovePlugin(plugin);
 }
 

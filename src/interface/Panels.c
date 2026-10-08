@@ -168,6 +168,7 @@ void ECSI_PanelClose(ECSPanel *panel)
     SDL_assert(!(*panel)->closed);
 
     ECSI_EventsStopTimersOf(*panel);
+    ECSI_PanelEmit("ecs.panel_closed", *panel);
     (*panel)->closed = true;
     arrput(PANELS.closed, *panel);
     *panel = NULL;
@@ -358,6 +359,30 @@ void ECSI_PanelSetVisible(ECSPanel panel, bool visible)
         panel->toldWidth = panel->width;
         panel->toldHeight = panel->height;
     }
+}
+
+void ECSI_PanelEmit(const char *name, ECSPanel panel)
+{
+    SDL_assert(name != NULL);
+    SDL_assert(panel != NULL);
+
+    ECSValue *value = NULL;
+    ECSValue *field = NULL;
+
+    if (ECSValue_Create(&value) || ECSValue_TableSetField(value, "panel", &field))
+    {
+        ECSValue_Destroy(&value);
+        return;
+    }
+
+    ECSValue_SetInteger(field, panel->id);
+
+    if (ECSValue_TableSetField(value, "type", &field) == SHUResult_Ok && ECSValue_SetString(field, panel->typeName) == SHUResult_Ok)
+    {
+        ECSI_EventsEmitCore(name, value);
+    }
+
+    ECSValue_Destroy(&value);
 }
 
 void ECSI_PanelPostEvent(ECSPanel panel, const ECSPanelEvent *event)
@@ -577,6 +602,20 @@ const char *ECSPanel_GetTitle(ECSPanel panel)
     SDL_assert(panel != NULL);
 
     return panel->title;
+}
+
+u32 ECSPanel_GetId(ECSPanel panel)
+{
+    SDL_assert(panel != NULL);
+
+    return panel->id;
+}
+
+const char *ECSPanel_GetType(ECSPanel panel)
+{
+    SDL_assert(panel != NULL);
+
+    return panel->typeName;
 }
 
 void ECSPanel_SetTitle(ECSPanel panel, const char *title)

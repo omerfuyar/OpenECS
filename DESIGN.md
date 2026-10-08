@@ -451,8 +451,8 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 8.1 Types
 
-- Core events: panel opened, closed, resized, scale changed, shown, hidden, focused, unfocused, moved, popped out, grouped, maximized; workspace switched. Input events (key, pointer, text, drag and drop) go to the panel concerned.
-- Plugin events carry a value (10.3).
+- A panel gets the events about itself (`ECSPanelEvent`): input (key, pointer, wheel, text, drag and drop), focus, and whether it is shown, hidden or resized.
+- Named events carry a value (10.3). The core emits its own (8.4), and plugins declare and emit theirs (8.3).
 - Events are notifications. Handlers return nothing and cannot cancel anything.
 - A panel gets `Shown` when it becomes visible and `Hidden` when another tab, workspace or maximized group hides it, and `Resized` when its size changes while it is visible. `Shown` and `Resized` carry the size in layout units. The layout checks after each pass, so a panel that was never visible gets no `Hidden`.
 - A panel's event is a tagged union, `ECSPanelEvent`: its type chooses which member is set, `pointer`, `wheel`, `key` or `size`. Every input event carries the modifiers held when it happened. A wheel amount is positive away from the user, even when the system flips the wheel.
@@ -462,10 +462,25 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Events are queued and delivered on the main thread after the current callback returns, never inside another event handler.
 - Changes take effect immediately; only the notification waits. A closed panel leaves the layout at once, but its `Destroy` runs after the current delivery finishes, so no handler meets a destroyed panel.
 
-### 8.3 Who receives what
+### 8.3 Named events
 
-- A plugin may subscribe to another plugin's events only if its manifest depends on that plugin.
-- Illustrative: `ECSEvent_Declare(plugin, "canvas.selection_changed", description)`, `ECSEvent_Emit(plugin, name, value)`, `ECSEvent_Subscribe(plugin, name, fn)`. In Lua: `ecs.event.declare`, `emit` and `subscribe`.
+- A plugin declares the named events it emits: `ECSEvent_Declare(plugin, "canvas.selection_changed", description)`. The name starts with the plugin's name. Only the declaring plugin emits it: `ECSEvent_Emit(plugin, name, value)`. The value may be `NULL`; the core copies it.
+- `ECSEvent_Subscribe(plugin, name, &subscription, fn, data)` calls `fn(data, name, value)` for each emission; `ECSEvent_Unsubscribe` ends it. A subscriber hears the core's events, its own, and those of plugins its manifest depends on. The event must be declared first, so a plugin subscribes after its dependencies have loaded.
+- Emissions are queued like every other event (8.2).
+- When a plugin fails, its events, its subscriptions and the subscriptions to its events are removed.
+- Lua: `ecs.event.declare(name, description)`, `ecs.event.emit(name, value)` and `ecs.event.subscribe(name, fn)`, which returns a subscription with `cancel()`. `fn` gets the name and the value.
+
+### 8.4 The core's named events
+
+Panels are named by their id (`ECSPanel_GetId`, `panel:get_id()`); `ECSLayout_FindPanel(id)` and `ecs.layout.find(id)` find them.
+
+| Event                    | Value                                  | When                                                    |
+| ------------------------ | -------------------------------------- | ------------------------------------------------------- |
+| `ecs.panel_opened`       | `{ panel = id, type = name }`          | A panel enters the layout, also when a session is built |
+| `ecs.panel_closed`       | `{ panel = id, type = name }`          | A panel leaves the layout                               |
+| `ecs.focus_changed`      | `{ panel = id }`, or `{}` for none      | Another panel gets the focus                            |
+| `ecs.workspace_switched` | `{ workspace = number }`               | Another workspace is shown                              |
+| `ecs.layout_changed`     | nil                                    | Panels are moved, grouped, closed, maximized or locked  |
 
 ## 9. Plugins
 
@@ -669,7 +684,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 ### 11.4 Panels in Lua
 
 - A Lua panel type is a table (4.1). The core registers C callbacks that call its Lua functions in protected calls.
-- Panels are handles with methods: `panel:redraw()`, `panel:get_title()`, `panel:set_title(text)` and `panel:start_timer(seconds, repeat, fn)`. A handle of a destroyed panel raises an error when it is used.
+- Panels are handles with methods: `panel:redraw()`, `panel:get_id()`, `panel:get_type()`, `panel:get_title()`, `panel:set_title(text)` and `panel:start_timer(seconds, repeat, fn)`. A handle of a destroyed panel raises an error when it is used.
 - `draw(state, surface, seconds)` gets a surface with `width`, `height` and `scale`, and the methods `set_pixel(x, y, color)`, `get_pixel(x, y)` and `set_row(y, bytes, x)`. Colours are ARGB integers; `set_row` takes the row's pixels as a string in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
 - `event(state, event)` gets a table: `type` (such as `"pointer_down"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheel_x` and `wheel_y` for the wheel, `key` (SDL's key name) for keys, and `width` and `height` for `shown` and `resized`.
 
