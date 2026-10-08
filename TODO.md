@@ -12,7 +12,7 @@ What is not decided yet, and work that is waiting. When an item is settled, writ
 
 ## Tasks
 
-- **Implement the rest of DESIGN.md.** Not done yet: GPU surfaces, pop-out windows, the rest of the `ecs` table (`session`), opening panels in a new OS window, the parity list of C and Lua functions (DESIGN 11.5), the panel menu's pop-out entry, saving a session to a file and opening one while OpenECS runs, popups, drag and drop of data, asking about unsaved work before another session is opened, and the first-party ui, settings and launcher plugins.
+- **Implement the rest of DESIGN.md.** Not done yet: GPU surfaces, pop-out windows, the rest of the `ecs` table (`session`), opening panels in a new OS window, the panel menu's pop-out entry, saving a session to a file and opening one while OpenECS runs, popups, drag and drop of data, asking about unsaved work before another session is opened, and the first-party ui, settings and launcher plugins.
 - **Link SDL as shared libraries.** DESIGN 17.2 ships SDL3 and SDL3_ttf as shared libraries next to the executable; the default build links them statically.
 - **Rendering prototype.** The main window draws with a 2D GPU renderer. Still to confirm: one GPU device for several OS windows, a panel's GPU texture shown in any window, and an offscreen renderer drawing into that texture (DESIGN 5.3, 5.4).
 - **Wayland test on Hyprland.** Dragging a panel out of its window, popups, and moving focus between OS windows (DESIGN 7.1, 7.2, 18).

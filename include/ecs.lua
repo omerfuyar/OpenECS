@@ -138,18 +138,19 @@ function Panel:startTimer(seconds, repeat_, fn) end
 ---@field scale number Pixels per layout unit.
 local Surface = {}
 
----Sets a pixel. Pixels outside the surface are clipped.
+---Sets a pixel. Pixels outside the surface are clipped. Lua only: C writes the surface's pixels directly.
 ---@param x integer
 ---@param y integer
 ---@param color integer ARGB, such as 0xFFFF0000.
 function Surface:setPixel(x, y, color) end
 
+---Lua only: C reads the surface's pixels directly.
 ---@param x integer
 ---@param y integer
 ---@return integer color ARGB.
 function Surface:getPixel(x, y) end
 
----Copies a row of pixels, clipped to the surface.
+---Copies a row of pixels, clipped to the surface. Lua only: C writes the surface's pixels directly.
 ---@param y integer
 ---@param bytes string ARGB pixels, 4 bytes each in native byte order.
 ---@param x? integer The first pixel's column; 0 if missing.
@@ -333,13 +334,13 @@ ecs.handle = {}
 ---@param name string
 function ecs.handle.registerType(name) end
 
----Makes a handle that stands for a Lua value.
+---Makes a handle that stands for a Lua value. Lua only: in C, a handle is the object's pointer.
 ---@param name string A handle type of the plugin.
 ---@param value any
 ---@return ecs.Handle
 function ecs.handle.new(name, value) end
 
----Gives back the value of a handle of the plugin's type.
+---Gives back the value of a handle of the plugin's type. Lua only: in C, a handle is the object's pointer.
 ---@param handle ecs.Handle
 ---@param name string
 ---@return any value

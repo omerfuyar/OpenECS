@@ -99,7 +99,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 ### 1.6 Style
 
-- Documentation comments use `///` with `@brief`, `@param`, `@return` and `@note`, on every public declaration. Each `@return` names the `SHUResult` values the function can return.
+- Documentation comments use `///` with `@brief`, `@param`, `@return` and `@note`, on every public declaration. Each `@return` names the `SHUResult` values the function can return. A public function's comment ends with `@lua` (11.5).
 - Allman braces and four spaces for indentation.
 - An unused parameter is marked `(void)name;`.
 - Plain comments are short and lowercase; `// todo` marks unfinished work and `//!` marks something important.
@@ -729,7 +729,10 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 
 ### 11.5 Parity
 
-A list of every public C function with its Lua counterpart is kept and checked by the build or the tests.
+- The documentation of each public function in `OpenECS.h` ends with a line that names its Lua counterparts in `include/ecs.lua`, such as `/// @lua ecs.panel.getTitle, panel:getTitle`, or says `none:` and why.
+- The functions of values (10.3) have no `@lua` line, because Lua passes its own values.
+- A function of `ecs.lua` that C does not have says `Lua only:` and why in its documentation.
+- The test `tests/parity.lua` checks both files: every public function has its line, every name it gives is in `ecs.lua`, and every function of `ecs.lua` is named or says it is Lua only.
 
 ### 11.6 Keeping Lua values
 

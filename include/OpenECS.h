@@ -328,27 +328,31 @@ typedef enum ECSLogLevel
 /// @brief Every native plugin defines this function. The core calls it once, after it loads the plugin's library. The plugin registers everything it provides here.
 /// @param plugin The plugin itself. Keep it for the functions that act for the plugin.
 /// @return SHUResult_Ok, or an error to mark the plugin failed.
+/// @lua none: a Lua plugin's code runs when it is loaded
 OPENECS_EXPORT SHUResult ECSPlugin_Init(ECSPlugin plugin);
 
 /// @brief A native plugin may define this function. The core calls it once, before the program exits.
 /// @param plugin The plugin itself.
+/// @lua ecs.plugin.onShutdown
 OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 
 #pragma endregion Plugin Functions
 
 #pragma region Core Functions
 
+/// @brief Registers how a plugin saves and restores its own state in sessions. Call it from ECSPlugin_Init. Main thread only.
+/// @param plugin The plugin.
+/// @param desc Description of the state. The core copies it.
+/// @return SHUResult_Ok, or SHUResult_ErrBadData if the description lacks Save or Restore, or the plugin registered its state already.
+/// @lua ecs.plugin.registerState
+OPENECS_EXPORT SHUWUR SHUResult ECSPlugin_RegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc);
+
 /// @brief Writes a message to the log, with the plugin's name. Thread-safe.
 /// @param plugin The plugin that writes the message.
 /// @param level Level of the message.
 /// @param format printf-style format.
 /// @param ... Format arguments.
-/// @brief Registers how a plugin saves and restores its own state in sessions. Call it from ECSPlugin_Init. Main thread only.
-/// @param plugin The plugin.
-/// @param desc Description of the state. The core copies it.
-/// @return SHUResult_Ok, or SHUResult_ErrBadData if the description lacks Save or Restore, or the plugin registered its state already.
-OPENECS_EXPORT SHUWUR SHUResult ECSPlugin_RegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc);
-
+/// @lua ecs.log.debug, ecs.log.info, ecs.log.warn, ecs.log.error
 OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel level, const char *format, ...);
 
 /// @brief Runs a function on a worker thread, then another function on the main thread. Thread-safe.
@@ -357,18 +361,21 @@ OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel l
 /// @param done Runs on the main thread after work returns, or NULL. Work that has not started when the program exits does not run, and neither does its done.
 /// @param data Passed to both functions.
 /// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if no worker thread can start.
+/// @lua none: Lua code never runs on worker threads; Lua plugins use services that work in the background
 OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data);
 
 /// @brief Runs a function on the main thread, between passes of the main loop. Thread-safe.
 /// @param function The function.
 /// @param data Passed to the function.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua none: Lua code runs only on the main thread
 OPENECS_EXPORT SHUWUR SHUResult ECS_RunOnMainThread(ECSTaskFunction function, void *data);
 
 /// @brief Registers a panel type. The core copies the description and its texts.
 /// @param plugin The plugin that provides the panel type.
 /// @param desc Description of the panel type. Its name must start with the plugin's name and a dot.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
+/// @lua ecs.panel.registerType
 OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc);
 
 /// @brief Adds a function to the menu of a panel type's panels, after the core's entries. The entry shows the function's description, and runs it on the panel. Main thread only.
@@ -376,6 +383,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_Register(ECSPlugin plugin, const EC
 /// @param panelType Name of the panel type.
 /// @param function Name of a service function whose signature is void(handle<ecs.panel>) or void().
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the panel type is not the plugin's, or SHUResult_ErrAllocation.
+/// @lua ecs.panel.addMenuEntry
 OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, const char *function);
 
 /// @brief Creates a nil value, for a plugin that passes a value to the core or to a service. Main thread only.
@@ -479,11 +487,13 @@ OPENECS_EXPORT SHUWUR SHUResult ECSValue_TableSetField(ECSValue *table, const ch
 /// @param plugin The plugin that owns the setting.
 /// @param desc Description of the setting. Its name must start with the plugin's name and a dot. The core copies it.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid or the name is taken, or SHUResult_ErrAllocation.
+/// @lua ecs.settings.declare
 OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Declare(ECSPlugin plugin, const ECSSettingDesc *desc);
 
 /// @brief Gets the value in effect of a declared setting. Main thread only.
 /// @param name Name of the setting, such as "canvas.grid" or "ecs.focus".
 /// @return The value, or NULL if no setting has the name. Valid until the setting changes.
+/// @lua ecs.settings.get
 OPENECS_EXPORT const ECSValue *ECSSetting_Get(const char *name);
 
 /// @brief Registers a function of a plugin's service, so other plugins and Lua can call it. Main thread only.
@@ -493,6 +503,7 @@ OPENECS_EXPORT const ECSValue *ECSSetting_Get(const char *name);
 /// @param signature The function's signature, such as "int(string, out float)". Types: void (result only), bool, int, int64, float, double, string, buffer, value, handle<name>, and out before a type.
 /// @param description One line that says what the function does.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the name or signature is invalid or the name is taken, or SHUResult_ErrAllocation.
+/// @lua ecs.service.register
 OPENECS_EXPORT SHUWUR SHUResult ECSService_RegisterFunction(ECSPlugin plugin, const char *name, ECSFunction function, const char *signature, const char *description);
 
 /// @brief Looks up a function of a service. Lua functions come as C function pointers too. Main thread only.
@@ -501,23 +512,27 @@ OPENECS_EXPORT SHUWUR SHUResult ECSService_RegisterFunction(ECSPlugin plugin, co
 /// @param name Name of the function, such as "audio.play".
 /// @param signature The signature the caller expects. It must match the registered one.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, SHUResult_ErrPrivileges if the plugin does not depend on the provider, or SHUResult_ErrBadData if the signature is invalid or does not match.
+/// @lua ecs.service.get
 OPENECS_EXPORT SHUWUR SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, const char *name, const char *signature);
 
 /// @brief Sets a setting in the settings window's layer, and writes that layer's file. A higher layer may still override it; ECSSetting_Explain tells. Main thread only.
 /// @param name Name of the setting.
 /// @param value The new value. It must have the setting's type. The core copies it.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no setting has the name, SHUResult_ErrBadData if the value has the wrong type, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
+/// @lua ecs.settings.set
 OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Set(const char *name, const ECSValue *value);
 
 /// @brief Lists every declared setting. Main thread only.
 /// @param retList The value to set to a list of setting names, in the order they were declared.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.settings.list
 OPENECS_EXPORT SHUWUR SHUResult ECSSetting_List(ECSValue *retList);
 
 /// @brief Explains a setting: its value in effect, the layer it comes from, and what each layer says. Main thread only.
 /// @param name Name of the setting.
 /// @param retExplanation The value to set to a table: name, type, description, owner, value, layer, file (of that layer; missing for defaults), choices (choice settings), and layers, which holds the value of each layer that sets it: default, preset, window and user.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no setting has the name, or SHUResult_ErrAllocation.
+/// @lua ecs.settings.explain
 OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation);
 
 /// @brief Registers a type of handles, for services that pass objects as handle<name>. In Lua, a handle is a userdata that names its type; the same object always gets the same Lua handle. Main thread only.
@@ -525,6 +540,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Explain(const char *name, ECSValue *r
 /// @param name Name of the type. It must start with the plugin's name and a dot, such as "audio.sound".
 /// @param Destroy Called with the object when Lua no longer uses its handle, or NULL. A provider that keeps using the object counts references.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the name is invalid or taken, or SHUResult_ErrAllocation.
+/// @lua ecs.handle.registerType
 OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, ECSHandleDestroyFunction Destroy);
 
 /// @brief Binds a key to a function for one of the plugin's panel types: the key works while a panel of that type has focus. Main thread only.
@@ -533,6 +549,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const c
 /// @param setting Name of the plugin's key setting that holds the key combination, so the user can change it.
 /// @param function Name of the function the key runs. It takes no arguments, or the focused panel: void() or void(handle<ecs.panel>).
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the panel type or the setting is not the plugin's, or SHUResult_ErrAllocation.
+/// @lua ecs.input.bind
 OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *setting, const char *function);
 
 /// @brief Opens a panel in the current workspace and focuses it. Any plugin may open any panel type. Main thread only.
@@ -543,6 +560,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelT
 /// @param target A panel of the current workspace to open next to, or NULL. With NULL, the panel joins the group of the most recently focused panel of its type, or else the focused group.
 /// @param zone Where next to the target: its group or a side of it.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if the target is not in the current workspace, or SHUResult_ErrAllocation.
+/// @lua ecs.layout.open
 OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type, const ECSValue *state, ECSPanel target, ECSZone zone);
 
 /// @brief Moves a panel into a target's group, or beside it, also from another workspace. Main thread only.
@@ -550,68 +568,82 @@ OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPa
 /// @param target The target panel.
 /// @param zone Where next to the target.
 /// @return SHUResult_Ok, or SHUResult_ErrNotFound if a panel is not in the layout.
+/// @lua ecs.layout.move
 OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone);
 
 /// @brief Closes a panel. If it has unsaved work, the user is asked first and may cancel. Main thread only.
 /// @param panel Panel to close. Its handle is invalid after the panel closes.
 /// @return true if the panel closed.
+/// @lua ecs.layout.close
 OPENECS_EXPORT bool ECSLayout_Close(ECSPanel panel);
 
 /// @brief Focuses a panel. If it is in another workspace, that workspace is shown; if it is behind another tab, its tab is shown. Main thread only.
 /// @param panel Panel to focus.
+/// @lua ecs.layout.focus
 OPENECS_EXPORT void ECSLayout_Focus(ECSPanel panel);
 
 /// @brief Gets the focused panel of the current workspace. Main thread only.
 /// @return The panel, or NULL if the workspace has none.
+/// @lua ecs.layout.getFocus
 OPENECS_EXPORT ECSPanel ECSLayout_GetFocus(void);
 
 /// @brief Finds a panel in any workspace by its id. Main thread only.
 /// @param id The panel's id, as ECSPanel_GetId gives it and the core's events carry it.
 /// @return The panel, or NULL if no open panel has the id.
+/// @lua ecs.layout.find
 OPENECS_EXPORT ECSPanel ECSLayout_FindPanel(u32 id);
 
 /// @brief Counts the workspaces. Main thread only.
 /// @return Number of workspaces.
+/// @lua ecs.workspace.count
 OPENECS_EXPORT usz ECSWorkspace_GetCount(void);
 
 /// @brief Gets the current workspace. Main thread only.
 /// @return Its number; workspaces are numbered from 1.
+/// @lua ecs.workspace.getCurrent
 OPENECS_EXPORT usz ECSWorkspace_GetCurrent(void);
 
 /// @brief Gets a workspace's name. Main thread only.
 /// @param number Number of the workspace, starting at 1.
 /// @return The name, or NULL if there is no such workspace. Valid until the workspace goes away.
+/// @lua ecs.workspace.getName
 OPENECS_EXPORT const char *ECSWorkspace_GetName(usz number);
 
 /// @brief Switches to a workspace. Main thread only.
 /// @param number Number of the workspace, starting at 1: ECSWorkspace_Switch(10) switches to workspace 10. Ignored if there is no such workspace.
+/// @lua ecs.workspace.switch
 OPENECS_EXPORT void ECSWorkspace_Switch(usz number);
 
 /// @brief Puts text on the clipboard. Main thread only.
 /// @param text The text. The core copies it.
 /// @return SHUResult_Ok, or SHUResult_ErrInternal if the system refuses it.
+/// @lua ecs.clipboard.setText
 OPENECS_EXPORT SHUWUR SHUResult ECSClipboard_SetText(const char *text);
 
 /// @brief Gets the text on the clipboard. Main thread only.
 /// @return The text; empty if there is none. Valid until the next call of a clipboard function.
+/// @lua ecs.clipboard.getText
 OPENECS_EXPORT const char *ECSClipboard_GetText(void);
 
 /// @brief Puts typed data on the clipboard, such as an image as "image/png". Main thread only.
 /// @param mimeType The data's type.
 /// @param data The data. The core copies it.
 /// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if the system refuses it.
+/// @lua ecs.clipboard.setData
 OPENECS_EXPORT SHUWUR SHUResult ECSClipboard_SetData(const char *mimeType, SHUSliceView data);
 
 /// @brief Gets typed data from the clipboard. Main thread only.
 /// @param mimeType The type wanted.
 /// @param retData The data; empty if the clipboard has none of that type. Valid until the next call of a clipboard function.
 /// @return SHUResult_Ok, or SHUResult_ErrNotFound if the clipboard has no data of that type.
+/// @lua ecs.clipboard.getData
 OPENECS_EXPORT SHUWUR SHUResult ECSClipboard_GetData(const char *mimeType, SHUSlice *retData);
 
 /// @brief Shows a file dialog. It does not wait: the description's Done function gets the answer later. Main thread only.
 /// @param plugin The plugin that asks.
 /// @param desc Description of the dialog. The core copies it.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.dialog.show
 OPENECS_EXPORT SHUWUR SHUResult ECSDialog_Show(ECSPlugin plugin, const ECSDialogDesc *desc);
 
 /// @brief Shows a message dialog and waits for the user to press a button. Main thread only.
@@ -621,6 +653,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSDialog_Show(ECSPlugin plugin, const ECSDialog
 /// @param buttonCount Number of buttons, at least 1.
 /// @param retButton Position of the button the user pressed, starting at 0.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if the user closed the dialog without a button, or SHUResult_ErrInternal if it cannot be shown.
+/// @lua ecs.dialog.message
 OPENECS_EXPORT SHUWUR SHUResult ECSDialog_ShowMessage(const char *title, const char *message, const char *const *buttons, usz buttonCount, usz *retButton);
 
 /// @brief Starts a timer that calls a function on the main thread, once or repeatedly. Main thread only.
@@ -636,6 +669,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSDialog_ShowMessage(const char *title, const c
 /// @param name Name of the event: the plugin's name, a dot and a local name, such as "canvas.selectionChanged".
 /// @param description One line about the event.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the name is taken or does not belong to the plugin, or SHUResult_ErrAllocation.
+/// @lua ecs.event.declare
 OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *description);
 
 /// @brief Emits a named event that the plugin declared. Subscribers get it after the current callback returns. Main thread only.
@@ -643,6 +677,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *n
 /// @param name Name of the event.
 /// @param value What the event carries, or NULL. The core copies it.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if the plugin declared no such event, or SHUResult_ErrAllocation.
+/// @lua ecs.event.emit
 OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name, const ECSValue *value);
 
 /// @brief Subscribes to a named event. The event must be declared by the core, by the plugin itself, or by a plugin its manifest depends on. Main thread only.
@@ -652,16 +687,20 @@ OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name
 /// @param function Function called with each emission.
 /// @param data Passed to the function.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no such event is declared, SHUResult_ErrBadData if the plugin does not depend on the event's plugin, or SHUResult_ErrAllocation.
+/// @lua ecs.event.subscribe
 OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Subscribe(ECSPlugin plugin, const char *name, ECSSubscription *retSubscription, ECSEventFunction function, void *data);
 
 /// @brief Ends a subscription and sets the handle to NULL. Main thread only.
 /// @param subscription The subscription, or a handle to NULL.
+/// @lua subscription:cancel
 OPENECS_EXPORT void ECSEvent_Unsubscribe(ECSSubscription *subscription);
 
+/// @lua ecs.timer.start
 OPENECS_EXPORT SHUWUR SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data);
 
 /// @brief Stops a timer and sets the handle to NULL. A timer may stop itself from its own function. Main thread only.
 /// @param timer Timer to stop.
+/// @lua timer:stop
 OPENECS_EXPORT void ECSTimer_Stop(ECSTimer *timer);
 
 /// @brief Starts a timer that belongs to a panel, like ECSTimer_Start. The timer stops when the panel closes; its handle is invalid then. Main thread only.
@@ -672,35 +711,42 @@ OPENECS_EXPORT void ECSTimer_Stop(ECSTimer *timer);
 /// @param function Function to call.
 /// @param data Passed to the function.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.panel.startTimer, panel:startTimer
 OPENECS_EXPORT SHUWUR SHUResult ECSPanel_StartTimer(ECSPanel panel, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data);
 
 /// @brief Marks whether a panel has unsaved work. Before such a panel closes, the core asks the user to save it, discard it or cancel. Main thread only.
 /// @param panel Panel to mark.
 /// @param unsaved true if the panel has unsaved work.
+/// @lua ecs.panel.setUnsaved, panel:setUnsaved
 OPENECS_EXPORT void ECSPanel_SetUnsaved(ECSPanel panel, bool unsaved);
 
 /// @brief Asks the core to draw the panel again.
 /// @param panel Panel to draw.
+/// @lua ecs.panel.redraw, panel:redraw
 OPENECS_EXPORT void ECSPanel_Redraw(ECSPanel panel);
 
 /// @brief Gets the panel's title, shown in its tab.
 /// @param panel Panel to read.
 /// @return The title. Valid until the title changes.
+/// @lua ecs.panel.getTitle, panel:getTitle
 OPENECS_EXPORT const char *ECSPanel_GetTitle(ECSPanel panel);
 
 /// @brief Sets the panel's title, shown in its tab. The core copies the text.
 /// @param panel Panel to change.
 /// @param title New title.
+/// @lua ecs.panel.setTitle, panel:setTitle
 OPENECS_EXPORT void ECSPanel_SetTitle(ECSPanel panel, const char *title);
 
 /// @brief Gets a panel's id, which is unique and stable within a session. Main thread only.
 /// @param panel The panel.
 /// @return The id.
+/// @lua panel:getId
 OPENECS_EXPORT u32 ECSPanel_GetId(ECSPanel panel);
 
 /// @brief Gets the name of a panel's type, such as "canvas.view". Main thread only.
 /// @param panel The panel.
 /// @return The name. Valid while the panel exists.
+/// @lua panel:getType
 OPENECS_EXPORT const char *ECSPanel_GetType(ECSPanel panel);
 
 #pragma endregion Core Functions
