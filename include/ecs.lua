@@ -6,26 +6,6 @@
 -- A function that keys can run says so. Keys call it with no arguments, which acts on the focused panel as the user does: locks stop it.
 
 ---@class ecs
----@field workspace1 fun() Switches to workspace 1. Keys can run it.
----@field workspace2 fun() Switches to workspace 2. Keys can run it.
----@field workspace3 fun() Switches to workspace 3. Keys can run it.
----@field workspace4 fun() Switches to workspace 4. Keys can run it.
----@field workspace5 fun() Switches to workspace 5. Keys can run it.
----@field workspace6 fun() Switches to workspace 6. Keys can run it.
----@field workspace7 fun() Switches to workspace 7. Keys can run it.
----@field workspace8 fun() Switches to workspace 8. Keys can run it.
----@field workspace9 fun() Switches to workspace 9. Keys can run it.
----@field workspace10 fun() Switches to workspace 10. Keys can run it.
----@field moveToWorkspace1 fun() Moves the focused panel into workspace 1's focused group. Keys can run it.
----@field moveToWorkspace2 fun() Moves the focused panel into workspace 2's focused group. Keys can run it.
----@field moveToWorkspace3 fun() Moves the focused panel into workspace 3's focused group. Keys can run it.
----@field moveToWorkspace4 fun() Moves the focused panel into workspace 4's focused group. Keys can run it.
----@field moveToWorkspace5 fun() Moves the focused panel into workspace 5's focused group. Keys can run it.
----@field moveToWorkspace6 fun() Moves the focused panel into workspace 6's focused group. Keys can run it.
----@field moveToWorkspace7 fun() Moves the focused panel into workspace 7's focused group. Keys can run it.
----@field moveToWorkspace8 fun() Moves the focused panel into workspace 8's focused group. Keys can run it.
----@field moveToWorkspace9 fun() Moves the focused panel into workspace 9's focused group. Keys can run it.
----@field moveToWorkspace10 fun() Moves the focused panel into workspace 10's focused group. Keys can run it.
 local ecs = {}
 
 -- Log
@@ -264,6 +244,16 @@ function ecs.panel.restart() end
 ---@alias ecs.Zone "default"|"center"|"left"|"right"|"top"|"bottom"
 
 ---@class ecs.layout
+---@field moveToWorkspace1 fun() Moves the focused panel into workspace 1's focused group. Keys can run it.
+---@field moveToWorkspace2 fun() Moves the focused panel into workspace 2's focused group. Keys can run it.
+---@field moveToWorkspace3 fun() Moves the focused panel into workspace 3's focused group. Keys can run it.
+---@field moveToWorkspace4 fun() Moves the focused panel into workspace 4's focused group. Keys can run it.
+---@field moveToWorkspace5 fun() Moves the focused panel into workspace 5's focused group. Keys can run it.
+---@field moveToWorkspace6 fun() Moves the focused panel into workspace 6's focused group. Keys can run it.
+---@field moveToWorkspace7 fun() Moves the focused panel into workspace 7's focused group. Keys can run it.
+---@field moveToWorkspace8 fun() Moves the focused panel into workspace 8's focused group. Keys can run it.
+---@field moveToWorkspace9 fun() Moves the focused panel into workspace 9's focused group. Keys can run it.
+---@field moveToWorkspace10 fun() Moves the focused panel into workspace 10's focused group. Keys can run it.
 ecs.layout = {}
 
 ---Finds a panel by its id.
@@ -346,6 +336,16 @@ function ecs.layout.splitRight() end
 function ecs.layout.splitDown() end
 
 ---@class ecs.workspace
+---@field switch1 fun() Switches to workspace 1. Keys can run it.
+---@field switch2 fun() Switches to workspace 2. Keys can run it.
+---@field switch3 fun() Switches to workspace 3. Keys can run it.
+---@field switch4 fun() Switches to workspace 4. Keys can run it.
+---@field switch5 fun() Switches to workspace 5. Keys can run it.
+---@field switch6 fun() Switches to workspace 6. Keys can run it.
+---@field switch7 fun() Switches to workspace 7. Keys can run it.
+---@field switch8 fun() Switches to workspace 8. Keys can run it.
+---@field switch9 fun() Switches to workspace 9. Keys can run it.
+---@field switch10 fun() Switches to workspace 10. Keys can run it.
 ecs.workspace = {}
 
 ---@return integer count

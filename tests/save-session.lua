@@ -4,7 +4,7 @@ return {
   run = function(test)
     local canvas = test.rect(1)
     test.drag(canvas.x + 50, canvas.y + 60, canvas.x + 200, canvas.y + 150)
-    test.call("ecs.workspace2")
+    test.call("ecs.workspace.switch2")
 
     test.call("saver.save")
     local session = test.session()

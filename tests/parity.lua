@@ -10,7 +10,7 @@ local function read(path)
   return text
 end
 
--- the functions of ecs.lua, with their documentation; a method is named by its class, such as panel:getTitle, and a function field of the class ecs by its path
+-- the functions of ecs.lua, with their documentation; a method is named by its class, such as panel:getTitle, and a function field of a table of the module by its path
 local function readLua()
   local functions = {}
   local doc = ""
@@ -25,8 +25,8 @@ local function readLua()
 
     if name then
       functions[name] = doc
-    elseif field and class == "ecs" then
-      functions["ecs." .. field] = fieldDoc
+    elseif field and (class == "ecs" or class:match("^ecs%.%l")) then
+      functions[class .. "." .. field] = fieldDoc
     end
 
     doc = line:match("^%-%-%-") and doc .. line or ""
