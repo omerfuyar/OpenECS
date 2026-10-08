@@ -1,6 +1,6 @@
 #pragma once
 
-// Menus: the core's bindable functions, such as ecs.close and ecs.lock, and the panel and group menus that offer them.
+// Menus: the core's bindable functions, such as ecs.layout.close and ecs.layout.lock, and the panel and group menus that offer them.
 
 #include "interface/Panels.h"
 

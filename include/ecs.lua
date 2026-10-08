@@ -3,7 +3,29 @@
 -- The ecs module of OpenECS for Lua plugins: local ecs = require("ecs").
 -- This file only describes the module for editors; OpenECS gives each plugin its own ecs table.
 
+-- A function that keys can run says so. Keys call it with no arguments, which acts on the focused panel as the user does: locks stop it.
+
 ---@class ecs
+---@field workspace1 fun() Switches to workspace 1. Keys can run it.
+---@field workspace2 fun() Switches to workspace 2. Keys can run it.
+---@field workspace3 fun() Switches to workspace 3. Keys can run it.
+---@field workspace4 fun() Switches to workspace 4. Keys can run it.
+---@field workspace5 fun() Switches to workspace 5. Keys can run it.
+---@field workspace6 fun() Switches to workspace 6. Keys can run it.
+---@field workspace7 fun() Switches to workspace 7. Keys can run it.
+---@field workspace8 fun() Switches to workspace 8. Keys can run it.
+---@field workspace9 fun() Switches to workspace 9. Keys can run it.
+---@field workspace10 fun() Switches to workspace 10. Keys can run it.
+---@field moveToWorkspace1 fun() Moves the focused panel into workspace 1's focused group. Keys can run it.
+---@field moveToWorkspace2 fun() Moves the focused panel into workspace 2's focused group. Keys can run it.
+---@field moveToWorkspace3 fun() Moves the focused panel into workspace 3's focused group. Keys can run it.
+---@field moveToWorkspace4 fun() Moves the focused panel into workspace 4's focused group. Keys can run it.
+---@field moveToWorkspace5 fun() Moves the focused panel into workspace 5's focused group. Keys can run it.
+---@field moveToWorkspace6 fun() Moves the focused panel into workspace 6's focused group. Keys can run it.
+---@field moveToWorkspace7 fun() Moves the focused panel into workspace 7's focused group. Keys can run it.
+---@field moveToWorkspace8 fun() Moves the focused panel into workspace 8's focused group. Keys can run it.
+---@field moveToWorkspace9 fun() Moves the focused panel into workspace 9's focused group. Keys can run it.
+---@field moveToWorkspace10 fun() Moves the focused panel into workspace 10's focused group. Keys can run it.
 local ecs = {}
 
 -- Log
@@ -234,6 +256,9 @@ function ecs.panel.setUnsaved(panel, unsaved) end
 ---@return ecs.Timer
 function ecs.panel.startTimer(panel, seconds, repeat_, fn) end
 
+---Restarts the focused panel from its last saved state, if it failed. Keys can run it.
+function ecs.panel.restart() end
+
 -- Layout and workspaces
 
 ---@alias ecs.Zone "default"|"center"|"left"|"right"|"top"|"bottom"
@@ -263,8 +288,9 @@ function ecs.layout.open(type, saved, target, zone) end
 ---@return string? message
 function ecs.layout.move(panel, target, zone) end
 
----Closes a panel.
----@param panel ecs.Panel
+---Closes a panel. If it has unsaved work, the user is asked first and may cancel.
+---Without a panel, it is the user's close: the focused panel, unless its group is locked. Keys can run it.
+---@param panel? ecs.Panel
 ---@return boolean closed
 function ecs.layout.close(panel) end
 
@@ -273,6 +299,51 @@ function ecs.layout.focus(panel) end
 
 ---@return ecs.Panel? panel The focused panel.
 function ecs.layout.getFocus() end
+
+---Focuses the panel on the left of the focused one. Keys can run it.
+function ecs.layout.focusLeft() end
+
+---Focuses the panel on the right of the focused one. Keys can run it.
+function ecs.layout.focusRight() end
+
+---Focuses the panel above the focused one. Keys can run it.
+function ecs.layout.focusUp() end
+
+---Focuses the panel below the focused one. Keys can run it.
+function ecs.layout.focusDown() end
+
+---Moves the focused panel into the group on its left, or along that edge of the OS window if there is none. Keys can run it.
+function ecs.layout.moveLeft() end
+
+---Moves the focused panel into the group on its right, or along that edge of the OS window if there is none. Keys can run it.
+function ecs.layout.moveRight() end
+
+---Moves the focused panel into the group above it, or along that edge of the OS window if there is none. Keys can run it.
+function ecs.layout.moveUp() end
+
+---Moves the focused panel into the group below it, or along that edge of the OS window if there is none. Keys can run it.
+function ecs.layout.moveDown() end
+
+---Shows the next tab of the focused panel's group. Keys can run it.
+function ecs.layout.nextTab() end
+
+---Maximizes the focused panel's group, or restores it. Keys can run it.
+function ecs.layout.maximize() end
+
+---Closes the panels of the focused panel's group, unless it is locked. Keys can run it.
+function ecs.layout.closeGroup() end
+
+---Locks the focused panel's group, or unlocks it. Keys can run it.
+function ecs.layout.lock() end
+
+---Opens the last closed panel again. Keys can run it.
+function ecs.layout.reopen() end
+
+---Opens another panel of the focused panel's type on its right. Keys can run it.
+function ecs.layout.splitRight() end
+
+---Opens another panel of the focused panel's type below it. Keys can run it.
+function ecs.layout.splitDown() end
 
 ---@class ecs.workspace
 ecs.workspace = {}
@@ -296,14 +367,14 @@ function ecs.workspace.switch(number) end
 ecs.session = {}
 
 ---Writes the session to a file: the plugins' state, the workspaces and the panels with their saved state. Quitting still saves the tool's last session.
----Without a path, it asks for the file with a save dialog, as the key after the prefix does.
+---Without a path, it asks for the file with a save dialog. Keys can run it.
 ---@param path? string Missing folders are created.
 ---@return true|nil ok
 ---@return string? message Why the session is not saved.
 function ecs.session.save(path) end
 
 ---Opens a session in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
----Without a path, it asks for the file with an open dialog, as the key after the prefix does.
+---Without a path, it asks for the file with an open dialog. Keys can run it.
 ---@param path? string
 ---@return true|nil ok
 ---@return string? message Why the session is not opened: the file is not a session, the user keeps the unsaved work, or a test runs.

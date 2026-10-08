@@ -572,7 +572,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPa
 OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone);
 
 /// @brief Closes a panel. If it has unsaved work, the user is asked first and may cancel. Main thread only.
-/// @param panel Panel to close. Its handle is invalid after the panel closes.
+/// @param panel Panel to close, or NULL for the user's close, which keys run: the focused panel, unless its group is locked. Its handle is invalid after the panel closes.
 /// @return true if the panel closed.
 /// @lua ecs.layout.close
 OPENECS_EXPORT bool ECSLayout_Close(ECSPanel panel);

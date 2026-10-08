@@ -6,21 +6,21 @@ return {
 
   -- the keys after the prefix and the functions they run; other layers add to them, and false removes a key
   ["ecs.prefixKeys"] = {
-    ["Left"] = "ecs.focusLeft",
-    ["Right"] = "ecs.focusRight",
-    ["Up"] = "ecs.focusUp",
-    ["Down"] = "ecs.focusDown",
-    ["Shift+Left"] = "ecs.moveLeft",
-    ["Shift+Right"] = "ecs.moveRight",
-    ["Shift+Up"] = "ecs.moveUp",
-    ["Shift+Down"] = "ecs.moveDown",
-    ["Tab"] = "ecs.nextTab",
-    ["M"] = "ecs.maximize",
-    ["X"] = "ecs.close",
-    ["Shift+X"] = "ecs.closeGroup",
-    ["L"] = "ecs.lock",
-    ["T"] = "ecs.reopen",
-    ["R"] = "ecs.restart",
+    ["Left"] = "ecs.layout.focusLeft",
+    ["Right"] = "ecs.layout.focusRight",
+    ["Up"] = "ecs.layout.focusUp",
+    ["Down"] = "ecs.layout.focusDown",
+    ["Shift+Left"] = "ecs.layout.moveLeft",
+    ["Shift+Right"] = "ecs.layout.moveRight",
+    ["Shift+Up"] = "ecs.layout.moveUp",
+    ["Shift+Down"] = "ecs.layout.moveDown",
+    ["Tab"] = "ecs.layout.nextTab",
+    ["M"] = "ecs.layout.maximize",
+    ["X"] = "ecs.layout.close",
+    ["Shift+X"] = "ecs.layout.closeGroup",
+    ["L"] = "ecs.layout.lock",
+    ["T"] = "ecs.layout.reopen",
+    ["R"] = "ecs.panel.restart",
     ["S"] = "ecs.session.save",
     ["O"] = "ecs.session.open",
     ["1"] = "ecs.workspace1",
@@ -74,6 +74,6 @@ return {
   ["ecs.splitDepth"] = 80,
   ["ecs.tabScrollStep"] = 40,
 
-  -- how many closed panels ecs.reopen remembers
+  -- how many closed panels ecs.layout.reopen remembers
   ["ecs.reopenLimit"] = 20,
 }

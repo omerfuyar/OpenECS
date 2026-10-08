@@ -54,7 +54,7 @@ void ECSIServices_PushLuaHandleValue(ECSPlugin plugin, const char *name, int ind
 /// @param plugin The plugin.
 void ECSIServices_RemovePlugin(ECSPlugin plugin);
 
-/// @brief Registers one of the core's own functions, such as ecs.maximize, so keys and plugins can call it.
+/// @brief Registers one of the core's own functions, such as ecs.layout.maximize, so keys and plugins can call it.
 /// @param name Name of the function. It starts with "ecs.".
 /// @param function The function.
 /// @param signature The function's signature.
@@ -73,6 +73,14 @@ SHUResult ECSIServices_CallBound(const char *name, ECSPanel focus);
 /// @param path The file's path.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, or SHUResult_ErrBadData if its signature is another.
 SHUResult ECSIServices_CallOpen(const char *name, const char *path);
+
+/// @brief A function that ECSIServices_ForEachCore calls with the name of one of the core's functions.
+typedef void (*ECSIServicesCoreFunction)(const char *name, void *data);
+
+/// @brief Calls a function with the name of each function the core registered, in the order they were registered.
+/// @param function The function to call.
+/// @param data Passed to it.
+void ECSIServices_ForEachCore(ECSIServicesCoreFunction function, void *data);
 
 /// @brief Gets a function's one-line description.
 /// @param name Name of the function.

@@ -1449,6 +1449,19 @@ SHUResult ECSIServices_CallOpen(const char *name, const char *path)
     return SHUResult_Ok;
 }
 
+void ECSIServices_ForEachCore(ECSIServicesCoreFunction function, void *data)
+{
+    SDL_assert(function != NULL);
+
+    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
+    {
+        if (SERVICES.functions[i].value->plugin == NULL)
+        {
+            function(SERVICES.functions[i].key, data);
+        }
+    }
+}
+
 const char *ECSIServices_GetDescription(const char *name)
 {
     SDL_assert(name != NULL);

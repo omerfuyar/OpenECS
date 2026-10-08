@@ -9,7 +9,7 @@ return {
     test.key("Alt+W")
     test.key("M")
     test.match(test.session().workspaces[1].windows[1][1].maximized, true, "M is kept from the core's settings file")
-    test.call("ecs.maximize")
+    test.call("ecs.layout.maximize")
 
     test.key("Alt+W")
     test.key("K")

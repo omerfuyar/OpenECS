@@ -12,7 +12,7 @@ return {
     test.key("Down")
     test.key("Return")
     test.match(test.session().workspaces[3].windows[1][2].maximized, true, "the group's menu maximizes")
-    test.call("ecs.maximize")
+    test.call("ecs.layout.maximize")
 
     -- the panel's menu: its first entry closes the panel
     test.click(clock.x + 40, tabRow, 3)
