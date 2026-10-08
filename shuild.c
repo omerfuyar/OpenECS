@@ -39,7 +39,7 @@ static const char *const PLUGINS[] = {"demo", "hello"};
 #pragma endregion Setup
 
 static void SetupConfiguration(int argc, char **argv);
-static void SetBuildFlags(bool warnings);
+static void SetBuildFlags(bool ownCode);
 static bool IsBuilt(const char *library);
 
 static void Shuild_SDL(void);
@@ -156,7 +156,9 @@ static void SetupConfiguration(int argc, char **argv)
     SHU_CacheConfigure(BUILD_DIRECTORY.data);
 }
 
-static void SetBuildFlags(bool warnings)
+// our code gets warnings, and in Debug the static analyzer and the address and undefined-behaviour sanitizers; dependencies get none of them
+// release builds drop every SDL_assert
+static void SetBuildFlags(bool ownCode)
 {
     SHU_CompilerClearFlags();
     SHU_CompilerAddFlags(SHUM_FLAGS_STANDARD_C23);
@@ -164,28 +166,28 @@ static void SetBuildFlags(bool warnings)
     switch (BUILD_TYPE)
     {
     case BuildType_Debug:
-        if (warnings)
+        if (ownCode)
         {
-            SHU_CompilerAddFlags(SHUM_FLAGS_WARNING_MID);
+            SHU_CompilerAddFlags(SHUM_FLAGS_WARNING_MID " -fanalyzer -fsanitize=address,undefined -fno-omit-frame-pointer");
         }
         SHU_CompilerAddFlags(SHUM_FLAGS_DEBUG SHUM_FLAGS_OPTIMIZATION_DEBUG);
-        SHU_CompilerAddDefinitions("DEBUG", NULL);
+        SHU_CompilerAddDefinitions("DEBUG", NULL, "SDL_ASSERT_LEVEL", "2");
         break;
     case BuildType_Release:
         SHU_CompilerAddFlags(SHUM_FLAGS_OPTIMIZATION_HIGH);
-        SHU_CompilerAddDefinitions("NDEBUG", NULL, "SHU_NO_ASSERT", NULL);
+        SHU_CompilerAddDefinitions("NDEBUG", NULL, "SDL_ASSERT_LEVEL", "0");
         break;
     case BuildType_RelWithDebInfo:
-        if (warnings)
+        if (ownCode)
         {
             SHU_CompilerAddFlags(SHUM_FLAGS_WARNING_LOW);
         }
         SHU_CompilerAddFlags(SHUM_FLAGS_DEBUG SHUM_FLAGS_OPTIMIZATION_MID);
-        SHU_CompilerAddDefinitions("NDEBUG", NULL);
+        SHU_CompilerAddDefinitions("NDEBUG", NULL, "SDL_ASSERT_LEVEL", "0");
         break;
     case BuildType_MinSizeRel:
         SHU_CompilerAddFlags(SHUM_FLAGS_OPTIMIZATION_SIZE);
-        SHU_CompilerAddDefinitions("NDEBUG", NULL);
+        SHU_CompilerAddDefinitions("NDEBUG", NULL, "SDL_ASSERT_LEVEL", "0");
         break;
     }
 }
@@ -390,6 +392,12 @@ static void Shuild_OpenECS(void)
 
     // the executable exports only the plugin interface: the OPENECS_EXPORT functions, whose names start with ECS
     SHU_CompilerAddFlags(" -fvisibility=hidden '-Wl,--export-dynamic-symbol=ECS*'");
+
+    // the sanitizers find their settings in src/Sanitizers.c by name
+    if (BUILD_TYPE == BuildType_Debug)
+    {
+        SHU_CompilerAddFlags(" '-Wl,--export-dynamic-symbol=__*san_default_*'");
+    }
 
     SHU_ModuleAddSourceFile("src/");
     SHU_ModuleAddIncludeDirectory("include/");
