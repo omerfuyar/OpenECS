@@ -33,6 +33,10 @@ typedef struct ECSI_Timer *ECSTimer;
 /// @brief A function of a service, of any signature. Cast it to its real type before calling it.
 typedef void (*ECSFunction)(void);
 
+/// @brief A function that runs later, on the main thread or on a worker thread.
+/// @param data The data given with the function.
+typedef void (*ECSTaskFunction)(void *data);
+
 /// @brief Function that a timer calls.
 /// @param data The data given when the timer started.
 typedef void (*ECSTimerFunction)(void *data);
@@ -202,6 +206,20 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 /// @param format printf-style format.
 /// @param ... Format arguments.
 OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel level, const char *format, ...);
+
+/// @brief Runs a function on a worker thread, then another function on the main thread. Thread-safe.
+/// @param plugin The plugin that asks.
+/// @param work Runs on a worker thread from a small pool. It must not call core functions that are for the main thread only.
+/// @param done Runs on the main thread after work returns, or NULL. Work that has not started when the program exits does not run, and neither does its done.
+/// @param data Passed to both functions.
+/// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if no worker thread can start.
+OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data);
+
+/// @brief Runs a function on the main thread, between passes of the main loop. Thread-safe.
+/// @param function The function.
+/// @param data Passed to the function.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECS_RunOnMainThread(ECSTaskFunction function, void *data);
 
 /// @brief Registers a panel type. The core copies the description and its texts.
 /// @param plugin The plugin that provides the panel type.

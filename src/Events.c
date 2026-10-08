@@ -26,6 +26,37 @@ typedef struct ECSI_QueuedEvent
     ECSEvent event;
 } ECSI_QueuedEvent;
 
+/// @brief Work for a worker thread.
+typedef struct ECSI_Work
+{
+    ECSPlugin plugin;
+    ECSTaskFunction Work;
+    ECSTaskFunction Done;
+    void *data;
+} ECSI_Work;
+
+/// @brief A function that runs on the main thread.
+typedef struct ECSI_MainTask
+{
+    ECSTaskFunction Function;
+    void *data;
+} ECSI_MainTask;
+
+/// @brief Most worker threads.
+#define OPENECS_MAX_WORKERS 4
+
+/// @brief Workers and main-thread tasks, apart from EVENTS because other threads use them.
+static struct
+{
+    SDL_Mutex *lock;
+    SDL_Condition *ready;
+    ECSI_Work *queue;      // stb_ds array, guarded by lock
+    SDL_Thread **workers;  // stb_ds array
+    bool stopping;         // guarded by lock
+    SDL_AtomicInt stopped; // tasks that reach the main thread after this are dropped, because plugins may be gone
+    SDL_AtomicU32 wakeEvent;
+} WORKERS = {0};
+
 static struct
 {
     ECSI_QueuedEvent *queue; // stb_ds array
@@ -80,7 +111,98 @@ static void ECSI_EventsFreeStoppedTimers(void)
     EVENTS.freeingTimers = false;
 }
 
+/// @brief Wakes the main loop with an event that does nothing, so it makes a pass after a task ran.
+static void ECSI_EventsWake(void)
+{
+    u32 type = SDL_GetAtomicU32(&WORKERS.wakeEvent);
+
+    if (type == 0)
+    {
+        u32 registered = SDL_RegisterEvents(1);
+        type = SDL_CompareAndSwapAtomicU32(&WORKERS.wakeEvent, 0, registered) ? registered : SDL_GetAtomicU32(&WORKERS.wakeEvent);
+    }
+
+    SDL_Event event = {.type = type};
+    SDL_PushEvent(&event);
+}
+
+/// @brief Runs a task that reached the main thread.
+static void SDLCALL ECSI_EventsRunMainTask(void *data)
+{
+    ECSI_MainTask *task = data;
+
+    if (!SDL_GetAtomicInt(&WORKERS.stopped))
+    {
+        task->Function(task->data);
+        ECSI_EventsWake();
+    }
+
+    SDL_free(task);
+}
+
+static int SDLCALL ECSI_EventsWorker(void *unused)
+{
+    (void)unused;
+
+    while (true)
+    {
+        SDL_LockMutex(WORKERS.lock);
+
+        while (!WORKERS.stopping && arrlenu(WORKERS.queue) == 0)
+        {
+            SDL_WaitCondition(WORKERS.ready, WORKERS.lock);
+        }
+
+        if (WORKERS.stopping)
+        {
+            SDL_UnlockMutex(WORKERS.lock);
+            return 0;
+        }
+
+        ECSI_Work work = WORKERS.queue[0];
+        arrdel(WORKERS.queue, 0);
+        SDL_UnlockMutex(WORKERS.lock);
+
+        work.Work(work.data);
+
+        if (work.Done != NULL && ECS_RunOnMainThread(work.Done, work.data))
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Background work of plugin '%s' finished, but its done function cannot be queued.", ECSI_PluginGetName(work.plugin));
+        }
+    }
+}
+
+/// @brief Starts the worker threads the first time background work comes. The caller holds the lock.
+static SHUResult ECSI_EventsStartWorkers(void)
+{
+    if (arrlenu(WORKERS.workers) > 0)
+    {
+        return SHUResult_Ok;
+    }
+
+    int count = SDL_clamp(SDL_GetNumLogicalCPUCores() - 1, 1, OPENECS_MAX_WORKERS);
+
+    for (int i = 0; i < count; i++)
+    {
+        SDL_Thread *worker = SDL_CreateThread(ECSI_EventsWorker, "OpenECS worker", NULL);
+
+        if (worker != NULL)
+        {
+            arrput(WORKERS.workers, worker);
+        }
+    }
+
+    return arrlenu(WORKERS.workers) > 0 ? SHUResult_Ok : SHUResult_ErrInternal;
+}
+
 #pragma endregion Source Only
+
+SHUResult ECSI_EventsInitialize(void)
+{
+    WORKERS.lock = SDL_CreateMutex();
+    WORKERS.ready = SDL_CreateCondition();
+    return WORKERS.lock == NULL || WORKERS.ready == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
+}
 
 void ECSI_EventsPost(ECSI_EventDeliverFunction deliver, void *target, const ECSEvent *event)
 {
@@ -238,6 +360,25 @@ void ECSI_EventsTerminate(void)
 {
     SDL_assert(!EVENTS.runningTimers && !EVENTS.delivering);
 
+    // running work finishes, waiting work is dropped, and no task reaches the main thread any more
+    SDL_LockMutex(WORKERS.lock);
+    WORKERS.stopping = true;
+    SDL_BroadcastCondition(WORKERS.ready);
+    SDL_UnlockMutex(WORKERS.lock);
+
+    for (usz i = 0; i < arrlenu(WORKERS.workers); i++)
+    {
+        SDL_WaitThread(WORKERS.workers[i], NULL);
+    }
+
+    SDL_SetAtomicInt(&WORKERS.stopped, 1);
+    arrfree(WORKERS.workers);
+    arrfree(WORKERS.queue);
+    SDL_DestroyCondition(WORKERS.ready);
+    SDL_DestroyMutex(WORKERS.lock);
+    WORKERS.lock = NULL;
+    WORKERS.ready = NULL;
+
     // a release that stops another timer frees nothing here; every timer is freed in this loop
     EVENTS.freeingTimers = true;
 
@@ -263,4 +404,46 @@ void ECSTimer_Stop(ECSTimer *timer)
     (*timer)->stopped = true;
     *timer = NULL;
     ECSI_EventsFreeStoppedTimers();
+}
+
+SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(work != NULL);
+    SDL_assert(WORKERS.lock != NULL);
+
+    SDL_LockMutex(WORKERS.lock);
+    SHUResult result = WORKERS.stopping ? SHUResult_ErrInternal : ECSI_EventsStartWorkers();
+
+    if (!result)
+    {
+        ECSI_Work queued = {.plugin = plugin, .Work = work, .Done = done, .data = data};
+        arrput(WORKERS.queue, queued);
+        SDL_SignalCondition(WORKERS.ready);
+    }
+
+    SDL_UnlockMutex(WORKERS.lock);
+    return result;
+}
+
+SHUResult ECS_RunOnMainThread(ECSTaskFunction function, void *data)
+{
+    SDL_assert(function != NULL);
+
+    ECSI_MainTask *task = SDL_malloc(sizeof(ECSI_MainTask));
+
+    if (task == NULL)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    *task = (ECSI_MainTask){.Function = function, .data = data};
+
+    if (!SDL_RunOnMainThread(ECSI_EventsRunMainTask, task, false))
+    {
+        SDL_free(task);
+        return SHUResult_ErrAllocation;
+    }
+
+    return SHUResult_Ok;
 }

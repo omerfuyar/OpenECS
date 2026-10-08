@@ -9,6 +9,10 @@
 /// @brief Function that delivers a queued event to its target.
 typedef void (*ECSI_EventDeliverFunction)(void *target, const ECSEvent *event);
 
+/// @brief Prepares the lock and condition of the worker threads, which start when background work first comes.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_EventsInitialize(void);
+
 /// @brief Queues an event. ECSI_EventsDeliver delivers it, after the current callback returns.
 /// @param deliver Function that delivers the event.
 /// @param target Passed to the function.
@@ -45,7 +49,7 @@ i32 ECSI_EventsGetWait(void);
 /// @brief Runs the timers that are due. A repeating timer runs at most once per call.
 void ECSI_EventsRunTimers(void);
 
-/// @brief Stops every timer and drops the queued events.
+/// @brief Waits for running background work, drops waiting work, stops every timer and drops the queued events. Tasks that reach the main thread after this are dropped.
 void ECSI_EventsTerminate(void);
 
 #pragma endregion Declarations

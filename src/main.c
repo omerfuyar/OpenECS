@@ -229,6 +229,7 @@ int main(int argc, char **argv)
 
     // read the preset first, because SDL needs the tool's identity before it starts
     ECSI_CheckStart(ECSI_LuaInitialize(), "starting Lua");
+    ECSI_CheckStart(ECSI_EventsInitialize(), "preparing worker threads");
     ECSI_CheckStart(ECSI_ServicesInitialize(), "preparing services");
 
     char *presetPath = NULL;

@@ -317,6 +317,43 @@ static void DemoHello(void)
 
 #pragma endregion Service
 
+#pragma region Background
+
+/// @brief Work for a worker thread: the number of primes below a limit.
+typedef struct DemoPrimes
+{
+    u32 limit;
+    u32 count;
+} DemoPrimes;
+
+/// @brief Runs on a worker thread, so it calls no core function.
+static void DemoPrimesCount(void *data)
+{
+    DemoPrimes *primes = data;
+
+    for (u32 number = 2; number < primes->limit; number++)
+    {
+        bool prime = true;
+
+        for (u32 divisor = 2; divisor * divisor <= number && prime; divisor++)
+        {
+            prime = number % divisor != 0;
+        }
+
+        primes->count += prime ? 1 : 0;
+    }
+}
+
+/// @brief Runs on the main thread after the count.
+static void DemoPrimesDone(void *data)
+{
+    DemoPrimes *primes = data;
+    ECS_Log(DEMO.plugin, ECSLogLevel_Info, "A worker thread counted %u primes below %u.", primes->count, primes->limit);
+    free(primes);
+}
+
+#pragma endregion Background
+
 #pragma endregion Source Only
 
 SHUResult ECSPlugin_Init(ECSPlugin plugin)
@@ -381,6 +418,15 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
     SHU_ReturnResult(ECSPanelType_Register(plugin, &gradient));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &checker));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &blink));
+
+    // a count in the background, to show work that leaves the main thread free
+    DemoPrimes *primes = calloc(1, sizeof(DemoPrimes));
+
+    if (primes != NULL)
+    {
+        primes->limit = 100000;
+        SHU_ReturnResult(ECS_RunInBackground(plugin, DemoPrimesCount, DemoPrimesDone, primes), free(primes););
+    }
 
     ECS_Log(plugin, ECSLogLevel_Info, "Registered 4 panel types.");
     return SHUResult_Ok;
