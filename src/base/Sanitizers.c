@@ -51,7 +51,7 @@ const char *__lsan_default_suppressions(void)
 }
 
 /// @brief Marks a loaded library so it is never unloaded. dlopen with RTLD_NOLOAD finds it without loading anything.
-static int ECSI_SanitizersKeep(struct dl_phdr_info *info, size_t size, void *data)
+static int ECSISanitizers_Keep(struct dl_phdr_info *info, size_t size, void *data)
 {
     (void)size;
     (void)data;
@@ -66,23 +66,23 @@ static int ECSI_SanitizersKeep(struct dl_phdr_info *info, size_t size, void *dat
 
 #pragma endregion Source Only
 
-void ECSI_SanitizersKeepLibraries(void)
+void ECSISanitizers_KeepLibraries(void)
 {
-    dl_iterate_phdr(ECSI_SanitizersKeep, NULL);
+    dl_iterate_phdr(ECSISanitizers_Keep, NULL);
 }
 
-void ECSI_SanitizersCheckLeaks(void)
+void ECSISanitizers_CheckLeaks(void)
 {
     __lsan_do_leak_check();
 }
 
 #else
 
-void ECSI_SanitizersKeepLibraries(void)
+void ECSISanitizers_KeepLibraries(void)
 {
 }
 
-void ECSI_SanitizersCheckLeaks(void)
+void ECSISanitizers_CheckLeaks(void)
 {
 }
 

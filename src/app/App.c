@@ -31,7 +31,7 @@
 
 static struct
 {
-    ECSI_PresetInfo preset; // identity and contents of the preset, or of the session that replaced it
+    ECSIPresetInfo preset; // identity and contents of the preset, or of the session that replaced it
     char *presetPath;
     char *sessionPath;  // NULL when OpenECS starts from the preset
     char *lastSession;  // where the session is saved on quit, or NULL if there is no state folder
@@ -42,7 +42,7 @@ static struct
 
 /// @brief Finds an XDG base folder for OpenECS: $variable/openecs/, or ~/fallback/openecs/ if the variable is not set.
 /// @return The folder, ending with a separator, or NULL if neither the variable nor HOME is set. Free it with SDL_free.
-static char *ECSI_XdgFolder(const char *variable, const char *fallback)
+static char *ECSIApp_XdgFolder(const char *variable, const char *fallback)
 {
     const char *base = SDL_getenv(variable);
     const char *home = SDL_getenv("HOME");
@@ -66,7 +66,7 @@ static char *ECSI_XdgFolder(const char *variable, const char *fallback)
 
 /// @brief Finds a tool's last session file in the state folder.
 /// @return The path, or NULL if there is no state folder. Free it with SDL_free.
-static char *ECSI_LastSessionPath(const char *stateFolder, const char *appId)
+static char *ECSIApp_LastSessionPath(const char *stateFolder, const char *appId)
 {
     char *path = NULL;
 
@@ -79,18 +79,18 @@ static char *ECSI_LastSessionPath(const char *stateFolder, const char *appId)
 }
 
 /// @brief Removes everything a failed plugin registered, for the Plugins module.
-static void ECSI_RemoveRegistrations(ECSPlugin plugin)
+static void ECSIApp_RemoveRegistrations(ECSPlugin plugin)
 {
-    ECSI_PanelsRemovePlugin(plugin);
-    ECSI_ServicesRemovePlugin(plugin);
-    ECSI_SettingsRemovePlugin(plugin);
-    ECSI_EventsStopTimersOfPlugin(plugin);
-    ECSI_EventsRemovePlugin(plugin);
-    ECSI_KeysRemovePlugin(plugin);
+    ECSIPanels_RemovePlugin(plugin);
+    ECSIServices_RemovePlugin(plugin);
+    ECSISettings_RemovePlugin(plugin);
+    ECSIEvents_StopTimersOfPlugin(plugin);
+    ECSIEvents_RemovePlugin(plugin);
+    ECSIKeys_RemovePlugin(plugin);
 }
 
 /// @brief Stops the program if a start-up step failed. The details are already in the log.
-static void ECSI_CheckStart(SHUResult result, const char *step)
+static void ECSIApp_CheckStart(SHUResult result, const char *step)
 {
     if (!result)
     {
@@ -114,7 +114,7 @@ static void ECSI_CheckStart(SHUResult result, const char *step)
 }
 
 /// @brief Loads the plugins a preset names. Search order: the preset's directory, the user's plugins, the first-party plugins.
-static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
+static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
 {
     char *userData = APP.test ? NULL : SDL_GetPrefPath(NULL, "openecs");
     char *userPlugins = NULL;
@@ -155,14 +155,14 @@ static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
         neededBy = NULL;
     }
 
-    if (SDL_asprintf(&userNeededBy, "the user's settings '%s'", ECSI_SettingsGetUserPath() != NULL ? ECSI_SettingsGetUserPath() : "") < 0)
+    if (SDL_asprintf(&userNeededBy, "the user's settings '%s'", ECSISettings_GetUserPath() != NULL ? ECSISettings_GetUserPath() : "") < 0)
     {
         userNeededBy = NULL;
     }
 
     // the preset's plugins first, then the extra plugins that the user's settings name
-    SHUResult result = ECSI_PluginsLoad(directories, directoryCount, ECSValue_GetTableField(preset->file, "depends"), neededBy != NULL ? neededBy : "the preset");
-    SHUResult extraResult = ECSI_PluginsLoad(directories, directoryCount, ECSI_SettingsGetPlugins(), userNeededBy != NULL ? userNeededBy : "the user's settings");
+    SHUResult result = ECSIPlugins_Load(directories, directoryCount, ECSValue_GetTableField(preset->file, "depends"), neededBy != NULL ? neededBy : "the preset");
+    SHUResult extraResult = ECSIPlugins_Load(directories, directoryCount, ECSISettings_GetPlugins(), userNeededBy != NULL ? userNeededBy : "the user's settings");
 
     if (result || extraResult)
     {
@@ -184,24 +184,24 @@ static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
 }
 
 /// @brief Gives the shorter of two waits in milliseconds, where -1 means no wait.
-static i32 ECSI_ShorterWait(i32 a, i32 b)
+static i32 ECSIApp_ShorterWait(i32 a, i32 b)
 {
     return a < 0 || (b >= 0 && b < a) ? b : a;
 }
 
 #pragma endregion Source Only
 
-void ECSI_AppStart(const ECSI_Arguments *arguments)
+void ECSIApp_Start(const ECSIArguments *arguments)
 {
     SDL_assert(arguments != NULL);
 
     // every path of the program's own files starts here
-    ECSI_CheckStart(SDL_GetBasePath() == NULL ? SHUResult_ErrNotFound : SHUResult_Ok, "finding the program's folder");
+    ECSIApp_CheckStart(SDL_GetBasePath() == NULL ? SHUResult_ErrNotFound : SHUResult_Ok, "finding the program's folder");
 
     // read the preset first, because SDL needs the tool's identity before it starts
-    ECSI_CheckStart(ECSI_LuaInitialize(), "starting Lua");
-    ECSI_CheckStart(ECSI_EventsInitialize(), "preparing worker threads");
-    ECSI_CheckStart(ECSI_ServicesInitialize(), "preparing services");
+    ECSIApp_CheckStart(ECSILua_Initialize(), "starting Lua");
+    ECSIApp_CheckStart(ECSIEvents_Initialize(), "preparing worker threads");
+    ECSIApp_CheckStart(ECSIServices_Initialize(), "preparing services");
 
     // a test names its preset and starts from it alone, without the user's files and folders
     char *testPreset = NULL;
@@ -209,19 +209,19 @@ void ECSI_AppStart(const ECSI_Arguments *arguments)
 
     if (APP.test)
     {
-        ECSI_CheckStart(ECSI_TestLoad(arguments->test, &APP.preset, &testPreset), "reading the test");
+        ECSIApp_CheckStart(ECSITest_Load(arguments->test, &APP.preset, &testPreset), "reading the test");
     }
 
-    ECSI_CheckStart(ECSI_SessionFindPreset(&APP.presetPath, APP.test ? testPreset : arguments->preset), "finding the preset");
-    ECSI_CheckStart(ECSI_SessionReadInfo(APP.presetPath, &APP.preset), "reading the preset");
+    ECSIApp_CheckStart(ECSISession_FindPreset(&APP.presetPath, APP.test ? testPreset : arguments->preset), "finding the preset");
+    ECSIApp_CheckStart(ECSISession_ReadInfo(APP.presetPath, &APP.preset), "reading the preset");
     SDL_free(testPreset);
 
     // the tool's last session replaces the preset, unless the command line names a session or asks for a fresh start
     if (!APP.test)
     {
-        APP.configFolder = ECSI_XdgFolder("XDG_CONFIG_HOME", ".config");
-        APP.stateFolder = ECSI_XdgFolder("XDG_STATE_HOME", ".local/state");
-        APP.lastSession = ECSI_LastSessionPath(APP.stateFolder, APP.preset.appId);
+        APP.configFolder = ECSIApp_XdgFolder("XDG_CONFIG_HOME", ".config");
+        APP.stateFolder = ECSIApp_XdgFolder("XDG_STATE_HOME", ".local/state");
+        APP.lastSession = ECSIApp_LastSessionPath(APP.stateFolder, APP.preset.appId);
     }
 
     // the lines logged so far went to standard error only
@@ -229,7 +229,7 @@ void ECSI_AppStart(const ECSI_Arguments *arguments)
 
     if (APP.stateFolder != NULL && SDL_CreateDirectory(APP.stateFolder) && SDL_asprintf(&logPath, "%s%s", APP.stateFolder, OPENECS_LOG_FILE) >= 0)
     {
-        ECSI_LogOpenFile(logPath);
+        ECSILog_OpenFile(logPath);
         SDL_free(logPath);
     }
 
@@ -245,15 +245,15 @@ void ECSI_AppStart(const ECSI_Arguments *arguments)
     if (APP.sessionPath != NULL)
     {
         // the session's identity wins; it may name another tool, whose last session it then replaces
-        ECSI_SessionFreeInfo(&APP.preset);
-        ECSI_CheckStart(ECSI_SessionReadInfo(APP.sessionPath, &APP.preset), "reading the session");
+        ECSISession_FreeInfo(&APP.preset);
+        ECSIApp_CheckStart(ECSISession_ReadInfo(APP.sessionPath, &APP.preset), "reading the session");
         SDL_free(APP.lastSession);
-        APP.lastSession = ECSI_LastSessionPath(APP.stateFolder, APP.preset.appId);
+        APP.lastSession = ECSIApp_LastSessionPath(APP.stateFolder, APP.preset.appId);
     }
 
     const char *sourcePath = APP.sessionPath != NULL ? APP.sessionPath : APP.presetPath;
 
-    ECSI_CheckStart(ECSI_SettingsInitialize(ECSValue_GetTableField(APP.preset.file, "settings"), sourcePath, APP.preset.appId, APP.configFolder), "reading the settings");
+    ECSIApp_CheckStart(ECSISettings_Initialize(ECSValue_GetTableField(APP.preset.file, "settings"), sourcePath, APP.preset.appId, APP.configFolder), "reading the settings");
 
     SDL_SetAppMetadata(APP.preset.appName, NULL, APP.preset.appId);
 
@@ -267,28 +267,28 @@ void ECSI_AppStart(const ECSI_Arguments *arguments)
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL failed to start: %s", SDL_GetError());
-        ECSI_CheckStart(SHUResult_ErrInternal, "starting SDL");
+        ECSIApp_CheckStart(SHUResult_ErrInternal, "starting SDL");
     }
 
     char *fontPath = NULL;
-    ECSI_CheckStart(SDL_asprintf(&fontPath, "%s%s", SDL_GetBasePath(), OPENECS_FONT_FILE) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok, "finding the font");
-    ECSI_CheckStart(ECSI_WindowInitialize(APP.preset.appName, fontPath), "opening the window");
-    ECSI_CheckStart(ECSI_KeysInitialize(), "declaring the key settings");
-    ECSI_CheckStart(ECSI_MenusInitialize(), "registering the core's functions");
-    ECSI_CheckStart(ECSI_InputInitialize(), "declaring the input settings");
+    ECSIApp_CheckStart(SDL_asprintf(&fontPath, "%s%s", SDL_GetBasePath(), OPENECS_FONT_FILE) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok, "finding the font");
+    ECSIApp_CheckStart(ECSIWindow_Initialize(APP.preset.appName, fontPath), "opening the window");
+    ECSIApp_CheckStart(ECSIKeys_Initialize(), "declaring the key settings");
+    ECSIApp_CheckStart(ECSIMenus_Initialize(), "registering the core's functions");
+    ECSIApp_CheckStart(ECSIInput_Initialize(), "declaring the input settings");
     SDL_free(fontPath);
 
-    ECSI_BindingsInitialize();
-    ECSI_PluginHooks hooks = {.StartLua = ECSI_BindingsStartPlugin, .RemoveRegistrations = ECSI_RemoveRegistrations};
-    ECSI_PluginsSetHooks(&hooks);
-    ECSI_LoadPlugins(&APP.preset);
-    ECSI_CheckStart(ECSI_SessionApply(sourcePath, &APP.preset), "building the layout");
+    ECSIBindings_Initialize();
+    ECSIPluginHooks hooks = {.StartLua = ECSIBindings_StartPlugin, .RemoveRegistrations = ECSIApp_RemoveRegistrations};
+    ECSIPlugins_SetHooks(&hooks);
+    ECSIApp_LoadPlugins(&APP.preset);
+    ECSIApp_CheckStart(ECSISession_Apply(sourcePath, &APP.preset), "building the layout");
 
     // drivers, plugins and system libraries are loaded now
-    ECSI_SanitizersKeepLibraries();
+    ECSISanitizers_KeepLibraries();
 }
 
-int ECSI_AppRun(void)
+int ECSIApp_Run(void)
 {
     // event-driven loop: it waits for input, the next timer, queued events, the next frame or the test's next step
     bool running = true;
@@ -296,14 +296,14 @@ int ECSI_AppRun(void)
     while (running)
     {
         SDL_Event event;
-        i32 wait = ECSI_ShorterWait(ECSI_EventsGetWait(), ECSI_WindowGetFrameWait());
-        wait = ECSI_ShorterWait(wait, ECSI_TestGetWait());
+        i32 wait = ECSIApp_ShorterWait(ECSIEvents_GetWait(), ECSIWindow_GetFrameWait());
+        wait = ECSIApp_ShorterWait(wait, ECSITest_GetWait());
 
         if (SDL_WaitEventTimeout(&event, wait))
         {
             do
             {
-                running = ECSI_InputHandle(&event);
+                running = ECSIInput_Handle(&event);
             } while (running && SDL_PollEvent(&event));
         }
 
@@ -312,61 +312,61 @@ int ECSI_AppRun(void)
             break;
         }
 
-        ECSI_EventsRunTimers();
-        ECSI_EventsDeliver();
-        ECSI_SettingsDeliverChanges();
-        ECSI_PanelsDestroyClosed();
+        ECSIEvents_RunTimers();
+        ECSIEvents_Deliver();
+        ECSISettings_DeliverChanges();
+        ECSIPanels_DestroyClosed();
 
         // while a test runs, frames are not paced, so each step of the test sees a drawn window
-        i32 frameWait = ECSI_WindowGetFrameWait();
+        i32 frameWait = ECSIWindow_GetFrameWait();
 
-        if (frameWait == 0 || (frameWait > 0 && ECSI_TestIsRunning()))
+        if (frameWait == 0 || (frameWait > 0 && ECSITest_IsRunning()))
         {
-            ECSI_WindowRender(SDL_GetTicksNS());
+            ECSIWindow_Render(SDL_GetTicksNS());
         }
 
-        running = ECSI_TestStep();
+        running = ECSITest_Step();
     }
 
-    return ECSI_TestGetStatus();
+    return ECSITest_GetStatus();
 }
 
-void ECSI_AppStop(void)
+void ECSIApp_Stop(void)
 {
-    ECSI_SanitizersKeepLibraries();
-    ECSI_TestTerminate();
+    ECSISanitizers_KeepLibraries();
+    ECSITest_Terminate();
 
-    if (APP.lastSession != NULL && ECSI_SessionSave(APP.lastSession, &APP.preset) == SHUResult_Ok)
+    if (APP.lastSession != NULL && ECSISession_Save(APP.lastSession, &APP.preset) == SHUResult_Ok)
     {
         SDL_Log("Session saved to '%s'.", APP.lastSession);
     }
 
     // panels are destroyed before the renderer that made their textures and before their types, handles' objects before their plugins shut down, and plugins before they are unloaded
-    ECSI_InputTerminate();
-    ECSI_MenusTerminate();
-    ECSI_KeysTerminate();
-    ECSI_LayoutTerminate();
-    ECSI_WindowTerminate();
-    ECSI_PanelsTerminate();
-    ECSI_ServicesTerminate();
+    ECSIInput_Terminate();
+    ECSIMenus_Terminate();
+    ECSIKeys_Terminate();
+    ECSILayout_Terminate();
+    ECSIWindow_Terminate();
+    ECSIPanels_Terminate();
+    ECSIServices_Terminate();
 
     // plugins shut down while timers and events still work, and their code is unloaded once no worker runs it
-    ECSI_PluginsShutdown();
-    ECSI_EventsTerminate();
-    ECSI_PluginsUnload();
-    ECSI_SettingsTerminate();
-    ECSI_BindingsTerminate();
-    ECSI_SessionFreeInfo(&APP.preset);
+    ECSIPlugins_Shutdown();
+    ECSIEvents_Terminate();
+    ECSIPlugins_Unload();
+    ECSISettings_Terminate();
+    ECSIBindings_Terminate();
+    ECSISession_FreeInfo(&APP.preset);
     SDL_free(APP.presetPath);
     SDL_free(APP.sessionPath);
     SDL_free(APP.lastSession);
     SDL_free(APP.configFolder);
     SDL_free(APP.stateFolder);
-    ECSI_LuaTerminate();
+    ECSILua_Terminate();
 
     // Debug builds check for leaks here, when OpenECS has freed its memory but SDL still holds its own
-    ECSI_SanitizersCheckLeaks();
+    ECSISanitizers_CheckLeaks();
 
     SDL_Quit();
-    ECSI_LogTerminate();
+    ECSILog_Terminate();
 }

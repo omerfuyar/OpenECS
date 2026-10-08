@@ -15,8 +15,8 @@ static struct
     int writer; // registry reference of the writer function
 } LUA = {0};
 
-/// @brief The writer of data files. It takes a value as ECSI_LuaPushOrderedValue pushes it, and returns Lua source that returns the value.
-static const char ECSI_LUA_WRITER[] =
+/// @brief The writer of data files. It takes a value as ECSILua_PushOrderedValue pushes it, and returns Lua source that returns the value.
+static const char OPENECS_LUA_WRITER[] =
     "local format, concat = string.format, table.concat\n"
     "local keywords = {}\n"
     "for word in ('and break do else elseif end false for function global goto if in local nil not or repeat return then true until while'):gmatch('%a+') do keywords[word] = true end\n"
@@ -56,39 +56,39 @@ static const char ECSI_LUA_WRITER[] =
 #define OPENECS_MAX_VALUE_DEPTH 64
 
 /// @brief Names of Lua's basic functions that data files may use.
-static const char *const ECSI_LUA_DATA_FUNCTIONS[] = {
+static const char *const OPENECS_LUA_DATA_FUNCTIONS[] = {
     "assert", "error", "ipairs", "next", "pairs", "pcall", "rawequal", "rawget", "rawlen",
     "rawset", "select", "tonumber", "tostring", "type", "xpcall", "getmetatable", "setmetatable"};
 
 /// @brief Names of Lua's libraries that data files may use.
-static const char *const ECSI_LUA_DATA_LIBRARIES[] = {"string", "table", "math", "utf8"};
+static const char *const OPENECS_LUA_DATA_LIBRARIES[] = {"string", "table", "math", "utf8"};
 
 /// @brief Pushes the environment in which data files run: basic functions and a few libraries, without access to the core.
-static void ECSI_LuaPushDataEnvironment(void)
+static void ECSILua_PushDataEnvironment(void)
 {
     lua_State *state = LUA.state;
     lua_newtable(state);
 
-    for (usz i = 0; i < SDL_arraysize(ECSI_LUA_DATA_FUNCTIONS); i++)
+    for (usz i = 0; i < SDL_arraysize(OPENECS_LUA_DATA_FUNCTIONS); i++)
     {
-        lua_getglobal(state, ECSI_LUA_DATA_FUNCTIONS[i]);
-        lua_setfield(state, -2, ECSI_LUA_DATA_FUNCTIONS[i]);
+        lua_getglobal(state, OPENECS_LUA_DATA_FUNCTIONS[i]);
+        lua_setfield(state, -2, OPENECS_LUA_DATA_FUNCTIONS[i]);
     }
 
-    for (usz i = 0; i < SDL_arraysize(ECSI_LUA_DATA_LIBRARIES); i++)
+    for (usz i = 0; i < SDL_arraysize(OPENECS_LUA_DATA_LIBRARIES); i++)
     {
-        lua_getglobal(state, ECSI_LUA_DATA_LIBRARIES[i]);
-        lua_setfield(state, -2, ECSI_LUA_DATA_LIBRARIES[i]);
+        lua_getglobal(state, OPENECS_LUA_DATA_LIBRARIES[i]);
+        lua_setfield(state, -2, OPENECS_LUA_DATA_LIBRARIES[i]);
     }
 }
 
-static int ECSI_LuaCompareTexts(const void *first, const void *second)
+static int ECSILua_CompareTexts(const void *first, const void *second)
 {
     return SDL_strcmp(*(const char *const *)first, *(const char *const *)second);
 }
 
 /// @brief Copies the Lua value at an index of the stack into a value. Named fields are added in the order of their names, so the same table always gives the same value.
-static SHUResult ECSI_LuaToValue(int index, ECSValue *value, u32 depth)
+static SHUResult ECSILua_ToValue(int index, ECSValue *value, u32 depth)
 {
     lua_State *state = LUA.state;
     index = lua_absindex(state, index);
@@ -137,7 +137,7 @@ static SHUResult ECSI_LuaToValue(int index, ECSValue *value, u32 depth)
         SHU_ReturnResult(ECSValue_ListAddItem(value, &item));
 
         lua_rawgeti(state, index, (lua_Integer)i);
-        SHUResult result = ECSI_LuaToValue(-1, item, depth + 1);
+        SHUResult result = ECSILua_ToValue(-1, item, depth + 1);
         lua_pop(state, 1);
         SHU_ReturnResult(result);
     }
@@ -161,7 +161,7 @@ static SHUResult ECSI_LuaToValue(int index, ECSValue *value, u32 depth)
         lua_pop(state, 1);
     }
 
-    SDL_qsort(names, arrlenu(names), sizeof(*names), ECSI_LuaCompareTexts);
+    SDL_qsort(names, arrlenu(names), sizeof(*names), ECSILua_CompareTexts);
     SHUResult result = SHUResult_Ok;
 
     for (usz i = 0; i < arrlenu(names) && !result; i++)
@@ -173,7 +173,7 @@ static SHUResult ECSI_LuaToValue(int index, ECSValue *value, u32 depth)
         {
             lua_pushstring(state, names[i]);
             lua_rawget(state, index);
-            result = ECSI_LuaToValue(-1, field, depth + 1);
+            result = ECSILua_ToValue(-1, field, depth + 1);
             lua_pop(state, 1);
         }
     }
@@ -183,9 +183,9 @@ static SHUResult ECSI_LuaToValue(int index, ECSValue *value, u32 depth)
 }
 
 /// @brief Pushes a value for the writer, keeping the order of named fields: a table becomes { items = { n = count, ... }, fields = { name, value, ... } }.
-static void ECSI_LuaPushOrderedField(const char *name, const ECSValue *field, void *userData);
+static void ECSILua_PushOrderedField(const char *name, const ECSValue *field, void *userData);
 
-static void ECSI_LuaPushOrderedValue(const ECSValue *value)
+static void ECSILua_PushOrderedValue(const ECSValue *value)
 {
     lua_State *state = LUA.state;
     luaL_checkstack(state, 4, "a value is nested too deeply");
@@ -217,7 +217,7 @@ static void ECSI_LuaPushOrderedValue(const ECSValue *value)
 
     for (usz i = 0; i < count; i++)
     {
-        ECSI_LuaPushOrderedValue(ECSValue_GetListItem(value, i));
+        ECSILua_PushOrderedValue(ECSValue_GetListItem(value, i));
         lua_rawseti(state, -2, (lua_Integer)i + 1);
     }
 
@@ -226,11 +226,11 @@ static void ECSI_LuaPushOrderedValue(const ECSValue *value)
     lua_setfield(state, -2, "items");
 
     lua_newtable(state);
-    ECSI_ValueTableForEachField(value, ECSI_LuaPushOrderedField, NULL);
+    ECSIValue_TableForEachField(value, ECSILua_PushOrderedField, NULL);
     lua_setfield(state, -2, "fields");
 }
 
-static void ECSI_LuaPushOrderedField(const char *name, const ECSValue *field, void *userData)
+static void ECSILua_PushOrderedField(const char *name, const ECSValue *field, void *userData)
 {
     (void)userData;
     lua_State *state = LUA.state;
@@ -238,30 +238,30 @@ static void ECSI_LuaPushOrderedField(const char *name, const ECSValue *field, vo
 
     lua_pushstring(state, name);
     lua_rawseti(state, -2, length + 1);
-    ECSI_LuaPushOrderedValue(field);
+    ECSILua_PushOrderedValue(field);
     lua_rawseti(state, -2, length + 2);
 }
 
 /// @brief Adds a stack trace to the message of an error raised in a protected call.
-static int ECSI_LuaTraceback(lua_State *state)
+static int ECSILua_Traceback(lua_State *state)
 {
     luaL_traceback(state, state, luaL_tolstring(state, 1, NULL), 1);
     return 1;
 }
 
 /// @brief Runs the writer on the value given as a light userdata, inside a protected call, so pushing the value cannot fail outside one.
-static int ECSI_LuaWriteProtected(lua_State *state)
+static int ECSILua_WriteProtected(lua_State *state)
 {
     const ECSValue *value = lua_touserdata(state, 1);
 
     lua_rawgeti(state, LUA_REGISTRYINDEX, LUA.writer);
-    ECSI_LuaPushOrderedValue(value);
+    ECSILua_PushOrderedValue(value);
     lua_call(state, 1, 1);
     return 1;
 }
 
 /// @brief Lua's allocator: SDL's, like the rest of the core.
-static void *ECSI_LuaAllocate(void *userData, void *block, size_t oldSize, size_t newSize)
+static void *ECSILua_Allocate(void *userData, void *block, size_t oldSize, size_t newSize)
 {
     (void)userData;
     (void)oldSize;
@@ -276,7 +276,7 @@ static void *ECSI_LuaAllocate(void *userData, void *block, size_t oldSize, size_
 }
 
 /// @brief Logs an error raised outside a protected call. Lua aborts the program after it.
-static int ECSI_LuaPanic(lua_State *state)
+static int ECSILua_Panic(lua_State *state)
 {
     const char *message = lua_tostring(state, -1);
     SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, "Lua error outside a protected call: %s", message == NULL ? "?" : message);
@@ -284,7 +284,7 @@ static int ECSI_LuaPanic(lua_State *state)
 }
 
 /// @brief Logs Lua's warnings. A warning may come in pieces, which are joined first; control messages such as "@on" are ignored.
-static void ECSI_LuaWarn(void *userData, const char *message, int toContinue)
+static void ECSILua_Warn(void *userData, const char *message, int toContinue)
 {
     (void)userData;
     static char *pending = NULL;
@@ -314,22 +314,22 @@ static void ECSI_LuaWarn(void *userData, const char *message, int toContinue)
 
 #pragma endregion Source Only
 
-SHUResult ECSI_LuaInitialize(void)
+SHUResult ECSILua_Initialize(void)
 {
-    LUA.state = lua_newstate(ECSI_LuaAllocate, NULL, luaL_makeseed(NULL));
+    LUA.state = lua_newstate(ECSILua_Allocate, NULL, luaL_makeseed(NULL));
 
     if (LUA.state == NULL)
     {
         return SHUResult_ErrAllocation;
     }
 
-    lua_atpanic(LUA.state, ECSI_LuaPanic);
-    lua_setwarnf(LUA.state, ECSI_LuaWarn, NULL);
+    lua_atpanic(LUA.state, ECSILua_Panic);
+    lua_setwarnf(LUA.state, ECSILua_Warn, NULL);
 
     // every library is open for plugins; data files see only a few, through their own environment
     luaL_openlibs(LUA.state);
 
-    if (luaL_loadbufferx(LUA.state, ECSI_LUA_WRITER, sizeof(ECSI_LUA_WRITER) - 1, "=writer", "t") != LUA_OK || lua_pcall(LUA.state, 0, 1, 0) != LUA_OK)
+    if (luaL_loadbufferx(LUA.state, OPENECS_LUA_WRITER, sizeof(OPENECS_LUA_WRITER) - 1, "=writer", "t") != LUA_OK || lua_pcall(LUA.state, 0, 1, 0) != LUA_OK)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The data file writer does not load: %s", lua_tostring(LUA.state, -1));
         return SHUResult_ErrInternal;
@@ -339,7 +339,7 @@ SHUResult ECSI_LuaInitialize(void)
     return SHUResult_Ok;
 }
 
-void ECSI_LuaTerminate(void)
+void ECSILua_Terminate(void)
 {
     if (LUA.state != NULL)
     {
@@ -349,29 +349,29 @@ void ECSI_LuaTerminate(void)
     SDL_zero(LUA);
 }
 
-lua_State *ECSI_LuaGetState(void)
+lua_State *ECSILua_GetState(void)
 {
     SDL_assert(LUA.state != NULL);
 
     return LUA.state;
 }
 
-SHUResult ECSI_LuaGetValue(int index, ECSValue *value)
+SHUResult ECSILua_GetValue(int index, ECSValue *value)
 {
     SDL_assert(LUA.state != NULL);
     SDL_assert(value != NULL);
 
-    return ECSI_LuaToValue(index, value, 0);
+    return ECSILua_ToValue(index, value, 0);
 }
 
-static void ECSI_LuaPushField(const char *name, const ECSValue *field, void *userData)
+static void ECSILua_PushField(const char *name, const ECSValue *field, void *userData)
 {
     (void)userData;
-    ECSI_LuaPushValue(field);
+    ECSILua_PushValue(field);
     lua_setfield(LUA.state, -2, name);
 }
 
-void ECSI_LuaPushValue(const ECSValue *value)
+void ECSILua_PushValue(const ECSValue *value)
 {
     SDL_assert(LUA.state != NULL);
 
@@ -405,28 +405,28 @@ void ECSI_LuaPushValue(const ECSValue *value)
 
     for (usz i = 0; i < count; i++)
     {
-        ECSI_LuaPushValue(ECSValue_GetListItem(value, i));
+        ECSILua_PushValue(ECSValue_GetListItem(value, i));
         lua_rawseti(state, -2, (lua_Integer)i + 1);
     }
 
-    ECSI_ValueTableForEachField(value, ECSI_LuaPushField, NULL);
+    ECSIValue_TableForEachField(value, ECSILua_PushField, NULL);
 }
 
-SHUResult ECSI_LuaCall(int argumentCount, int resultCount)
+SHUResult ECSILua_Call(int argumentCount, int resultCount)
 {
     SDL_assert(LUA.state != NULL);
 
     lua_State *state = LUA.state;
     int base = lua_gettop(state) - argumentCount;
 
-    lua_pushcfunction(state, ECSI_LuaTraceback);
+    lua_pushcfunction(state, ECSILua_Traceback);
     lua_insert(state, base);
     int status = lua_pcall(state, argumentCount, resultCount, base);
     lua_remove(state, base);
     return status == LUA_OK ? SHUResult_Ok : SHUResult_Err;
 }
 
-SHUResult ECSI_LuaReadData(const char *path, ECSValue *retValue)
+SHUResult ECSILua_ReadData(const char *path, ECSValue *retValue)
 {
     SDL_assert(LUA.state != NULL);
     SDL_assert(path != NULL);
@@ -443,7 +443,7 @@ SHUResult ECSI_LuaReadData(const char *path, ECSValue *retValue)
     }
 
     // the first upvalue of a loaded chunk is its environment
-    ECSI_LuaPushDataEnvironment();
+    ECSILua_PushDataEnvironment();
     lua_setupvalue(state, -2, 1);
 
     if (lua_pcall(state, 0, 1, 0) != LUA_OK)
@@ -460,12 +460,12 @@ SHUResult ECSI_LuaReadData(const char *path, ECSValue *retValue)
         return SHUResult_ErrBadData;
     }
 
-    SHUResult result = ECSI_LuaToValue(-1, retValue, 0);
+    SHUResult result = ECSILua_ToValue(-1, retValue, 0);
     lua_settop(state, top);
     return result;
 }
 
-SHUResult ECSI_LuaWriteData(const char *path, const ECSValue *value)
+SHUResult ECSILua_WriteData(const char *path, const ECSValue *value)
 {
     SDL_assert(LUA.state != NULL);
     SDL_assert(path != NULL);
@@ -473,7 +473,7 @@ SHUResult ECSI_LuaWriteData(const char *path, const ECSValue *value)
     lua_State *state = LUA.state;
     int top = lua_gettop(state);
 
-    lua_pushcfunction(state, ECSI_LuaWriteProtected);
+    lua_pushcfunction(state, ECSILua_WriteProtected);
     lua_pushlightuserdata(state, (void *)value);
 
     if (lua_pcall(state, 1, 1, 0) != LUA_OK)

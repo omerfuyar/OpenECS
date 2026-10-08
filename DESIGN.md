@@ -50,8 +50,9 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 | Function that belongs to a type         | `ECS<Type>_<Verb>`       | `ECSPanel_SetTitle`, `ECSLayout_Move`, `ECSTimer_Start` |
 | Function that belongs to no type        | `ECS_<Verb>`             | `ECS_RunInBackground`, `ECS_Log`                        |
 | Enumeration value                       | `<Type>_<Value>`         | `ECSSurfaceType_Gpu`, `ECSZone_Left`                    |
-| Internal type, function or macro        | `ECSI_` + PascalCase     | `ECSI_Panel`, `ECSI_LayoutTidy`                         |
-| Constant and attribute macro            | `OPENECS_` + UPPER_SNAKE | `OPENECS_API_VERSION`, `OPENECS_EXPORT`                 |
+| Internal type                           | `ECSI` + PascalCase      | `ECSIPanel`, `ECSINode`, `ECSIZone`                     |
+| Internal function or function-like macro | `ECSI<Type or module>_<Verb>` | `ECSIValue_Clear`, `ECSILayout_Tidy`, `ECSILua_Call` |
+| Constant: macro or constant table       | `OPENECS_` + UPPER_SNAKE | `OPENECS_API_VERSION`, `OPENECS_EXPORT`, `OPENECS_CORE_FUNCTIONS` |
 | Struct field, parameter, local variable | camelCase                | `stateVersion`, `minWidth`                              |
 | Function pointer field                  | PascalCase               | `Create`, `Draw`, `SaveState`                           |
 | Function pointer type                   | `ECS` + PascalCase + `Function` | `ECSTimerFunction`, `ECSPanelDrawFunction`       |
@@ -59,6 +60,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 | File                                    | PascalCase               | `OpenECS.h`, `Layout.c`                                 |
 | File-level state                        | one `static` struct, UPPER_CASE| `LAYOUT`, `RENDERER`                                    |
 
+- Internal names follow the public ones with `ECSI` in place of `ECS`. An internal enumeration value is `<Type>_<Value>` too: `ECSINodeType_Split`.
 - `main.c` and Lua files, such as `manifest.lua` and presets, keep lowercase names.
 - A type that tells variants apart ends with `Type`, never `Kind`: `ECSSurfaceType`, `ECSPanelEventType`. Its field is named `type`.
 - Lua names use snake_case: `ecs.panel.register_type`, `save_state`. The core's Lua names live under the global table `ecs`. The core's own settings, events and bindable functions start with `ecs.`, for example the setting `ecs.focus`.
@@ -69,7 +71,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 - The plugin header includes `shu.h`, so plugins use the same types.
 - Memory is passed as a `SHUSlice` or `SHUSliceView`, not as a separate pointer and size.
 - Every function pointer type has a typedef, which fields, parameters and casts use.
-- An object that plugins hold is an opaque handle: `typedef struct ECSI_Panel *ECSPanel;`. Its fields stay internal.
+- An object that plugins hold is an opaque handle: `typedef struct ECSIPanel *ECSPanel;`. Its fields stay internal.
 - A function that creates an object returns `SHUResult` and writes the new handle to an output parameter, which comes first after the plugin: `SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, ...)`. Its `Destroy` or `Stop` takes a pointer to the handle and sets it to `NULL`.
 - Other functions take the object they act on first. Functions that act for a plugin take the plugin first.
 - Reading and changing a value use `Get` and `Set`: `ECSPanel_GetTitle`, `ECSPanel_SetTitle`.

@@ -22,16 +22,16 @@
 #pragma region Types
 
 /// @brief Handle of a loaded plugin. Functions that act for a plugin take it first.
-typedef struct ECSI_Plugin *ECSPlugin;
+typedef struct ECSIPlugin *ECSPlugin;
 
 /// @brief Handle of a panel.
-typedef struct ECSI_Panel *ECSPanel;
+typedef struct ECSIPanel *ECSPanel;
 
 /// @brief Handle of a timer.
-typedef struct ECSI_Timer *ECSTimer;
+typedef struct ECSITimer *ECSTimer;
 
 /// @brief A plugin's subscription to a named event.
-typedef struct ECSI_Subscription *ECSSubscription;
+typedef struct ECSISubscription *ECSSubscription;
 
 /// @brief A function of a service, of any signature. Cast it to its real type before calling it.
 typedef void (*ECSFunction)(void);
@@ -45,7 +45,7 @@ typedef void (*ECSTaskFunction)(void *data);
 typedef void (*ECSTimerFunction)(void *data);
 
 /// @brief A generic value: nil, a boolean, an integer, a number, a string, or a table that holds a list and named fields. Saved state, settings and services use values.
-typedef struct ECSI_Value ECSValue;
+typedef struct ECSIValue ECSValue;
 
 /// @brief Function called with a named event that a plugin subscribed to.
 /// @param data The data given to ECSEvent_Subscribe.

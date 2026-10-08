@@ -16,55 +16,55 @@
 #define OPENECS_MIN_CHILD_SIZE 32.0f
 
 /// @brief A named arrangement of panels.
-typedef struct ECSI_Workspace
+typedef struct ECSIWorkspace
 {
     char *name;
-    ECSI_Node *tree;      // NULL when the workspace has no panels
-    ECSI_Node *maximized; // group that fills the window, or NULL
+    ECSINode *tree;      // NULL when the workspace has no panels
+    ECSINode *maximized; // group that fills the window, or NULL
     ECSPanel focus;
-} ECSI_Workspace;
+} ECSIWorkspace;
 
 /// @brief A closed panel that ecs.reopen can open again.
-typedef struct ECSI_ClosedPanel
+typedef struct ECSIClosedPanel
 {
-    ECSValue *saved; // its type, state and state_version, as ECSI_PanelSave writes them
+    ECSValue *saved; // its type, state and state_version, as ECSIPanel_Save writes them
     u32 neighbour;   // id of a panel that stayed in its group, or 0
-} ECSI_ClosedPanel;
+} ECSIClosedPanel;
 
 static struct
 {
-    ECSI_Workspace *workspaces; // stb_ds array
+    ECSIWorkspace *workspaces; // stb_ds array
     usz current;
-    ECSI_ClosedPanel *closed; // stb_ds array of the panels ecs.reopen can open again, the last closed last
+    ECSIClosedPanel *closed; // stb_ds array of the panels ecs.reopen can open again, the last closed last
     bool frameNeeded;
-    ECSI_LayoutForgetFunction Forget; // the window's, or NULL
+    ECSILayoutForgetFunction Forget; // the window's, or NULL
 } LAYOUT = {0};
 
-static ECSI_Workspace *ECSI_LayoutCurrent(void)
+static ECSIWorkspace *ECSILayout_Current(void)
 {
     return arrlenu(LAYOUT.workspaces) == 0 ? NULL : &LAYOUT.workspaces[LAYOUT.current];
 }
 
-static bool ECSI_LayoutContains(f32 x, f32 y, f32 left, f32 top, f32 width, f32 height)
+static bool ECSILayout_Contains(f32 x, f32 y, f32 left, f32 top, f32 width, f32 height)
 {
     return x >= left && y >= top && x < left + width && y < top + height;
 }
 
 /// @brief Computes the rectangles of a node and its children, and places the shown panel of each group.
-static void ECSI_LayoutPlace(ECSI_Node *node, f32 x, f32 y, f32 width, f32 height)
+static void ECSILayout_Place(ECSINode *node, f32 x, f32 y, f32 width, f32 height)
 {
     node->x = x;
     node->y = y;
     node->width = width;
     node->height = height;
 
-    if (node->type == ECSI_NodeType_Group)
+    if (node->type == ECSINodeType_Group)
     {
         f32 top = arrlenu(node->panels) >= 2 ? OPENECS_TAB_ROW_HEIGHT : 0.0f;
 
         if (arrlenu(node->panels) > 0)
         {
-            ECSI_PanelSetRect(node->panels[node->shown], x, y + top, width, SDL_max(0.0f, height - top));
+            ECSIPanel_SetRect(node->panels[node->shown], x, y + top, width, SDL_max(0.0f, height - top));
         }
 
         return;
@@ -94,7 +94,7 @@ static void ECSI_LayoutPlace(ECSI_Node *node, f32 x, f32 y, f32 width, f32 heigh
 
     for (usz i = 0; i < arrlenu(node->children); i++)
     {
-        ECSI_Node *child = node->children[i];
+        ECSINode *child = node->children[i];
         f32 size = child->fixedSize > 0.0f ? child->fixedSize : (shareSum > 0.0f ? remaining * child->share / shareSum : 0.0f);
 
         // the last child takes what is left, so rounding leaves no gap
@@ -103,11 +103,11 @@ static void ECSI_LayoutPlace(ECSI_Node *node, f32 x, f32 y, f32 width, f32 heigh
 
         if (node->vertical)
         {
-            ECSI_LayoutPlace(child, x, position, width, size);
+            ECSILayout_Place(child, x, position, width, size);
         }
         else
         {
-            ECSI_LayoutPlace(child, position, y, size, height);
+            ECSILayout_Place(child, position, y, size, height);
         }
 
         position += size + OPENECS_DIVIDER_SIZE;
@@ -115,14 +115,14 @@ static void ECSI_LayoutPlace(ECSI_Node *node, f32 x, f32 y, f32 width, f32 heigh
 }
 
 /// @brief Calls a function for every group of a tree.
-static void ECSI_LayoutForEachGroupIn(ECSI_Node *node, ECSI_LayoutGroupFunction function, void *userData)
+static void ECSILayout_ForEachGroupIn(ECSINode *node, ECSILayoutGroupFunction function, void *userData)
 {
     if (node == NULL)
     {
         return;
     }
 
-    if (node->type == ECSI_NodeType_Group)
+    if (node->type == ECSINodeType_Group)
     {
         function(node, userData);
         return;
@@ -130,31 +130,31 @@ static void ECSI_LayoutForEachGroupIn(ECSI_Node *node, ECSI_LayoutGroupFunction 
 
     for (usz i = 0; i < arrlenu(node->children); i++)
     {
-        ECSI_LayoutForEachGroupIn(node->children[i], function, userData);
+        ECSILayout_ForEachGroupIn(node->children[i], function, userData);
     }
 }
 
 /// @brief Tells each panel of a group whether it is visible. userData points to the group whose panel is shown, or to NULL for every group of the current workspace.
-static void ECSI_LayoutTellVisible(ECSI_Node *group, void *userData)
+static void ECSILayout_TellVisible(ECSINode *group, void *userData)
 {
-    ECSI_Node *const *only = userData;
+    ECSINode *const *only = userData;
 
     for (usz i = 0; i < arrlenu(group->panels); i++)
     {
         bool visible = only != NULL && (*only == NULL || *only == group) && i == group->shown;
-        ECSI_PanelSetVisible(group->panels[i], visible);
+        ECSIPanel_SetVisible(group->panels[i], visible);
     }
 }
 
 /// @brief Finds the group that holds a panel.
-static ECSI_Node *ECSI_LayoutFindGroup(ECSI_Node *node, ECSPanel panel)
+static ECSINode *ECSILayout_FindGroup(ECSINode *node, ECSPanel panel)
 {
     if (node == NULL)
     {
         return NULL;
     }
 
-    if (node->type == ECSI_NodeType_Group)
+    if (node->type == ECSINodeType_Group)
     {
         for (usz i = 0; i < arrlenu(node->panels); i++)
         {
@@ -169,7 +169,7 @@ static ECSI_Node *ECSI_LayoutFindGroup(ECSI_Node *node, ECSPanel panel)
 
     for (usz i = 0; i < arrlenu(node->children); i++)
     {
-        ECSI_Node *group = ECSI_LayoutFindGroup(node->children[i], panel);
+        ECSINode *group = ECSILayout_FindGroup(node->children[i], panel);
 
         if (group != NULL)
         {
@@ -182,11 +182,11 @@ static ECSI_Node *ECSI_LayoutFindGroup(ECSI_Node *node, ECSPanel panel)
 
 /// @brief Finds the workspace and group that hold a panel, in any workspace.
 /// @return false if the panel is not in the layout.
-static bool ECSI_LayoutLocate(ECSPanel panel, ECSI_Workspace **retWorkspace, ECSI_Node **retGroup)
+static bool ECSILayout_Locate(ECSPanel panel, ECSIWorkspace **retWorkspace, ECSINode **retGroup)
 {
     for (usz i = 0; panel != NULL && i < arrlenu(LAYOUT.workspaces); i++)
     {
-        ECSI_Node *group = ECSI_LayoutFindGroup(LAYOUT.workspaces[i].tree, panel);
+        ECSINode *group = ECSILayout_FindGroup(LAYOUT.workspaces[i].tree, panel);
 
         if (group != NULL)
         {
@@ -200,7 +200,7 @@ static bool ECSI_LayoutLocate(ECSPanel panel, ECSI_Workspace **retWorkspace, ECS
 }
 
 /// @brief Emits ecs.focus_changed with the panel that has the focus now, or none.
-static void ECSI_LayoutEmitFocus(ECSPanel panel)
+static void ECSILayout_EmitFocus(ECSPanel panel)
 {
     ECSValue *value = NULL;
     ECSValue *field = NULL;
@@ -215,14 +215,14 @@ static void ECSI_LayoutEmitFocus(ECSPanel panel)
             ECSValue_SetInteger(field, ECSPanel_GetId(panel));
         }
 
-        ECSI_EventsEmitCore("ecs.focus_changed", value);
+        ECSIEvents_EmitCore("ecs.focus_changed", value);
     }
 
     ECSValue_Destroy(&value);
 }
 
 /// @brief Changes a workspace's focus. In the current workspace, the panel that loses focus and the one that gets it are told.
-static void ECSI_LayoutChangeFocus(ECSI_Workspace *workspace, ECSPanel panel)
+static void ECSILayout_ChangeFocus(ECSIWorkspace *workspace, ECSPanel panel)
 {
     ECSPanel old = workspace->focus;
 
@@ -239,7 +239,7 @@ static void ECSI_LayoutChangeFocus(ECSI_Workspace *workspace, ECSPanel panel)
         panel->focusTicks = SDL_GetTicksNS();
     }
 
-    if (workspace != ECSI_LayoutCurrent())
+    if (workspace != ECSILayout_Current())
     {
         return;
     }
@@ -248,34 +248,34 @@ static void ECSI_LayoutChangeFocus(ECSI_Workspace *workspace, ECSPanel panel)
 
     if (old != NULL)
     {
-        ECSI_PanelPostEvent(old, &event);
+        ECSIPanel_PostEvent(old, &event);
     }
 
     if (panel != NULL)
     {
         event.type = ECSPanelEventType_Focused;
-        ECSI_PanelPostEvent(panel, &event);
+        ECSIPanel_PostEvent(panel, &event);
     }
 
-    ECSI_LayoutEmitFocus(panel);
+    ECSILayout_EmitFocus(panel);
 }
 
 /// @brief Finds the first panel of a tree.
-static ECSPanel ECSI_LayoutFirstPanel(ECSI_Node *node)
+static ECSPanel ECSILayout_FirstPanel(ECSINode *node)
 {
     if (node == NULL)
     {
         return NULL;
     }
 
-    if (node->type == ECSI_NodeType_Group)
+    if (node->type == ECSINodeType_Group)
     {
         return arrlenu(node->panels) > 0 ? node->panels[node->shown] : NULL;
     }
 
     for (usz i = 0; i < arrlenu(node->children); i++)
     {
-        ECSPanel panel = ECSI_LayoutFirstPanel(node->children[i]);
+        ECSPanel panel = ECSILayout_FirstPanel(node->children[i]);
 
         if (panel != NULL)
         {
@@ -287,7 +287,7 @@ static ECSPanel ECSI_LayoutFirstPanel(ECSI_Node *node)
 }
 
 /// @brief Frees one node, without its children or panels.
-static void ECSI_LayoutFreeNode(ECSI_Node *node)
+static void ECSILayout_FreeNode(ECSINode *node)
 {
     arrfree(node->children);
     arrfree(node->panels);
@@ -296,9 +296,9 @@ static void ECSI_LayoutFreeNode(ECSI_Node *node)
 
 /// @brief Tidies a subtree after an operation: frees empty groups and splits, merges a split into a parent split of the same direction, and replaces a split that has one child by that child.
 /// @return The node that takes the subtree's place, or NULL if nothing is left.
-static ECSI_Node *ECSI_LayoutTidyNode(ECSI_Workspace *workspace, ECSI_Node *node)
+static ECSINode *ECSILayout_TidyNode(ECSIWorkspace *workspace, ECSINode *node)
 {
-    if (node->type == ECSI_NodeType_Group)
+    if (node->type == ECSINodeType_Group)
     {
         if (arrlenu(node->panels) > 0)
         {
@@ -310,15 +310,15 @@ static ECSI_Node *ECSI_LayoutTidyNode(ECSI_Workspace *workspace, ECSI_Node *node
             workspace->maximized = NULL;
         }
 
-        ECSI_LayoutFreeNode(node);
+        ECSILayout_FreeNode(node);
         return NULL;
     }
 
-    ECSI_Node **children = NULL;
+    ECSINode **children = NULL;
 
     for (usz i = 0; i < arrlenu(node->children); i++)
     {
-        ECSI_Node *child = ECSI_LayoutTidyNode(workspace, node->children[i]);
+        ECSINode *child = ECSILayout_TidyNode(workspace, node->children[i]);
 
         if (child == NULL)
         {
@@ -326,7 +326,7 @@ static ECSI_Node *ECSI_LayoutTidyNode(ECSI_Workspace *workspace, ECSI_Node *node
         }
 
         // a child split of the same direction gives its children its place; a fixed-size one keeps them, so their shares keep their meaning
-        if (child->type == ECSI_NodeType_Split && child->vertical == node->vertical && child->fixedSize <= 0.0f)
+        if (child->type == ECSINodeType_Split && child->vertical == node->vertical && child->fixedSize <= 0.0f)
         {
             f32 shareSum = 0.0f;
 
@@ -337,13 +337,13 @@ static ECSI_Node *ECSI_LayoutTidyNode(ECSI_Workspace *workspace, ECSI_Node *node
 
             for (usz j = 0; j < arrlenu(child->children); j++)
             {
-                ECSI_Node *grandchild = child->children[j];
+                ECSINode *grandchild = child->children[j];
                 grandchild->share = grandchild->fixedSize > 0.0f || shareSum <= 0.0f ? grandchild->share : grandchild->share * child->share / shareSum;
                 grandchild->parent = node;
                 arrput(children, grandchild);
             }
 
-            ECSI_LayoutFreeNode(child);
+            ECSILayout_FreeNode(child);
             continue;
         }
 
@@ -359,7 +359,7 @@ static ECSI_Node *ECSI_LayoutTidyNode(ECSI_Workspace *workspace, ECSI_Node *node
         return node;
     }
 
-    ECSI_Node *only = arrlenu(children) == 1 ? children[0] : NULL;
+    ECSINode *only = arrlenu(children) == 1 ? children[0] : NULL;
 
     if (only != NULL)
     {
@@ -368,18 +368,18 @@ static ECSI_Node *ECSI_LayoutTidyNode(ECSI_Workspace *workspace, ECSI_Node *node
         only->parent = node->parent;
     }
 
-    ECSI_LayoutFreeNode(node);
+    ECSILayout_FreeNode(node);
     return only;
 }
 
 /// @brief Emits ecs.layout_changed, which carries nothing.
-static void ECSI_LayoutEmitLayoutChanged(void)
+static void ECSILayout_EmitLayoutChanged(void)
 {
-    ECSI_EventsEmitCore("ecs.layout_changed", NULL);
+    ECSIEvents_EmitCore("ecs.layout_changed", NULL);
 }
 
 /// @brief Lets the window forget the nodes it points to, because nodes may have been freed or hidden.
-static void ECSI_LayoutForget(void)
+static void ECSILayout_Forget(void)
 {
     if (LAYOUT.Forget != NULL)
     {
@@ -388,11 +388,11 @@ static void ECSI_LayoutForget(void)
 }
 
 /// @brief Tidies a workspace's tree after an operation. Nodes may be freed, so the window forgets the nodes it points to.
-static void ECSI_LayoutTidy(ECSI_Workspace *workspace)
+static void ECSILayout_Tidy(ECSIWorkspace *workspace)
 {
     if (workspace->tree != NULL)
     {
-        workspace->tree = ECSI_LayoutTidyNode(workspace, workspace->tree);
+        workspace->tree = ECSILayout_TidyNode(workspace, workspace->tree);
     }
 
     if (workspace->tree != NULL)
@@ -400,17 +400,17 @@ static void ECSI_LayoutTidy(ECSI_Workspace *workspace)
         workspace->tree->parent = NULL;
     }
 
-    ECSI_LayoutForget();
+    ECSILayout_Forget();
     LAYOUT.frameNeeded = true;
-    ECSI_LayoutEmitLayoutChanged();
+    ECSILayout_EmitLayoutChanged();
 }
 
 #pragma region Moving
 
 /// @brief Puts a node in another node's place in the tree. The other node keeps its children and sizes.
-static void ECSI_LayoutReplaceNode(ECSI_Workspace *workspace, ECSI_Node *old, ECSI_Node *node)
+static void ECSILayout_ReplaceNode(ECSIWorkspace *workspace, ECSINode *old, ECSINode *node)
 {
-    ECSI_Node *parent = old->parent;
+    ECSINode *parent = old->parent;
     node->parent = parent;
     node->fixedSize = old->fixedSize;
     node->share = old->share;
@@ -432,9 +432,9 @@ static void ECSI_LayoutReplaceNode(ECSI_Workspace *workspace, ECSI_Node *old, EC
 
 /// @brief Wraps a node in a new split with a new node beside it. The split takes the node's place.
 /// @param first true to put the new node first: left or top.
-static void ECSI_LayoutWrap(ECSI_Workspace *workspace, ECSI_Node *split, ECSI_Node *node, ECSI_Node *added, bool first, f32 nodeShare, f32 addedShare)
+static void ECSILayout_Wrap(ECSIWorkspace *workspace, ECSINode *split, ECSINode *node, ECSINode *added, bool first, f32 nodeShare, f32 addedShare)
 {
-    ECSI_LayoutReplaceNode(workspace, node, split);
+    ECSILayout_ReplaceNode(workspace, node, split);
     node->fixedSize = 0.0f;
     node->share = nodeShare;
     added->fixedSize = 0.0f;
@@ -447,33 +447,33 @@ static void ECSI_LayoutWrap(ECSI_Workspace *workspace, ECSI_Node *split, ECSI_No
 
 /// @brief Moves a panel to a drop place, then tidies the tree. The panel gets the focus.
 /// @param user true when the user moves the panel; locks stop the user but not code.
-static void ECSI_LayoutMove(ECSI_Workspace *workspace, ECSPanel panel, const ECSI_Drop *drop, bool user)
+static void ECSILayout_Move(ECSIWorkspace *workspace, ECSPanel panel, const ECSIDrop *drop, bool user)
 {
-    ECSI_Node *source = ECSI_LayoutFindGroup(workspace->tree, panel);
-    ECSI_Node *target = drop->group;
-    bool side = drop->zone >= ECSI_Zone_Left && drop->zone <= ECSI_Zone_Bottom;
-    bool edge = drop->zone >= ECSI_Zone_WindowLeft;
+    ECSINode *source = ECSILayout_FindGroup(workspace->tree, panel);
+    ECSINode *target = drop->group;
+    bool side = drop->zone >= ECSIZone_Left && drop->zone <= ECSIZone_Bottom;
+    bool edge = drop->zone >= ECSIZone_WindowLeft;
 
     // a panel cannot join its own group again, or split away from a group that holds only itself; locked panels stay
-    if (source == NULL || drop->zone == ECSI_Zone_None || (user && source->locked) || (source == target && (drop->zone == ECSI_Zone_Center || (side && arrlenu(source->panels) == 1))))
+    if (source == NULL || drop->zone == ECSIZone_None || (user && source->locked) || (source == target && (drop->zone == ECSIZone_Center || (side && arrlenu(source->panels) == 1))))
     {
         return;
     }
 
-    if (user && target != NULL && target->locked && (drop->zone == ECSI_Zone_Center || drop->zone == ECSI_Zone_Tabs))
+    if (user && target != NULL && target->locked && (drop->zone == ECSIZone_Center || drop->zone == ECSIZone_Tabs))
     {
         return;
     }
 
     // the new nodes are made first, so a failed allocation changes nothing
-    ECSI_Node *group = NULL;
-    ECSI_Node *split = NULL;
+    ECSINode *group = NULL;
+    ECSINode *split = NULL;
 
     if (side || edge)
     {
-        bool vertical = drop->zone == ECSI_Zone_Top || drop->zone == ECSI_Zone_Bottom || drop->zone == ECSI_Zone_WindowTop || drop->zone == ECSI_Zone_WindowBottom;
+        bool vertical = drop->zone == ECSIZone_Top || drop->zone == ECSIZone_Bottom || drop->zone == ECSIZone_WindowTop || drop->zone == ECSIZone_WindowBottom;
 
-        if (ECSI_LayoutGroupCreate(&group) || ECSI_LayoutSplitCreate(&split, vertical))
+        if (ECSILayout_GroupCreate(&group) || ECSILayout_SplitCreate(&split, vertical))
         {
             SDL_free(group);
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Out of memory while moving a panel.");
@@ -490,12 +490,12 @@ static void ECSI_LayoutMove(ECSI_Workspace *workspace, ECSPanel panel, const ECS
 
     arrdel(source->panels, index);
     source->shown = arrlenu(source->panels) == 0 ? 0 : SDL_min(source->shown, arrlenu(source->panels) - 1);
-    bool first = drop->zone == ECSI_Zone_Left || drop->zone == ECSI_Zone_Top || drop->zone == ECSI_Zone_WindowLeft || drop->zone == ECSI_Zone_WindowTop;
+    bool first = drop->zone == ECSIZone_Left || drop->zone == ECSIZone_Top || drop->zone == ECSIZone_WindowLeft || drop->zone == ECSIZone_WindowTop;
 
-    if (drop->zone == ECSI_Zone_Center || drop->zone == ECSI_Zone_Tabs)
+    if (drop->zone == ECSIZone_Center || drop->zone == ECSIZone_Tabs)
     {
         // the gap was counted with the panel still in its own group
-        usz gap = drop->zone == ECSI_Zone_Center ? arrlenu(target->panels) : drop->index;
+        usz gap = drop->zone == ECSIZone_Center ? arrlenu(target->panels) : drop->index;
         gap = source == target && index < gap ? gap - 1 : gap;
         gap = SDL_min(gap, arrlenu(target->panels));
         // arrins of stb_ds does not compile cleanly with sign warnings, so the gap is opened by hand
@@ -508,30 +508,30 @@ static void ECSI_LayoutMove(ECSI_Workspace *workspace, ECSPanel panel, const ECS
     {
         // the target and the panel share the target's place
         arrput(group->panels, panel);
-        ECSI_LayoutWrap(workspace, split, target, group, first, 1.0f, 1.0f);
+        ECSILayout_Wrap(workspace, split, target, group, first, 1.0f, 1.0f);
     }
     else
     {
         // the panel docks along the whole edge, with a quarter of the window
         arrput(group->panels, panel);
-        ECSI_LayoutWrap(workspace, split, workspace->tree, group, first, 3.0f, 1.0f);
+        ECSILayout_Wrap(workspace, split, workspace->tree, group, first, 3.0f, 1.0f);
     }
 
     workspace->maximized = NULL;
-    ECSI_LayoutChangeFocus(workspace, panel);
-    ECSI_LayoutTidy(workspace);
+    ECSILayout_ChangeFocus(workspace, panel);
+    ECSILayout_Tidy(workspace);
 }
 
 /// @brief Moves a whole group to a drop place, then tidies the tree. The group's shown panel gets the focus.
 /// @param user true when the user moves the group; locks stop the user but not code.
-static void ECSI_LayoutMoveGroup(ECSI_Workspace *workspace, ECSI_Node *group, const ECSI_Drop *drop, bool user)
+static void ECSILayout_MoveGroup(ECSIWorkspace *workspace, ECSINode *group, const ECSIDrop *drop, bool user)
 {
-    ECSI_Node *target = drop->group;
-    bool side = drop->zone >= ECSI_Zone_Left && drop->zone <= ECSI_Zone_Bottom;
-    bool edge = drop->zone >= ECSI_Zone_WindowLeft;
-    bool join = drop->zone == ECSI_Zone_Center || drop->zone == ECSI_Zone_Tabs;
+    ECSINode *target = drop->group;
+    bool side = drop->zone >= ECSIZone_Left && drop->zone <= ECSIZone_Bottom;
+    bool edge = drop->zone >= ECSIZone_WindowLeft;
+    bool join = drop->zone == ECSIZone_Center || drop->zone == ECSIZone_Tabs;
 
-    if (drop->zone == ECSI_Zone_None || target == group || (edge && workspace->tree == group) || (user && (group->locked || (join && target->locked))))
+    if (drop->zone == ECSIZone_None || target == group || (edge && workspace->tree == group) || (user && (group->locked || (join && target->locked))))
     {
         return;
     }
@@ -541,7 +541,7 @@ static void ECSI_LayoutMoveGroup(ECSI_Workspace *workspace, ECSI_Node *group, co
     if (join)
     {
         // the panels keep their order; the emptied group is removed by tidying
-        usz gap = SDL_min(drop->zone == ECSI_Zone_Center ? arrlenu(target->panels) : drop->index, arrlenu(target->panels));
+        usz gap = SDL_min(drop->zone == ECSIZone_Center ? arrlenu(target->panels) : drop->index, arrlenu(target->panels));
 
         for (usz i = 0; i < arrlenu(group->panels); i++, gap++)
         {
@@ -556,18 +556,18 @@ static void ECSI_LayoutMoveGroup(ECSI_Workspace *workspace, ECSI_Node *group, co
     }
     else
     {
-        bool vertical = drop->zone == ECSI_Zone_Top || drop->zone == ECSI_Zone_Bottom || drop->zone == ECSI_Zone_WindowTop || drop->zone == ECSI_Zone_WindowBottom;
-        bool first = drop->zone == ECSI_Zone_Left || drop->zone == ECSI_Zone_Top || drop->zone == ECSI_Zone_WindowLeft || drop->zone == ECSI_Zone_WindowTop;
-        ECSI_Node *split = NULL;
+        bool vertical = drop->zone == ECSIZone_Top || drop->zone == ECSIZone_Bottom || drop->zone == ECSIZone_WindowTop || drop->zone == ECSIZone_WindowBottom;
+        bool first = drop->zone == ECSIZone_Left || drop->zone == ECSIZone_Top || drop->zone == ECSIZone_WindowLeft || drop->zone == ECSIZone_WindowTop;
+        ECSINode *split = NULL;
 
-        if (ECSI_LayoutSplitCreate(&split, vertical))
+        if (ECSILayout_SplitCreate(&split, vertical))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Out of memory while moving a group.");
             return;
         }
 
         // the group leaves its parent split, which tidying removes if one child is left
-        ECSI_Node *parent = group->parent;
+        ECSINode *parent = group->parent;
 
         for (usz i = 0; parent != NULL && i < arrlenu(parent->children); i++)
         {
@@ -582,45 +582,45 @@ static void ECSI_LayoutMoveGroup(ECSI_Workspace *workspace, ECSI_Node *group, co
 
         if (side)
         {
-            ECSI_LayoutWrap(workspace, split, target, group, first, 1.0f, 1.0f);
+            ECSILayout_Wrap(workspace, split, target, group, first, 1.0f, 1.0f);
         }
         else
         {
-            ECSI_LayoutWrap(workspace, split, workspace->tree, group, first, 3.0f, 1.0f);
+            ECSILayout_Wrap(workspace, split, workspace->tree, group, first, 3.0f, 1.0f);
         }
     }
 
     workspace->maximized = NULL;
-    ECSI_LayoutChangeFocus(workspace, shown);
-    ECSI_LayoutTidy(workspace);
+    ECSILayout_ChangeFocus(workspace, shown);
+    ECSILayout_Tidy(workspace);
 }
 
 /// @brief Puts a panel into a group, or into a new group if the workspace has no panels, then a side zone moves it beside the group. The panel gets the focus.
 /// @param group The group, or NULL when the workspace has no panels.
-static SHUResult ECSI_LayoutAdd(ECSI_Workspace *workspace, ECSI_Node *group, ECSPanel panel, ECSI_Zone zone)
+static SHUResult ECSILayout_Add(ECSIWorkspace *workspace, ECSINode *group, ECSPanel panel, ECSIZone zone)
 {
     if (group == NULL)
     {
-        SHU_ReturnResult(ECSI_LayoutGroupCreate(&group));
+        SHU_ReturnResult(ECSILayout_GroupCreate(&group));
         workspace->tree = group;
     }
 
     arrput(group->panels, panel);
     group->shown = arrlenu(group->panels) - 1;
-    ECSI_Drop drop = {.zone = zone, .group = group};
+    ECSIDrop drop = {.zone = zone, .group = group};
 
-    if (zone != ECSI_Zone_Center && zone != ECSI_Zone_None)
+    if (zone != ECSIZone_Center && zone != ECSIZone_None)
     {
-        ECSI_LayoutMove(workspace, panel, &drop, false);
+        ECSILayout_Move(workspace, panel, &drop, false);
     }
 
-    ECSI_LayoutChangeFocus(workspace, panel);
-    ECSI_LayoutTidy(workspace);
+    ECSILayout_ChangeFocus(workspace, panel);
+    ECSILayout_Tidy(workspace);
     return SHUResult_Ok;
 }
 
 /// @brief Takes a panel out of its group and tidies the workspace. If the panel had the focus, the first panel gets it.
-static void ECSI_LayoutDetach(ECSI_Workspace *workspace, ECSI_Node *group, ECSPanel panel)
+static void ECSILayout_Detach(ECSIWorkspace *workspace, ECSINode *group, ECSPanel panel)
 {
     usz index = 0;
 
@@ -632,47 +632,47 @@ static void ECSI_LayoutDetach(ECSI_Workspace *workspace, ECSI_Node *group, ECSPa
     // tidying removes a group that empties, and forgets it if it was maximized
     arrdel(group->panels, index);
     group->shown = arrlenu(group->panels) == 0 ? 0 : SDL_min(group->shown, arrlenu(group->panels) - 1);
-    ECSI_LayoutTidy(workspace);
+    ECSILayout_Tidy(workspace);
 
     if (workspace->focus == panel)
     {
-        ECSI_LayoutChangeFocus(workspace, ECSI_LayoutFirstPanel(workspace->tree));
+        ECSILayout_ChangeFocus(workspace, ECSILayout_FirstPanel(workspace->tree));
     }
 }
 
 /// @brief Finds the group a new panel joins in a workspace: the focused group, else the first one, or NULL if the workspace has no panels.
-static ECSI_Node *ECSI_LayoutDefaultGroup(ECSI_Workspace *workspace)
+static ECSINode *ECSILayout_DefaultGroup(ECSIWorkspace *workspace)
 {
-    ECSI_Node *group = ECSI_LayoutFindGroup(workspace->tree, workspace->focus);
-    return group != NULL ? group : ECSI_LayoutFindGroup(workspace->tree, ECSI_LayoutFirstPanel(workspace->tree));
+    ECSINode *group = ECSILayout_FindGroup(workspace->tree, workspace->focus);
+    return group != NULL ? group : ECSILayout_FindGroup(workspace->tree, ECSILayout_FirstPanel(workspace->tree));
 }
 
 /// @brief Converts a public zone to a drop zone.
-static ECSI_Zone ECSI_LayoutZone(ECSZone zone)
+static ECSIZone ECSILayout_Zone(ECSZone zone)
 {
     switch (zone)
     {
     case ECSZone_Left:
-        return ECSI_Zone_Left;
+        return ECSIZone_Left;
     case ECSZone_Right:
-        return ECSI_Zone_Right;
+        return ECSIZone_Right;
     case ECSZone_Top:
-        return ECSI_Zone_Top;
+        return ECSIZone_Top;
     case ECSZone_Bottom:
-        return ECSI_Zone_Bottom;
+        return ECSIZone_Bottom;
     default:
-        return ECSI_Zone_Center;
+        return ECSIZone_Center;
     }
 }
 
-typedef struct ECSI_RecentSearch
+typedef struct ECSIRecentSearch
 {
     const char *typeName;
     ECSPanel best;
-} ECSI_RecentSearch;
+} ECSIRecentSearch;
 
 /// @brief Finds the most recently focused panel of a type in a tree.
-static void ECSI_LayoutFindRecent(const ECSI_Node *node, ECSI_RecentSearch *search)
+static void ECSILayout_FindRecent(const ECSINode *node, ECSIRecentSearch *search)
 {
     for (usz i = 0; i < arrlenu(node->panels); i++)
     {
@@ -686,7 +686,7 @@ static void ECSI_LayoutFindRecent(const ECSI_Node *node, ECSI_RecentSearch *sear
 
     for (usz i = 0; i < arrlenu(node->children); i++)
     {
-        ECSI_LayoutFindRecent(node->children[i], search);
+        ECSILayout_FindRecent(node->children[i], search);
     }
 }
 
@@ -694,45 +694,45 @@ static void ECSI_LayoutFindRecent(const ECSI_Node *node, ECSI_RecentSearch *sear
 
 #pragma region Hit Testing
 
-typedef struct ECSI_GroupHit
+typedef struct ECSIGroupHit
 {
     f32 x;
     f32 y;
-    ECSI_Node *group;
-} ECSI_GroupHit;
+    ECSINode *group;
+} ECSIGroupHit;
 
-static void ECSI_LayoutFindGroupAt(ECSI_Node *group, void *userData)
+static void ECSILayout_FindGroupAt(ECSINode *group, void *userData)
 {
-    ECSI_GroupHit *hit = userData;
+    ECSIGroupHit *hit = userData;
 
-    if (ECSI_LayoutContains(hit->x, hit->y, group->x, group->y, group->width, group->height))
+    if (ECSILayout_Contains(hit->x, hit->y, group->x, group->y, group->width, group->height))
     {
         hit->group = group;
     }
 }
 
-typedef struct ECSI_DividerHit
+typedef struct ECSIDividerHit
 {
     f32 x;
     f32 y;
-    ECSI_Node *split;
+    ECSINode *split;
     usz divider;
-} ECSI_DividerHit;
+} ECSIDividerHit;
 
 /// @brief Finds the divider under a point.
-static void ECSI_LayoutFindDivider(ECSI_Node *node, ECSI_DividerHit *hit)
+static void ECSILayout_FindDivider(ECSINode *node, ECSIDividerHit *hit)
 {
-    if (node == NULL || node->type == ECSI_NodeType_Group || hit->split != NULL)
+    if (node == NULL || node->type == ECSINodeType_Group || hit->split != NULL)
     {
         return;
     }
 
     for (usz i = 0; i + 1 < arrlenu(node->children); i++)
     {
-        ECSI_Node *child = node->children[i];
+        ECSINode *child = node->children[i];
         bool over = node->vertical
-                        ? ECSI_LayoutContains(hit->x, hit->y, node->x, child->y + child->height, node->width, OPENECS_DIVIDER_SIZE)
-                        : ECSI_LayoutContains(hit->x, hit->y, child->x + child->width, node->y, OPENECS_DIVIDER_SIZE, node->height);
+                        ? ECSILayout_Contains(hit->x, hit->y, node->x, child->y + child->height, node->width, OPENECS_DIVIDER_SIZE)
+                        : ECSILayout_Contains(hit->x, hit->y, child->x + child->width, node->y, OPENECS_DIVIDER_SIZE, node->height);
 
         if (over)
         {
@@ -744,20 +744,20 @@ static void ECSI_LayoutFindDivider(ECSI_Node *node, ECSI_DividerHit *hit)
 
     for (usz i = 0; i < arrlenu(node->children); i++)
     {
-        ECSI_LayoutFindDivider(node->children[i], hit);
+        ECSILayout_FindDivider(node->children[i], hit);
     }
 }
 
-typedef struct ECSI_PanelHit
+typedef struct ECSIPanelHit
 {
     f32 x;
     f32 y;
     ECSPanel panel;
-} ECSI_PanelHit;
+} ECSIPanelHit;
 
-static void ECSI_LayoutFindPanel(ECSI_Node *group, void *userData)
+static void ECSILayout_FindPanel(ECSINode *group, void *userData)
 {
-    ECSI_PanelHit *hit = userData;
+    ECSIPanelHit *hit = userData;
 
     if (arrlenu(group->panels) == 0)
     {
@@ -766,13 +766,13 @@ static void ECSI_LayoutFindPanel(ECSI_Node *group, void *userData)
 
     ECSPanel panel = group->panels[group->shown];
 
-    if (ECSI_LayoutContains(hit->x, hit->y, panel->x, panel->y, panel->width, panel->height))
+    if (ECSILayout_Contains(hit->x, hit->y, panel->x, panel->y, panel->width, panel->height))
     {
         hit->panel = panel;
     }
 }
 
-typedef struct ECSI_NeighbourSearch
+typedef struct ECSINeighbourSearch
 {
     ECSPanel from;
     i32 dx;
@@ -780,11 +780,11 @@ typedef struct ECSI_NeighbourSearch
     ECSPanel best;
     f32 bestGap;
     f32 bestOverlap;
-} ECSI_NeighbourSearch;
+} ECSINeighbourSearch;
 
-static void ECSI_LayoutFindNeighbourIn(ECSI_Node *group, void *userData)
+static void ECSILayout_FindNeighbourIn(ECSINode *group, void *userData)
 {
-    ECSI_NeighbourSearch *search = userData;
+    ECSINeighbourSearch *search = userData;
 
     if (arrlenu(group->panels) == 0)
     {
@@ -826,11 +826,11 @@ static void ECSI_LayoutFindNeighbourIn(ECSI_Node *group, void *userData)
     }
 }
 
-static void ECSI_LayoutWantsFrameIn(ECSI_Node *group, void *userData)
+static void ECSILayout_WantsFrameIn(ECSINode *group, void *userData)
 {
     bool *wants = userData;
 
-    if (arrlenu(group->panels) > 0 && ECSI_PanelWantsFrame(group->panels[group->shown]))
+    if (arrlenu(group->panels) > 0 && ECSIPanel_WantsFrame(group->panels[group->shown]))
     {
         *wants = true;
     }
@@ -841,7 +841,7 @@ static void ECSI_LayoutWantsFrameIn(ECSI_Node *group, void *userData)
 #pragma region Saving
 
 /// @brief Describes a node and its children for a session. A split holds its children as list items; a group holds its panels.
-static SHUResult ECSI_LayoutSaveNode(const ECSI_Workspace *workspace, const ECSI_Node *node, ECSValue *retNode)
+static SHUResult ECSILayout_SaveNode(const ECSIWorkspace *workspace, const ECSINode *node, ECSValue *retNode)
 {
     ECSValue *field = NULL;
     ECSValue_SetTable(retNode);
@@ -853,7 +853,7 @@ static SHUResult ECSI_LayoutSaveNode(const ECSI_Workspace *workspace, const ECSI
         ECSValue_SetNumber(field, fixed ? node->fixedSize : node->share);
     }
 
-    if (node->type == ECSI_NodeType_Split)
+    if (node->type == ECSINodeType_Split)
     {
         SHU_ReturnResult(ECSValue_TableSetField(retNode, "split", &field));
         SHU_ReturnResult(ECSValue_SetString(field, node->vertical ? "vertical" : "horizontal"));
@@ -861,7 +861,7 @@ static SHUResult ECSI_LayoutSaveNode(const ECSI_Workspace *workspace, const ECSI
         for (usz i = 0; i < arrlenu(node->children); i++)
         {
             SHU_ReturnResult(ECSValue_ListAddItem(retNode, &field));
-            SHU_ReturnResult(ECSI_LayoutSaveNode(workspace, node->children[i], field));
+            SHU_ReturnResult(ECSILayout_SaveNode(workspace, node->children[i], field));
         }
 
         return SHUResult_Ok;
@@ -874,7 +874,7 @@ static SHUResult ECSI_LayoutSaveNode(const ECSI_Workspace *workspace, const ECSI
     for (usz i = 0; i < arrlenu(node->panels); i++)
     {
         SHU_ReturnResult(ECSValue_ListAddItem(panels, &field));
-        SHU_ReturnResult(ECSI_PanelSave(node->panels[i], field));
+        SHU_ReturnResult(ECSIPanel_Save(node->panels[i], field));
     }
 
     SHU_ReturnResult(ECSValue_TableSetField(retNode, "shown", &field));
@@ -896,7 +896,7 @@ static SHUResult ECSI_LayoutSaveNode(const ECSI_Workspace *workspace, const ECSI
 }
 
 /// @brief Adds every panel of a tree to an stb_ds array.
-static void ECSI_LayoutCollectPanels(const ECSI_Node *node, ECSPanel **panels)
+static void ECSILayout_CollectPanels(const ECSINode *node, ECSPanel **panels)
 {
     if (node == NULL)
     {
@@ -910,7 +910,7 @@ static void ECSI_LayoutCollectPanels(const ECSI_Node *node, ECSPanel **panels)
 
     for (usz i = 0; i < arrlenu(node->children); i++)
     {
-        ECSI_LayoutCollectPanels(node->children[i], panels);
+        ECSILayout_CollectPanels(node->children[i], panels);
     }
 }
 
@@ -918,18 +918,18 @@ static void ECSI_LayoutCollectPanels(const ECSI_Node *node, ECSPanel **panels)
 
 #pragma endregion Source Only
 
-void ECSI_LayoutSetForget(ECSI_LayoutForgetFunction function)
+void ECSILayout_SetForget(ECSILayoutForgetFunction function)
 {
     LAYOUT.Forget = function;
 }
 
-void ECSI_LayoutTerminate(void)
+void ECSILayout_Terminate(void)
 {
     for (usz i = 0; i < arrlenu(LAYOUT.workspaces); i++)
     {
         if (LAYOUT.workspaces[i].tree != NULL)
         {
-            ECSI_LayoutNodeDestroy(&LAYOUT.workspaces[i].tree);
+            ECSILayout_NodeDestroy(&LAYOUT.workspaces[i].tree);
         }
 
         SDL_free(LAYOUT.workspaces[i].name);
@@ -946,44 +946,44 @@ void ECSI_LayoutTerminate(void)
     SDL_zero(LAYOUT);
 }
 
-SHUResult ECSI_LayoutSplitCreate(ECSI_Node **retNode, bool vertical)
+SHUResult ECSILayout_SplitCreate(ECSINode **retNode, bool vertical)
 {
     SDL_assert(retNode != NULL);
 
-    *retNode = SDL_calloc(1, sizeof(ECSI_Node));
+    *retNode = SDL_calloc(1, sizeof(ECSINode));
 
     if (*retNode == NULL)
     {
         return SHUResult_ErrAllocation;
     }
 
-    (*retNode)->type = ECSI_NodeType_Split;
+    (*retNode)->type = ECSINodeType_Split;
     (*retNode)->vertical = vertical;
     (*retNode)->share = 1.0f;
     return SHUResult_Ok;
 }
 
-SHUResult ECSI_LayoutGroupCreate(ECSI_Node **retNode)
+SHUResult ECSILayout_GroupCreate(ECSINode **retNode)
 {
     SDL_assert(retNode != NULL);
 
-    *retNode = SDL_calloc(1, sizeof(ECSI_Node));
+    *retNode = SDL_calloc(1, sizeof(ECSINode));
 
     if (*retNode == NULL)
     {
         return SHUResult_ErrAllocation;
     }
 
-    (*retNode)->type = ECSI_NodeType_Group;
+    (*retNode)->type = ECSINodeType_Group;
     (*retNode)->share = 1.0f;
     return SHUResult_Ok;
 }
 
-void ECSI_LayoutSplitAdd(ECSI_Node *split, ECSI_Node *child, f32 fixedSize, f32 share)
+void ECSILayout_SplitAdd(ECSINode *split, ECSINode *child, f32 fixedSize, f32 share)
 {
     SDL_assert(split != NULL);
     SDL_assert(child != NULL);
-    SDL_assert(split->type == ECSI_NodeType_Split);
+    SDL_assert(split->type == ECSINodeType_Split);
 
     child->parent = split;
     child->fixedSize = SDL_max(0.0f, fixedSize);
@@ -991,20 +991,20 @@ void ECSI_LayoutSplitAdd(ECSI_Node *split, ECSI_Node *child, f32 fixedSize, f32 
     arrput(split->children, child);
 }
 
-void ECSI_LayoutGroupAdd(ECSI_Node *group, ECSPanel panel)
+void ECSILayout_GroupAdd(ECSINode *group, ECSPanel panel)
 {
     SDL_assert(group != NULL);
     SDL_assert(panel != NULL);
-    SDL_assert(group->type == ECSI_NodeType_Group);
+    SDL_assert(group->type == ECSINodeType_Group);
 
     arrput(group->panels, panel);
-    ECSI_PanelEmit("ecs.panel_opened", panel);
+    ECSIPanel_Emit("ecs.panel_opened", panel);
 }
 
-void ECSI_LayoutGroupShow(ECSI_Node *group, usz index)
+void ECSILayout_GroupShow(ECSINode *group, usz index)
 {
     SDL_assert(group != NULL);
-    SDL_assert(group->type == ECSI_NodeType_Group);
+    SDL_assert(group->type == ECSINodeType_Group);
 
     if (index < arrlenu(group->panels))
     {
@@ -1013,29 +1013,29 @@ void ECSI_LayoutGroupShow(ECSI_Node *group, usz index)
     }
 }
 
-void ECSI_LayoutGroupSetLocked(ECSI_Node *group, bool locked)
+void ECSILayout_GroupSetLocked(ECSINode *group, bool locked)
 {
     SDL_assert(group != NULL);
-    SDL_assert(group->type == ECSI_NodeType_Group);
+    SDL_assert(group->type == ECSINodeType_Group);
 
     group->locked = locked;
 }
 
-void ECSI_LayoutNodeDestroy(ECSI_Node **node)
+void ECSILayout_NodeDestroy(ECSINode **node)
 {
     SDL_assert(node != NULL);
     SDL_assert(*node != NULL);
 
-    ECSI_Node *target = *node;
+    ECSINode *target = *node;
 
     for (usz i = 0; i < arrlenu(target->children); i++)
     {
-        ECSI_LayoutNodeDestroy(&target->children[i]);
+        ECSILayout_NodeDestroy(&target->children[i]);
     }
 
     for (usz i = 0; i < arrlenu(target->panels); i++)
     {
-        ECSI_PanelDestroy(&target->panels[i]);
+        ECSIPanel_Destroy(&target->panels[i]);
     }
 
     arrfree(target->children);
@@ -1044,7 +1044,7 @@ void ECSI_LayoutNodeDestroy(ECSI_Node **node)
     *node = NULL;
 }
 
-SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree, ECSPanel focus, ECSI_Node *maximized)
+SHUResult ECSILayout_WorkspaceAdd(const char *name, ECSINode *tree, ECSPanel focus, ECSINode *maximized)
 {
     SDL_assert(name != NULL);
 
@@ -1055,11 +1055,11 @@ SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree, ECSPanel fo
         return SHUResult_ErrAllocation;
     }
 
-    ECSI_Workspace workspace = {
+    ECSIWorkspace workspace = {
         .name = copy,
         .tree = tree,
         .maximized = maximized,
-        .focus = focus != NULL ? focus : ECSI_LayoutFirstPanel(tree),
+        .focus = focus != NULL ? focus : ECSILayout_FirstPanel(tree),
     };
 
     arrput(LAYOUT.workspaces, workspace);
@@ -1068,7 +1068,7 @@ SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree, ECSPanel fo
     return SHUResult_Ok;
 }
 
-void ECSI_LayoutWorkspaceSwitch(usz index)
+void ECSILayout_WorkspaceSwitch(usz index)
 {
     if (index >= arrlenu(LAYOUT.workspaces) || index == LAYOUT.current)
     {
@@ -1082,17 +1082,17 @@ void ECSI_LayoutWorkspaceSwitch(usz index)
 
     if (old != NULL)
     {
-        ECSI_PanelPostEvent(old, &event);
+        ECSIPanel_PostEvent(old, &event);
     }
 
     if (focus != NULL)
     {
         event.type = ECSPanelEventType_Focused;
-        ECSI_PanelPostEvent(focus, &event);
+        ECSIPanel_PostEvent(focus, &event);
     }
 
     LAYOUT.current = index;
-    ECSI_LayoutEmitFocus(focus);
+    ECSILayout_EmitFocus(focus);
 
     ECSValue *value = NULL;
     ECSValue *field = NULL;
@@ -1100,36 +1100,36 @@ void ECSI_LayoutWorkspaceSwitch(usz index)
     if (ECSValue_Create(&value) == SHUResult_Ok && ECSValue_TableSetField(value, "workspace", &field) == SHUResult_Ok)
     {
         ECSValue_SetInteger(field, (i64)index + 1);
-        ECSI_EventsEmitCore("ecs.workspace_switched", value);
+        ECSIEvents_EmitCore("ecs.workspace_switched", value);
     }
 
     ECSValue_Destroy(&value);
-    ECSI_LayoutForget();
+    ECSILayout_Forget();
     LAYOUT.frameNeeded = true;
 }
 
-usz ECSI_LayoutGetCurrentWorkspace(void)
+usz ECSILayout_GetCurrentWorkspace(void)
 {
     return LAYOUT.current;
 }
 
-void ECSI_LayoutRequestFrame(void)
+void ECSILayout_RequestFrame(void)
 {
     LAYOUT.frameNeeded = true;
 }
 
-bool ECSI_LayoutWantsFrame(void)
+bool ECSILayout_WantsFrame(void)
 {
     bool wants = LAYOUT.frameNeeded;
-    ECSI_LayoutForEachGroup(ECSI_LayoutWantsFrameIn, &wants);
+    ECSILayout_ForEachGroup(ECSILayout_WantsFrameIn, &wants);
     return wants;
 }
 
-void ECSI_LayoutUpdate(f32 width, f32 height)
+void ECSILayout_Update(f32 width, f32 height)
 {
     // requests made while the frame is drawn, such as a tab row that scrolls, get the next frame
     LAYOUT.frameNeeded = false;
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSIWorkspace *workspace = ECSILayout_Current();
 
     if (workspace == NULL)
     {
@@ -1138,24 +1138,24 @@ void ECSI_LayoutUpdate(f32 width, f32 height)
 
     if (workspace->maximized != NULL)
     {
-        ECSI_LayoutPlace(workspace->maximized, 0.0f, 0.0f, width, height);
+        ECSILayout_Place(workspace->maximized, 0.0f, 0.0f, width, height);
     }
     else if (workspace->tree != NULL)
     {
-        ECSI_LayoutPlace(workspace->tree, 0.0f, 0.0f, width, height);
+        ECSILayout_Place(workspace->tree, 0.0f, 0.0f, width, height);
     }
 
     // panels of other workspaces are hidden; in this one, a maximized group hides the others
     for (usz i = 0; i < arrlenu(LAYOUT.workspaces); i++)
     {
-        ECSI_Node *only = LAYOUT.workspaces[i].maximized;
-        ECSI_LayoutForEachGroupIn(LAYOUT.workspaces[i].tree, ECSI_LayoutTellVisible, &LAYOUT.workspaces[i] == workspace ? &only : NULL);
+        ECSINode *only = LAYOUT.workspaces[i].maximized;
+        ECSILayout_ForEachGroupIn(LAYOUT.workspaces[i].tree, ECSILayout_TellVisible, &LAYOUT.workspaces[i] == workspace ? &only : NULL);
     }
 }
 
-void ECSI_LayoutForEachGroup(ECSI_LayoutGroupFunction function, void *userData)
+void ECSILayout_ForEachGroup(ECSILayoutGroupFunction function, void *userData)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSIWorkspace *workspace = ECSILayout_Current();
 
     if (workspace == NULL)
     {
@@ -1168,49 +1168,49 @@ void ECSI_LayoutForEachGroup(ECSI_LayoutGroupFunction function, void *userData)
     }
     else
     {
-        ECSI_LayoutForEachGroupIn(workspace->tree, function, userData);
+        ECSILayout_ForEachGroupIn(workspace->tree, function, userData);
     }
 }
 
-ECSI_Node *ECSI_LayoutGroupOf(ECSPanel panel)
+ECSINode *ECSILayout_GroupOf(ECSPanel panel)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    return workspace == NULL || panel == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, panel);
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    return workspace == NULL || panel == NULL ? NULL : ECSILayout_FindGroup(workspace->tree, panel);
 }
 
-ECSI_Node *ECSI_LayoutGetTree(void)
+ECSINode *ECSILayout_GetTree(void)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSIWorkspace *workspace = ECSILayout_Current();
     return workspace == NULL ? NULL : workspace->tree;
 }
 
-ECSI_Node *ECSI_LayoutGroupAt(f32 x, f32 y)
+ECSINode *ECSILayout_GroupAt(f32 x, f32 y)
 {
-    ECSI_GroupHit hit = {x, y, NULL};
-    ECSI_LayoutForEachGroup(ECSI_LayoutFindGroupAt, &hit);
+    ECSIGroupHit hit = {x, y, NULL};
+    ECSILayout_ForEachGroup(ECSILayout_FindGroupAt, &hit);
     return hit.group;
 }
 
-bool ECSI_LayoutDividerAt(f32 x, f32 y, ECSI_Node **retSplit, usz *retDivider)
+bool ECSILayout_DividerAt(f32 x, f32 y, ECSINode **retSplit, usz *retDivider)
 {
     SDL_assert(retSplit != NULL);
     SDL_assert(retDivider != NULL);
 
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    ECSI_DividerHit hit = {x, y, NULL, 0};
-    ECSI_LayoutFindDivider(workspace == NULL || workspace->maximized != NULL ? NULL : workspace->tree, &hit);
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSIDividerHit hit = {x, y, NULL, 0};
+    ECSILayout_FindDivider(workspace == NULL || workspace->maximized != NULL ? NULL : workspace->tree, &hit);
     *retSplit = hit.split;
     *retDivider = hit.divider;
     return hit.split != NULL;
 }
 
-void ECSI_LayoutMoveDivider(ECSI_Node *split, usz divider, f32 x, f32 y)
+void ECSILayout_MoveDivider(ECSINode *split, usz divider, f32 x, f32 y)
 {
     SDL_assert(split != NULL);
     SDL_assert(divider + 1 < arrlenu(split->children));
 
-    ECSI_Node *first = split->children[divider];
-    ECSI_Node *second = split->children[divider + 1];
+    ECSINode *first = split->children[divider];
+    ECSINode *second = split->children[divider + 1];
 
     f32 start = split->vertical ? first->y : first->x;
     f32 end = split->vertical ? second->y + second->height : second->x + second->width;
@@ -1228,7 +1228,7 @@ void ECSI_LayoutMoveDivider(ECSI_Node *split, usz divider, f32 x, f32 y)
     // shares are relative, so every shared child gets its current size as its share
     for (usz i = 0; i < arrlenu(split->children); i++)
     {
-        ECSI_Node *child = split->children[i];
+        ECSINode *child = split->children[i];
 
         if (child->fixedSize <= 0.0f)
         {
@@ -1257,12 +1257,12 @@ void ECSI_LayoutMoveDivider(ECSI_Node *split, usz divider, f32 x, f32 y)
     LAYOUT.frameNeeded = true;
 }
 
-void ECSI_LayoutDrop(ECSPanel panel, bool group, const ECSI_Drop *drop)
+void ECSILayout_Drop(ECSPanel panel, bool group, const ECSIDrop *drop)
 {
     SDL_assert(drop != NULL);
 
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    ECSI_Node *source = workspace == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, panel);
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSINode *source = workspace == NULL ? NULL : ECSILayout_FindGroup(workspace->tree, panel);
 
     if (source == NULL)
     {
@@ -1271,83 +1271,83 @@ void ECSI_LayoutDrop(ECSPanel panel, bool group, const ECSI_Drop *drop)
 
     if (group)
     {
-        ECSI_LayoutMoveGroup(workspace, source, drop, true);
+        ECSILayout_MoveGroup(workspace, source, drop, true);
     }
     else
     {
-        ECSI_LayoutMove(workspace, panel, drop, true);
+        ECSILayout_Move(workspace, panel, drop, true);
     }
 }
 
-ECSPanel ECSI_LayoutPanelAt(f32 x, f32 y)
+ECSPanel ECSILayout_PanelAt(f32 x, f32 y)
 {
-    ECSI_PanelHit hit = {x, y, NULL};
-    ECSI_LayoutForEachGroup(ECSI_LayoutFindPanel, &hit);
+    ECSIPanelHit hit = {x, y, NULL};
+    ECSILayout_ForEachGroup(ECSILayout_FindPanel, &hit);
     return hit.panel;
 }
 
-ECSPanel ECSI_LayoutGetFocus(void)
+ECSPanel ECSILayout_GetFocus(void)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSIWorkspace *workspace = ECSILayout_Current();
     return workspace == NULL ? NULL : workspace->focus;
 }
 
-void ECSI_LayoutSetFocus(ECSPanel panel)
+void ECSILayout_SetFocus(ECSPanel panel)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSIWorkspace *workspace = ECSILayout_Current();
 
     if (workspace != NULL)
     {
-        ECSI_LayoutChangeFocus(workspace, panel);
+        ECSILayout_ChangeFocus(workspace, panel);
     }
 }
 
-bool ECSI_LayoutHasPanel(ECSPanel panel)
+bool ECSILayout_HasPanel(ECSPanel panel)
 {
-    ECSI_Workspace *workspace = NULL;
-    ECSI_Node *group = NULL;
-    return ECSI_LayoutLocate(panel, &workspace, &group);
+    ECSIWorkspace *workspace = NULL;
+    ECSINode *group = NULL;
+    return ECSILayout_Locate(panel, &workspace, &group);
 }
 
-ECSPanel ECSI_LayoutFindNeighbour(i32 dx, i32 dy)
+ECSPanel ECSILayout_FindNeighbour(i32 dx, i32 dy)
 {
-    ECSI_NeighbourSearch search = {ECSI_LayoutGetFocus(), dx, dy, NULL, 0.0f, 0.0f};
+    ECSINeighbourSearch search = {ECSILayout_GetFocus(), dx, dy, NULL, 0.0f, 0.0f};
 
     if (search.from == NULL)
     {
         return NULL;
     }
 
-    ECSI_LayoutForEachGroup(ECSI_LayoutFindNeighbourIn, &search);
+    ECSILayout_ForEachGroup(ECSILayout_FindNeighbourIn, &search);
     return search.best;
 }
 
-void ECSI_LayoutMoveFocus(i32 dx, i32 dy)
+void ECSILayout_MoveFocus(i32 dx, i32 dy)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    ECSPanel neighbour = ECSI_LayoutFindNeighbour(dx, dy);
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSPanel neighbour = ECSILayout_FindNeighbour(dx, dy);
 
     if (workspace == NULL || workspace->focus == NULL)
     {
         return;
     }
 
-    ECSI_Drop drop = {.zone = dx < 0 ? ECSI_Zone_WindowLeft : dx > 0 ? ECSI_Zone_WindowRight
-                                                          : dy < 0   ? ECSI_Zone_WindowTop
-                                                                     : ECSI_Zone_WindowBottom};
+    ECSIDrop drop = {.zone = dx < 0 ? ECSIZone_WindowLeft : dx > 0 ? ECSIZone_WindowRight
+                                                          : dy < 0   ? ECSIZone_WindowTop
+                                                                     : ECSIZone_WindowBottom};
 
     if (neighbour != NULL)
     {
-        drop = (ECSI_Drop){.zone = ECSI_Zone_Center, .group = ECSI_LayoutFindGroup(workspace->tree, neighbour)};
+        drop = (ECSIDrop){.zone = ECSIZone_Center, .group = ECSILayout_FindGroup(workspace->tree, neighbour)};
     }
 
-    ECSI_LayoutMove(workspace, workspace->focus, &drop, true);
+    ECSILayout_Move(workspace, workspace->focus, &drop, true);
 }
 
-ECSPanel ECSI_LayoutNextTab(void)
+ECSPanel ECSILayout_NextTab(void)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    ECSI_Node *group = workspace == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, workspace->focus);
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSINode *group = workspace == NULL ? NULL : ECSILayout_FindGroup(workspace->tree, workspace->focus);
 
     if (group == NULL || arrlenu(group->panels) < 2)
     {
@@ -1359,71 +1359,71 @@ ECSPanel ECSI_LayoutNextTab(void)
     return group->panels[group->shown];
 }
 
-bool ECSI_LayoutIsLocked(ECSPanel panel)
+bool ECSILayout_IsLocked(ECSPanel panel)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    ECSI_Node *group = workspace == NULL || panel == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, panel);
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSINode *group = workspace == NULL || panel == NULL ? NULL : ECSILayout_FindGroup(workspace->tree, panel);
     return group != NULL && group->locked;
 }
 
-bool ECSI_LayoutIsMaximized(ECSPanel panel)
+bool ECSILayout_IsMaximized(ECSPanel panel)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    return workspace != NULL && panel != NULL && workspace->maximized != NULL && workspace->maximized == ECSI_LayoutFindGroup(workspace->tree, panel);
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    return workspace != NULL && panel != NULL && workspace->maximized != NULL && workspace->maximized == ECSILayout_FindGroup(workspace->tree, panel);
 }
 
-const ECSPanel *ECSI_LayoutGetGroup(ECSPanel panel, usz *retCount, usz *retShown)
+const ECSPanel *ECSILayout_GetGroup(ECSPanel panel, usz *retCount, usz *retShown)
 {
     SDL_assert(retCount != NULL);
     SDL_assert(retShown != NULL);
 
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    ECSI_Node *group = workspace == NULL || panel == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, panel);
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSINode *group = workspace == NULL || panel == NULL ? NULL : ECSILayout_FindGroup(workspace->tree, panel);
     *retCount = group == NULL ? 0 : arrlenu(group->panels);
     *retShown = group == NULL ? 0 : group->shown;
     return group == NULL ? NULL : group->panels;
 }
 
-void ECSI_LayoutShowTab(ECSPanel panel)
+void ECSILayout_ShowTab(ECSPanel panel)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    ECSI_Node *group = workspace == NULL || panel == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, panel);
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSINode *group = workspace == NULL || panel == NULL ? NULL : ECSILayout_FindGroup(workspace->tree, panel);
 
     for (usz i = 0; group != NULL && i < arrlenu(group->panels); i++)
     {
         if (group->panels[i] == panel)
         {
             group->shown = i;
-            ECSI_LayoutChangeFocus(workspace, panel);
+            ECSILayout_ChangeFocus(workspace, panel);
             LAYOUT.frameNeeded = true;
         }
     }
 }
 
-bool ECSI_LayoutCanReopen(void)
+bool ECSILayout_CanReopen(void)
 {
     return arrlenu(LAYOUT.closed) > 0;
 }
 
-void ECSI_LayoutToggleLock(void)
+void ECSILayout_ToggleLock(void)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    ECSI_Node *group = workspace == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, workspace->focus);
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSINode *group = workspace == NULL ? NULL : ECSILayout_FindGroup(workspace->tree, workspace->focus);
 
     if (group != NULL)
     {
         group->locked = !group->locked;
-        ECSI_LayoutForget();
+        ECSILayout_Forget();
         LAYOUT.frameNeeded = true;
-        ECSI_LayoutEmitLayoutChanged();
+        ECSILayout_EmitLayoutChanged();
         SDL_Log("The group of '%s' is %s.", workspace->focus->title, group->locked ? "locked" : "unlocked");
     }
 }
 
-void ECSI_LayoutToggleMaximize(void)
+void ECSILayout_ToggleMaximize(void)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    ECSI_Node *group = workspace == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, workspace->focus);
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSINode *group = workspace == NULL ? NULL : ECSILayout_FindGroup(workspace->tree, workspace->focus);
 
     if (group == NULL)
     {
@@ -1431,17 +1431,17 @@ void ECSI_LayoutToggleMaximize(void)
     }
 
     workspace->maximized = workspace->maximized == group ? NULL : group;
-    ECSI_LayoutForget();
+    ECSILayout_Forget();
     LAYOUT.frameNeeded = true;
-    ECSI_LayoutEmitLayoutChanged();
+    ECSILayout_EmitLayoutChanged();
 }
 
-void ECSI_LayoutClosePanel(ECSPanel panel)
+void ECSILayout_ClosePanel(ECSPanel panel)
 {
-    ECSI_Workspace *workspace = NULL;
-    ECSI_Node *group = NULL;
+    ECSIWorkspace *workspace = NULL;
+    ECSINode *group = NULL;
 
-    if (!ECSI_LayoutLocate(panel, &workspace, &group))
+    if (!ECSILayout_Locate(panel, &workspace, &group))
     {
         return;
     }
@@ -1454,9 +1454,9 @@ void ECSI_LayoutClosePanel(ECSPanel panel)
     }
 
     // ecs.reopen opens it again next to a panel that stays in its group
-    ECSI_ClosedPanel closed = {.neighbour = arrlenu(group->panels) > 1 ? ECSPanel_GetId(group->panels[index == 0 ? 1 : 0]) : 0};
+    ECSIClosedPanel closed = {.neighbour = arrlenu(group->panels) > 1 ? ECSPanel_GetId(group->panels[index == 0 ? 1 : 0]) : 0};
 
-    if (ECSValue_Create(&closed.saved) == SHUResult_Ok && ECSI_PanelSave(panel, closed.saved) == SHUResult_Ok)
+    if (ECSValue_Create(&closed.saved) == SHUResult_Ok && ECSIPanel_Save(panel, closed.saved) == SHUResult_Ok)
     {
         if (arrlenu(LAYOUT.closed) == OPENECS_REOPEN_LIMIT)
         {
@@ -1484,21 +1484,21 @@ void ECSI_LayoutClosePanel(ECSPanel panel)
 
     if (focused)
     {
-        ECSI_LayoutChangeFocus(workspace, emptied ? NULL : group->panels[group->shown]);
+        ECSILayout_ChangeFocus(workspace, emptied ? NULL : group->panels[group->shown]);
     }
 
-    ECSI_PanelClose(&panel);
-    ECSI_LayoutTidy(workspace);
+    ECSIPanel_Close(&panel);
+    ECSILayout_Tidy(workspace);
 
     if (focused && emptied)
     {
-        ECSI_LayoutChangeFocus(workspace, ECSI_LayoutFirstPanel(workspace->tree));
+        ECSILayout_ChangeFocus(workspace, ECSILayout_FirstPanel(workspace->tree));
     }
 }
 
-void ECSI_LayoutReopen(void)
+void ECSILayout_Reopen(void)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSIWorkspace *workspace = ECSILayout_Current();
 
     if (workspace == NULL || arrlenu(LAYOUT.closed) == 0)
     {
@@ -1506,46 +1506,46 @@ void ECSI_LayoutReopen(void)
         return;
     }
 
-    ECSI_ClosedPanel closed = arrpop(LAYOUT.closed);
+    ECSIClosedPanel closed = arrpop(LAYOUT.closed);
 
     // the panel returns next to its neighbour, wherever that is now, or else to the focused group
-    ECSI_Node *group = NULL;
+    ECSINode *group = NULL;
     ECSPanel neighbour = closed.neighbour == 0 ? NULL : ECSLayout_FindPanel(closed.neighbour);
 
-    if (neighbour == NULL || !ECSI_LayoutLocate(neighbour, &workspace, &group))
+    if (neighbour == NULL || !ECSILayout_Locate(neighbour, &workspace, &group))
     {
-        workspace = ECSI_LayoutCurrent();
-        group = ECSI_LayoutDefaultGroup(workspace);
+        workspace = ECSILayout_Current();
+        group = ECSILayout_DefaultGroup(workspace);
     }
 
     i64 version = ECSValue_GetInteger(ECSValue_GetTableField(closed.saved, "state_version"), 0);
     const ECSValue *state = ECSValue_GetTableField(closed.saved, "state");
     ECSPanel panel = NULL;
 
-    if (ECSI_PanelCreate(&panel, ECSValue_GetString(ECSValue_GetTableField(closed.saved, "type"), ""), state, version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0) ||
-        ECSI_LayoutAdd(workspace, group, panel, ECSI_Zone_Center))
+    if (ECSIPanel_Create(&panel, ECSValue_GetString(ECSValue_GetTableField(closed.saved, "type"), ""), state, version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0) ||
+        ECSILayout_Add(workspace, group, panel, ECSIZone_Center))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Out of memory while reopening a panel.");
 
         if (panel != NULL)
         {
-            ECSI_PanelDestroy(&panel);
+            ECSIPanel_Destroy(&panel);
         }
     }
     else
     {
-        ECSI_PanelEmit("ecs.panel_opened", panel);
-        ECSI_LayoutWorkspaceSwitch((usz)(workspace - LAYOUT.workspaces));
+        ECSIPanel_Emit("ecs.panel_opened", panel);
+        ECSILayout_WorkspaceSwitch((usz)(workspace - LAYOUT.workspaces));
     }
 
     ECSValue_Destroy(&closed.saved);
 }
 
-void ECSI_LayoutMoveToWorkspace(usz index)
+void ECSILayout_MoveToWorkspace(usz index)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSIWorkspace *workspace = ECSILayout_Current();
     ECSPanel panel = workspace == NULL ? NULL : workspace->focus;
-    ECSI_Node *group = panel == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, panel);
+    ECSINode *group = panel == NULL ? NULL : ECSILayout_FindGroup(workspace->tree, panel);
 
     if (group == NULL || index >= arrlenu(LAYOUT.workspaces) || index == LAYOUT.current)
     {
@@ -1559,30 +1559,30 @@ void ECSI_LayoutMoveToWorkspace(usz index)
     }
 
     // the panel joins the other workspace's focused group, and becomes its focus; this workspace stays shown
-    ECSI_Workspace *target = &LAYOUT.workspaces[index];
-    ECSI_Node *targetGroup = ECSI_LayoutDefaultGroup(target);
-    ECSI_LayoutDetach(workspace, group, panel);
+    ECSIWorkspace *target = &LAYOUT.workspaces[index];
+    ECSINode *targetGroup = ECSILayout_DefaultGroup(target);
+    ECSILayout_Detach(workspace, group, panel);
 
-    if (ECSI_LayoutAdd(target, targetGroup, panel, ECSI_Zone_Center))
+    if (ECSILayout_Add(target, targetGroup, panel, ECSIZone_Center))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Out of memory while moving '%s'; it is closed.", panel->title);
-        ECSI_PanelClose(&panel);
+        ECSIPanel_Close(&panel);
     }
 }
 
-ECSPanel *ECSI_LayoutGetPanels(void)
+ECSPanel *ECSILayout_GetPanels(void)
 {
     ECSPanel *panels = NULL;
 
     for (usz i = 0; i < arrlenu(LAYOUT.workspaces); i++)
     {
-        ECSI_LayoutCollectPanels(LAYOUT.workspaces[i].tree, &panels);
+        ECSILayout_CollectPanels(LAYOUT.workspaces[i].tree, &panels);
     }
 
     return panels;
 }
 
-SHUResult ECSI_LayoutSave(ECSValue *retWorkspaces, usz *retCurrent)
+SHUResult ECSILayout_Save(ECSValue *retWorkspaces, usz *retCurrent)
 {
     SDL_assert(retWorkspaces != NULL);
     SDL_assert(retCurrent != NULL);
@@ -1592,7 +1592,7 @@ SHUResult ECSI_LayoutSave(ECSValue *retWorkspaces, usz *retCurrent)
 
     for (usz i = 0; i < arrlenu(LAYOUT.workspaces); i++)
     {
-        const ECSI_Workspace *workspace = &LAYOUT.workspaces[i];
+        const ECSIWorkspace *workspace = &LAYOUT.workspaces[i];
         ECSValue *saved = NULL;
         ECSValue *field = NULL;
 
@@ -1612,7 +1612,7 @@ SHUResult ECSI_LayoutSave(ECSValue *retWorkspaces, usz *retCurrent)
         if (workspace->tree != NULL)
         {
             SHU_ReturnResult(ECSValue_ListAddItem(field, &field));
-            SHU_ReturnResult(ECSI_LayoutSaveNode(workspace, workspace->tree, field));
+            SHU_ReturnResult(ECSILayout_SaveNode(workspace, workspace->tree, field));
         }
     }
 
@@ -1625,18 +1625,18 @@ SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type,
     SDL_assert(retPanel != NULL);
     SDL_assert(type != NULL);
 
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    ECSI_Node *group = NULL;
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSINode *group = NULL;
 
     if (workspace == NULL)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' opens a panel, but there is no workspace.", ECSI_PluginGetName(plugin));
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' opens a panel, but there is no workspace.", ECSIPlugin_GetName(plugin));
         return SHUResult_ErrNotFound;
     }
 
     if (target != NULL)
     {
-        group = ECSI_LayoutFindGroup(workspace->tree, target);
+        group = ECSILayout_FindGroup(workspace->tree, target);
 
         if (group == NULL)
         {
@@ -1646,16 +1646,16 @@ SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type,
     else if (workspace->tree != NULL)
     {
         // the group of the most recently focused panel of the type, else the focused group, else the first
-        ECSI_RecentSearch search = {.typeName = type, .best = NULL};
-        ECSI_LayoutFindRecent(workspace->tree, &search);
-        group = ECSI_LayoutFindGroup(workspace->tree, search.best != NULL ? search.best : workspace->focus);
-        group = group != NULL ? group : ECSI_LayoutFindGroup(workspace->tree, ECSI_LayoutFirstPanel(workspace->tree));
+        ECSIRecentSearch search = {.typeName = type, .best = NULL};
+        ECSILayout_FindRecent(workspace->tree, &search);
+        group = ECSILayout_FindGroup(workspace->tree, search.best != NULL ? search.best : workspace->focus);
+        group = group != NULL ? group : ECSILayout_FindGroup(workspace->tree, ECSILayout_FirstPanel(workspace->tree));
     }
 
     ECSPanel panel = NULL;
-    SHU_ReturnResult(ECSI_PanelCreate(&panel, type, state, state == NULL ? 0 : ECSI_PanelsGetStateVersion(type)));
-    SHU_ReturnResult(ECSI_LayoutAdd(workspace, group, panel, ECSI_LayoutZone(zone)), ECSI_PanelDestroy(&panel););
-    ECSI_PanelEmit("ecs.panel_opened", panel);
+    SHU_ReturnResult(ECSIPanel_Create(&panel, type, state, state == NULL ? 0 : ECSIPanels_GetStateVersion(type)));
+    SHU_ReturnResult(ECSILayout_Add(workspace, group, panel, ECSILayout_Zone(zone)), ECSIPanel_Destroy(&panel););
+    ECSIPanel_Emit("ecs.panel_opened", panel);
     *retPanel = panel;
     return SHUResult_Ok;
 }
@@ -1665,39 +1665,39 @@ SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone)
     SDL_assert(panel != NULL);
     SDL_assert(target != NULL);
 
-    ECSI_Workspace *workspace = NULL;
-    ECSI_Workspace *targetWorkspace = NULL;
-    ECSI_Node *source = NULL;
-    ECSI_Node *group = NULL;
+    ECSIWorkspace *workspace = NULL;
+    ECSIWorkspace *targetWorkspace = NULL;
+    ECSINode *source = NULL;
+    ECSINode *group = NULL;
 
-    if (!ECSI_LayoutLocate(panel, &workspace, &source) || !ECSI_LayoutLocate(target, &targetWorkspace, &group))
+    if (!ECSILayout_Locate(panel, &workspace, &source) || !ECSILayout_Locate(target, &targetWorkspace, &group))
     {
         return SHUResult_ErrNotFound;
     }
 
-    ECSI_Drop drop = {.zone = ECSI_LayoutZone(zone), .group = group};
+    ECSIDrop drop = {.zone = ECSILayout_Zone(zone), .group = group};
 
     if (workspace == targetWorkspace)
     {
-        ECSI_LayoutMove(workspace, panel, &drop, false);
+        ECSILayout_Move(workspace, panel, &drop, false);
         return SHUResult_Ok;
     }
 
     // to another workspace: the panel leaves its group, then joins the target's group, or goes beside it
-    ECSI_LayoutDetach(workspace, source, panel);
-    return ECSI_LayoutAdd(targetWorkspace, group, panel, drop.zone);
+    ECSILayout_Detach(workspace, source, panel);
+    return ECSILayout_Add(targetWorkspace, group, panel, drop.zone);
 }
 
 bool ECSLayout_Close(ECSPanel panel)
 {
     SDL_assert(panel != NULL);
 
-    if (!ECSI_LayoutHasPanel(panel) || !ECSI_PanelsConfirmClose(&panel, 1, false))
+    if (!ECSILayout_HasPanel(panel) || !ECSIPanels_ConfirmClose(&panel, 1, false))
     {
         return false;
     }
 
-    ECSI_LayoutClosePanel(panel);
+    ECSILayout_ClosePanel(panel);
     return true;
 }
 
@@ -1705,32 +1705,32 @@ void ECSLayout_Focus(ECSPanel panel)
 {
     SDL_assert(panel != NULL);
 
-    ECSI_Workspace *workspace = NULL;
-    ECSI_Node *group = NULL;
+    ECSIWorkspace *workspace = NULL;
+    ECSINode *group = NULL;
 
-    if (!ECSI_LayoutLocate(panel, &workspace, &group))
+    if (!ECSILayout_Locate(panel, &workspace, &group))
     {
         return;
     }
 
     // the workspace and the tab are shown first, so the panel is focused where the user sees it
-    ECSI_LayoutWorkspaceSwitch((usz)(workspace - LAYOUT.workspaces));
+    ECSILayout_WorkspaceSwitch((usz)(workspace - LAYOUT.workspaces));
 
     for (usz i = 0; i < arrlenu(group->panels); i++)
     {
         if (group->panels[i] == panel)
         {
-            ECSI_LayoutGroupShow(group, i);
+            ECSILayout_GroupShow(group, i);
         }
     }
 
-    ECSI_LayoutChangeFocus(workspace, panel);
+    ECSILayout_ChangeFocus(workspace, panel);
 }
 
 ECSPanel ECSLayout_FindPanel(u32 id)
 {
     // every panel is in a group, so a search of every workspace finds it
-    ECSPanel *panels = ECSI_LayoutGetPanels();
+    ECSPanel *panels = ECSILayout_GetPanels();
     ECSPanel found = NULL;
 
     for (usz i = 0; found == NULL && i < arrlenu(panels); i++)
@@ -1744,7 +1744,7 @@ ECSPanel ECSLayout_FindPanel(u32 id)
 
 ECSPanel ECSLayout_GetFocus(void)
 {
-    return ECSI_LayoutGetFocus();
+    return ECSILayout_GetFocus();
 }
 
 usz ECSWorkspace_GetCount(void)
@@ -1766,6 +1766,6 @@ void ECSWorkspace_Switch(usz number)
 {
     if (number >= 1)
     {
-        ECSI_LayoutWorkspaceSwitch(number - 1);
+        ECSILayout_WorkspaceSwitch(number - 1);
     }
 }

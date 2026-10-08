@@ -10,14 +10,14 @@
 
 /// @brief Declares the setting ecs.focus.
 /// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrBadData if a name of the core is taken.
-SHUWUR SHUResult ECSI_InputInitialize(void);
+SHUWUR SHUResult ECSIInput_Initialize(void);
 
 /// @brief Frees what input handling holds.
-void ECSI_InputTerminate(void);
+void ECSIInput_Terminate(void);
 
 /// @brief Handles one SDL event.
 /// @param event The event.
 /// @return false if the program should quit.
-bool ECSI_InputHandle(const SDL_Event *event);
+bool ECSIInput_Handle(const SDL_Event *event);
 
 #pragma endregion Declarations

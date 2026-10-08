@@ -13,7 +13,7 @@
 #define OPENECS_DEFAULT_PREFIX "Alt+W"
 
 /// @brief The default keys after the core prefix, with the functions they run. The setting ecs.prefix_keys adds to them and changes them.
-static const char *const ECSI_PREFIX_KEYS[][2] = {
+static const char *const OPENECS_PREFIX_KEYS[][2] = {
     {"Left", "ecs.focus_left"},
     {"Right", "ecs.focus_right"},
     {"Up", "ecs.focus_up"},
@@ -42,48 +42,48 @@ static const char *const ECSI_PREFIX_KEYS[][2] = {
 };
 
 /// @brief A plugin's binding for its panel type. The key is the value of a key setting, so the user can change it.
-typedef struct ECSI_PanelBinding
+typedef struct ECSIPanelBinding
 {
     ECSPlugin plugin;
     char *panelType;
     char *setting;
     char *function;
-} ECSI_PanelBinding;
+} ECSIPanelBinding;
 
 /// @brief How specific a binding is; a more specific binding wins within one settings layer.
-typedef enum ECSI_BindingScope
+typedef enum ECSIBindingScope
 {
-    ECSI_BindingScope_Tool = 0,
-    ECSI_BindingScope_Workspace,
-    ECSI_BindingScope_PanelType,
-} ECSI_BindingScope;
+    ECSIBindingScope_Tool = 0,
+    ECSIBindingScope_Workspace,
+    ECSIBindingScope_PanelType,
+} ECSIBindingScope;
 
-/// @brief The binding that a key press runs, found by ECSI_KeysFind.
-typedef struct ECSI_BindingSearch
+/// @brief The binding that a key press runs, found by ECSIKeys_Find.
+typedef struct ECSIBindingSearch
 {
     u32 key;
     u32 modifiers;
-    ECSI_SettingsLayer layer; // of the table being searched
-    ECSI_BindingScope scope;  // of the table being searched
+    ECSISettingsLayer layer; // of the table being searched
+    ECSIBindingScope scope;  // of the table being searched
     const char *function;     // the best binding so far, or NULL
-    ECSI_SettingsLayer bestLayer;
-    ECSI_BindingScope bestScope;
-} ECSI_BindingSearch;
+    ECSISettingsLayer bestLayer;
+    ECSIBindingScope bestScope;
+} ECSIBindingSearch;
 
 static struct
 {
     u32 prefixKey;
     u32 prefixModifiers;
     bool prefixDirty;                 // ecs.prefix changed and is read again at the next key press
-    ECSI_KeyBinding *prefixKeys;      // stb_ds array of the keys after the prefix
+    ECSIKeyBinding *prefixKeys;      // stb_ds array of the keys after the prefix
     bool prefixKeysDirty;             // ecs.prefix_keys changed and is read again when they are used
-    ECSI_PanelBinding *panelBindings; // stb_ds array of plugins' bindings for their panel types
+    ECSIPanelBinding *panelBindings; // stb_ds array of plugins' bindings for their panel types
     ECSValue *toolKeys;               // the preset's bindings for the whole tool, or NULL
     ECSValue **workspaceKeys;         // stb_ds array of the preset's bindings for each workspace; NULL for none
 } KEYS = {0};
 
 /// @brief Reads the core prefix from the setting ecs.prefix if the setting changed. A key text that cannot be read is reported, and the default is used.
-static void ECSI_KeysReadPrefix(void)
+static void ECSIKeys_ReadPrefix(void)
 {
     if (!KEYS.prefixDirty)
     {
@@ -92,15 +92,15 @@ static void ECSI_KeysReadPrefix(void)
 
     KEYS.prefixDirty = false;
 
-    if (ECSI_KeysParse(ECSValue_GetString(ECSSetting_Get("ecs.prefix"), OPENECS_DEFAULT_PREFIX), true, &KEYS.prefixKey, &KEYS.prefixModifiers))
+    if (ECSIKeys_Parse(ECSValue_GetString(ECSSetting_Get("ecs.prefix"), OPENECS_DEFAULT_PREFIX), true, &KEYS.prefixKey, &KEYS.prefixModifiers))
     {
-        SHUResult result = ECSI_KeysParse(OPENECS_DEFAULT_PREFIX, true, &KEYS.prefixKey, &KEYS.prefixModifiers);
+        SHUResult result = ECSIKeys_Parse(OPENECS_DEFAULT_PREFIX, true, &KEYS.prefixKey, &KEYS.prefixModifiers);
         SDL_assert(result == SHUResult_Ok);
         (void)result;
     }
 }
 
-static void ECSI_KeysFreeBindings(ECSI_KeyBinding **bindings)
+static void ECSIKeys_FreeBindings(ECSIKeyBinding **bindings)
 {
     for (usz i = 0; i < arrlenu(*bindings); i++)
     {
@@ -112,19 +112,19 @@ static void ECSI_KeysFreeBindings(ECSI_KeyBinding **bindings)
 }
 
 /// @brief Adds a binding to a list, or changes the binding of the same combination. A function name of NULL removes it. A key text that cannot be read is reported and skipped.
-static void ECSI_KeysPutBinding(ECSI_KeyBinding **bindings, const char *text, const char *function)
+static void ECSIKeys_PutBinding(ECSIKeyBinding **bindings, const char *text, const char *function)
 {
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSI_KeysParse(text, true, &key, &modifiers))
+    if (ECSIKeys_Parse(text, true, &key, &modifiers))
     {
         return;
     }
 
     for (usz i = 0; i < arrlenu(*bindings); i++)
     {
-        ECSI_KeyBinding *binding = &(*bindings)[i];
+        ECSIKeyBinding *binding = &(*bindings)[i];
 
         if (binding->key != key || binding->modifiers != modifiers)
         {
@@ -147,7 +147,7 @@ static void ECSI_KeysPutBinding(ECSI_KeyBinding **bindings, const char *text, co
         return;
     }
 
-    ECSI_KeyBinding binding = {.key = key, .modifiers = modifiers, .text = SDL_strdup(text), .function = function == NULL ? NULL : SDL_strdup(function)};
+    ECSIKeyBinding binding = {.key = key, .modifiers = modifiers, .text = SDL_strdup(text), .function = function == NULL ? NULL : SDL_strdup(function)};
 
     if (binding.text == NULL || binding.function == NULL)
     {
@@ -160,14 +160,14 @@ static void ECSI_KeysPutBinding(ECSI_KeyBinding **bindings, const char *text, co
 }
 
 /// @brief Adds the entries of the setting ecs.prefix_keys: key texts to function names, or false to remove a key.
-static void ECSI_KeysAddPrefixKey(const char *name, const ECSValue *field, void *userData)
+static void ECSIKeys_AddPrefixKey(const char *name, const ECSValue *field, void *userData)
 {
     (void)userData;
-    ECSI_KeysPutBinding(&KEYS.prefixKeys, name, ECSValue_GetString(field, NULL));
+    ECSIKeys_PutBinding(&KEYS.prefixKeys, name, ECSValue_GetString(field, NULL));
 }
 
 /// @brief Reads the keys after the prefix: the defaults, then the setting ecs.prefix_keys, if the setting changed.
-static void ECSI_KeysReadPrefixKeys(void)
+static void ECSIKeys_ReadPrefixKeys(void)
 {
     if (!KEYS.prefixKeysDirty)
     {
@@ -175,23 +175,23 @@ static void ECSI_KeysReadPrefixKeys(void)
     }
 
     KEYS.prefixKeysDirty = false;
-    ECSI_KeysFreeBindings(&KEYS.prefixKeys);
+    ECSIKeys_FreeBindings(&KEYS.prefixKeys);
 
-    for (usz i = 0; i < SDL_arraysize(ECSI_PREFIX_KEYS); i++)
+    for (usz i = 0; i < SDL_arraysize(OPENECS_PREFIX_KEYS); i++)
     {
-        ECSI_KeysPutBinding(&KEYS.prefixKeys, ECSI_PREFIX_KEYS[i][0], ECSI_PREFIX_KEYS[i][1]);
+        ECSIKeys_PutBinding(&KEYS.prefixKeys, OPENECS_PREFIX_KEYS[i][0], OPENECS_PREFIX_KEYS[i][1]);
     }
 
-    ECSI_ValueTableForEachField(ECSSetting_Get("ecs.prefix_keys"), ECSI_KeysAddPrefixKey, NULL);
+    ECSIValue_TableForEachField(ECSSetting_Get("ecs.prefix_keys"), ECSIKeys_AddPrefixKey, NULL);
 }
 
 /// @brief Keeps a binding that matches a key press, if it wins over the best one so far: a higher layer wins, then a more specific scope.
-static void ECSI_KeysConsiderBinding(ECSI_BindingSearch *search, const char *text, const char *function)
+static void ECSIKeys_ConsiderBinding(ECSIBindingSearch *search, const char *text, const char *function)
 {
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (function == NULL || ECSI_KeysParse(text, false, &key, &modifiers) || key != search->key || modifiers != search->modifiers)
+    if (function == NULL || ECSIKeys_Parse(text, false, &key, &modifiers) || key != search->key || modifiers != search->modifiers)
     {
         return;
     }
@@ -204,35 +204,35 @@ static void ECSI_KeysConsiderBinding(ECSI_BindingSearch *search, const char *tex
     }
 }
 
-static void ECSI_KeysConsiderField(const char *name, const ECSValue *field, void *userData)
+static void ECSIKeys_ConsiderField(const char *name, const ECSValue *field, void *userData)
 {
-    ECSI_KeysConsiderBinding(userData, name, ECSValue_GetString(field, NULL));
+    ECSIKeys_ConsiderBinding(userData, name, ECSValue_GetString(field, NULL));
 }
 
 /// @brief Considers every binding of a table of key texts and function names.
-static void ECSI_KeysConsiderTable(ECSI_BindingSearch *search, const ECSValue *keys, ECSI_SettingsLayer layer, ECSI_BindingScope scope)
+static void ECSIKeys_ConsiderTable(ECSIBindingSearch *search, const ECSValue *keys, ECSISettingsLayer layer, ECSIBindingScope scope)
 {
     search->layer = layer;
     search->scope = scope;
-    ECSI_ValueTableForEachField(keys, ECSI_KeysConsiderField, search);
+    ECSIValue_TableForEachField(keys, ECSIKeys_ConsiderField, search);
 }
 
-static void ECSI_KeysCheckKey(const char *name, const ECSValue *field, void *userData)
+static void ECSIKeys_CheckKey(const char *name, const ECSValue *field, void *userData)
 {
     (void)field;
     (void)userData;
     u32 key = 0;
     u32 modifiers = 0;
-    (void)ECSI_KeysParse(name, true, &key, &modifiers);
+    (void)ECSIKeys_Parse(name, true, &key, &modifiers);
 }
 
 /// @brief Reports the key texts of a table of bindings that are not key combinations; they never match.
-static void ECSI_KeysCheckKeys(const ECSValue *keys)
+static void ECSIKeys_CheckKeys(const ECSValue *keys)
 {
-    ECSI_ValueTableForEachField(keys, ECSI_KeysCheckKey, NULL);
+    ECSIValue_TableForEachField(keys, ECSIKeys_CheckKey, NULL);
 }
 
-static void ECSI_KeysFreePanelBinding(ECSI_PanelBinding *binding)
+static void ECSIKeys_FreePanelBinding(ECSIPanelBinding *binding)
 {
     SDL_free(binding->panelType);
     SDL_free(binding->setting);
@@ -240,14 +240,14 @@ static void ECSI_KeysFreePanelBinding(ECSI_PanelBinding *binding)
 }
 
 /// @brief Marks a setting to be read again; given as the Changed function of the input settings.
-static void ECSI_KeysSettingChanged(void *data)
+static void ECSIKeys_SettingChanged(void *data)
 {
     *(bool *)data = true;
 }
 
 #pragma endregion Source Only
 
-SHUResult ECSI_KeysParse(const char *text, bool report, u32 *retKey, u32 *retModifiers)
+SHUResult ECSIKeys_Parse(const char *text, bool report, u32 *retKey, u32 *retModifiers)
 {
     SDL_assert(text != NULL);
     SDL_assert(retKey != NULL);
@@ -304,14 +304,14 @@ SHUResult ECSI_KeysParse(const char *text, bool report, u32 *retKey, u32 *retMod
     return SHUResult_Ok;
 }
 
-SHUResult ECSI_KeysInitialize(void)
+SHUResult ECSIKeys_Initialize(void)
 {
     ECSSettingDesc prefix = {
         .name = "ecs.prefix",
         .type = ECSSettingType_Key,
         .description = "The key combination before a core action",
         .defaultString = OPENECS_DEFAULT_PREFIX,
-        .Changed = ECSI_KeysSettingChanged,
+        .Changed = ECSIKeys_SettingChanged,
         .data = &KEYS.prefixDirty,
     };
 
@@ -319,50 +319,50 @@ SHUResult ECSI_KeysInitialize(void)
         .name = "ecs.prefix_keys",
         .type = ECSSettingType_Table,
         .description = "Keys after the prefix and the functions they run, added to the core's own; false removes a key",
-        .Changed = ECSI_KeysSettingChanged,
+        .Changed = ECSIKeys_SettingChanged,
         .data = &KEYS.prefixKeysDirty,
     };
 
-    SHU_ReturnResult(ECSI_SettingsDeclareCore(&prefix));
-    SHU_ReturnResult(ECSI_SettingsDeclareCore(&prefixKeys));
+    SHU_ReturnResult(ECSISettings_DeclareCore(&prefix));
+    SHU_ReturnResult(ECSISettings_DeclareCore(&prefixKeys));
 
     KEYS.prefixDirty = true;
     KEYS.prefixKeysDirty = true;
-    ECSI_KeysReadPrefix();
-    ECSI_KeysCheckKeys(ECSI_SettingsGetKeys(ECSI_SettingsLayer_Window));
-    ECSI_KeysCheckKeys(ECSI_SettingsGetKeys(ECSI_SettingsLayer_User));
+    ECSIKeys_ReadPrefix();
+    ECSIKeys_CheckKeys(ECSISettings_GetKeys(ECSISettingsLayer_Window));
+    ECSIKeys_CheckKeys(ECSISettings_GetKeys(ECSISettingsLayer_User));
     return SHUResult_Ok;
 }
 
-SHUResult ECSI_KeysSetTool(const ECSValue *keys)
+SHUResult ECSIKeys_SetTool(const ECSValue *keys)
 {
     ECSValue_Destroy(&KEYS.toolKeys);
-    ECSI_KeysCheckKeys(keys);
+    ECSIKeys_CheckKeys(keys);
     SHU_ReturnResult(ECSValue_Create(&KEYS.toolKeys));
-    return ECSI_ValueCopy(KEYS.toolKeys, keys);
+    return ECSIValue_Copy(KEYS.toolKeys, keys);
 }
 
-SHUResult ECSI_KeysAddWorkspace(const ECSValue *keys)
+SHUResult ECSIKeys_AddWorkspace(const ECSValue *keys)
 {
     ECSValue *copy = NULL;
 
     if (keys != NULL)
     {
-        ECSI_KeysCheckKeys(keys);
+        ECSIKeys_CheckKeys(keys);
         SHU_ReturnResult(ECSValue_Create(&copy));
-        SHU_ReturnResult(ECSI_ValueCopy(copy, keys), ECSValue_Destroy(&copy););
+        SHU_ReturnResult(ECSIValue_Copy(copy, keys), ECSValue_Destroy(&copy););
     }
 
     arrput(KEYS.workspaceKeys, copy);
     return SHUResult_Ok;
 }
 
-const ECSValue *ECSI_KeysGetWorkspace(usz index)
+const ECSValue *ECSIKeys_GetWorkspace(usz index)
 {
     return index < arrlenu(KEYS.workspaceKeys) ? KEYS.workspaceKeys[index] : NULL;
 }
 
-void ECSI_KeysRemovePlugin(ECSPlugin plugin)
+void ECSIKeys_RemovePlugin(ECSPlugin plugin)
 {
     SDL_assert(plugin != NULL);
 
@@ -370,19 +370,19 @@ void ECSI_KeysRemovePlugin(ECSPlugin plugin)
     {
         if (KEYS.panelBindings[i - 1].plugin == plugin)
         {
-            ECSI_KeysFreePanelBinding(&KEYS.panelBindings[i - 1]);
+            ECSIKeys_FreePanelBinding(&KEYS.panelBindings[i - 1]);
             arrdel(KEYS.panelBindings, i - 1);
         }
     }
 }
 
-void ECSI_KeysTerminate(void)
+void ECSIKeys_Terminate(void)
 {
-    ECSI_KeysFreeBindings(&KEYS.prefixKeys);
+    ECSIKeys_FreeBindings(&KEYS.prefixKeys);
 
     for (usz i = 0; i < arrlenu(KEYS.panelBindings); i++)
     {
-        ECSI_KeysFreePanelBinding(&KEYS.panelBindings[i]);
+        ECSIKeys_FreePanelBinding(&KEYS.panelBindings[i]);
     }
 
     for (usz i = 0; i < arrlenu(KEYS.workspaceKeys); i++)
@@ -396,55 +396,55 @@ void ECSI_KeysTerminate(void)
     SDL_zero(KEYS);
 }
 
-const char *ECSI_KeysFind(u32 key, u32 modifiers, ECSPanel focus)
+const char *ECSIKeys_Find(u32 key, u32 modifiers, ECSPanel focus)
 {
-    ECSI_BindingSearch search = {.key = key, .modifiers = modifiers};
-    usz workspace = ECSI_LayoutGetCurrentWorkspace();
+    ECSIBindingSearch search = {.key = key, .modifiers = modifiers};
+    usz workspace = ECSILayout_GetCurrentWorkspace();
 
-    ECSI_KeysConsiderTable(&search, ECSI_SettingsGetKeys(ECSI_SettingsLayer_User), ECSI_SettingsLayer_User, ECSI_BindingScope_Tool);
-    ECSI_KeysConsiderTable(&search, ECSI_SettingsGetKeys(ECSI_SettingsLayer_Window), ECSI_SettingsLayer_Window, ECSI_BindingScope_Tool);
-    ECSI_KeysConsiderTable(&search, KEYS.toolKeys, ECSI_SettingsLayer_Preset, ECSI_BindingScope_Tool);
+    ECSIKeys_ConsiderTable(&search, ECSISettings_GetKeys(ECSISettingsLayer_User), ECSISettingsLayer_User, ECSIBindingScope_Tool);
+    ECSIKeys_ConsiderTable(&search, ECSISettings_GetKeys(ECSISettingsLayer_Window), ECSISettingsLayer_Window, ECSIBindingScope_Tool);
+    ECSIKeys_ConsiderTable(&search, KEYS.toolKeys, ECSISettingsLayer_Preset, ECSIBindingScope_Tool);
 
     if (workspace < arrlenu(KEYS.workspaceKeys))
     {
-        ECSI_KeysConsiderTable(&search, KEYS.workspaceKeys[workspace], ECSI_SettingsLayer_Preset, ECSI_BindingScope_Workspace);
+        ECSIKeys_ConsiderTable(&search, KEYS.workspaceKeys[workspace], ECSISettingsLayer_Preset, ECSIBindingScope_Workspace);
     }
 
     // a plugin's binding counts in the layer that sets its key setting
     for (usz i = 0; focus != NULL && i < arrlenu(KEYS.panelBindings); i++)
     {
-        ECSI_PanelBinding *binding = &KEYS.panelBindings[i];
+        ECSIPanelBinding *binding = &KEYS.panelBindings[i];
         ECSPlugin owner = NULL;
         ECSSettingType type = ECSSettingType_Key;
 
-        if (SDL_strcmp(binding->panelType, focus->typeName) == 0 && ECSI_SettingsDescribe(binding->setting, &owner, &type, &search.layer))
+        if (SDL_strcmp(binding->panelType, focus->typeName) == 0 && ECSISettings_Describe(binding->setting, &owner, &type, &search.layer))
         {
-            search.scope = ECSI_BindingScope_PanelType;
-            ECSI_KeysConsiderBinding(&search, ECSValue_GetString(ECSSetting_Get(binding->setting), ""), binding->function);
+            search.scope = ECSIBindingScope_PanelType;
+            ECSIKeys_ConsiderBinding(&search, ECSValue_GetString(ECSSetting_Get(binding->setting), ""), binding->function);
         }
     }
 
     return search.function;
 }
 
-bool ECSI_KeysIsPrefix(u32 key, u32 modifiers)
+bool ECSIKeys_IsPrefix(u32 key, u32 modifiers)
 {
-    ECSI_KeysReadPrefix();
+    ECSIKeys_ReadPrefix();
     return key == KEYS.prefixKey && (modifiers & ECSModifier_AltGr) == 0 && modifiers == KEYS.prefixModifiers;
 }
 
-const ECSI_KeyBinding *ECSI_KeysGetPrefixKeys(void)
+const ECSIKeyBinding *ECSIKeys_GetPrefixKeys(void)
 {
-    ECSI_KeysReadPrefixKeys();
+    ECSIKeys_ReadPrefixKeys();
     return KEYS.prefixKeys;
 }
 
-char *ECSI_KeysPrefixTextOf(const char *function)
+char *ECSIKeys_PrefixTextOf(const char *function)
 {
     SDL_assert(function != NULL);
 
     const char *prefix = ECSValue_GetString(ECSSetting_Get("ecs.prefix"), OPENECS_DEFAULT_PREFIX);
-    const ECSI_KeyBinding *keys = ECSI_KeysGetPrefixKeys();
+    const ECSIKeyBinding *keys = ECSIKeys_GetPrefixKeys();
     char *text = NULL;
 
     for (usz i = 0; text == NULL && i < arrlenu(keys); i++)
@@ -458,14 +458,14 @@ char *ECSI_KeysPrefixTextOf(const char *function)
     return text;
 }
 
-char *ECSI_KeysBoundTextOf(const char *panelType, const char *function)
+char *ECSIKeys_BoundTextOf(const char *panelType, const char *function)
 {
     SDL_assert(panelType != NULL);
     SDL_assert(function != NULL);
 
     for (usz i = 0; i < arrlenu(KEYS.panelBindings); i++)
     {
-        const ECSI_PanelBinding *binding = &KEYS.panelBindings[i];
+        const ECSIPanelBinding *binding = &KEYS.panelBindings[i];
 
         if (SDL_strcmp(binding->panelType, panelType) == 0 && SDL_strcmp(binding->function, function) == 0)
         {
@@ -484,34 +484,34 @@ SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *setti
 
     ECSPlugin owner = NULL;
     ECSSettingType type = ECSSettingType_Bool;
-    ECSI_SettingsLayer layer = ECSI_SettingsLayer_Core;
+    ECSISettingsLayer layer = ECSISettingsLayer_Core;
 
     // a plugin binds keys only for its own panel types, with its own key settings
-    if (!ECSI_PluginOwnsName(plugin, panelType))
+    if (!ECSIPlugin_OwnsName(plugin, panelType))
     {
         return SHUResult_ErrBadData;
     }
 
-    if (!ECSI_SettingsDescribe(setting, &owner, &type, &layer) || owner != plugin || type != ECSSettingType_Key)
+    if (!ECSISettings_Describe(setting, &owner, &type, &layer) || owner != plugin || type != ECSSettingType_Key)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' binds a key with '%s', which is not one of its key settings.", ECSI_PluginGetName(plugin), setting);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' binds a key with '%s', which is not one of its key settings.", ECSIPlugin_GetName(plugin), setting);
         return SHUResult_ErrBadData;
     }
 
     u32 key = 0;
     u32 modifiers = 0;
-    ECSI_KeysReadPrefix();
+    ECSIKeys_ReadPrefix();
 
-    if (ECSI_KeysParse(ECSValue_GetString(ECSSetting_Get(setting), ""), true, &key, &modifiers) == SHUResult_Ok && key == KEYS.prefixKey && modifiers == KEYS.prefixModifiers)
+    if (ECSIKeys_Parse(ECSValue_GetString(ECSSetting_Get(setting), ""), true, &key, &modifiers) == SHUResult_Ok && key == KEYS.prefixKey && modifiers == KEYS.prefixModifiers)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The key of '%s' is the core prefix; the binding is never triggered.", setting);
     }
 
-    ECSI_PanelBinding binding = {.plugin = plugin, .panelType = SDL_strdup(panelType), .setting = SDL_strdup(setting), .function = SDL_strdup(function)};
+    ECSIPanelBinding binding = {.plugin = plugin, .panelType = SDL_strdup(panelType), .setting = SDL_strdup(setting), .function = SDL_strdup(function)};
 
     if (binding.panelType == NULL || binding.setting == NULL || binding.function == NULL)
     {
-        ECSI_KeysFreePanelBinding(&binding);
+        ECSIKeys_FreePanelBinding(&binding);
         return SHUResult_ErrAllocation;
     }
 
