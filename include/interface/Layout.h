@@ -161,6 +161,25 @@ ECSPanel ECSI_LayoutNextTab(void);
 /// @return true if the user cannot move or close the panel.
 bool ECSI_LayoutIsLocked(ECSPanel panel);
 
+/// @brief Checks whether a panel's group is maximized.
+/// @param panel The panel.
+/// @return true if the group fills its workspace.
+bool ECSI_LayoutIsMaximized(ECSPanel panel);
+
+/// @brief Gets the panels of a panel's group in the current workspace.
+/// @param panel The panel.
+/// @param retCount Gets the number of panels; 0 if the panel is not in the current workspace.
+/// @param retShown Gets the position of the shown panel.
+/// @return The panels, valid until the layout changes, or NULL.
+const ECSPanel *ECSI_LayoutGetGroup(ECSPanel panel, usz *retCount, usz *retShown);
+
+/// @brief Shows a panel's tab in its group of the current workspace, and focuses the panel.
+/// @param panel The panel.
+void ECSI_LayoutShowTab(ECSPanel panel);
+
+/// @brief Checks whether there is a closed panel that ECSI_LayoutReopen can open again.
+bool ECSI_LayoutCanReopen(void);
+
 /// @brief Locks the focused panel's group, or unlocks it if it is locked.
 void ECSI_LayoutToggleLock(void);
 
@@ -192,23 +211,29 @@ void ECSI_LayoutReopen(void);
 void ECSI_LayoutMoveToWorkspace(usz index);
 
 /// @brief Shows or hides the list of keys that follow the core prefix.
-/// @param lines Each key's text and description, one after the other. They must stay valid while they are shown.
-/// @param count Number of keys; 0 hides the list.
+/// @param lines Each key's text and description, one after the other; a NULL key text makes the description a heading. They must stay valid while they are shown.
+/// @param count Number of lines; 0 hides the list.
 void ECSI_LayoutShowPrefixKeys(const char *const *lines, usz count);
 
-/// @brief Shows or hides a panel menu, kept inside the OS window.
-/// @param x Horizontal position of its top-left corner, in layout units.
-/// @param y Vertical position of its top-left corner, in layout units.
+/// @brief Shows, changes or hides a menu: the panel menu at level 0, and its submenus at the next levels. The menus at deeper levels close. It is kept inside the OS window.
+/// @param level The menu's level, below 4.
+/// @param anchor In layout units: the point the panel menu opens at, or the entry a submenu opens beside.
 /// @param lines Each entry's key text and label, one after the other. They must stay valid while they are shown.
-/// @param count Number of entries; 0 hides the menu.
-/// @param selected Index of the highlighted entry.
-void ECSI_LayoutShowMenu(f32 x, f32 y, const char *const *lines, usz count, usz selected);
+/// @param count Number of entries; 0 hides the menu. The first entry is highlighted.
+void ECSI_LayoutShowMenu(usz level, SDL_FRect anchor, const char *const *lines, usz count);
 
-/// @brief Finds the menu entry at a point, as drawn in the last frame.
-/// @return Index of the entry, or -1.
-i32 ECSI_LayoutMenuItemAt(f32 x, f32 y);
+/// @brief Highlights an entry of a shown menu.
+void ECSI_LayoutSelectMenuItem(usz level, usz index);
 
-/// @brief Checks whether a point is on the shown menu.
+/// @brief Gets where a shown menu's entry is, to open a submenu beside it.
+/// @return The entry's rectangle, in layout units.
+SDL_FRect ECSI_LayoutMenuItemRect(usz level, usz index);
+
+/// @brief Finds the menu entry at a point, in the deepest menu that holds it.
+/// @return true if there is an entry at the point.
+bool ECSI_LayoutMenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex);
+
+/// @brief Checks whether a point is on any shown menu.
 bool ECSI_LayoutMenuContains(f32 x, f32 y);
 
 #pragma endregion Declarations

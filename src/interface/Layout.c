@@ -46,6 +46,10 @@
 /// @brief Padding around a panel menu and inside its entries.
 #define OPENECS_MENU_PADDING 6.0f
 #define OPENECS_MENU_ITEM_PADDING 10.0f
+/// @brief Text that a locked group's grip shows after the title.
+#define OPENECS_LOCKED_MARK "locked"
+/// @brief Most menus open at once: the panel menu and its submenus.
+#define OPENECS_MENU_DEPTH 4
 
 /// @brief Background colour; it shows through the gaps between panels.
 #define OPENECS_COLOR_BACKGROUND 0x18, 0x19, 0x1C, 0xFF
@@ -141,6 +145,16 @@ typedef struct ECSI_TabRef
 /// @brief Function called for each visible group.
 typedef void (*ECSI_GroupFunction)(ECSI_Node *group, void *userData);
 
+/// @brief A shown menu. Each line pair is an entry's key text and its label.
+typedef struct ECSI_MenuView
+{
+    const char *const *lines; // NULL when this menu is closed
+    usz count;
+    usz selected;
+    SDL_FRect rect;
+    f32 itemHeight;
+} ECSI_MenuView;
+
 static struct
 {
     SDL_Window *window;
@@ -171,6 +185,7 @@ static struct
     ECSPanel dragPanel;     // panel pressed on its tab or grip, or NULL; it is dragged once the pointer moves far enough
     bool dragGroup;         // the whole group of dragPanel is dragged, pressed on its tab row
     bool dragFromGrip;      // the press was on a grip; a click without dragging opens the panel's menu
+    bool dragLocked;        // the pressed grip is a locked group's, so it is never dragged
     bool dragging;
     f32 dragStartX;
     f32 dragStartY;
@@ -180,10 +195,7 @@ static struct
     SDL_Cursor *cursors[SDL_SYSTEM_CURSOR_COUNT]; // made when first used
     SDL_SystemCursor cursor;                      // the pointer's shape now
 
-    const char *const *menuLines; // key texts and labels of the panel menu, in pairs, or NULL when it is closed
-    usz menuLineCount;
-    usz menuSelected;
-    SDL_FRect menuRect;
+    ECSI_MenuView menus[OPENECS_MENU_DEPTH]; // the panel menu, then its open submenus
 } LAYOUT = {0};
 
 /// @brief Width of the key column in the list of prefix keys.
@@ -1064,6 +1076,7 @@ static void ECSI_LayoutArmDrag(ECSPanel panel, bool group, bool grip, f32 x, f32
     LAYOUT.dragPanel = panel;
     LAYOUT.dragGroup = group;
     LAYOUT.dragFromGrip = grip;
+    LAYOUT.dragLocked = false;
     LAYOUT.dragging = false;
     LAYOUT.dragStartX = x;
     LAYOUT.dragStartY = y;
@@ -1220,7 +1233,7 @@ static void ECSI_LayoutFindGripGroup(ECSI_Node *group, void *userData)
 {
     ECSI_GripHit *hit = userData;
 
-    if (arrlenu(group->panels) == 1 && !group->locked && ECSI_LayoutContains(hit->x, hit->y, group->x, group->y, group->width, OPENECS_GRIP_ZONE))
+    if (arrlenu(group->panels) == 1 && ECSI_LayoutContains(hit->x, hit->y, group->x, group->y, group->width, OPENECS_GRIP_ZONE))
     {
         hit->group = group;
     }
@@ -1390,20 +1403,29 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
             }) {}
         }
 
-        // the grip shows the panel's title, centred on its top edge
+        // the grip shows the panel's title, centred on its top edge, and whether its group is locked
         if (LAYOUT.gripGroup != NULL)
         {
             ECSI_Node *group = LAYOUT.gripGroup;
             const char *title = group->panels[0]->title;
             int titleWidth = 0;
+            int lockedWidth = 0;
             TTF_SetFontSize(LAYOUT.fonts[0], OPENECS_FONT_SIZE);
             TTF_GetStringSize(LAYOUT.fonts[0], title, 0, &titleWidth, NULL);
-            f32 width = SDL_min((f32)titleWidth + 2.0f * OPENECS_MENU_ITEM_PADDING, group->width);
+
+            if (group->locked)
+            {
+                TTF_GetStringSize(LAYOUT.fonts[0], OPENECS_LOCKED_MARK, 0, &lockedWidth, NULL);
+                lockedWidth += (int)OPENECS_MENU_ITEM_PADDING;
+            }
+
+            f32 width = SDL_min((f32)(titleWidth + lockedWidth) + 2.0f * OPENECS_MENU_ITEM_PADDING, group->width);
 
             CLAY(CLAY_ID("Grip"), {
                 .layout = {
                     .sizing = {CLAY_SIZING_FIXED(width), CLAY_SIZING_FIXED(OPENECS_GRIP_HEIGHT)},
                     .padding = {(u16)OPENECS_MENU_ITEM_PADDING, (u16)OPENECS_MENU_ITEM_PADDING, 0, 0},
+                    .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
                     .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                 },
                 .backgroundColor = OPENECS_COLOR_OVERLAY,
@@ -1414,6 +1436,11 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
             })
             {
                 CLAY_TEXT(ECSI_LayoutClayText(title), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+
+                if (group->locked)
+                {
+                    CLAY_TEXT(CLAY_STRING(OPENECS_LOCKED_MARK), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                }
             }
         }
 
@@ -1429,11 +1456,12 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
             }) {}
         }
 
-        if (LAYOUT.menuLines != NULL)
+        for (usz level = 0; level < OPENECS_MENU_DEPTH && LAYOUT.menus[level].lines != NULL; level++)
         {
-            SDL_FRect rect = LAYOUT.menuRect;
+            const ECSI_MenuView *menu = &LAYOUT.menus[level];
+            SDL_FRect rect = menu->rect;
 
-            CLAY(CLAY_ID("Menu"), {
+            CLAY(CLAY_IDI("Menu", (u32)level), {
                 .layout = {
                     .sizing = {CLAY_SIZING_FIXED(rect.w), CLAY_SIZING_FIXED(rect.h)},
                     .padding = CLAY_PADDING_ALL((u16)OPENECS_MENU_PADDING),
@@ -1442,24 +1470,26 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
                 .backgroundColor = OPENECS_COLOR_OVERLAY,
                 .cornerRadius = CLAY_CORNER_RADIUS(6),
                 .border = {.color = OPENECS_COLOR_TEXT_DIM, .width = {1, 1, 1, 1, 0}},
-                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = 5},
+                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = (i16)(5 + level)},
             })
             {
-                for (usz i = 0; i < LAYOUT.menuLineCount; i++)
+                // each entry has the height that ECSI_LayoutMenuItemAt counts with
+                for (usz i = 0; i < menu->count; i++)
                 {
-                    CLAY(CLAY_IDI("MenuItem", (u32)i), {
+                    CLAY_AUTO_ID({
                         .layout = {
-                            .sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)},
-                            .padding = {(u16)OPENECS_MENU_ITEM_PADDING, (u16)OPENECS_MENU_ITEM_PADDING, 3, 3},
+                            .sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(menu->itemHeight)},
+                            .padding = {(u16)OPENECS_MENU_ITEM_PADDING, (u16)OPENECS_MENU_ITEM_PADDING, 0, 0},
                             .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
+                            .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                         },
-                        .backgroundColor = i == LAYOUT.menuSelected ? OPENECS_COLOR_SELECTED : (Clay_Color){0},
+                        .backgroundColor = i == menu->selected ? OPENECS_COLOR_SELECTED : (Clay_Color){0},
                         .cornerRadius = CLAY_CORNER_RADIUS(4),
                     })
                     {
-                        CLAY_TEXT(ECSI_LayoutClayText(LAYOUT.menuLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                        CLAY_TEXT(ECSI_LayoutClayText(menu->lines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                         CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}}}) {}
-                        CLAY_TEXT(ECSI_LayoutClayText(LAYOUT.menuLines[2 * i]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                        CLAY_TEXT(ECSI_LayoutClayText(menu->lines[2 * i]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                     }
                 }
             }
@@ -1477,6 +1507,17 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
             {
                 for (usz i = 0; i < LAYOUT.prefixLineCount; i++)
                 {
+                    // a line without a key is a heading
+                    if (LAYOUT.prefixLines[2 * i] == NULL)
+                    {
+                        CLAY_AUTO_ID({.layout = {.padding = {0, 0, i == 0 ? 0 : 6, 0}}})
+                        {
+                            CLAY_TEXT(ECSI_LayoutClayText(LAYOUT.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
+                        }
+
+                        continue;
+                    }
+
                     CLAY_AUTO_ID({.layout = {.layoutDirection = CLAY_LEFT_TO_RIGHT}})
                     {
                         CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(OPENECS_PREFIX_KEY_COLUMN), CLAY_SIZING_FIT(0)}}})
@@ -2128,9 +2169,11 @@ bool ECSI_LayoutPointerDown(f32 x, f32 y)
         return true;
     }
 
+    // a locked group's grip only opens the menu
     if (LAYOUT.gripGroup != NULL && ECSI_LayoutOnElement(CLAY_ID("Grip"), x, y))
     {
         ECSI_LayoutArmDrag(LAYOUT.gripGroup->panels[0], false, true, x, y);
+        LAYOUT.dragLocked = LAYOUT.gripGroup->locked;
         return true;
     }
 
@@ -2181,7 +2224,16 @@ bool ECSI_LayoutPointerMove(f32 x, f32 y)
     if (LAYOUT.dragPanel != NULL)
     {
         bool wasDragging = LAYOUT.dragging;
-        LAYOUT.dragging = LAYOUT.dragging || SDL_fabsf(x - LAYOUT.dragStartX) + SDL_fabsf(y - LAYOUT.dragStartY) >= OPENECS_DRAG_THRESHOLD;
+        bool moved = SDL_fabsf(x - LAYOUT.dragStartX) + SDL_fabsf(y - LAYOUT.dragStartY) >= OPENECS_DRAG_THRESHOLD;
+
+        // a locked grip is never dragged, and pulling it is not a click
+        if (moved && LAYOUT.dragLocked)
+        {
+            ECSI_LayoutCancelDrag();
+            return true;
+        }
+
+        LAYOUT.dragging = LAYOUT.dragging || moved;
 
         if (LAYOUT.dragging)
         {
@@ -2242,6 +2294,7 @@ bool ECSI_LayoutCancelDrag(void)
     LAYOUT.dragPanel = NULL;
     LAYOUT.dragGroup = false;
     LAYOUT.dragFromGrip = false;
+    LAYOUT.dragLocked = false;
     LAYOUT.dragging = false;
     LAYOUT.drop = (ECSI_Drop){0};
     LAYOUT.frameNeeded = LAYOUT.frameNeeded || dragging;
@@ -2286,17 +2339,27 @@ bool ECSI_LayoutScrollTabs(f32 x, f32 y, f32 steps)
     return true;
 }
 
-void ECSI_LayoutShowMenu(f32 x, f32 y, const char *const *lines, usz count, usz selected)
+void ECSI_LayoutShowMenu(usz level, SDL_FRect anchor, const char *const *lines, usz count)
 {
-    LAYOUT.menuLines = count == 0 ? NULL : lines;
-    LAYOUT.menuLineCount = count;
-    LAYOUT.menuSelected = selected;
+    SDL_assert(level < OPENECS_MENU_DEPTH);
+
+    // a menu that closes or changes closes its submenus
+    for (usz i = level + 1; i < OPENECS_MENU_DEPTH; i++)
+    {
+        LAYOUT.menus[i] = (ECSI_MenuView){0};
+    }
+
+    ECSI_MenuView *menu = &LAYOUT.menus[level];
+    *menu = (ECSI_MenuView){0};
     LAYOUT.frameNeeded = true;
 
     if (count == 0)
     {
         return;
     }
+
+    menu->lines = lines;
+    menu->count = count;
 
     // the menu's size is measured here, so it can be kept inside the OS window
     TTF_Font *font = LAYOUT.fonts[0];
@@ -2312,10 +2375,14 @@ void ECSI_LayoutShowMenu(f32 x, f32 y, const char *const *lines, usz count, usz 
         width = SDL_max(width, (f32)(labelWidth + keyWidth) + 3.0f * OPENECS_MENU_ITEM_PADDING);
     }
 
-    f32 itemHeight = (f32)TTF_GetFontHeight(font) + 6.0f;
+    menu->itemHeight = (f32)TTF_GetFontHeight(font) + 6.0f;
     width += 2.0f * OPENECS_MENU_PADDING;
-    f32 height = (f32)count * itemHeight + 2.0f * OPENECS_MENU_PADDING;
-    LAYOUT.menuRect = (SDL_FRect){
+    f32 height = (f32)count * menu->itemHeight + 2.0f * OPENECS_MENU_PADDING;
+
+    // it opens to the right of its anchor, or to the left if there is no room
+    f32 x = anchor.x + anchor.w + width <= LAYOUT.width ? anchor.x + anchor.w : anchor.x - width;
+    f32 y = anchor.y - (level == 0 ? 0.0f : OPENECS_MENU_PADDING);
+    menu->rect = (SDL_FRect){
         SDL_max(0.0f, SDL_min(x, LAYOUT.width - width)),
         SDL_max(0.0f, SDL_min(y, LAYOUT.height - height)),
         width,
@@ -2323,22 +2390,64 @@ void ECSI_LayoutShowMenu(f32 x, f32 y, const char *const *lines, usz count, usz 
     };
 }
 
-i32 ECSI_LayoutMenuItemAt(f32 x, f32 y)
+void ECSI_LayoutSelectMenuItem(usz level, usz index)
 {
-    for (usz i = 0; LAYOUT.menuLines != NULL && i < LAYOUT.menuLineCount; i++)
+    SDL_assert(level < OPENECS_MENU_DEPTH);
+
+    LAYOUT.menus[level].selected = index;
+    LAYOUT.frameNeeded = true;
+}
+
+SDL_FRect ECSI_LayoutMenuItemRect(usz level, usz index)
+{
+    SDL_assert(level < OPENECS_MENU_DEPTH);
+
+    const ECSI_MenuView *menu = &LAYOUT.menus[level];
+    return (SDL_FRect){
+        menu->rect.x + OPENECS_MENU_PADDING,
+        menu->rect.y + OPENECS_MENU_PADDING + (f32)index * menu->itemHeight,
+        menu->rect.w - 2.0f * OPENECS_MENU_PADDING,
+        menu->itemHeight,
+    };
+}
+
+bool ECSI_LayoutMenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex)
+{
+    SDL_assert(retLevel != NULL);
+    SDL_assert(retIndex != NULL);
+
+    // submenus are drawn over their parents, so the deepest is checked first
+    for (usz level = OPENECS_MENU_DEPTH; level > 0; level--)
     {
-        if (ECSI_LayoutOnElement(CLAY_IDI("MenuItem", (u32)i), x, y))
+        for (usz i = 0; i < LAYOUT.menus[level - 1].count; i++)
         {
-            return (i32)i;
+            SDL_FRect item = ECSI_LayoutMenuItemRect(level - 1, i);
+
+            if (ECSI_LayoutContains(x, y, item.x, item.y, item.w, item.h))
+            {
+                *retLevel = level - 1;
+                *retIndex = i;
+                return true;
+            }
         }
     }
 
-    return -1;
+    return false;
 }
 
 bool ECSI_LayoutMenuContains(f32 x, f32 y)
 {
-    return LAYOUT.menuLines != NULL && ECSI_LayoutContains(x, y, LAYOUT.menuRect.x, LAYOUT.menuRect.y, LAYOUT.menuRect.w, LAYOUT.menuRect.h);
+    for (usz level = 0; level < OPENECS_MENU_DEPTH; level++)
+    {
+        const SDL_FRect *rect = &LAYOUT.menus[level].rect;
+
+        if (LAYOUT.menus[level].lines != NULL && ECSI_LayoutContains(x, y, rect->x, rect->y, rect->w, rect->h))
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 ECSPanel ECSI_LayoutGetFocus(void)
@@ -2417,6 +2526,45 @@ bool ECSI_LayoutIsLocked(ECSPanel panel)
     ECSI_Workspace *workspace = ECSI_LayoutCurrent();
     ECSI_Node *group = workspace == NULL || panel == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, panel);
     return group != NULL && group->locked;
+}
+
+bool ECSI_LayoutIsMaximized(ECSPanel panel)
+{
+    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    return workspace != NULL && panel != NULL && workspace->maximized != NULL && workspace->maximized == ECSI_LayoutFindGroup(workspace->tree, panel);
+}
+
+const ECSPanel *ECSI_LayoutGetGroup(ECSPanel panel, usz *retCount, usz *retShown)
+{
+    SDL_assert(retCount != NULL);
+    SDL_assert(retShown != NULL);
+
+    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSI_Node *group = workspace == NULL || panel == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, panel);
+    *retCount = group == NULL ? 0 : arrlenu(group->panels);
+    *retShown = group == NULL ? 0 : group->shown;
+    return group == NULL ? NULL : group->panels;
+}
+
+void ECSI_LayoutShowTab(ECSPanel panel)
+{
+    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSI_Node *group = workspace == NULL || panel == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, panel);
+
+    for (usz i = 0; group != NULL && i < arrlenu(group->panels); i++)
+    {
+        if (group->panels[i] == panel)
+        {
+            group->shown = i;
+            ECSI_LayoutChangeFocus(workspace, panel);
+            LAYOUT.frameNeeded = true;
+        }
+    }
+}
+
+bool ECSI_LayoutCanReopen(void)
+{
+    return arrlenu(LAYOUT.closed) > 0;
 }
 
 void ECSI_LayoutToggleLock(void)

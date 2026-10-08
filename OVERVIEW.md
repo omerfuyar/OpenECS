@@ -172,8 +172,8 @@ A panel type can declare a **minimum size**. Splits never make a panel smaller t
 
 ### 6.2 Tab rows
 
-- A group with two or more panels shows a **tab row**. The user drags a tab to move its panel and right-clicks it for the panel's menu; a right click on the rest of the tab row opens the shown panel's menu. A middle click on a tab closes its panel. Dragging the empty part of the tab row moves the whole group.
-- A group with one panel shows no tab row. Instead, when the pointer comes near the top edge of the panel, the core shows a small **grip** with the panel's title at its top centre. Dragging the grip moves the panel; clicking or right-clicking it opens the panel's menu.
+- A group with two or more panels shows a **tab row**. The user drags a tab to move its panel and right-clicks it for the panel's menu; a right click on the rest of the tab row opens the group's menu. A middle click on a tab closes its panel. Dragging the empty part of the tab row moves the whole group.
+- A group with one panel shows no tab row. Instead, when the pointer comes near the top edge of the panel, the core shows a small **grip** with the panel's title at its top centre. Dragging the grip moves the panel; clicking or right-clicking it opens the panel's menu. A locked panel's grip says so, and only opens the menu.
 - Dropping a panel onto the centre of another panel groups them, and the tab row appears. When a group is left with one panel, the tab row disappears.
 - Tabs can be reordered by dragging, and a long tab row scrolls with the mouse wheel. A tab that becomes shown scrolls into view. A tab shows the panel's title, a mark for unsaved work and a close button.
 
@@ -211,7 +211,7 @@ A preset or a user can lock parts of the layout, for example a toolbar or a 3D v
 
 ### 6.8 Menus
 
-A panel's menu, opened from its tab or grip, has the core's entries (close, maximize, pop out, split, move to workspace) plus entries that the panel's type adds for its own panels. Inside its own area, a panel shows its own menus with popups.
+A panel's menu, opened from its tab or grip, has the core's entries (close, maximize, pop out, split, move to workspace) plus entries that the panel's type adds for its own panels. A group's menu, opened from the rest of its tab row, lists its tabs and acts on the whole group. Menus offer only what can be done now, and group entries of one kind into submenus. Inside its own area, a panel shows its own menus with popups.
 
 ## 7. Keys and focus
 

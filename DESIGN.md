@@ -335,7 +335,8 @@ After every operation:
 ### 6.4 Grips and locked groups
 
 - A grip appears when the pointer is within 24 layout units of a panel's top edge. It shows the panel's title. While it is shown, pointer events over it go to the core.
-- Locked groups show no grip and accept no dropped panels. Their panels cannot be dragged, moved with keys or closed by the user.
+- A locked group's grip also shows "locked". It opens the panel's menu, but it cannot be dragged, and pulling it is not a click.
+- Locked groups accept no dropped panels. Their panels cannot be dragged, moved with keys or closed by the user.
 - `ecs.lock` locks or unlocks the focused group.
 
 ### 6.5 Operations
@@ -373,13 +374,17 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The drop place is highlighted while the panel is dragged.
 - A panel that splits another takes half of the other's place. A panel docked along an edge of the OS window takes a quarter of it.
 
-### 6.8 Panel menu
+### 6.8 Panel and group menus
 
-- The core draws a panel's menu itself, inside the OS window, with Clay. It is kept inside the OS window.
-- A right click on a tab or grip, or a click on a grip, opens it. A right click on the rest of a tab row opens the menu of the group's shown panel. The panel gets the focus.
-- Its entries are core functions that act on the focused panel: close, restart (only for a failed panel or a placeholder, 14.2), maximize, lock, split right and down, reopen the last closed panel, move, and one entry for each other workspace, by number and name. Each entry shows the keys that run its function after the prefix (7.5).
-- After them come the entries of the panel's type: `ECSPanelType_AddMenuEntry(plugin, type, function)`, or `ecs.panel.add_menu_entry(type, function)` in Lua, adds a service function whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and the key the plugin bound to the same function for the type.
-- The arrow keys choose an entry and Enter runs it. Escape or a press outside the menu closes it. While it is open, pointer and key events go to the menu only.
+- The core draws its menus itself, inside the OS window, with Clay. They are kept inside the OS window.
+- A right click on a tab or grip, or a click on a grip, opens the panel's menu. A right click on the rest of a tab row opens the group's menu. The panel, or the group's shown panel, gets the focus.
+- Entries are core functions that act on the focused panel. Each shows the keys that run its function after the prefix (7.5).
+- Menus show only what can be done now, and say what it does now: "Lock the group" or "Unlock the group", "Maximize the group" or "Restore the group". Close and move are left out for a locked group, restart for a panel that has not failed (14.2), reopen when nothing was closed, and split when the panel's type is missing.
+- Entries of one kind go into a submenu. An entry with a submenu shows `›`, and pointing at it opens the submenu beside it.
+- The panel's menu: close, restart, maximize, lock, reopen the last closed panel; the submenus Split (right, down), Move (left, right, up, down) and Move to workspace (each other workspace, by number and name); then the entries of the panel's type.
+- The entries of a type: `ECSPanelType_AddMenuEntry(plugin, type, function)`, or `ecs.panel.add_menu_entry(type, function)` in Lua, adds a service function whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and the key the plugin bound to the same function for the type.
+- The group's menu: the submenu Tabs, which shows any of its panels and marks the shown one with `•`; then maximize, lock, close the group's panels, and reopen.
+- Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. Escape in the first menu, or a press outside the menus, closes them. While a menu is open, pointer and key events go to the menus only.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
 - The wheel over a tab row scrolls it, 40 layout units a step; down and right go toward the last tab. When a group shows another panel, its tab scrolls into view.
 
@@ -421,7 +426,8 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - The prefix is the setting `ecs.prefix`. It is one key combination, never a whole modifier.
 - The keys after the prefix are the setting `ecs.prefix_keys`: a table of key combinations and the names of the functions they run. Its entries are added to the core's defaults, and `false` removes a key. So presets and the user can add entries that run service functions.
-- While the core waits for the key after the prefix, it lists the keys with their functions' descriptions. The keys that switch workspaces share one line, from the first workspace's key to the last one's: `1...0`.
+- While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's other functions) and More (service functions). Like the menus (6.8), the list leaves out what cannot be done now.
+- Keys of one kind share a line. The keys that switch workspaces show the first workspace's key to the last one's: `1...0`. Focus and move show `Arrows` and `Shift+Arrows` when their four functions are on the four arrows with the same modifiers.
 - The prefix and the key after it are the only key sequence the core handles.
 - The default `ecs.prefix_keys`:
 
@@ -434,6 +440,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | M            | `ecs.maximize`                               | Maximize or restore                                                                                     |
   | P            | `ecs.pop_out`                                | Pop out                                                                                                 |
   | X            | `ecs.close`                                  | Close the panel                                                                                         |
+  | Shift+X      | `ecs.close_group`                            | Close the group's panels                                                                                |
   | L            | `ecs.lock`                                   | Lock or unlock the group                                                                                |
   | T            | `ecs.reopen`                                 | Reopen the last closed panel                                                                            |
   | R            | `ecs.restart`                                | Restart the failed panel                                                                                |
