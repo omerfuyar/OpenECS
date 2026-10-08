@@ -10,6 +10,9 @@
 
 #pragma region Source Only
 
+/// @brief Start of the names of the functions that switch workspaces; the workspace's number follows.
+#define OPENECS_WORKSPACE_FUNCTION "ecs.workspace_"
+
 /// @brief Default of the setting ecs.prefix.
 #define OPENECS_DEFAULT_PREFIX "Alt+W"
 
@@ -42,6 +45,7 @@ static const char *const ECSI_PREFIX_KEYS[][2] = {
     {"7", "ecs.workspace_7"},
     {"8", "ecs.workspace_8"},
     {"9", "ecs.workspace_9"},
+    {"0", "ecs.workspace_10"},
 };
 
 /// @brief A key combination and the function it runs.
@@ -91,6 +95,7 @@ static struct
     ECSI_KeyBinding *prefixKeys; // stb_ds array of the keys after the prefix
     bool prefixKeysDirty;        // ecs.prefix_keys changed and is read again at the next key press
     const char **prefixLines;    // stb_ds array of the lines shown after the prefix: key text, description, and so on
+    char *workspaceHint;         // the shared key text of the keys that switch workspaces, such as "1...0", or NULL
     ECSI_PanelBinding *panelBindings; // stb_ds array of plugins' bindings for their panel types
     ECSValue *toolKeys;               // the preset's bindings for the whole tool, or NULL
     ECSValue **workspaceKeys;         // stb_ds array of the preset's bindings for each workspace; NULL for none
@@ -624,16 +629,60 @@ static void ECSI_InputSetPrefix(bool active)
 {
     INPUT.prefixActive = active;
     arrfree(INPUT.prefixLines);
+    SDL_free(INPUT.workspaceHint);
+    INPUT.workspaceHint = NULL;
 
     if (active)
     {
         ECSI_InputReadPrefixKeys();
 
+        // the keys that switch workspaces share one line, from the first workspace's key to the last one's
+        const char *firstKey = NULL;
+        const char *lastKey = NULL;
+        i64 first = 0;
+        i64 last = 0;
+
         for (usz i = 0; i < arrlenu(INPUT.prefixKeys); i++)
         {
-            const char *description = ECSI_ServicesGetDescription(INPUT.prefixKeys[i].function);
+            const char *function = INPUT.prefixKeys[i].function;
+
+            if (SDL_strncmp(function, OPENECS_WORKSPACE_FUNCTION, SDL_strlen(OPENECS_WORKSPACE_FUNCTION)) == 0)
+            {
+                i64 number = SDL_strtoll(function + SDL_strlen(OPENECS_WORKSPACE_FUNCTION), NULL, 10);
+
+                if (firstKey == NULL || number < first)
+                {
+                    firstKey = INPUT.prefixKeys[i].text;
+                    first = number;
+                }
+
+                if (lastKey == NULL || number > last)
+                {
+                    lastKey = INPUT.prefixKeys[i].text;
+                    last = number;
+                }
+
+                continue;
+            }
+
+            const char *description = ECSI_ServicesGetDescription(function);
             arrput(INPUT.prefixLines, INPUT.prefixKeys[i].text);
-            arrput(INPUT.prefixLines, description == NULL ? INPUT.prefixKeys[i].function : description);
+            arrput(INPUT.prefixLines, description == NULL ? function : description);
+        }
+
+        if (firstKey != NULL && first == last)
+        {
+            INPUT.workspaceHint = SDL_strdup(firstKey);
+        }
+        else if (firstKey != NULL && SDL_asprintf(&INPUT.workspaceHint, "%s...%s", firstKey, lastKey) < 0)
+        {
+            INPUT.workspaceHint = NULL;
+        }
+
+        if (INPUT.workspaceHint != NULL)
+        {
+            arrput(INPUT.prefixLines, INPUT.workspaceHint);
+            arrput(INPUT.prefixLines, "Switch to workspace");
         }
 
         arrput(INPUT.prefixLines, "Escape");
@@ -784,6 +833,11 @@ static void ECSI_InputWorkspace9(void)
     ECSI_LayoutWorkspaceSwitch(8);
 }
 
+static void ECSI_InputWorkspace10(void)
+{
+    ECSI_LayoutWorkspaceSwitch(9);
+}
+
 /// @brief The core's bindable functions: name, function and description.
 static const struct
 {
@@ -812,6 +866,7 @@ static const struct
     {"ecs.workspace_7", ECSI_InputWorkspace7, "Switch to workspace 7"},
     {"ecs.workspace_8", ECSI_InputWorkspace8, "Switch to workspace 8"},
     {"ecs.workspace_9", ECSI_InputWorkspace9, "Switch to workspace 9"},
+    {"ecs.workspace_10", ECSI_InputWorkspace10, "Switch to workspace 10"},
 };
 
 #pragma endregion Core Functions
@@ -1020,6 +1075,8 @@ void ECSI_InputTerminate(void)
     ECSI_InputForgetClipboard();
     ECSValue_Destroy(&INPUT.toolKeys);
     arrfree(INPUT.prefixLines);
+    SDL_free(INPUT.workspaceHint);
+    INPUT.workspaceHint = NULL;
     SDL_zero(INPUT);
 }
 

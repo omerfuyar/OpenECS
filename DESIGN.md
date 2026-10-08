@@ -337,7 +337,8 @@ After every operation:
 ### 6.5 Operations
 
 - Besides the operations in OVERVIEW 6.3, there are cycling tabs and reopening the last closed panel.
-- Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)`, `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles; `ecs.workspace` counts workspaces from 1.
+- Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)`, `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles.
+- Workspaces are numbered from 1, in C and in Lua: `ECSWorkspace_Switch(10)` switches to workspace 10.
 - Closing a panel from code still asks about unsaved work. Focusing a panel shows its workspace and its tab.
 - Locks (6.4) stop the user, not code.
 - Every change of focus tells the panel that loses it and the panel that gets it (`ECSEventType_Unfocused`, `ECSEventType_Focused`).
@@ -411,7 +412,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - The prefix is the setting `ecs.prefix`. It is one key combination, never a whole modifier.
 - The keys after the prefix are the setting `ecs.prefix_keys`: a table of key combinations and the names of the functions they run. Its entries are added to the core's defaults, and `false` removes a key. So presets and the user can add entries that run service functions.
-- While the core waits for the key after the prefix, it lists the keys with their functions' descriptions.
+- While the core waits for the key after the prefix, it lists the keys with their functions' descriptions. The keys that switch workspaces share one line, from the first workspace's key to the last one's: `1...0`.
 - The prefix and the key after it are the only key sequence the core handles.
 - The default `ecs.prefix_keys`:
 
@@ -419,7 +420,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | ------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
   | Arrows       | `ecs.focus_left` and so on                   | Move focus                                                                                              |
   | Shift+Arrows | `ecs.move_left` and so on                    | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
-  | 1 to 9       | `ecs.workspace_1` to `ecs.workspace_9`       | Switch workspace                                                                                        |
+  | 1 to 9, 0    | `ecs.workspace_1` to `ecs.workspace_10`      | Switch to workspace 1 to 10; 0 is workspace 10                                                          |
   | Tab          | `ecs.next_tab`                               | Show the next tab                                                                                       |
   | M            | `ecs.maximize`                               | Maximize or restore                                                                                     |
   | P            | `ecs.pop_out`                                | Pop out                                                                                                 |

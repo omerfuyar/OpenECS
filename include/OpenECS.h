@@ -468,17 +468,17 @@ OPENECS_EXPORT ECSPanel ECSLayout_GetFocus(void);
 OPENECS_EXPORT usz ECSWorkspace_GetCount(void);
 
 /// @brief Gets the current workspace. Main thread only.
-/// @return Its position, starting at 0.
+/// @return Its number; workspaces are numbered from 1.
 OPENECS_EXPORT usz ECSWorkspace_GetCurrent(void);
 
 /// @brief Gets a workspace's name. Main thread only.
-/// @param index Position of the workspace, starting at 0.
+/// @param number Number of the workspace, starting at 1.
 /// @return The name, or NULL if there is no such workspace. Valid until the workspace goes away.
-OPENECS_EXPORT const char *ECSWorkspace_GetName(usz index);
+OPENECS_EXPORT const char *ECSWorkspace_GetName(usz number);
 
 /// @brief Switches to a workspace. Main thread only.
-/// @param index Position of the workspace, starting at 0. Ignored if there is no such workspace.
-OPENECS_EXPORT void ECSWorkspace_Switch(usz index);
+/// @param number Number of the workspace, starting at 1: ECSWorkspace_Switch(10) switches to workspace 10. Ignored if there is no such workspace.
+OPENECS_EXPORT void ECSWorkspace_Switch(usz number);
 
 /// @brief Puts text on the clipboard. Main thread only.
 /// @param text The text. The core copies it.

@@ -478,24 +478,24 @@ static int ECSI_BindingsWorkspaceCount(lua_State *state)
 
 static int ECSI_BindingsWorkspaceGetCurrent(lua_State *state)
 {
-    lua_pushinteger(state, (lua_Integer)ECSWorkspace_GetCurrent() + 1);
+    lua_pushinteger(state, (lua_Integer)ECSWorkspace_GetCurrent());
     return 1;
 }
 
 static int ECSI_BindingsWorkspaceGetName(lua_State *state)
 {
-    lua_Integer index = luaL_checkinteger(state, 1);
-    lua_pushstring(state, index >= 1 ? ECSWorkspace_GetName((usz)index - 1) : NULL);
+    lua_Integer number = luaL_checkinteger(state, 1);
+    lua_pushstring(state, number >= 1 ? ECSWorkspace_GetName((usz)number) : NULL);
     return 1;
 }
 
 static int ECSI_BindingsWorkspaceSwitch(lua_State *state)
 {
-    lua_Integer index = luaL_checkinteger(state, 1);
+    lua_Integer number = luaL_checkinteger(state, 1);
 
-    if (index >= 1)
+    if (number >= 1)
     {
-        ECSWorkspace_Switch((usz)index - 1);
+        ECSWorkspace_Switch((usz)number);
     }
 
     return 0;

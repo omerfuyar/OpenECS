@@ -2493,15 +2493,18 @@ usz ECSWorkspace_GetCount(void)
 
 usz ECSWorkspace_GetCurrent(void)
 {
-    return LAYOUT.current;
+    return LAYOUT.current + 1;
 }
 
-const char *ECSWorkspace_GetName(usz index)
+const char *ECSWorkspace_GetName(usz number)
 {
-    return index < arrlenu(LAYOUT.workspaces) ? LAYOUT.workspaces[index].name : NULL;
+    return number >= 1 && number <= arrlenu(LAYOUT.workspaces) ? LAYOUT.workspaces[number - 1].name : NULL;
 }
 
-void ECSWorkspace_Switch(usz index)
+void ECSWorkspace_Switch(usz number)
 {
-    ECSI_LayoutWorkspaceSwitch(index);
+    if (number >= 1)
+    {
+        ECSI_LayoutWorkspaceSwitch(number - 1);
+    }
 }
