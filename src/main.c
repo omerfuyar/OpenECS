@@ -213,7 +213,7 @@ int main(int argc, char **argv)
     SDL_free(fontPath);
 
     ECSI_LoadPlugins(&preset);
-    ECSI_CheckStart(ECSI_SessionApply(sourcePath), "building the layout");
+    ECSI_CheckStart(ECSI_SessionApply(sourcePath, &preset), "building the layout");
 
     // event-driven loop: it waits for input, the next timer or queued events, unless a frame is needed
     bool running = true;

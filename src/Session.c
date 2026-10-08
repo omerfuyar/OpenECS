@@ -13,50 +13,161 @@
 /// @brief Version of the preset and session format that this core writes.
 #define OPENECS_SESSION_FORMAT 1
 
-/// @brief What a workspace's tree says about its focus and maximized group, found while the tree is built.
-typedef struct ECSI_SessionWorkspace
+/// @brief Longest path to a part of a file that a problem report names.
+#define OPENECS_SESSION_PATH_SIZE 256
+
+/// @brief State while the workspaces of a file are built.
+typedef struct ECSI_SessionReader
 {
-    i64 focusId;
+    const char *file;
+    char path[OPENECS_SESSION_PATH_SIZE]; // the part being read, such as "workspaces[1].windows[1]"
+    i64 focusId;                          // of the workspace being read
     ECSPanel focus;
     ECSI_Node *maximized;
-} ECSI_SessionWorkspace;
+} ECSI_SessionReader;
 
-static void ECSI_SessionAddPlugin(const char *key, const char *value, void *userData)
+/// @brief Reports a problem at the part of the file being read.
+static OPENECS_PRINTF(2, 3) void ECSI_SessionReport(const ECSI_SessionReader *reader, const char *format, ...)
 {
-    (void)value;
-    ECSI_PresetInfo *info = userData;
-    char *plugin = SDL_strdup(key);
+    char *message = NULL;
+    va_list arguments;
+    va_start(arguments, format);
+    int length = SDL_vasprintf(&message, format, arguments);
+    va_end(arguments);
 
-    if (plugin != NULL)
+    if (length >= 0)
     {
-        arrput(info->plugins, plugin);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s', at %s: %s", reader->file, reader->path, message);
+        SDL_free(message);
     }
 }
 
-/// @brief Builds the layout node described by the current table: a split if it has "split", a group otherwise.
-static SHUResult ECSI_SessionReadNode(ECSI_SessionWorkspace *workspace, ECSI_Node **retNode)
+/// @brief Adds a field name or a list position to the path, and returns the old length to restore it.
+static usz ECSI_SessionEnter(ECSI_SessionReader *reader, const char *field, usz index)
 {
-    if (ECSI_LuaDataHas("split"))
+    usz length = SDL_strlen(reader->path);
+    usz room = sizeof(reader->path) - length;
+
+    if (field != NULL)
     {
-        bool vertical = SDL_strcasecmp(ECSI_LuaDataGetText("split", "horizontal"), "vertical") == 0;
+        SDL_snprintf(reader->path + length, room, length == 0 ? "%s" : ".%s", field);
+    }
+    else
+    {
+        SDL_snprintf(reader->path + length, room, "[%zu]", index + 1);
+    }
+
+    return length;
+}
+
+static void ECSI_SessionLeave(ECSI_SessionReader *reader, usz length)
+{
+    reader->path[length] = '\0';
+}
+
+/// @brief Adds a plugin that the depends table names.
+static void ECSI_SessionAddPlugin(const char *name, const ECSValue *field, void *userData)
+{
+    (void)field;
+    ECSI_PresetInfo *info = userData;
+    char *plugin = SDL_strdup(name);
+
+    if (plugin == NULL)
+    {
+        info->incomplete = true;
+        return;
+    }
+
+    arrput(info->plugins, plugin);
+}
+
+/// @brief Reads a number field that must not be negative.
+static f32 ECSI_SessionGetSize(ECSI_SessionReader *reader, const ECSValue *node, const char *name, f32 fallback)
+{
+    const ECSValue *field = ECSValue_GetField(node, name);
+    f64 size = ECSValue_GetNumber(field, -1.0);
+
+    if (field == NULL)
+    {
+        return fallback;
+    }
+
+    if (size < 0.0)
+    {
+        ECSI_SessionReport(reader, "'%s' must be a number of at least 0; it is ignored.", name);
+        return fallback;
+    }
+
+    return (f32)size;
+}
+
+/// @brief Creates the panel that a table describes and adds it to a group. A bad panel is reported and skipped.
+static SHUResult ECSI_SessionReadPanel(ECSI_SessionReader *reader, const ECSValue *saved, ECSI_Node *group)
+{
+    const char *type = ECSValue_GetString(ECSValue_GetField(saved, "type"), NULL);
+
+    if (type == NULL)
+    {
+        ECSI_SessionReport(reader, "a panel must be a table with a 'type' text; it is skipped.");
+        return SHUResult_Ok;
+    }
+
+    const ECSValue *state = ECSValue_GetField(saved, "state");
+    i64 version = ECSValue_GetInteger(ECSValue_GetField(saved, "state_version"), 0);
+    i64 id = ECSValue_GetInteger(ECSValue_GetField(saved, "id"), 0);
+    ECSPanel panel = NULL;
+
+    SHU_ReturnResult(ECSI_PanelCreate(&panel, type, state, version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0));
+    ECSI_PanelSetId(panel, id > 0 && id <= SDL_MAX_UINT32 ? (u32)id : 0);
+    ECSI_LayoutGroupAdd(group, panel);
+
+    if (id != 0 && id == reader->focusId)
+    {
+        reader->focus = panel;
+    }
+
+    return SHUResult_Ok;
+}
+
+/// @brief Builds the layout node that a table describes: a split if it has "split", a group otherwise.
+static SHUResult ECSI_SessionReadNode(ECSI_SessionReader *reader, const ECSValue *saved, ECSI_Node **retNode)
+{
+    const ECSValue *split = ECSValue_GetField(saved, "split");
+
+    if (split != NULL)
+    {
+        const char *direction = ECSValue_GetString(split, "");
+        bool vertical = SDL_strcmp(direction, "vertical") == 0;
+
+        if (!vertical && SDL_strcmp(direction, "horizontal") != 0)
+        {
+            ECSI_SessionReport(reader, "'split' must be \"horizontal\" or \"vertical\"; \"horizontal\" is used.");
+        }
+
         SHU_ReturnResult(ECSI_LayoutSplitCreate(retNode, vertical));
 
-        for (usz i = 1; i <= ECSI_LuaDataCount(); i++)
+        for (usz i = 0; i < ECSValue_GetCount(saved); i++)
         {
-            if (!ECSI_LuaDataEnterIndex(i))
-            {
-                continue;
-            }
-
+            const ECSValue *savedChild = ECSValue_GetItem(saved, i);
+            usz length = ECSI_SessionEnter(reader, NULL, i);
             ECSI_Node *child = NULL;
-            SHUResult result = ECSI_SessionReadNode(workspace, &child);
+            SHUResult result = SHUResult_Ok;
 
-            if (!result)
+            if (ECSValue_GetType(savedChild) != ECSValueType_Table)
             {
-                ECSI_LayoutSplitAdd(*retNode, child, (f32)ECSI_LuaDataGetNumber("size", 0.0), (f32)ECSI_LuaDataGetNumber("share", 1.0));
+                ECSI_SessionReport(reader, "a part of a split must be a table; it is skipped.");
+            }
+            else
+            {
+                result = ECSI_SessionReadNode(reader, savedChild, &child);
             }
 
-            ECSI_LuaDataLeave();
+            if (child != NULL)
+            {
+                ECSI_LayoutSplitAdd(*retNode, child, ECSI_SessionGetSize(reader, savedChild, "size", 0.0f), ECSI_SessionGetSize(reader, savedChild, "share", 1.0f));
+            }
+
+            ECSI_SessionLeave(reader, length);
             SHU_ReturnResult(result, ECSI_LayoutNodeDestroy(retNode););
         }
 
@@ -65,86 +176,62 @@ static SHUResult ECSI_SessionReadNode(ECSI_SessionWorkspace *workspace, ECSI_Nod
 
     SHU_ReturnResult(ECSI_LayoutGroupCreate(retNode));
 
-    if (ECSI_LuaDataHas("maximized"))
+    if (ECSValue_GetBool(ECSValue_GetField(saved, "maximized"), false))
     {
-        workspace->maximized = *retNode;
+        reader->maximized = *retNode;
     }
 
-    usz shown = (usz)SDL_max(1.0, ECSI_LuaDataGetNumber("shown", 1.0)) - 1;
+    const ECSValue *panels = ECSValue_GetField(saved, "panels");
+    usz panelsLength = ECSI_SessionEnter(reader, "panels", 0);
 
-    if (!ECSI_LuaDataEnterField("panels"))
+    for (usz i = 0; i < ECSValue_GetCount(panels); i++)
     {
-        return SHUResult_Ok;
+        usz length = ECSI_SessionEnter(reader, NULL, i);
+        SHUResult result = ECSI_SessionReadPanel(reader, ECSValue_GetItem(panels, i), *retNode);
+        ECSI_SessionLeave(reader, length);
+        SHU_ReturnResult(result, ECSI_LayoutNodeDestroy(retNode););
     }
 
-    for (usz i = 1; i <= ECSI_LuaDataCount(); i++)
-    {
-        if (!ECSI_LuaDataEnterIndex(i))
-        {
-            continue;
-        }
-
-        ECSPanel panel = NULL;
-        ECSValue *state = NULL;
-        SHUResult result = ECSI_ValueCreate(&state);
-        result = result ? result : ECSI_LuaDataGetValue("state", state);
-
-        if (!result)
-        {
-            bool hasState = ECSValue_GetType(state) != ECSValueType_Nil;
-            result = ECSI_PanelCreate(&panel, ECSI_LuaDataGetText("type", ""), hasState ? state : NULL, (u32)ECSI_LuaDataGetNumber("state_version", 0.0));
-        }
-
-        ECSI_ValueDestroy(&state);
-
-        if (!result)
-        {
-            i64 id = (i64)ECSI_LuaDataGetNumber("id", 0.0);
-            ECSI_PanelSetId(panel, id > 0 && id <= SDL_MAX_UINT32 ? (u32)id : 0);
-            ECSI_LayoutGroupAdd(*retNode, panel);
-
-            if (id != 0 && id == workspace->focusId)
-            {
-                workspace->focus = panel;
-            }
-        }
-
-        ECSI_LuaDataLeave();
-        SHU_ReturnResult(result, ECSI_LuaDataLeave(); ECSI_LayoutNodeDestroy(retNode););
-    }
-
-    ECSI_LuaDataLeave();
-    ECSI_LayoutGroupShow(*retNode, shown);
+    ECSI_SessionLeave(reader, panelsLength);
+    ECSI_LayoutGroupShow(*retNode, (usz)SDL_max(1, ECSValue_GetInteger(ECSValue_GetField(saved, "shown"), 1)) - 1);
     return SHUResult_Ok;
 }
 
-/// @brief Builds the workspace described by the current table.
-static SHUResult ECSI_SessionReadWorkspace(void)
+/// @brief Builds the workspace that a table describes.
+static SHUResult ECSI_SessionReadWorkspace(ECSI_SessionReader *reader, const ECSValue *saved)
 {
-    ECSI_Node *tree = NULL;
-    ECSI_SessionWorkspace workspace = {.focusId = (i64)ECSI_LuaDataGetNumber("focus", 0.0)};
+    const ECSValue *windows = ECSValue_GetField(saved, "windows");
+    const ECSValue *tree = ECSValue_GetItem(windows, 0);
+    ECSI_Node *root = NULL;
 
-    if (ECSI_LuaDataEnterField("windows"))
+    reader->focusId = ECSValue_GetInteger(ECSValue_GetField(saved, "focus"), 0);
+    reader->focus = NULL;
+    reader->maximized = NULL;
+
+    if (ECSValue_GetCount(windows) > 1)
     {
-        if (ECSI_LuaDataCount() > 1)
-        {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Pop-out windows are not implemented yet; only the first window is used.");
-        }
-
-        SHUResult result = SHUResult_Ok;
-
-        if (ECSI_LuaDataEnterIndex(1))
-        {
-            result = ECSI_SessionReadNode(&workspace, &tree);
-            ECSI_LuaDataLeave();
-        }
-
-        ECSI_LuaDataLeave();
-        SHU_ReturnResult(result);
+        ECSI_SessionReport(reader, "pop-out windows are not implemented yet; only the first window is used.");
     }
 
-    SHU_ReturnResult(ECSI_LayoutWorkspaceAdd(ECSI_LuaDataGetText("name", "workspace"), tree, workspace.focus, workspace.maximized),
-                     if (tree != NULL) { ECSI_LayoutNodeDestroy(&tree); });
+    if (tree != NULL)
+    {
+        usz length = ECSI_SessionEnter(reader, "windows", 0);
+        ECSI_SessionEnter(reader, NULL, 0);
+
+        if (ECSValue_GetType(tree) != ECSValueType_Table)
+        {
+            ECSI_SessionReport(reader, "a window must be a table; the workspace is left empty.");
+        }
+        else
+        {
+            SHU_ReturnResult(ECSI_SessionReadNode(reader, tree, &root));
+        }
+
+        ECSI_SessionLeave(reader, length);
+    }
+
+    SHU_ReturnResult(ECSI_LayoutWorkspaceAdd(ECSValue_GetString(ECSValue_GetField(saved, "name"), "workspace"), root, reader->focus, reader->maximized),
+                     if (root != NULL) { ECSI_LayoutNodeDestroy(&root); });
     return SHUResult_Ok;
 }
 
@@ -172,50 +259,43 @@ SHUResult ECSI_SessionReadInfo(const char *path, ECSI_PresetInfo *retInfo)
     SDL_zerop(retInfo);
     SHU_ReturnResult(ECSI_LuaDataOpen(path));
 
-    retInfo->name = SDL_strdup(ECSI_LuaDataGetText("name", "preset"));
-    const char *appName = "OpenECS";
-    const char *appId = NULL;
+    SHUResult result = ECSI_ValueCreate(&retInfo->file);
+    result = result ? result : ECSI_LuaDataGetValue(NULL, retInfo->file);
+    ECSI_LuaDataClose();
+    SHU_ReturnResult(result);
 
-    if (ECSI_LuaDataEnterField("app"))
-    {
-        appName = ECSI_LuaDataGetText("name", appName);
-        appId = ECSI_LuaDataGetText("id", NULL);
-        ECSI_LuaDataLeave();
-    }
+    const ECSValue *file = retInfo->file;
+    const ECSValue *app = ECSValue_GetField(file, "app");
+    const char *appId = ECSValue_GetString(ECSValue_GetField(app, "id"), NULL);
+    const char *pluginsDirectory = ECSValue_GetString(ECSValue_GetField(file, "plugins_dir"), NULL);
 
-    retInfo->appName = SDL_strdup(appName);
+    retInfo->name = SDL_strdup(ECSValue_GetString(ECSValue_GetField(file, "name"), "preset"));
+    retInfo->appName = SDL_strdup(ECSValue_GetString(ECSValue_GetField(app, "name"), "OpenECS"));
 
     if (appId != NULL)
     {
         retInfo->appId = SDL_strdup(appId);
     }
-    else if (retInfo->name != NULL)
+    else if (retInfo->name != NULL && SDL_asprintf(&retInfo->appId, "openecs.%s", retInfo->name) < 0)
     {
-        SDL_asprintf(&retInfo->appId, "openecs.%s", retInfo->name);
+        retInfo->appId = NULL;
     }
-
-    const char *pluginsDirectory = ECSI_LuaDataGetText("plugins_dir", NULL);
 
     if (pluginsDirectory != NULL)
     {
         // relative to the preset's folder, unless it is absolute
         const char *slash = SDL_strrchr(path, '/');
         int folderLength = slash == NULL || pluginsDirectory[0] == '/' ? 0 : (int)(slash - path + 1);
-        SDL_asprintf(&retInfo->pluginsDirectory, "%.*s%s/", folderLength, path, pluginsDirectory);
+
+        if (SDL_asprintf(&retInfo->pluginsDirectory, "%.*s%s/", folderLength, path, pluginsDirectory) < 0)
+        {
+            return SHUResult_ErrAllocation;
+        }
     }
 
-    if (ECSI_LuaDataEnterField("depends"))
-    {
-        ECSI_LuaDataForEachText(ECSI_SessionAddPlugin, retInfo);
-        ECSI_LuaDataLeave();
-    }
+    ECSI_ValueForEachField(ECSValue_GetField(file, "depends"), ECSI_SessionAddPlugin, retInfo);
 
-    SHUResult result = ECSI_ValueCreate(&retInfo->file);
-    result = result ? result : ECSI_LuaDataGetValue(NULL, retInfo->file);
-    ECSI_LuaDataClose();
-    SHU_ReturnResult(result);
-
-    if (retInfo->name == NULL || retInfo->appName == NULL || retInfo->appId == NULL || (pluginsDirectory != NULL && retInfo->pluginsDirectory == NULL))
+    if (retInfo->name == NULL || retInfo->appName == NULL || retInfo->appId == NULL || retInfo->incomplete)
     {
         return SHUResult_ErrAllocation;
     }
@@ -242,34 +322,39 @@ void ECSI_SessionFreeInfo(ECSI_PresetInfo *info)
     SDL_zerop(info);
 }
 
-SHUResult ECSI_SessionApply(const char *path)
+SHUResult ECSI_SessionApply(const char *path, const ECSI_PresetInfo *info)
 {
     SDL_assert(path != NULL);
+    SDL_assert(info != NULL);
 
-    SHU_ReturnResult(ECSI_LuaDataOpen(path));
+    ECSI_SessionReader reader = {.file = path, .path = "workspaces"};
+    const ECSValue *workspaces = ECSValue_GetField(info->file, "workspaces");
 
-    if (!ECSI_LuaDataEnterField("workspaces"))
+    if (ECSValue_GetCount(workspaces) == 0)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' has no workspaces.", path);
-        ECSI_LuaDataClose();
+        ECSI_SessionReport(&reader, "there must be a list of at least one workspace.");
         return SHUResult_ErrBadData;
     }
 
-    SHUResult result = SHUResult_Ok;
-
-    for (usz i = 1; i <= ECSI_LuaDataCount() && !result; i++)
+    for (usz i = 0; i < ECSValue_GetCount(workspaces); i++)
     {
-        if (ECSI_LuaDataEnterIndex(i))
+        const ECSValue *workspace = ECSValue_GetItem(workspaces, i);
+        usz length = ECSI_SessionEnter(&reader, NULL, i);
+
+        if (ECSValue_GetType(workspace) != ECSValueType_Table)
         {
-            result = ECSI_SessionReadWorkspace();
-            ECSI_LuaDataLeave();
+            ECSI_SessionReport(&reader, "a workspace must be a table; it is skipped.");
         }
+        else
+        {
+            SHU_ReturnResult(ECSI_SessionReadWorkspace(&reader, workspace));
+        }
+
+        ECSI_SessionLeave(&reader, length);
     }
 
-    ECSI_LuaDataLeave();
-    ECSI_LayoutWorkspaceSwitch((usz)SDL_max(1.0, ECSI_LuaDataGetNumber("current_workspace", 1.0)) - 1);
-    ECSI_LuaDataClose();
-    return result;
+    ECSI_LayoutWorkspaceSwitch((usz)SDL_max(1, ECSValue_GetInteger(ECSValue_GetField(info->file, "current_workspace"), 1)) - 1);
+    return SHUResult_Ok;
 }
 
 SHUResult ECSI_SessionSave(const char *path, const ECSI_PresetInfo *info)
