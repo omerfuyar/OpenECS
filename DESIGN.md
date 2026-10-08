@@ -180,6 +180,9 @@ The wait uses `SDL_WaitEventTimeout` with the time until the next timer, and doe
 - OS windows, input, layout, event delivery, timers, every call into Lua and every callback that a plugin registers run on the main thread. SDL expects window and event calls there, and a Lua state must not be used by two threads at once.
 - Background work posts its result to the main thread, which delivers it.
 - `ECS_RunInBackground(plugin, work, done, data)`: `work` runs on a worker thread from a small pool, then `done` runs on the main thread. Lua code never runs on worker threads; Lua plugins use services that do their work in the background.
+- The pool has one thread for each processor core but one, at most 4. It starts when background work first comes.
+- A function that reaches the main thread runs between passes of the main loop, and the loop makes a pass after it.
+- On exit, running work finishes and waiting work does not run, nor does its `done`.
 - The thread-safe functions are: running a function on the main thread (`ECS_RunOnMainThread`, built on `SDL_RunOnMainThread`), `ECS_RunInBackground`, and logging. Every other function is for the main thread only. Each function documents its thread rule.
 - Native plugins may create their own threads, under the same rule.
 
