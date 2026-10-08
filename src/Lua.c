@@ -242,6 +242,13 @@ static void ECSI_LuaPushOrderedField(const char *name, const ECSValue *field, vo
     lua_rawseti(state, -2, length + 2);
 }
 
+/// @brief Adds a stack trace to the message of an error raised in a protected call.
+static int ECSI_LuaTraceback(lua_State *state)
+{
+    luaL_traceback(state, state, luaL_tolstring(state, 1, NULL), 1);
+    return 1;
+}
+
 /// @brief Runs the writer on the value given as a light userdata, inside a protected call, so pushing the value cannot fail outside one.
 static int ECSI_LuaWriteProtected(lua_State *state)
 {
@@ -264,7 +271,8 @@ SHUResult ECSI_LuaInitialize(void)
         return SHUResult_ErrAllocation;
     }
 
-    luaL_openselectedlibs(LUA.state, LUA_GLIBK | LUA_STRLIBK | LUA_TABLIBK | LUA_MATHLIBK | LUA_UTF8LIBK, 0);
+    // every library is open for plugins; data files see only a few, through their own environment
+    luaL_openlibs(LUA.state);
 
     if (luaL_loadbufferx(LUA.state, ECSI_LUA_WRITER, sizeof(ECSI_LUA_WRITER) - 1, "=writer", "t") != LUA_OK || lua_pcall(LUA.state, 0, 1, 0) != LUA_OK)
     {
@@ -284,6 +292,83 @@ void ECSI_LuaTerminate(void)
     }
 
     SDL_zero(LUA);
+}
+
+lua_State *ECSI_LuaGetState(void)
+{
+    SDL_assert(LUA.state != NULL);
+
+    return LUA.state;
+}
+
+SHUResult ECSI_LuaGetValue(int index, ECSValue *value)
+{
+    SDL_assert(LUA.state != NULL);
+    SDL_assert(value != NULL);
+
+    return ECSI_LuaToValue(index, value, 0);
+}
+
+static void ECSI_LuaPushField(const char *name, const ECSValue *field, void *userData)
+{
+    (void)userData;
+    ECSI_LuaPushValue(field);
+    lua_setfield(LUA.state, -2, name);
+}
+
+void ECSI_LuaPushValue(const ECSValue *value)
+{
+    SDL_assert(LUA.state != NULL);
+
+    lua_State *state = LUA.state;
+    luaL_checkstack(state, 3, "a value is nested too deeply");
+
+    if (ECSValue_GetType(value) != ECSValueType_Table)
+    {
+        switch (ECSValue_GetType(value))
+        {
+        case ECSValueType_Bool:
+            lua_pushboolean(state, ECSValue_GetBool(value, false));
+            return;
+        case ECSValueType_Integer:
+            lua_pushinteger(state, (lua_Integer)ECSValue_GetInteger(value, 0));
+            return;
+        case ECSValueType_Number:
+            lua_pushnumber(state, (lua_Number)ECSValue_GetNumber(value, 0.0));
+            return;
+        case ECSValueType_String:
+            lua_pushstring(state, ECSValue_GetString(value, ""));
+            return;
+        default:
+            lua_pushnil(state);
+            return;
+        }
+    }
+
+    usz count = ECSValue_GetCount(value);
+    lua_createtable(state, (int)SDL_min(count, (usz)SDL_MAX_SINT32), 0);
+
+    for (usz i = 0; i < count; i++)
+    {
+        ECSI_LuaPushValue(ECSValue_GetItem(value, i));
+        lua_rawseti(state, -2, (lua_Integer)i + 1);
+    }
+
+    ECSI_ValueForEachField(value, ECSI_LuaPushField, NULL);
+}
+
+SHUResult ECSI_LuaCall(int argumentCount, int resultCount)
+{
+    SDL_assert(LUA.state != NULL);
+
+    lua_State *state = LUA.state;
+    int base = lua_gettop(state) - argumentCount;
+
+    lua_pushcfunction(state, ECSI_LuaTraceback);
+    lua_insert(state, base);
+    int status = lua_pcall(state, argumentCount, resultCount, base);
+    lua_remove(state, base);
+    return status == LUA_OK ? SHUResult_Ok : SHUResult_Err;
 }
 
 SHUResult ECSI_LuaReadData(const char *path, ECSValue *retValue)

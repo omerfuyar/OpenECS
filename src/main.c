@@ -1,3 +1,4 @@
+#include "Bindings.h"
 #include "Events.h"
 #include "Input.h"
 #include "Layout.h"
@@ -211,6 +212,7 @@ int main(int argc, char **argv)
     ECSI_CheckStart(ECSI_InputInitialize(), "declaring the input settings");
     SDL_free(fontPath);
 
+    ECSI_PluginsSetLuaStarter(ECSI_BindingsStartPlugin);
     ECSI_LoadPlugins(&preset);
     ECSI_CheckStart(ECSI_SessionApply(sourcePath, &preset), "building the layout");
 

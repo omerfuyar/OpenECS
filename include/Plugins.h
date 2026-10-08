@@ -6,6 +6,16 @@
 
 #pragma region Declarations
 
+/// @brief Runs a plugin's Lua code. The Bindings module provides it, because it comes after this module.
+/// @param plugin The plugin.
+/// @param path Path of the plugin's Lua file.
+/// @return SHUResult_Ok, or an error to mark the plugin failed.
+typedef SHUResult (*ECSI_PluginLuaStarter)(ECSPlugin plugin, const char *path);
+
+/// @brief Sets the function that runs plugins' Lua code. Call it before ECSI_PluginsLoad.
+/// @param starter The function.
+void ECSI_PluginsSetLuaStarter(ECSI_PluginLuaStarter starter);
+
 /// @brief Loads plugins, after the plugins they depend on, and runs their ECSPlugin_Init.
 /// @param directories Directories that hold plugin folders, searched in order. Each ends with a separator.
 /// @param directoryCount Number of directories.
@@ -20,6 +30,11 @@ void ECSI_PluginsUnload(void);
 /// @param plugin The plugin.
 /// @return The name its manifest gives.
 const char *ECSI_PluginGetName(ECSPlugin plugin);
+
+/// @brief Gets a plugin's version.
+/// @param plugin The plugin.
+/// @return The version its manifest gives.
+const char *ECSI_PluginGetVersion(ECSPlugin plugin);
 
 /// @brief Checks that a name that a plugin registers starts with the plugin's name and a dot, and reports it if not.
 /// @param plugin The plugin.

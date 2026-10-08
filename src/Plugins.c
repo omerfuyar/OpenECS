@@ -40,6 +40,7 @@ static struct
     const char *const *directories;
     usz directoryCount;
     const char **loading; // stb_ds array of the plugins being loaded, to find dependency cycles
+    ECSI_PluginLuaStarter StartLua;
 } PLUGINS = {0};
 
 static ECSI_Plugin *ECSI_PluginFind(const char *name)
@@ -142,10 +143,6 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
     (void)arrpop(PLUGINS.loading);
     SHU_ReturnResult(dependencies);
 
-    if (ECSValue_GetField(file, "lua") != NULL)
-    {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' has Lua code, which is not supported yet; it is ignored.", name);
-    }
 
     ECSI_Plugin plugin = {.name = SDL_strdup(name), .version = SDL_strdup(ECSValue_GetString(ECSValue_GetField(file, "version"), "0.0.0"))};
     ECSI_Plugin *record = SDL_malloc(sizeof(ECSI_Plugin));
@@ -205,6 +202,23 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
         record->failed = true;
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' failed to start (%s).", name, SHUResult_String(result));
         return result;
+    }
+
+    // the native code starts first, then the Lua code
+    const char *lua = ECSValue_GetString(ECSValue_GetField(file, "lua"), NULL);
+
+    if (lua != NULL)
+    {
+        char *path = NULL;
+        result = SDL_asprintf(&path, "%s%s", manifest->folder, lua) < 0 ? SHUResult_ErrAllocation : PLUGINS.StartLua(record, path);
+        SDL_free(path);
+
+        if (result)
+        {
+            record->failed = true;
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' failed to start its Lua code (%s).", name, SHUResult_String(result));
+            return result;
+        }
     }
 
     SDL_Log("Plugin '%s' %s loaded.", record->name, record->version);
@@ -341,6 +355,20 @@ void ECSI_PluginsUnload(void)
     shfree(PLUGINS.plugins);
     arrfree(PLUGINS.loading);
     SDL_zero(PLUGINS);
+}
+
+void ECSI_PluginsSetLuaStarter(ECSI_PluginLuaStarter starter)
+{
+    SDL_assert(starter != NULL);
+
+    PLUGINS.StartLua = starter;
+}
+
+const char *ECSI_PluginGetVersion(ECSPlugin plugin)
+{
+    SDL_assert(plugin != NULL);
+
+    return plugin->version;
 }
 
 const char *ECSI_PluginGetName(ECSPlugin plugin)
