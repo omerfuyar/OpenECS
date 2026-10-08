@@ -382,27 +382,29 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 7.5 The core prefix
 
 - The prefix is the setting `ecs.prefix`. It is one key combination, never a whole modifier.
-- The keys after the prefix are the setting `ecs.prefix_keys`. Presets and the user can add entries that run service functions.
+- The keys after the prefix are the setting `ecs.prefix_keys`: a table of key combinations and the names of the functions they run. Its entries are added to the core's defaults, and `false` removes a key. So presets and the user can add entries that run service functions.
+- While the core waits for the key after the prefix, it lists the keys with their functions' descriptions.
 - The prefix and the key after it are the only key sequence the core handles.
 - The default `ecs.prefix_keys`:
 
-  | Key          | Action                 |
-  | ------------ | ---------------------- |
-  | Arrows       | Move focus             |
-  | Shift+Arrows | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
-  | 1 to 9       | Switch workspace       |
-  | Tab          | Show the next tab      |
-  | M            | Maximize or restore    |
-  | P            | Pop out                |
-  | X            | Close the panel        |
-  | Escape       | Cancel                 |
+  | Key          | Function                                     | Action                                                                                                  |
+  | ------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+  | Arrows       | `ecs.focus_left` and so on                   | Move focus                                                                                              |
+  | Shift+Arrows | `ecs.move_left` and so on                    | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
+  | 1 to 9       | `ecs.workspace_1` to `ecs.workspace_9`       | Switch workspace                                                                                        |
+  | Tab          | `ecs.next_tab`                               | Show the next tab                                                                                       |
+  | M            | `ecs.maximize`                               | Maximize or restore                                                                                     |
+  | P            | `ecs.pop_out`                                | Pop out                                                                                                 |
+  | X            | `ecs.close`                                  | Close the panel                                                                                         |
+  | Escape       |                                              | Cancel; it is not a function, so it always works                                                        |
 
 ### 7.6 Binding keys
 
 - Keybindings are settings of type `key`.
 - Plugins have no function for workspace or global bindings.
-- `ECSKey_Bind(plugin, panelType, settingName, function)`: the setting holds the key; the plugin supplies the function.
-- A function bound by name takes no arguments, or one argument: the focused panel.
+- `ECSKey_Bind(plugin, panelType, settingName, functionName)`, and in Lua `ecs.input.bind(panel_type, setting_name, function_name)`: the plugin's key setting holds the key, and the key runs a registered function (10). The binding counts in the layer that sets the key setting (OVERVIEW 7.3).
+- Presets bind keys with `keys` tables for the whole tool and for each workspace (13.2); the user's files with `keys` tables for every tool and for one tool (12.3). The tables map key combinations to function names.
+- A function bound by name takes no arguments, or one argument: the focused panel. Its signature is `void()` or `void(handle<ecs.panel>)`.
 - The core registers its own bindable actions as functions under `ecs`, for example `ecs.focus_left` and `ecs.maximize`. So settings name them like any plugin function.
 
 ## 8. Events
