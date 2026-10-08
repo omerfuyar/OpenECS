@@ -5,7 +5,7 @@ return {
   version = "0.1.0",
   app = { id = "openecs.test.changedKeys", name = "Changed keys" },
   depends = { sketch_c = "0.1" },
-  settings = { ["ecs.prefixKeys"] = { K = "ecs.close", X = false } },
+  settings = { ["ecs.prefixKeys"] = { K = "ecs.layout.close", X = false } },
   workspaces = {
     { name = "Canvas",
       windows = {

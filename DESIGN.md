@@ -348,18 +348,18 @@ After every operation:
 - A grip appears when the pointer is within `ecs.gripZone` layout units of a panel's top edge. It shows the panel's title. While it is shown, pointer events over it go to the core.
 - A locked group's grip also shows "locked". It opens the panel's menu, but it cannot be dragged, and pulling it is not a click.
 - Locked groups accept no dropped panels. Their panels cannot be dragged, moved with keys or closed by the user.
-- `ecs.lock` locks or unlocks the focused group.
+- `ecs.layout.lock` locks or unlocks the focused group.
 
 ### 6.5 Operations
 
 - Besides the operations in OVERVIEW 6.3, there are cycling tabs, reopening the last closed panel, and moving a panel to another workspace.
-- The core remembers the last `ecs.reopenLimit` closed panels with their type and saved state. `ecs.reopen` opens the last one again next to a panel that stayed in its group, wherever that panel is now, or else in the focused group, and shows its workspace.
+- The core remembers the last `ecs.reopenLimit` closed panels with their type and saved state. `ecs.layout.reopen` opens the last one again next to a panel that stayed in its group, wherever that panel is now, or else in the focused group, and shows its workspace.
 - `ecs.moveToWorkspace1` to `ecs.moveToWorkspace10` move the focused panel into that workspace's focused group; the current workspace stays shown.
-- `ecs.splitRight` and `ecs.splitDown` open another panel of the focused panel's type beside it.
+- `ecs.layout.splitRight` and `ecs.layout.splitDown` open another panel of the focused panel's type beside it.
 - Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)` (also from another workspace), `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles.
 - Workspaces are numbered from 1, in C and in Lua: `ECSWorkspace_Switch(10)` switches to workspace 10.
 - Closing a panel from code still asks about unsaved work. Focusing a panel shows its workspace and its tab.
-- Locks (6.4) stop the user, not code.
+- Locks (6.4) stop the user, not code. A core function called without arguments is the user's action (7.8).
 - Every change of focus tells the panel that loses it and the panel that gets it (`ECSPanelEventType_Unfocused`, `ECSPanelEventType_Focused`).
 
 ### 6.6 Placement of new panels
@@ -444,18 +444,18 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
   | Function                              | Action                                                                                                   |
   | ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-  | `ecs.focusLeft` and so on             | Move focus                                                                                               |
-  | `ecs.moveLeft` and so on              | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
-  | `ecs.nextTab`                         | Show the next tab                                                                                        |
-  | `ecs.maximize`                        | Maximize or restore                                                                                      |
-  | `ecs.popOut`                          | Pop out                                                                                                  |
-  | `ecs.close`                           | Close the panel                                                                                          |
-  | `ecs.closeGroup`                      | Close the group's panels                                                                                 |
-  | `ecs.lock`                            | Lock or unlock the group                                                                                 |
-  | `ecs.reopen`                          | Reopen the last closed panel                                                                             |
-  | `ecs.restart`                         | Restart the failed panel                                                                                 |
-  | `ecs.saveSession`                     | Save the session to a file, which a save dialog asks for                                                 |
-  | `ecs.openSession`                     | Open a saved session (13.5), which an open dialog asks for                                               |
+  | `ecs.layout.focusLeft` and so on      | Move focus                                                                                               |
+  | `ecs.layout.moveLeft` and so on       | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
+  | `ecs.layout.nextTab`                  | Show the next tab                                                                                        |
+  | `ecs.layout.maximize`                 | Maximize or restore                                                                                      |
+  | `ecs.layout.popOut`                   | Pop out                                                                                                  |
+  | `ecs.layout.close`                    | Close the panel                                                                                          |
+  | `ecs.layout.closeGroup`               | Close the group's panels                                                                                 |
+  | `ecs.layout.lock`                     | Lock or unlock the group                                                                                 |
+  | `ecs.layout.reopen`                   | Reopen the last closed panel                                                                             |
+  | `ecs.panel.restart`                   | Restart the failed panel                                                                                 |
+  | `ecs.session.save`                    | Save the session to a file, which a save dialog asks for (13.4)                                          |
+  | `ecs.session.open`                    | Open a saved session, which an open dialog asks for (13.5)                                               |
   | `ecs.workspace1` to `ecs.workspace10` | Switch to workspace 1 to 10                                                                              |
 
 - Escape after the prefix cancels. It is not a function, so it always works.
@@ -478,7 +478,9 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Presets bind keys with `keys` tables for the whole tool and for each workspace (13.2); the user's files with `keys` tables for every tool and for one tool (12.3). The tables map key combinations to function names.
 - Once the session is built, a key of these tables or of `ecs.prefixKeys` that runs a function its owner does not have is reported, if the owner runs (12.1).
 - A function bound by name takes no arguments, or one argument: the focused panel. Its signature is `void()` or `void(handle<ecs.panel>)`.
-- The core registers its own bindable actions as functions under `ecs`, for example `ecs.focusLeft` and `ecs.maximize`. So settings name them like any plugin function.
+- The core registers its own bindable actions as functions under `ecs`, for example `ecs.layout.focusLeft` and `ecs.layout.maximize`. So settings name them like any plugin function.
+- Each of them is also a function of the `ecs` module with the same name, such as `ecs.layout.maximize()`. A key calls it with no arguments, which is the user's action: it acts on the focused panel, and locks stop it (6.4). Some also take arguments, such as `ecs.layout.close(panel)` and `ecs.session.save(path)`.
+- C runs them by name with `ECSService_GetFunction`.
 
 ## 8. Events
 
@@ -734,8 +736,8 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 
 - The documentation of each public function in `OpenECS.h` ends with a line that names its Lua counterparts in `include/ecs.lua`, such as `/// @lua ecs.panel.getTitle, panel:getTitle`, or says `none:` and why.
 - The functions of values (10.3) have no `@lua` line, because Lua passes its own values.
-- A function of `ecs.lua` that C does not have says `Lua only:` and why in its documentation.
-- The test `tests/parity.lua` checks both files: every public function has its line, every name it gives is in `ecs.lua`, and every function of `ecs.lua` is named or says it is Lua only.
+- A function of `ecs.lua` that C does not have says `Lua only:` and why in its documentation, or `Keys can run it.` when it is a core function that C runs by name (7.8).
+- The test `tests/parity.lua` checks both files: every public function has its line, every name it gives is in `ecs.lua`, and every function of `ecs.lua` is named or says why not. It also checks that every function the core's settings file binds to a key is in `ecs.lua` and says keys can run it.
 
 ### 11.6 Keeping Lua values
 
@@ -831,11 +833,11 @@ The core converts only layout data.
 - Named fields are read and written in the order of their names, so the same session always writes the same file.
 - A session is written from the file it came from, with the current workspaces. So fields that the core does not use are kept.
 - A file is written to a temporary file, then renamed over the old one, so it is never left half-written.
-- `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. `ecs.saveSession` asks for the file with a save dialog that starts in the folder of saved sessions (16). Quitting still saves the tool's last session.
+- `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. Without a path, they ask for the file with a save dialog that starts in the folder of saved sessions (16). Keys run `ecs.session.save` that way. Quitting still saves the tool's last session.
 
 ### 13.5 Opening a session
 
-- `ECSSession_Open(path)`, and in Lua `ecs.session.open(path)`, open a session in place of the current one. `ecs.openSession` asks for the file with an open dialog that starts in the folder of saved sessions (16).
+- `ECSSession_Open(path)`, and in Lua `ecs.session.open(path)`, open a session in place of the current one. Without a path, they ask for the file with an open dialog that starts in the folder of saved sessions (16). Keys run `ecs.session.open` that way.
 - A file without a list of workspaces is reported, and nothing changes.
 - The core asks about unsaved work (4.5). When the dialog cannot be shown, the work is kept and the session is not opened.
 - When the current pass of the main loop ends, OpenECS shuts down from step 2 of 2.4, so the tool's last session is saved. Then the program replaces itself with `openecs --session FILE`. So the session's identity, plugins and settings apply as at a start.
@@ -862,17 +864,17 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [FILE...]
 
 ### 14.2 Policies
 
-| Situation                                                                             | What happens                                                                                                                                       |
-| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Manifest unreadable or invalid                                                        | The plugin is skipped and reported, and so are its dependents.                                                                                     |
-| Missing dependency or version mismatch                                                | The plugin and its dependents are skipped and reported. The report names what needs the plugin (a plugin, the preset, a session or the user's settings) and, for a missing plugin, each path that was looked in. |
-| Dependency cycle                                                                      | The plugins in the cycle are skipped and reported.                                                                                                 |
-| Plugin API version mismatch                                                           | The plugin is refused before any of its code runs.                                                                                                 |
-| `ECSPlugin_Init` or the plugin's Lua file fails                                       | The plugin is marked failed and its registrations are removed. Plugins that depend on it are skipped and reported.                                 |
-| Invalid registration (bad signature, bad or duplicate name, the core prefix as a key) | That registration is rejected and the error is returned to the plugin, which continues.                                                            |
-| A panel callback raises an error                                                      | The panel becomes a faulted placeholder that shows the error. Its menu has a "Restart" entry (`ecs.restart`), which recreates the panel in place from its last saved state: the state the session last saved, or the one it was created with. |
-| A plugin callback (timer, event handler) raises an error                              | The error is reported. Repeats of the same error are counted, not reported again.                                                                  |
-| Problems while restoring a session                                                    | See 13.3.                                                                                                                                          |
+| Situation                                                                             | What happens                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Manifest unreadable or invalid                                                        | The plugin is skipped and reported, and so are its dependents.                                                                                                                                                                                      |
+| Missing dependency or version mismatch                                                | The plugin and its dependents are skipped and reported. The report names what needs the plugin (a plugin, the preset, a session or the user's settings) and, for a missing plugin, each path that was looked in.                                    |
+| Dependency cycle                                                                      | The plugins in the cycle are skipped and reported.                                                                                                                                                                                                  |
+| Plugin API version mismatch                                                           | The plugin is refused before any of its code runs.                                                                                                                                                                                                  |
+| `ECSPlugin_Init` or the plugin's Lua file fails                                       | The plugin is marked failed and its registrations are removed. Plugins that depend on it are skipped and reported.                                                                                                                                  |
+| Invalid registration (bad signature, bad or duplicate name, the core prefix as a key) | That registration is rejected and the error is returned to the plugin, which continues.                                                                                                                                                             |
+| A panel callback raises an error                                                      | The panel becomes a faulted placeholder that shows the error. Its menu has a "Restart" entry (`ecs.panel.restart`), which recreates the panel in place from its last saved state: the state the session last saved, or the one it was created with. |
+| A plugin callback (timer, event handler) raises an error                              | The error is reported. Repeats of the same error are counted, not reported again.                                                                                                                                                                   |
+| Problems while restoring a session                                                    | See 13.3.                                                                                                                                                                                                                                           |
 
 ### 14.3 Error convention
 
@@ -959,19 +961,19 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).
 - The `test` table:
 
-  | Function                                       | Does                                                                                                     |
-  | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-  | `key(combination)`                             | Presses and releases a key combination, such as `"Alt+W"` (7.3).                                         |
-  | `move(x, y)`                                   | Moves the pointer. Positions are in layout units of the OS window.                                       |
-  | `press(x, y, button)`, `release(x, y, button)` | Presses or releases a button: 1 left (the default), 2 middle, 3 right.                                   |
-  | `click(x, y, button)`                          | Presses and releases a button.                                                                           |
-  | `drag(x, y, toX, toY)`                         | Presses the left button, moves in steps and releases it.                                                 |
-  | `wheel(x, y, amount)`                          | Turns the wheel; a positive amount is away from the user.                                                |
-  | `call(name)`                                   | Runs a bound function (7.8), such as `"ecs.maximize"`, as a key would.                                   |
-  | `wait(seconds)`                                | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                        |
-  | `session()`                                    | The session that quitting would save now, as a Lua table (13.2).                                         |
-  | `rect(id)`                                     | The rectangle of the shown panel with that id: `x`, `y`, `width` and `height`.                           |
-  | `screenshot(path)`                             | Draws a frame and saves it as a PNG file.                                                                |
+  | Function                                       | Does                                                                                                    |
+  | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+  | `key(combination)`                             | Presses and releases a key combination, such as `"Alt+W"` (7.3).                                        |
+  | `move(x, y)`                                   | Moves the pointer. Positions are in layout units of the OS window.                                      |
+  | `press(x, y, button)`, `release(x, y, button)` | Presses or releases a button: 1 left (the default), 2 middle, 3 right.                                  |
+  | `click(x, y, button)`                          | Presses and releases a button.                                                                          |
+  | `drag(x, y, toX, toY)`                         | Presses the left button, moves in steps and releases it.                                                |
+  | `wheel(x, y, amount)`                          | Turns the wheel; a positive amount is away from the user.                                               |
+  | `call(name)`                                   | Runs a bound function (7.8), such as `"ecs.layout.maximize"`, as a key would.                           |
+  | `wait(seconds)`                                | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                       |
+  | `session()`                                    | The session that quitting would save now, as a Lua table (13.2).                                        |
+  | `rect(id)`                                     | The rectangle of the shown panel with that id: `x`, `y`, `width` and `height`.                          |
+  | `screenshot(path)`                             | Draws a frame and saves it as a PNG file.                                                               |
   | `match(actual, expected, message)`             | Checks that `actual` has the same number of list items as `expected`, and each item and field it names. |
 
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.

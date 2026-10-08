@@ -28,8 +28,8 @@ static const struct
     const char *functions[4];
     const char *description;
 } OPENECS_ARROW_FAMILIES[] = {
-    {{"ecs.focusLeft", "ecs.focusRight", "ecs.focusUp", "ecs.focusDown"}, "Focus the panel in that direction"},
-    {{"ecs.moveLeft", "ecs.moveRight", "ecs.moveUp", "ecs.moveDown"}, "Move the panel in that direction"},
+    {{"ecs.layout.focusLeft", "ecs.layout.focusRight", "ecs.layout.focusUp", "ecs.layout.focusDown"}, "Focus the panel in that direction"},
+    {{"ecs.layout.moveLeft", "ecs.layout.moveRight", "ecs.layout.moveUp", "ecs.layout.moveDown"}, "Move the panel in that direction"},
 };
 
 static struct
@@ -153,7 +153,7 @@ static ECSPanel ECSIInput_PointerPanel(void)
 /// @brief Finds the section of the list of prefix keys that a function is listed in.
 static usz ECSIInput_SectionOf(const char *function)
 {
-    const char *navigation[] = {"ecs.focus", "ecs.move", "ecs.nextTab", OPENECS_WORKSPACE_FUNCTION};
+    const char *navigation[] = {"ecs.layout.focus", "ecs.layout.move", "ecs.layout.nextTab", OPENECS_WORKSPACE_FUNCTION, "ecs.moveToWorkspace"};
 
     for (usz i = 0; i < SDL_arraysize(navigation); i++)
     {

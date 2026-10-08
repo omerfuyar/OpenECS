@@ -21,7 +21,7 @@ typedef struct ECSIWorkspace
     ECSPanel focus;
 } ECSIWorkspace;
 
-/// @brief A closed panel that ecs.reopen can open again.
+/// @brief A closed panel that ecs.layout.reopen can open again.
 typedef struct ECSIClosedPanel
 {
     ECSValue *saved; // its type, state and stateVersion, as ECSIPanel_Save writes them
@@ -32,14 +32,14 @@ static struct
 {
     ECSIWorkspace *workspaces; // stb_ds array
     usz current;
-    ECSIClosedPanel *closed; // stb_ds array of the panels ecs.reopen can open again, the last closed last
+    ECSIClosedPanel *closed; // stb_ds array of the panels ecs.layout.reopen can open again, the last closed last
     bool frameNeeded;
     ECSILayoutForgetFunction Forget; // the window's, or NULL
 
     // from the settings
     f32 tabRowHeight;
     f32 dividerSize; // gap between the children of a split; dragging it resizes them
-    i64 reopenLimit; // how many closed panels ecs.reopen remembers
+    i64 reopenLimit; // how many closed panels ecs.layout.reopen remembers
 } LAYOUT = {0};
 
 static ECSIWorkspace *ECSILayout_Current(void)
@@ -935,7 +935,7 @@ SHUResult ECSILayout_Initialize(void)
     const ECSSettingDesc settings[] = {
         {.name = "ecs.tabRowHeight", .type = ECSSettingType_Number, .description = "Height of a tab row, in layout units", .Changed = ECSILayout_ReadSettings},
         {.name = "ecs.dividerSize", .type = ECSSettingType_Number, .description = "Gap between the children of a split, which dragging resizes them, in layout units", .Changed = ECSILayout_ReadSettings},
-        {.name = "ecs.reopenLimit", .type = ECSSettingType_Integer, .description = "How many closed panels ecs.reopen remembers", .Changed = ECSILayout_ReadSettings},
+        {.name = "ecs.reopenLimit", .type = ECSSettingType_Integer, .description = "How many closed panels ecs.layout.reopen remembers", .Changed = ECSILayout_ReadSettings},
     };
 
     for (usz i = 0; i < SDL_arraysize(settings); i++)
@@ -1487,7 +1487,7 @@ void ECSILayout_ClosePanel(ECSPanel panel)
         index++;
     }
 
-    // ecs.reopen opens it again next to a panel that stays in its group
+    // ecs.layout.reopen opens it again next to a panel that stays in its group
     ECSIClosedPanel closed = {.neighbour = arrlenu(group->panels) > 1 ? ECSPanel_GetId(group->panels[index == 0 ? 1 : 0]) : 0};
 
     if (ECSValue_Create(&closed.saved) == SHUResult_Ok && ECSIPanel_Save(panel, closed.saved) == SHUResult_Ok)
@@ -1732,9 +1732,19 @@ SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone)
 
 bool ECSLayout_Close(ECSPanel panel)
 {
-    SDL_assert(panel != NULL);
+    // without a panel, it is the user's close, which a lock stops
+    if (panel == NULL)
+    {
+        panel = ECSILayout_GetFocus();
 
-    if (!ECSILayout_HasPanel(panel) || !ECSIPanels_ConfirmClose(&panel, 1, false))
+        if (panel != NULL && ECSILayout_IsLocked(panel))
+        {
+            SDL_Log("'%s' is locked; unlock it to close it.", panel->title);
+            return false;
+        }
+    }
+
+    if (panel == NULL || !ECSILayout_HasPanel(panel) || !ECSIPanels_ConfirmClose(&panel, 1, false))
     {
         return false;
     }

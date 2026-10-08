@@ -734,7 +734,7 @@ static int ECSIBindings_LayoutMove(lua_State *state)
 
 static int ECSIBindings_LayoutClose(lua_State *state)
 {
-    lua_pushboolean(state, ECSLayout_Close(ECSIBindings_CheckPanel(state, 1)));
+    lua_pushboolean(state, ECSLayout_Close(ECSIBindings_OptPanel(state, 1)));
     return 1;
 }
 
@@ -813,13 +813,13 @@ static const luaL_Reg OPENECS_BINDINGS_WORKSPACE[] = {
 
 static int ECSIBindings_SessionSave(lua_State *state)
 {
-    const char *path = luaL_checkstring(state, 1);
+    const char *path = luaL_optstring(state, 1, NULL);
     SHUResult result = ECSSession_Save(path);
 
     if (result)
     {
         lua_pushnil(state);
-        lua_pushfstring(state, "the session is not saved to '%s' (%s)", path, SHUResult_String(result));
+        lua_pushfstring(state, "the session is not saved to '%s' (%s)", path == NULL ? "a file" : path, SHUResult_String(result));
         return 2;
     }
 
@@ -829,13 +829,13 @@ static int ECSIBindings_SessionSave(lua_State *state)
 
 static int ECSIBindings_SessionOpen(lua_State *state)
 {
-    const char *path = luaL_checkstring(state, 1);
+    const char *path = luaL_optstring(state, 1, NULL);
     SHUResult result = ECSSession_Open(path);
 
     if (result)
     {
         lua_pushnil(state);
-        lua_pushfstring(state, "the session '%s' is not opened (%s)", path, result == SHUResult_Err ? "the unsaved work is kept" : SHUResult_String(result));
+        lua_pushfstring(state, "the session '%s' is not opened (%s)", path == NULL ? "" : path, result == SHUResult_Err ? "the unsaved work is kept" : SHUResult_String(result));
         return 2;
     }
 
@@ -1674,6 +1674,49 @@ static void ECSIBindings_AddTable(lua_State *state, ECSPlugin plugin, const char
     lua_setfield(state, -2, name);
 }
 
+/// @brief Runs one of the core's functions as a key runs it; its name is the upvalue.
+static int ECSIBindings_RunCore(lua_State *state)
+{
+    ECSIServices_CallBound(lua_tostring(state, lua_upvalueindex(1)), ECSLayout_GetFocus());
+    return 0;
+}
+
+/// @brief Adds one of the core's functions to the ecs table on top of the stack, at the path of its name: ecs.layout.maximize goes into the table layout.
+static void ECSIBindings_AddCore(const char *name, void *data)
+{
+    lua_State *state = data;
+    int top = lua_gettop(state);
+    const char *part = name + SDL_strlen("ecs.");
+    const char *dot = NULL;
+
+    // the tables on the way are made when they are missing
+    while ((dot = SDL_strchr(part, '.')) != NULL)
+    {
+        lua_pushlstring(state, part, (usz)(dot - part));
+
+        if (lua_rawget(state, -2) != LUA_TTABLE)
+        {
+            lua_pop(state, 1);
+            lua_newtable(state);
+            lua_pushlstring(state, part, (usz)(dot - part));
+            lua_pushvalue(state, -2);
+            lua_rawset(state, -4);
+        }
+
+        part = dot + 1;
+    }
+
+    // a function the bindings define, such as ecs.layout.close(panel), stays
+    if (lua_getfield(state, -1, part) == LUA_TNIL)
+    {
+        lua_pushstring(state, name);
+        lua_pushcclosure(state, ECSIBindings_RunCore, 1);
+        lua_setfield(state, -3, part);
+    }
+
+    lua_settop(state, top);
+}
+
 /// @brief Pushes a new ecs table for a plugin.
 static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
 {
@@ -1704,6 +1747,9 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     lua_pushcclosure(state, ECSIBindings_PluginOnShutdown, 1);
     lua_setfield(state, -2, "onShutdown");
     lua_setfield(state, -2, "plugin");
+
+    // every function that keys can run is a function of the module with the same name
+    ECSIServices_ForEachCore(ECSIBindings_AddCore, state);
 }
 
 /// @brief The require of a plugin's environment: gives the plugin's ecs table for "ecs", and Lua's require gives other modules.

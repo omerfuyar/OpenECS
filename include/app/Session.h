@@ -45,7 +45,7 @@ SHUWUR SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info)
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession);
 
-/// @brief Registers the core's functions ecs.saveSession and ecs.openSession, which save and open a session in a file the user chooses.
+/// @brief Registers the core's functions ecs.session.save and ecs.session.open for keys and menus. They ask for the file.
 /// @param folder The folder where their dialogs start, ending with a separator, or NULL to let the system choose. It is created when a dialog opens.
 /// @param canOpen false during a test, which starts from its preset alone and cannot restart; ECSSession_Open then refuses.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.

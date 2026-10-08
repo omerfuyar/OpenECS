@@ -154,20 +154,20 @@ static void ECSIMenus_BuildPanelMenu(ECSIMenuEntry **entries, ECSPanel panel)
     ECSIMenuEntry *move = NULL;
     ECSIMenuEntry *workspaces = NULL;
 
-    ECSIMenus_AddFunction(entries, "ecs.close", NULL, panel);
-    ECSIMenus_AddFunction(entries, "ecs.restart", NULL, panel);
-    ECSIMenus_AddFunction(entries, "ecs.maximize", NULL, panel);
-    ECSIMenus_AddFunction(entries, "ecs.lock", NULL, panel);
-    ECSIMenus_AddFunction(entries, "ecs.reopen", NULL, panel);
+    ECSIMenus_AddFunction(entries, "ecs.layout.close", NULL, panel);
+    ECSIMenus_AddFunction(entries, "ecs.panel.restart", NULL, panel);
+    ECSIMenus_AddFunction(entries, "ecs.layout.maximize", NULL, panel);
+    ECSIMenus_AddFunction(entries, "ecs.layout.lock", NULL, panel);
+    ECSIMenus_AddFunction(entries, "ecs.layout.reopen", NULL, panel);
 
-    ECSIMenus_AddFunction(&split, "ecs.splitRight", "Right", panel);
-    ECSIMenus_AddFunction(&split, "ecs.splitDown", "Down", panel);
+    ECSIMenus_AddFunction(&split, "ecs.layout.splitRight", "Right", panel);
+    ECSIMenus_AddFunction(&split, "ecs.layout.splitDown", "Down", panel);
     ECSIMenus_AddSubmenu(entries, "Split", split);
 
-    ECSIMenus_AddFunction(&move, "ecs.moveLeft", "Left", panel);
-    ECSIMenus_AddFunction(&move, "ecs.moveRight", "Right", panel);
-    ECSIMenus_AddFunction(&move, "ecs.moveUp", "Up", panel);
-    ECSIMenus_AddFunction(&move, "ecs.moveDown", "Down", panel);
+    ECSIMenus_AddFunction(&move, "ecs.layout.moveLeft", "Left", panel);
+    ECSIMenus_AddFunction(&move, "ecs.layout.moveRight", "Right", panel);
+    ECSIMenus_AddFunction(&move, "ecs.layout.moveUp", "Up", panel);
+    ECSIMenus_AddFunction(&move, "ecs.layout.moveDown", "Down", panel);
     ECSIMenus_AddSubmenu(entries, "Move", move);
 
     // one entry for each other workspace, by number and name
@@ -202,10 +202,10 @@ static void ECSIMenus_BuildGroupMenu(ECSIMenuEntry **entries, ECSPanel shownPane
     }
 
     ECSIMenus_AddSubmenu(entries, "Tabs", tabs);
-    ECSIMenus_AddFunction(entries, "ecs.maximize", NULL, shownPanel);
-    ECSIMenus_AddFunction(entries, "ecs.lock", NULL, shownPanel);
-    ECSIMenus_AddFunction(entries, "ecs.closeGroup", NULL, shownPanel);
-    ECSIMenus_AddFunction(entries, "ecs.reopen", NULL, shownPanel);
+    ECSIMenus_AddFunction(entries, "ecs.layout.maximize", NULL, shownPanel);
+    ECSIMenus_AddFunction(entries, "ecs.layout.lock", NULL, shownPanel);
+    ECSIMenus_AddFunction(entries, "ecs.layout.closeGroup", NULL, shownPanel);
+    ECSIMenus_AddFunction(entries, "ecs.layout.reopen", NULL, shownPanel);
 }
 
 /// @brief Highlights an entry, and closes the submenus of the other entries.
@@ -306,20 +306,7 @@ static void ECSIMenus_Maximize(void)
 
 static void ECSIMenus_Close(void)
 {
-    ECSPanel focus = ECSILayout_GetFocus();
-
-    if (focus != NULL && ECSILayout_IsLocked(focus))
-    {
-        SDL_Log("'%s' is locked; unlock it to close it.", focus->title);
-        return;
-    }
-
-    if (focus == NULL || !ECSIPanels_ConfirmClose(&focus, 1, false))
-    {
-        return;
-    }
-
-    ECSILayout_ClosePanel(focus);
+    ECSLayout_Close(NULL);
 }
 
 static void ECSIMenus_CloseGroup(void)
@@ -436,23 +423,23 @@ static const struct
     ECSFunction Function;
     const char *description;
 } OPENECS_CORE_FUNCTIONS[] = {
-    {"ecs.focusLeft", ECSIMenus_FocusLeft, "Focus the panel on the left"},
-    {"ecs.focusRight", ECSIMenus_FocusRight, "Focus the panel on the right"},
-    {"ecs.focusUp", ECSIMenus_FocusUp, "Focus the panel above"},
-    {"ecs.focusDown", ECSIMenus_FocusDown, "Focus the panel below"},
-    {"ecs.moveLeft", ECSIMenus_MoveLeft, "Move the panel to the left"},
-    {"ecs.moveRight", ECSIMenus_MoveRight, "Move the panel to the right"},
-    {"ecs.moveUp", ECSIMenus_MoveUp, "Move the panel up"},
-    {"ecs.moveDown", ECSIMenus_MoveDown, "Move the panel down"},
-    {"ecs.nextTab", ECSIMenus_NextTab, "Show the next tab"},
-    {"ecs.maximize", ECSIMenus_Maximize, "Maximize or restore the group"},
-    {"ecs.close", ECSIMenus_Close, "Close the panel"},
-    {"ecs.closeGroup", ECSIMenus_CloseGroup, "Close the group's panels"},
-    {"ecs.lock", ECSIMenus_Lock, "Lock or unlock the group"},
-    {"ecs.reopen", ECSIMenus_Reopen, "Reopen the last closed panel"},
-    {"ecs.restart", ECSIMenus_Restart, "Restart the failed panel"},
-    {"ecs.splitRight", ECSIMenus_SplitRight, "Open another one on the right"},
-    {"ecs.splitDown", ECSIMenus_SplitDown, "Open another one below"},
+    {"ecs.layout.focusLeft", ECSIMenus_FocusLeft, "Focus the panel on the left"},
+    {"ecs.layout.focusRight", ECSIMenus_FocusRight, "Focus the panel on the right"},
+    {"ecs.layout.focusUp", ECSIMenus_FocusUp, "Focus the panel above"},
+    {"ecs.layout.focusDown", ECSIMenus_FocusDown, "Focus the panel below"},
+    {"ecs.layout.moveLeft", ECSIMenus_MoveLeft, "Move the panel to the left"},
+    {"ecs.layout.moveRight", ECSIMenus_MoveRight, "Move the panel to the right"},
+    {"ecs.layout.moveUp", ECSIMenus_MoveUp, "Move the panel up"},
+    {"ecs.layout.moveDown", ECSIMenus_MoveDown, "Move the panel down"},
+    {"ecs.layout.nextTab", ECSIMenus_NextTab, "Show the next tab"},
+    {"ecs.layout.maximize", ECSIMenus_Maximize, "Maximize or restore the group"},
+    {"ecs.layout.close", ECSIMenus_Close, "Close the panel"},
+    {"ecs.layout.closeGroup", ECSIMenus_CloseGroup, "Close the group's panels"},
+    {"ecs.layout.lock", ECSIMenus_Lock, "Lock or unlock the group"},
+    {"ecs.layout.reopen", ECSIMenus_Reopen, "Reopen the last closed panel"},
+    {"ecs.panel.restart", ECSIMenus_Restart, "Restart the failed panel"},
+    {"ecs.layout.splitRight", ECSIMenus_SplitRight, "Open another one on the right"},
+    {"ecs.layout.splitDown", ECSIMenus_SplitDown, "Open another one below"},
     ECSIMenus_WorkspaceEntries(1),
     ECSIMenus_WorkspaceEntries(2),
     ECSIMenus_WorkspaceEntries(3),
@@ -487,23 +474,25 @@ void ECSIMenus_Terminate(void)
 
 bool ECSIMenus_Offers(const char *function, ECSPanel panel)
 {
-    if (SDL_strcmp(function, "ecs.restart") == 0)
+    if (SDL_strcmp(function, "ecs.panel.restart") == 0)
     {
         return panel != NULL && ECSIPanel_CanRestart(panel);
     }
 
-    if (SDL_strcmp(function, "ecs.reopen") == 0)
+    if (SDL_strcmp(function, "ecs.layout.reopen") == 0)
     {
         return ECSILayout_CanReopen();
     }
 
-    if (SDL_strncmp(function, "ecs.split", SDL_strlen("ecs.split")) == 0)
+    if (SDL_strncmp(function, "ecs.layout.split", SDL_strlen("ecs.layout.split")) == 0)
     {
         return panel != NULL && panel->type != NULL;
     }
 
     // the functions that move or close panels; the user cannot do that to a locked group
-    if (SDL_strcmp(function, "ecs.close") == 0 || SDL_strcmp(function, "ecs.closeGroup") == 0 || SDL_strncmp(function, "ecs.move", SDL_strlen("ecs.move")) == 0)
+    bool moves = SDL_strncmp(function, "ecs.layout.move", SDL_strlen("ecs.layout.move")) == 0 || SDL_strncmp(function, "ecs.moveToWorkspace", SDL_strlen("ecs.moveToWorkspace")) == 0;
+
+    if (SDL_strcmp(function, "ecs.layout.close") == 0 || SDL_strcmp(function, "ecs.layout.closeGroup") == 0 || moves)
     {
         return panel != NULL && !ECSILayout_IsLocked(panel);
     }
@@ -513,12 +502,12 @@ bool ECSIMenus_Offers(const char *function, ECSPanel panel)
 
 const char *ECSIMenus_LabelOf(const char *function, ECSPanel panel)
 {
-    if (SDL_strcmp(function, "ecs.maximize") == 0)
+    if (SDL_strcmp(function, "ecs.layout.maximize") == 0)
     {
         return ECSILayout_IsMaximized(panel) ? "Restore the group" : "Maximize the group";
     }
 
-    if (SDL_strcmp(function, "ecs.lock") == 0)
+    if (SDL_strcmp(function, "ecs.layout.lock") == 0)
     {
         return ECSILayout_IsLocked(panel) ? "Unlock the group" : "Lock the group";
     }
