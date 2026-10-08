@@ -1173,7 +1173,7 @@ void ECSI_LayoutClosePanel(ECSPanel panel)
     }
 
     arrdel(group->panels, index);
-    ECSI_PanelDestroy(&panel);
+    ECSI_PanelClose(&panel);
 
     if (arrlenu(group->panels) == 0)
     {

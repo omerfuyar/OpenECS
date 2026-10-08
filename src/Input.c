@@ -133,7 +133,7 @@ static void ECSI_InputSendPointer(ECSPanel panel, ECSEventType type, f32 x, f32 
     event.x = x - panel->x;
     event.y = y - panel->y;
 
-    ECSI_PanelSendEvent(panel, &event);
+    ECSI_PanelPostEvent(panel, &event);
 }
 
 static void ECSI_InputSendKey(ECSPanel panel, ECSEventType type, const SDL_KeyboardEvent *key)
@@ -144,7 +144,7 @@ static void ECSI_InputSendKey(ECSPanel panel, ECSEventType type, const SDL_Keybo
         .modifiers = ECSI_InputModifiers(key->mod),
     };
 
-    ECSI_PanelSendEvent(panel, &event);
+    ECSI_PanelPostEvent(panel, &event);
 }
 
 /// @brief Moves the keyboard focus to a panel and tells both panels.
@@ -161,13 +161,13 @@ static void ECSI_InputFocus(ECSPanel panel)
 
     if (old != NULL)
     {
-        ECSI_PanelSendEvent(old, &event);
+        ECSI_PanelPostEvent(old, &event);
     }
 
     ECSI_LayoutSetFocus(panel);
 
     event.type = ECSEventType_Focused;
-    ECSI_PanelSendEvent(panel, &event);
+    ECSI_PanelPostEvent(panel, &event);
 }
 
 static void ECSI_InputSetPrefix(bool active)

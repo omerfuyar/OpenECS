@@ -33,9 +33,10 @@ struct ECSI_Panel
     SDL_Surface *pixels;  // what the panel drew, kept between draws
     SDL_Texture *texture; // the pixels on the GPU, made by the renderer of the OS window that shows the panel
     u64 lastDrawTicks;
+    bool closed; // out of the layout, waiting for ECSI_PanelsDestroyClosed; it gets no more events
 };
 
-/// @brief Frees every registered panel type. Call it after every panel is destroyed.
+/// @brief Destroys the closed panels, then frees every registered panel type. Call it after every other panel is destroyed.
 void ECSI_PanelsTerminate(void);
 
 /// @brief Creates a panel. If its type is missing or fails to create the panel, the panel becomes a placeholder.
@@ -44,9 +45,16 @@ void ECSI_PanelsTerminate(void);
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName);
 
-/// @brief Destroys a panel and sets the handle to NULL.
+/// @brief Destroys a panel at once and sets the handle to NULL. Use ECSI_PanelClose for a panel that may still have queued events.
 /// @param panel Panel to destroy.
 void ECSI_PanelDestroy(ECSPanel *panel);
+
+/// @brief Closes a panel that left the layout, and sets the handle to NULL. Its timers stop and it gets no more events; ECSI_PanelsDestroyClosed destroys it.
+/// @param panel Panel to close.
+void ECSI_PanelClose(ECSPanel *panel);
+
+/// @brief Destroys the closed panels. Call it after the queued events are delivered, so no handler meets a destroyed panel.
+void ECSI_PanelsDestroyClosed(void);
 
 /// @brief Places a panel. The panel is drawn again if its size changes.
 /// @param panel Panel to place.
@@ -67,9 +75,9 @@ bool ECSI_PanelWantsFrame(ECSPanel panel);
 /// @param nowTicks Current time in nanoseconds.
 void ECSI_PanelRender(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks);
 
-/// @brief Sends an event to a panel's type.
+/// @brief Queues an event for a panel's type.
 /// @param panel Panel that receives the event.
 /// @param event The event.
-void ECSI_PanelSendEvent(ECSPanel panel, const ECSEvent *event);
+void ECSI_PanelPostEvent(ECSPanel panel, const ECSEvent *event);
 
 #pragma endregion Declarations

@@ -125,8 +125,13 @@ void ECSI_EventsStopTimersOf(const void *owner)
     ECSI_EventsFreeStoppedTimers();
 }
 
-i32 ECSI_EventsGetTimerWait(void)
+i32 ECSI_EventsGetWait(void)
 {
+    if (arrlenu(EVENTS.queue) > 0)
+    {
+        return 0;
+    }
+
     u64 now = SDL_GetTicksNS();
     u64 wait = UINT64_MAX;
 

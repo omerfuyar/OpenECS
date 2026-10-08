@@ -133,14 +133,14 @@ int main(int argc, char **argv)
     ECSI_LoadPlugins(&preset);
     ECSI_CheckStart(ECSI_SessionApply(presetPath), "building the layout");
 
-    // event-driven loop: it waits for input or the next timer, unless a frame is needed
+    // event-driven loop: it waits for input, the next timer or queued events, unless a frame is needed
     bool running = true;
 
     while (running)
     {
         SDL_Event event;
 
-        if (SDL_WaitEventTimeout(&event, ECSI_LayoutWantsFrame() ? 0 : ECSI_EventsGetTimerWait()))
+        if (SDL_WaitEventTimeout(&event, ECSI_LayoutWantsFrame() ? 0 : ECSI_EventsGetWait()))
         {
             do
             {
@@ -154,6 +154,8 @@ int main(int argc, char **argv)
         }
 
         ECSI_EventsRunTimers();
+        ECSI_EventsDeliver();
+        ECSI_PanelsDestroyClosed();
 
         if (ECSI_LayoutWantsFrame())
         {

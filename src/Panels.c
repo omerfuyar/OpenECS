@@ -15,6 +15,7 @@ static struct
         char *key; // the type's own copy of its name
         ECSI_PanelType *value;
     } *types; // stb_ds hash map; panels point to the types, so each type is allocated on its own
+    ECSPanel *closed; // stb_ds array
     u32 nextPanelId;
 } PANELS = {0};
 
@@ -47,10 +48,22 @@ static bool ECSI_PanelResizePixels(ECSPanel panel)
     return panel->pixels != NULL;
 }
 
+static void ECSI_PanelDeliverEvent(void *target, const ECSEvent *event)
+{
+    ECSPanel panel = target;
+
+    if (!panel->closed && panel->type != NULL && panel->type->desc.Event != NULL)
+    {
+        panel->type->desc.Event(panel->state, event);
+    }
+}
+
 #pragma endregion Source Only
 
 void ECSI_PanelsTerminate(void)
 {
+    ECSI_PanelsDestroyClosed();
+
     for (usz i = 0; i < shlenu(PANELS.types); i++)
     {
         ECSI_PanelType *type = PANELS.types[i].value;
@@ -132,6 +145,27 @@ void ECSI_PanelDestroy(ECSPanel *panel)
     SDL_free(target);
 
     *panel = NULL;
+}
+
+void ECSI_PanelClose(ECSPanel *panel)
+{
+    SDL_assert(panel != NULL && *panel != NULL);
+    SDL_assert(!(*panel)->closed);
+
+    ECSI_EventsStopTimersOf(*panel);
+    (*panel)->closed = true;
+    arrput(PANELS.closed, *panel);
+    *panel = NULL;
+}
+
+void ECSI_PanelsDestroyClosed(void)
+{
+    for (usz i = 0; i < arrlenu(PANELS.closed); i++)
+    {
+        ECSI_PanelDestroy(&PANELS.closed[i]);
+    }
+
+    arrfree(PANELS.closed);
 }
 
 void ECSI_PanelSetRect(ECSPanel panel, f32 x, f32 y, f32 width, f32 height)
@@ -218,15 +252,12 @@ void ECSI_PanelRender(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
     SDL_RenderTexture(renderer, panel->texture, NULL, &rect);
 }
 
-void ECSI_PanelSendEvent(ECSPanel panel, const ECSEvent *event)
+void ECSI_PanelPostEvent(ECSPanel panel, const ECSEvent *event)
 {
     SDL_assert(panel != NULL);
     SDL_assert(event != NULL);
 
-    if (panel->type != NULL && panel->type->desc.Event != NULL)
-    {
-        panel->type->desc.Event(panel->state, event);
-    }
+    ECSI_EventsPost(ECSI_PanelDeliverEvent, panel, event);
 }
 
 SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc)
