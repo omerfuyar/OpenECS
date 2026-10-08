@@ -380,6 +380,30 @@ function ecs.session.save(path) end
 ---@return string? message Why the session is not opened: the file is not a session, the user keeps the unsaved work, or a test runs.
 function ecs.session.open(path) end
 
+---Opens a preset's tool in place of the current one, as ecs.session.open opens a session. The tool starts from its last session if it has one.
+---@param nameOrPath string A preset's name, looked up in the user's presets, then in the first-party presets; or a path, which has a '/' or ends with .lua.
+---@return true|nil ok
+---@return string? message Why the preset is not opened: the file is not a preset, the user keeps the unsaved work, or a test runs.
+function ecs.session.openPreset(nameOrPath) end
+
+---A preset or a saved session in a list.
+---@class ecs.SessionEntry
+---@field name string The file's name without .lua. For a preset, the name that ecs.session.openPreset takes.
+---@field path string The file's path.
+---@field appId string The tool's app id.
+---@field appName string The tool's name.
+---@field lastUsed? integer Presets only: when the tool's last session was written, in seconds since 1970. Missing if it has none.
+---@field saved? integer Sessions only: when the file was written, in seconds since 1970.
+
+---Lists the presets that a name finds: the user's presets, then the first-party presets. A name in both is listed once, from the user's presets.
+---A file that cannot be read is reported and left out, and so is a preset with listed = false.
+---@return ecs.SessionEntry[] presets Sorted by name.
+function ecs.session.presets() end
+
+---Lists the .lua files in the folder of saved sessions. A file that cannot be read is reported and left out.
+---@return ecs.SessionEntry[] sessions Sorted by name.
+function ecs.session.sessions() end
+
 -- Input
 
 ---@class ecs.input

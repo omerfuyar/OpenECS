@@ -35,6 +35,7 @@ static struct
     f32 pointerY;
     SDL_MouseButtonFlags buttons; // the buttons held
     char **files;                 // stb_ds array of the paths that the test's files field names
+    char *sessions;               // the folder that the test's sessions field names, ending with a separator, or NULL
 } TEST = {0};
 
 /// @brief test.match: compares by contents and names the path of the first difference.
@@ -469,6 +470,19 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     // the loop leaves the first value that is not a file on the stack, above the table
     lua_pop(state, lua_istable(state, -2) ? 2 : 1);
 
+    // the folder that stands for the saved sessions is relative to the test file too
+    if (lua_getfield(state, -2, "sessions") == LUA_TSTRING)
+    {
+        const char *sessions = lua_tostring(state, -1);
+
+        if (SDL_asprintf(&TEST.sessions, "%.*s%s/", slash != NULL && sessions[0] != '/' ? (int)(slash - path + 1) : 0, path, sessions) < 0)
+        {
+            TEST.sessions = NULL;
+        }
+    }
+
+    lua_pop(state, 1);
+
     // the run function and the test table wait on the coroutine's stack until its first resume
     TEST.thread = lua_newthread(state);
     TEST.threadReference = luaL_ref(state, LUA_REGISTRYINDEX);
@@ -500,6 +514,11 @@ char **ECSITest_GetFiles(usz *retCount)
     return TEST.files;
 }
 
+const char *ECSITest_GetSessions(void)
+{
+    return TEST.sessions;
+}
+
 void ECSITest_Terminate(void)
 {
     ECSITest_Finish();
@@ -510,6 +529,7 @@ void ECSITest_Terminate(void)
     }
 
     arrfree(TEST.files);
+    SDL_free(TEST.sessions);
     SDL_zero(TEST);
 }
 
@@ -592,6 +612,11 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 char **ECSITest_GetFiles(usz *retCount)
 {
     *retCount = 0;
+    return NULL;
+}
+
+const char *ECSITest_GetSessions(void)
+{
     return NULL;
 }
 
