@@ -216,6 +216,14 @@ function ecs.panel.getTitle(panel) end
 function ecs.panel.setTitle(panel, text) end
 
 ---@param panel ecs.Panel
+---@return integer id The panel's id, which stays the same across sessions.
+function ecs.panel.getId(panel) end
+
+---@param panel ecs.Panel
+---@return string type The name of the panel's type.
+function ecs.panel.getType(panel) end
+
+---@param panel ecs.Panel
 ---@param unsaved boolean
 function ecs.panel.setUnsaved(panel, unsaved) end
 

@@ -740,13 +740,13 @@ OPENECS_EXPORT void ECSPanel_SetTitle(ECSPanel panel, const char *title);
 /// @brief Gets a panel's id, which is unique and stable within a session. Main thread only.
 /// @param panel The panel.
 /// @return The id.
-/// @lua panel:getId
+/// @lua ecs.panel.getId, panel:getId
 OPENECS_EXPORT u32 ECSPanel_GetId(ECSPanel panel);
 
 /// @brief Gets the name of a panel's type, such as "canvas.view". Main thread only.
 /// @param panel The panel.
 /// @return The name. Valid while the panel exists.
-/// @lua panel:getType
+/// @lua ecs.panel.getType, panel:getType
 OPENECS_EXPORT const char *ECSPanel_GetType(ECSPanel panel);
 
 #pragma endregion Core Functions

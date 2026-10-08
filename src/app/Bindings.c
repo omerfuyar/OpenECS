@@ -1511,6 +1511,8 @@ static const luaL_Reg OPENECS_BINDINGS_PANEL[] = {
     {"redraw", ECSIBindings_PanelRedraw},
     {"getTitle", ECSIBindings_PanelGetTitle},
     {"setTitle", ECSIBindings_PanelSetTitle},
+    {"getId", ECSIBindings_PanelGetId},
+    {"getType", ECSIBindings_PanelGetType},
     {"setUnsaved", ECSIBindings_PanelSetUnsaved},
     {"startTimer", ECSIBindings_PanelStartTimer},
     {NULL, NULL},
