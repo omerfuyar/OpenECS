@@ -127,7 +127,8 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Events   | Core and plugin events, the event queue, timers, worker threads.                                                    |
 |           | Services | Function registry, signatures, calls between C and Lua. The only module that calls libffi.                          |
 | interface | Panels   | Panel types, panels, and the pixels each panel draws.                                                               |
-|           | Layout   | OS windows and their renderers, layout trees, workspaces, hit testing, docking, the core's own interface. The only module that calls Clay. |
+|           | Layout   | Workspaces and their layout trees: operations, tidying, sizes, focus, closed panels and saving.                     |
+|           | Window   | OS windows and their renderers, frame pacing, and the core's own interface: tab rows, grips, menus, dragging and hit testing. The only module that calls Clay. |
 |           | Input    | SDL's input events, focus, pointer routing, key dispatch, text input, the clipboard, dialogs.                       |
 | app       | Session  | Reading presets and sessions, applying them, writing them.                                                          |
 |           | Bindings | The `ecs` table: the plugin interface for Lua plugins (11.3).                                                       |

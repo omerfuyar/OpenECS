@@ -2,6 +2,7 @@
 
 #include "interface/Layout.h"
 #include "interface/Panels.h"
+#include "interface/Window.h"
 #include "runtime/Services.h"
 #include "runtime/Settings.h"
 
@@ -525,7 +526,7 @@ static void ECSI_InputCloseMenus(usz level)
     if (level < arrlenu(INPUT.menuLevels))
     {
         arrsetlen(INPUT.menuLevels, level);
-        ECSI_LayoutShowMenu(level, (SDL_FRect){0}, NULL, 0);
+        ECSI_WindowShowMenu(level, (SDL_FRect){0}, NULL, 0);
     }
 
     if (level == 0)
@@ -580,7 +581,7 @@ static void ECSI_InputOpenMenuLevel(ECSI_MenuEntry *entries, SDL_FRect anchor)
     }
 
     arrput(INPUT.menuLevels, level);
-    ECSI_LayoutShowMenu(arrlenu(INPUT.menuLevels) - 1, anchor, level.lines, arrlenu(entries));
+    ECSI_WindowShowMenu(arrlenu(INPUT.menuLevels) - 1, anchor, level.lines, arrlenu(entries));
 }
 
 /// @brief Adds the entries of a panel's type, with the keys its plugin bound to the same functions for the type.
@@ -695,13 +696,13 @@ static void ECSI_InputSelectMenuItem(usz level, usz index, bool open)
 {
     ECSI_InputCloseMenus(level + 1);
     INPUT.menuLevels[level].selected = index;
-    ECSI_LayoutSelectMenuItem(level, index);
+    ECSI_WindowSelectMenuItem(level, index);
 
     const ECSI_MenuEntry *entry = &INPUT.menuLevels[level].entries[index];
 
     if (open && entry->submenu != NULL)
     {
-        ECSI_InputOpenMenuLevel(entry->submenu, ECSI_LayoutMenuItemRect(level, index));
+        ECSI_InputOpenMenuLevel(entry->submenu, ECSI_WindowMenuItemRect(level, index));
     }
 }
 
@@ -752,7 +753,7 @@ static bool ECSI_InputMenuHandle(const SDL_Event *event)
     {
     case SDL_EVENT_MOUSE_MOTION:
         // pointing at an entry highlights it and opens its submenu
-        if (ECSI_LayoutMenuItemAt(event->motion.x, event->motion.y, &level, &index))
+        if (ECSI_WindowMenuItemAt(event->motion.x, event->motion.y, &level, &index))
         {
             bool hasSubmenu = INPUT.menuLevels[level].entries[index].submenu != NULL;
 
@@ -766,14 +767,14 @@ static bool ECSI_InputMenuHandle(const SDL_Event *event)
 
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
         // a press outside the menus only closes them
-        if (ECSI_LayoutMenuItemAt(event->button.x, event->button.y, &level, &index))
+        if (ECSI_WindowMenuItemAt(event->button.x, event->button.y, &level, &index))
         {
             if (event->button.button == SDL_BUTTON_LEFT)
             {
                 ECSI_InputRunMenuItem(level, index);
             }
         }
-        else if (!ECSI_LayoutMenuContains(event->button.x, event->button.y))
+        else if (!ECSI_WindowMenuContains(event->button.x, event->button.y))
         {
             ECSI_InputCloseMenus(0);
         }
@@ -1026,7 +1027,7 @@ static void ECSI_InputSetPrefix(bool active)
         arrput(INPUT.prefixLines, "Cancel");
     }
 
-    ECSI_LayoutShowPrefixKeys(INPUT.prefixLines, arrlenu(INPUT.prefixLines) / 2);
+    ECSI_WindowShowPrefixKeys(INPUT.prefixLines, arrlenu(INPUT.prefixLines) / 2);
 }
 
 /// @brief Checks the modifiers of a key press against a binding's. AltGr is never part of a binding.
@@ -1575,8 +1576,8 @@ bool ECSI_InputHandle(const SDL_Event *event)
         }
 
         // on a tab or grip, the middle button closes the panel and the right button opens its menu; on the rest of a tab row, the right button opens the group's menu
-        ECSPanel tab = button->button == SDL_BUTTON_LEFT ? NULL : ECSI_LayoutTabAt(button->x, button->y);
-        ECSPanel row = tab == NULL && button->button == SDL_BUTTON_RIGHT ? ECSI_LayoutTabRowAt(button->x, button->y) : NULL;
+        ECSPanel tab = button->button == SDL_BUTTON_LEFT ? NULL : ECSI_WindowTabAt(button->x, button->y);
+        ECSPanel row = tab == NULL && button->button == SDL_BUTTON_RIGHT ? ECSI_WindowTabRowAt(button->x, button->y) : NULL;
 
         if (row != NULL)
         {
@@ -1598,7 +1599,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
             break;
         }
 
-        if (button->button == SDL_BUTTON_LEFT && ECSI_LayoutPointerDown(button->x, button->y))
+        if (button->button == SDL_BUTTON_LEFT && ECSI_WindowPointerDown(button->x, button->y))
         {
             break;
         }
@@ -1620,7 +1621,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
     {
         const SDL_MouseMotionEvent *motion = &event->motion;
 
-        if (ECSI_LayoutPointerMove(motion->x, motion->y))
+        if (ECSI_WindowPointerMove(motion->x, motion->y))
         {
             break;
         }
@@ -1648,7 +1649,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
         const SDL_MouseButtonEvent *button = &event->button;
 
         // a click on a grip opens the panel's menu
-        ECSPanel clicked = button->button == SDL_BUTTON_LEFT ? ECSI_LayoutPointerUp() : NULL;
+        ECSPanel clicked = button->button == SDL_BUTTON_LEFT ? ECSI_WindowPointerUp() : NULL;
 
         if (clicked != NULL)
         {
@@ -1671,7 +1672,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
         // over a tab row, the wheel scrolls the tabs; down and right go toward the last tab
         f32 direction = wheel->direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
 
-        if (ECSI_LayoutScrollTabs(wheel->mouse_x, wheel->mouse_y, (wheel->x - wheel->y) * direction))
+        if (ECSI_WindowScrollTabs(wheel->mouse_x, wheel->mouse_y, (wheel->x - wheel->y) * direction))
         {
             break;
         }
@@ -1702,7 +1703,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
             break;
         }
 
-        if (key->key == SDLK_ESCAPE && ECSI_LayoutCancelDrag())
+        if (key->key == SDLK_ESCAPE && ECSI_WindowCancelDrag())
         {
             break;
         }
@@ -1899,7 +1900,7 @@ SHUResult ECSDialog_Show(ECSPlugin plugin, const ECSDialogDesc *desc)
         return SHUResult_ErrAllocation;
     }
 
-    SDL_Window *window = ECSI_LayoutGetWindow();
+    SDL_Window *window = ECSI_WindowGetMain();
     int filterCount = (int)arrlenu(dialog->filters);
 
     switch (desc->type)
@@ -1939,7 +1940,7 @@ SHUResult ECSDialog_ShowMessage(const char *title, const char *message, const ch
 
     const SDL_MessageBoxData box = {
         .flags = SDL_MESSAGEBOX_INFORMATION,
-        .window = ECSI_LayoutGetWindow(),
+        .window = ECSI_WindowGetMain(),
         .title = title,
         .message = message,
         .numbuttons = (int)buttonCount,
