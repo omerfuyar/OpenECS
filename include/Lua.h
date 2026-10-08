@@ -59,8 +59,8 @@ const char *ECSI_LuaDataGetText(const char *key, const char *fallback);
 /// @return The number.
 f64 ECSI_LuaDataGetNumber(const char *key, f64 fallback);
 
-/// @brief Copies a field of the current table into a value. Integer keys from 1 up to the first missing one become list items, and text keys named fields. Other keys, and functions and other values that are not data, are skipped and reported.
-/// @param key Name of the field.
+/// @brief Copies a field of the current table, or the current table itself, into a value. Integer keys from 1 up to the first missing one become list items, and text keys named fields. Other keys, and functions and other values that are not data, are skipped and reported.
+/// @param key Name of the field, or NULL for the current table.
 /// @param value The value to set; nil if the field is missing.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if tables are nested too deeply, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_LuaDataGetValue(const char *key, ECSValue *value);

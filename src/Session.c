@@ -183,7 +183,10 @@ SHUResult ECSI_SessionReadInfo(const char *path, ECSI_PresetInfo *retInfo)
         ECSI_LuaDataLeave();
     }
 
+    SHUResult result = ECSI_ValueCreate(&retInfo->settings);
+    result = result ? result : ECSI_LuaDataGetValue("settings", retInfo->settings);
     ECSI_LuaDataClose();
+    SHU_ReturnResult(result);
 
     if (retInfo->name == NULL || retInfo->appName == NULL || retInfo->appId == NULL || (pluginsDirectory != NULL && retInfo->pluginsDirectory == NULL))
     {
@@ -208,6 +211,7 @@ void ECSI_SessionFreeInfo(ECSI_PresetInfo *info)
     }
 
     arrfree(info->plugins);
+    ECSI_ValueDestroy(&info->settings);
     SDL_zerop(info);
 }
 

@@ -8,10 +8,9 @@
 
 #pragma region Declarations
 
-/// @brief Prepares input handling.
-/// @param prefix The core prefix, written as text, such as "Alt+W".
-/// @return SHUResult_Ok, or SHUResult_ErrBadData if a key text cannot be read.
-SHUWUR SHUResult ECSI_InputInitialize(const char *prefix);
+/// @brief Declares the input settings, ecs.prefix and ecs.focus, and prepares input handling.
+/// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrBadData if a key text of the core cannot be read.
+SHUWUR SHUResult ECSI_InputInitialize(void);
 
 /// @brief Handles one SDL event.
 /// @param event The event.

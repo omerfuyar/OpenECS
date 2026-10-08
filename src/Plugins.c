@@ -270,7 +270,7 @@ static SHUResult ECSI_PluginLoad(const char *name)
 SHUResult ECSI_PluginsLoad(const char *const *directories, usz directoryCount, const char *const *names, usz nameCount)
 {
     SDL_assert(directories != NULL);
-    SDL_assert(names != NULL);
+    SDL_assert(names != NULL || nameCount == 0);
 
     PLUGINS.directories = directories;
     PLUGINS.directoryCount = directoryCount;

@@ -3,6 +3,7 @@
 // Session: reading presets and sessions, and building the workspaces they describe.
 
 #include "Plugins.h"
+#include "Values.h"
 
 #pragma region Declarations
 
@@ -13,7 +14,8 @@ typedef struct ECSI_PresetInfo
     char *appId;
     char *appName;
     char *pluginsDirectory; // NULL if the preset names none; ends with a separator
-    char **plugins; // stb_ds array
+    char **plugins;     // stb_ds array
+    ECSValue *settings; // the preset's settings table; nil if it has none
 } ECSI_PresetInfo;
 
 /// @brief Finds a preset's file.

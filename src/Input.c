@@ -2,6 +2,7 @@
 
 #include "Layout.h"
 #include "Panels.h"
+#include "Settings.h"
 
 #include "SDL3/SDL.h"
 
@@ -33,8 +34,15 @@ static const char *const ECSI_PREFIX_KEYS[ECSI_CoreAction_Count] = {
     [ECSI_CoreAction_Cancel] = "Escape",
 };
 
+/// @brief Default of the setting ecs.prefix.
+#define OPENECS_DEFAULT_PREFIX "Alt+W"
+
+/// @brief Choices of the setting ecs.focus; the first is the default.
+static const char *const ECSI_FOCUS_CHOICES[] = {"click", "hover", NULL};
+
 static struct
 {
+    const ECSValue *prefixSetting; // the value of ecs.prefix that prefixKey was read from
     u32 prefixKey;
     u32 prefixModifiers;
     bool prefixActive;
@@ -123,6 +131,26 @@ static SHUResult ECSI_InputParseKey(const char *text, u32 *retKey, u32 *retModif
     }
 
     return SHUResult_Ok;
+}
+
+/// @brief Reads the core prefix from the setting ecs.prefix if the setting changed. A key text that cannot be read is reported, and the default is used.
+static void ECSI_InputReadPrefix(void)
+{
+    const ECSValue *setting = ECSSetting_Get("ecs.prefix");
+
+    if (setting == INPUT.prefixSetting)
+    {
+        return;
+    }
+
+    INPUT.prefixSetting = setting;
+
+    if (ECSI_InputParseKey(ECSValue_GetString(setting, OPENECS_DEFAULT_PREFIX), &INPUT.prefixKey, &INPUT.prefixModifiers))
+    {
+        SHUResult result = ECSI_InputParseKey(OPENECS_DEFAULT_PREFIX, &INPUT.prefixKey, &INPUT.prefixModifiers);
+        SDL_assert(result == SHUResult_Ok);
+        (void)result;
+    }
 }
 
 /// @brief Sends a pointer event to a panel, with the position made relative to the panel.
@@ -240,11 +268,25 @@ static bool ECSI_InputModifiersMatch(u32 modifiers, u32 expected)
 
 #pragma endregion Source Only
 
-SHUResult ECSI_InputInitialize(const char *prefix)
+SHUResult ECSI_InputInitialize(void)
 {
-    SDL_assert(prefix != NULL);
+    ECSSettingDesc prefix = {
+        .name = "ecs.prefix",
+        .type = ECSSettingType_Key,
+        .description = "The key combination before a core action",
+        .defaultString = OPENECS_DEFAULT_PREFIX,
+    };
 
-    SHU_ReturnResult(ECSI_InputParseKey(prefix, &INPUT.prefixKey, &INPUT.prefixModifiers));
+    ECSSettingDesc focus = {
+        .name = "ecs.focus",
+        .type = ECSSettingType_Choice,
+        .description = "How focus follows the pointer: click or hover",
+        .choices = ECSI_FOCUS_CHOICES,
+    };
+
+    SHU_ReturnResult(ECSI_SettingsDeclareCore(&prefix));
+    SHU_ReturnResult(ECSI_SettingsDeclareCore(&focus));
+    ECSI_InputReadPrefix();
 
     for (u32 i = 0; i < ECSI_CoreAction_Count; i++)
     {
@@ -311,10 +353,18 @@ bool ECSI_InputHandle(const SDL_Event *event)
 
         ECSPanel panel = INPUT.pointerPanel != NULL ? INPUT.pointerPanel : ECSI_LayoutPanelAt(motion->x, motion->y);
 
-        if (panel != NULL)
+        if (panel == NULL)
         {
-            ECSI_InputSendPointer(panel, ECSEventType_PointerMove, motion->x, motion->y, NULL);
+            break;
         }
+
+        // in hover mode, only real pointer movement over a panel moves focus; dividers and tab rows are outside every panel
+        if (INPUT.pointerPanel == NULL && SDL_strcmp(ECSValue_GetString(ECSSetting_Get("ecs.focus"), ""), "hover") == 0)
+        {
+            ECSI_InputFocus(panel);
+        }
+
+        ECSI_InputSendPointer(panel, ECSEventType_PointerMove, motion->x, motion->y, NULL);
 
         break;
     }
@@ -363,6 +413,9 @@ bool ECSI_InputHandle(const SDL_Event *event)
 
             break;
         }
+
+        // the prefix is read when a key is pressed, so a changed prefix always wins
+        ECSI_InputReadPrefix();
 
         if (key->key == INPUT.prefixKey && ECSI_InputModifiersMatch(ECSI_InputModifiers(key->mod), INPUT.prefixModifiers))
         {

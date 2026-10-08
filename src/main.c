@@ -5,15 +5,13 @@
 #include "Panels.h"
 #include "Plugins.h"
 #include "Session.h"
+#include "Settings.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
 
 /// @brief Preset used when the command line names none.
 #define OPENECS_DEFAULT_PRESET "default"
-
-/// @brief Default core prefix: the default of the setting ecs.prefix.
-#define OPENECS_DEFAULT_PREFIX "Alt+W"
 
 /// @brief Font of the core's interface, relative to the executable.
 #define OPENECS_FONT_FILE "resources/Roboto-Regular.ttf"
@@ -91,7 +89,12 @@ static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
         }
     }
 
-    if (ECSI_PluginsLoad(directories, directoryCount, (const char *const *)preset->plugins, arrlenu(preset->plugins)))
+    // the preset's plugins first, then the extra plugins that the user's settings name
+    const char *const *extraPlugins = ECSI_SettingsGetPlugins();
+    SHUResult result = ECSI_PluginsLoad(directories, directoryCount, (const char *const *)preset->plugins, arrlenu(preset->plugins));
+    SHUResult extraResult = ECSI_PluginsLoad(directories, directoryCount, extraPlugins, arrlenu(extraPlugins));
+
+    if (result || extraResult)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Some plugins failed to load; their panels are shown as placeholders.");
     }
@@ -115,6 +118,7 @@ int main(int argc, char **argv)
     ECSI_PresetInfo preset;
     ECSI_CheckStart(ECSI_SessionFindPreset(&presetPath, arguments.preset), "finding the preset");
     ECSI_CheckStart(ECSI_SessionReadInfo(presetPath, &preset), "reading the preset");
+    ECSI_CheckStart(ECSI_SettingsInitialize(preset.settings, presetPath, preset.appId), "reading the settings");
 
     SDL_SetAppMetadata(preset.appName, NULL, preset.appId);
 
@@ -127,7 +131,7 @@ int main(int argc, char **argv)
     char *fontPath = NULL;
     ECSI_CheckStart(SDL_asprintf(&fontPath, "%s%s", SDL_GetBasePath(), OPENECS_FONT_FILE) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok, "finding the font");
     ECSI_CheckStart(ECSI_LayoutInitialize(preset.appName, fontPath), "opening the window");
-    ECSI_CheckStart(ECSI_InputInitialize(OPENECS_DEFAULT_PREFIX), "reading the core keys");
+    ECSI_CheckStart(ECSI_InputInitialize(), "declaring the input settings");
     SDL_free(fontPath);
 
     ECSI_LoadPlugins(&preset);
@@ -168,6 +172,7 @@ int main(int argc, char **argv)
     ECSI_PanelsTerminate();
     ECSI_EventsTerminate();
     ECSI_PluginsUnload();
+    ECSI_SettingsTerminate();
     ECSI_SessionFreeInfo(&preset);
     SDL_free(presetPath);
     SDL_Quit();

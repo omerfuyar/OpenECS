@@ -267,8 +267,12 @@ f64 ECSI_LuaDataGetNumber(const char *key, f64 fallback)
 SHUResult ECSI_LuaDataGetValue(const char *key, ECSValue *value)
 {
     SDL_assert(LUA.dataOpen);
-    SDL_assert(key != NULL);
     SDL_assert(value != NULL);
+
+    if (key == NULL)
+    {
+        return ECSI_LuaToValue(-1, value, 0);
+    }
 
     lua_getfield(LUA.state, -1, key);
     SHUResult result = ECSI_LuaToValue(-1, value, 0);

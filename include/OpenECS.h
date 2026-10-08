@@ -125,6 +125,33 @@ typedef struct ECSPanelTypeDesc
     SHUResult (*Save)(void *state); // saves unsaved work
 } ECSPanelTypeDesc;
 
+/// @brief Type of a setting's value.
+typedef enum ECSSettingType
+{
+    ECSSettingType_Bool = 0,
+    ECSSettingType_Integer,
+    ECSSettingType_Number,
+    ECSSettingType_String,
+    ECSSettingType_Choice, // one string of a list
+    ECSSettingType_Key,    // a key combination, such as "Ctrl+Shift+P"
+    ECSSettingType_List,   // a table with list items only
+    ECSSettingType_Table,
+} ECSSettingType;
+
+/// @brief Describes a setting. Passed to ECSSetting_Declare.
+typedef struct ECSSettingDesc
+{
+    const char *name;        // "canvas.grid": plugin name + local name
+    ECSSettingType type;
+    const char *description; // one line, for the settings window
+    // the default, in the field of the setting's type; a list or table setting starts empty
+    bool defaultBool;
+    i64 defaultInteger;
+    f64 defaultNumber;
+    const char *defaultString; // string, choice and key settings
+    const char *const *choices; // choice settings: the allowed strings, ending with NULL
+} ECSSettingDesc;
+
 /// @brief Level of a log message.
 typedef enum ECSLogLevel
 {
@@ -251,6 +278,17 @@ OPENECS_EXPORT SHUWUR SHUResult ECSValue_AddItem(ECSValue *table, ECSValue **ret
 /// @param retField The field, to be set. Valid as long as the table is not set to something else.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetField(ECSValue *table, const char *name, ECSValue **retField);
+
+/// @brief Declares a setting. Its value in effect comes from the highest settings layer that sets it with the right type; otherwise it is the default. Main thread only.
+/// @param plugin The plugin that owns the setting.
+/// @param desc Description of the setting. Its name must start with the plugin's name and a dot. The core copies it.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid or the name is taken, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Declare(ECSPlugin plugin, const ECSSettingDesc *desc);
+
+/// @brief Gets the value in effect of a declared setting. Main thread only.
+/// @param name Name of the setting, such as "canvas.grid" or "ecs.focus".
+/// @return The value, or NULL if no setting has the name. Valid until the setting changes.
+OPENECS_EXPORT const ECSValue *ECSSetting_Get(const char *name);
 
 /// @brief Starts a timer that calls a function on the main thread, once or repeatedly. Main thread only.
 /// @param plugin The plugin that owns the timer.
