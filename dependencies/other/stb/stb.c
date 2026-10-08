@@ -1,2 +1,2 @@
 #define STB_DS_IMPLEMENTATION
-#include "../../stb/stb_ds.h"
+#include "stb/stbSDL3.h"

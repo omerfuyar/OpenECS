@@ -321,15 +321,20 @@ static void Shuild_stb(void)
     SHU_ModuleBegin("stb", "dependencies/other/stb");
     SetBuildFlags(false);
 
-    SHU_ModuleAddSourceFile("stb.c");
-
+    // stb.c includes the copied glue header, so the headers are copied first
     SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
-
     SHUI_SFormat(&tempStr, "%sinclude/stb/", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/stb/stb_ds.h", tempStr.data);
+    CopyFile("dependencies/other/stb/stbSDL3.h", tempStr.data);
+
+    SHU_ModuleAddSourceFile("stb.c");
+
+    SHUI_SFormat(&tempStr, "../../../%sinclude/", OUTPUT_DIRECTORY.data);
+    SHU_ModuleAddIncludeDirectory(tempStr.data);
+
+    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
+    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
 }
 
 // todo maybe generate headers and compile manually
@@ -399,6 +404,7 @@ static void Shuild_OpenECS(void)
     SHU_ModuleLinkLibrary("SDL3");
     SHU_ModuleLinkLibrary("lua");
     SHU_ModuleLinkLibrary("ffi");
+    SHU_ModuleLinkLibrary("stb");
     SHU_ModuleLinkLibrary("m");
 
     SHUI_SFormat(&tempStr, "%sbin/", OUTPUT_DIRECTORY.data);
