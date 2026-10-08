@@ -1804,6 +1804,28 @@ static void ECSI_LayoutReadVsync(void *data)
     }
 }
 
+/// @brief Draws a frame without presenting it.
+static void ECSI_LayoutDrawFrame(u64 nowTicks)
+{
+    // some drivers accept vsync but do not wait for it, so frames are limited a little above the rate ecs.vsync asks for; a working vsync still sets the pace
+    const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(LAYOUT.window));
+    f32 rate = mode != NULL && mode->refresh_rate > 0.0f ? mode->refresh_rate : OPENECS_FALLBACK_FRAME_RATE;
+    f64 limit = (f64)rate * (f64)LAYOUT.framePercent / 100.0 * (f64)OPENECS_FRAME_RATE_MARGIN;
+    LAYOUT.frameNanoseconds = LAYOUT.framePercent == 0 ? 0 : (u64)((f64)SDL_NS_PER_SECOND / limit);
+    LAYOUT.lastFrameTicks = nowTicks;
+    ECSI_LayoutUpdate();
+
+    // the interface's commands point to the panels' titles, so panels draw first; their Draw may change a title
+    ECSI_LayoutForEachGroup(ECSI_LayoutDrawGroup, &nowTicks);
+    Clay_RenderCommandArray commands = ECSI_LayoutDeclareInterface();
+    ECSI_LayoutFitTabs();
+
+    SDL_SetRenderDrawColor(LAYOUT.renderer, OPENECS_COLOR_BACKGROUND);
+    SDL_RenderClear(LAYOUT.renderer);
+    ECSI_LayoutForEachGroup(ECSI_LayoutShowGroup, NULL);
+    SDL_Clay_RenderClayCommands(&LAYOUT.clayRenderer, &commands);
+}
+
 #pragma endregion Source Only
 
 SHUResult ECSI_LayoutInitialize(const char *title, const char *fontPath)
@@ -2083,26 +2105,31 @@ i32 ECSI_LayoutGetFrameWait(void)
 
 void ECSI_LayoutRender(u64 nowTicks)
 {
-    // some drivers accept vsync but do not wait for it, so frames are limited a little above the rate ecs.vsync asks for; a working vsync still sets the pace
-    const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(LAYOUT.window));
-    f32 rate = mode != NULL && mode->refresh_rate > 0.0f ? mode->refresh_rate : OPENECS_FALLBACK_FRAME_RATE;
-    f64 limit = (f64)rate * (f64)LAYOUT.framePercent / 100.0 * (f64)OPENECS_FRAME_RATE_MARGIN;
-    LAYOUT.frameNanoseconds = LAYOUT.framePercent == 0 ? 0 : (u64)((f64)SDL_NS_PER_SECOND / limit);
-    LAYOUT.lastFrameTicks = nowTicks;
-    ECSI_LayoutUpdate();
-
-    // the interface's commands point to the panels' titles, so panels draw first; their Draw may change a title
-    ECSI_LayoutForEachGroup(ECSI_LayoutDrawGroup, &nowTicks);
-    Clay_RenderCommandArray commands = ECSI_LayoutDeclareInterface();
-    ECSI_LayoutFitTabs();
-
-    SDL_SetRenderDrawColor(LAYOUT.renderer, OPENECS_COLOR_BACKGROUND);
-    SDL_RenderClear(LAYOUT.renderer);
-    ECSI_LayoutForEachGroup(ECSI_LayoutShowGroup, NULL);
-    SDL_Clay_RenderClayCommands(&LAYOUT.clayRenderer, &commands);
+    ECSI_LayoutDrawFrame(nowTicks);
     SDL_RenderPresent(LAYOUT.renderer);
 
     LAYOUT.frameNeeded = false;
+}
+
+SHUResult ECSI_LayoutScreenshot(const char *path)
+{
+    SDL_assert(path != NULL);
+
+    // the picture is read before it is presented, because presenting may discard it
+    ECSI_LayoutDrawFrame(SDL_GetTicksNS());
+    SDL_Surface *picture = SDL_RenderReadPixels(LAYOUT.renderer, NULL);
+    bool saved = picture != NULL && SDL_SavePNG(picture, path);
+
+    if (!saved)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot save a screenshot to '%s': %s", path, SDL_GetError());
+    }
+
+    SDL_DestroySurface(picture);
+    SDL_RenderPresent(LAYOUT.renderer);
+
+    LAYOUT.frameNeeded = false;
+    return saved ? SHUResult_Ok : SHUResult_ErrFile;
 }
 
 ECSPanel ECSI_LayoutPanelAt(f32 x, f32 y)

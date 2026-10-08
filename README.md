@@ -120,3 +120,13 @@ The build puts the executable, the first-party plugins and presets in `build/<LI
 Press Alt+W to see the core's keys.
 
 The default preset shows two example plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Ctrl+Tab switches workspace.
+
+### Testing
+
+Debug builds run the tests in `tests/`. A test needs no display, and prints "The test passed." or the reason it failed. This command runs them all and names the ones that fail:
+
+``` shell
+for test in tests/*.lua; do ./build/Static/Debug/bin/OpenECS --test "$test" > /dev/null 2>&1 || echo "failed: $test"; done
+```
+
+To see why a test fails, run it alone. DESIGN.md section 17.5 explains how to write one.

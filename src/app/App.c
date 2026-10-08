@@ -1,6 +1,7 @@
 #include "app/App.h"
 #include "app/Bindings.h"
 #include "app/Session.h"
+#include "app/Test.h"
 #include "base/Log.h"
 #include "base/Lua.h"
 #include "base/Sanitizers.h"
@@ -33,6 +34,7 @@ static struct
     char *lastSession;  // where the session is saved on quit, or NULL if there is no state folder
     char *configFolder; // NULL if there is none
     char *stateFolder;  // NULL if there is none
+    bool test;          // true when the program runs a test: no user files, no last session, nothing saved
 } APP = {0};
 
 /// @brief Finds an XDG base folder for OpenECS: $variable/openecs/, or ~/fallback/openecs/ if the variable is not set.
@@ -105,11 +107,11 @@ static void ECSI_CheckStart(SHUResult result, const char *step)
 /// @brief Loads the plugins a preset names. Search order: the preset's directory, the user's plugins, the first-party plugins.
 static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
 {
-    char *userData = SDL_GetPrefPath(NULL, "openecs");
+    char *userData = APP.test ? NULL : SDL_GetPrefPath(NULL, "openecs");
     char *userPlugins = NULL;
     char *firstPartyPlugins = NULL;
 
-    if (userData == NULL)
+    if (userData == NULL && !APP.test)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The user's plugin directory is not available: %s", SDL_GetError());
     }
@@ -172,6 +174,12 @@ static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
     SDL_free(firstPartyPlugins);
 }
 
+/// @brief Gives the shorter of two waits in milliseconds, where -1 means no wait.
+static i32 ECSI_ShorterWait(i32 a, i32 b)
+{
+    return a < 0 || (b >= 0 && b < a) ? b : a;
+}
+
 #pragma endregion Source Only
 
 void ECSI_AppStart(const ECSI_Arguments *arguments)
@@ -186,13 +194,26 @@ void ECSI_AppStart(const ECSI_Arguments *arguments)
     ECSI_CheckStart(ECSI_EventsInitialize(), "preparing worker threads");
     ECSI_CheckStart(ECSI_ServicesInitialize(), "preparing services");
 
-    ECSI_CheckStart(ECSI_SessionFindPreset(&APP.presetPath, arguments->preset), "finding the preset");
+    // a test names its preset and starts from it alone, without the user's files and folders
+    char *testPreset = NULL;
+    APP.test = arguments->test != NULL;
+
+    if (APP.test)
+    {
+        ECSI_CheckStart(ECSI_TestLoad(arguments->test, &APP.preset, &testPreset), "reading the test");
+    }
+
+    ECSI_CheckStart(ECSI_SessionFindPreset(&APP.presetPath, APP.test ? testPreset : arguments->preset), "finding the preset");
     ECSI_CheckStart(ECSI_SessionReadInfo(APP.presetPath, &APP.preset), "reading the preset");
+    SDL_free(testPreset);
 
     // the tool's last session replaces the preset, unless the command line names a session or asks for a fresh start
-    APP.configFolder = ECSI_XdgFolder("XDG_CONFIG_HOME", ".config");
-    APP.stateFolder = ECSI_XdgFolder("XDG_STATE_HOME", ".local/state");
-    APP.lastSession = ECSI_LastSessionPath(APP.stateFolder, APP.preset.appId);
+    if (!APP.test)
+    {
+        APP.configFolder = ECSI_XdgFolder("XDG_CONFIG_HOME", ".config");
+        APP.stateFolder = ECSI_XdgFolder("XDG_STATE_HOME", ".local/state");
+        APP.lastSession = ECSI_LastSessionPath(APP.stateFolder, APP.preset.appId);
+    }
 
     // the lines logged so far went to standard error only
     char *logPath = NULL;
@@ -203,7 +224,7 @@ void ECSI_AppStart(const ECSI_Arguments *arguments)
         SDL_free(logPath);
     }
 
-    if (arguments->session != NULL)
+    if (arguments->session != NULL && !APP.test)
     {
         APP.sessionPath = SDL_strdup(arguments->session);
     }
@@ -227,6 +248,13 @@ void ECSI_AppStart(const ECSI_Arguments *arguments)
 
     SDL_SetAppMetadata(APP.preset.appName, NULL, APP.preset.appId);
 
+    // a test needs no display; the environment variables still choose other drivers
+    if (APP.test)
+    {
+        SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+        SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
+    }
+
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL failed to start: %s", SDL_GetError());
@@ -249,21 +277,16 @@ void ECSI_AppStart(const ECSI_Arguments *arguments)
     ECSI_SanitizersKeepLibraries();
 }
 
-void ECSI_AppRun(void)
+int ECSI_AppRun(void)
 {
-    // event-driven loop: it waits for input, the next timer, queued events or the next frame
+    // event-driven loop: it waits for input, the next timer, queued events, the next frame or the test's next step
     bool running = true;
 
     while (running)
     {
         SDL_Event event;
-        i32 wait = ECSI_EventsGetWait();
-        i32 frameWait = ECSI_LayoutGetFrameWait();
-
-        if (frameWait >= 0 && (wait < 0 || frameWait < wait))
-        {
-            wait = frameWait;
-        }
+        i32 wait = ECSI_ShorterWait(ECSI_EventsGetWait(), ECSI_LayoutGetFrameWait());
+        wait = ECSI_ShorterWait(wait, ECSI_TestGetWait());
 
         if (SDL_WaitEventTimeout(&event, wait))
         {
@@ -283,16 +306,24 @@ void ECSI_AppRun(void)
         ECSI_SettingsDeliverChanges();
         ECSI_PanelsDestroyClosed();
 
-        if (ECSI_LayoutGetFrameWait() == 0)
+        // while a test runs, frames are not paced, so each step of the test sees a drawn window
+        i32 frameWait = ECSI_LayoutGetFrameWait();
+
+        if (frameWait == 0 || (frameWait > 0 && ECSI_TestIsRunning()))
         {
             ECSI_LayoutRender(SDL_GetTicksNS());
         }
+
+        running = ECSI_TestStep();
     }
+
+    return ECSI_TestGetStatus();
 }
 
 void ECSI_AppStop(void)
 {
     ECSI_SanitizersKeepLibraries();
+    ECSI_TestTerminate();
 
     if (APP.lastSession != NULL && ECSI_SessionSave(APP.lastSession, &APP.preset) == SHUResult_Ok)
     {

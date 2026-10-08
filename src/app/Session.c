@@ -336,18 +336,16 @@ SHUResult ECSI_SessionApply(const char *path, const ECSI_PresetInfo *info)
     return SHUResult_Ok;
 }
 
-SHUResult ECSI_SessionSave(const char *path, const ECSI_PresetInfo *info)
+SHUResult ECSI_SessionBuild(const ECSI_PresetInfo *info, ECSValue *retSession)
 {
-    SDL_assert(path != NULL);
     SDL_assert(info != NULL);
+    SDL_assert(retSession != NULL);
 
     // a copy of the file the session came from, so fields the core does not use are kept
-    ECSValue *session = NULL;
     ECSValue *field = NULL;
     usz current = 0;
-    SHU_ReturnResult(ECSValue_Create(&session));
-    SHUResult result = ECSI_ValueCopy(session, info->file);
-    result = result ? result : ECSValue_TableSetField(session, "format", &field);
+    SHUResult result = ECSI_ValueCopy(retSession, info->file);
+    result = result ? result : ECSValue_TableSetField(retSession, "format", &field);
 
     if (!result)
     {
@@ -357,13 +355,13 @@ SHUResult ECSI_SessionSave(const char *path, const ECSI_PresetInfo *info)
     // the plugin directory is written resolved, because the session lives in another folder
     if (!result && info->pluginsDirectory != NULL)
     {
-        result = ECSValue_TableSetField(session, "plugins_dir", &field);
+        result = ECSValue_TableSetField(retSession, "plugins_dir", &field);
         result = result ? result : ECSValue_SetString(field, info->pluginsDirectory);
     }
 
-    result = result ? result : ECSValue_TableSetField(session, "plugin_state", &field);
+    result = result ? result : ECSValue_TableSetField(retSession, "plugin_state", &field);
     result = result ? result : ECSI_PluginsSaveStates(field);
-    result = result ? result : ECSValue_TableSetField(session, "workspaces", &field);
+    result = result ? result : ECSValue_TableSetField(retSession, "workspaces", &field);
     result = result ? result : ECSI_LayoutSave(field, &current);
 
     // the layout knows nothing of keys, so each workspace's keys are added to it
@@ -379,13 +377,25 @@ SHUResult ECSI_SessionSave(const char *path, const ECSI_PresetInfo *info)
         }
     }
 
-    result = result ? result : ECSValue_TableSetField(session, "current_workspace", &field);
+    result = result ? result : ECSValue_TableSetField(retSession, "current_workspace", &field);
 
     if (!result)
     {
         ECSValue_SetInteger(field, (i64)current + 1);
-        result = ECSI_LuaWriteData(path, session);
     }
+
+    return result;
+}
+
+SHUResult ECSI_SessionSave(const char *path, const ECSI_PresetInfo *info)
+{
+    SDL_assert(path != NULL);
+    SDL_assert(info != NULL);
+
+    ECSValue *session = NULL;
+    SHU_ReturnResult(ECSValue_Create(&session));
+    SHUResult result = ECSI_SessionBuild(info, session);
+    result = result ? result : ECSI_LuaWriteData(path, session);
 
     ECSValue_Destroy(&session);
     return result;

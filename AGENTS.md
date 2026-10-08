@@ -23,6 +23,7 @@ Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 | `presets/`         | First-party presets.                       |
 | `dependencies/`    | Third-party git submodules.                |
 | `resources/`       | Files the program loads at run time.       |
+| `tests/`           | Tests that Debug builds run (DESIGN.md, section 17.5). |
 | `shuild.c`         | The build script (see README.md).          |
 
 ## Current stage

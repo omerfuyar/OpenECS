@@ -6,7 +6,7 @@
 
 #pragma region Declarations
 
-/// @brief The Lua state, as lua.h declares it. Only the Bindings module uses it.
+/// @brief The Lua state, as lua.h declares it. Only the Bindings and Test modules use it.
 typedef struct lua_State lua_State;
 
 /// @brief Starts the Lua state.
@@ -16,7 +16,7 @@ SHUWUR SHUResult ECSI_LuaInitialize(void);
 /// @brief Stops the Lua state.
 void ECSI_LuaTerminate(void);
 
-/// @brief Gets the Lua state, for the Bindings module.
+/// @brief Gets the Lua state, for the Bindings and Test modules.
 /// @return The state.
 lua_State *ECSI_LuaGetState(void);
 

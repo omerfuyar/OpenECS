@@ -198,61 +198,6 @@ static u32 ECSI_InputModifiers(SDL_Keymod modifiers)
     return result;
 }
 
-/// @brief Reads a key combination written as text, such as "Ctrl+Shift+P". Key names are SDL's.
-/// @param report true to report a text that is not a key combination.
-static SHUResult ECSI_InputParseKey(const char *text, bool report, u32 *retKey, u32 *retModifiers)
-{
-    char *copy = SDL_strdup(text);
-
-    if (copy == NULL)
-    {
-        return SHUResult_ErrAllocation;
-    }
-
-    *retKey = SDLK_UNKNOWN;
-    *retModifiers = ECSModifier_None;
-
-    char *save = NULL;
-
-    for (char *part = SDL_strtok_r(copy, "+", &save); part != NULL; part = SDL_strtok_r(NULL, "+", &save))
-    {
-        if (SDL_strcasecmp(part, "Ctrl") == 0)
-        {
-            *retModifiers |= ECSModifier_Ctrl;
-        }
-        else if (SDL_strcasecmp(part, "Shift") == 0)
-        {
-            *retModifiers |= ECSModifier_Shift;
-        }
-        else if (SDL_strcasecmp(part, "Alt") == 0)
-        {
-            *retModifiers |= ECSModifier_Alt;
-        }
-        else if (SDL_strcasecmp(part, "Super") == 0)
-        {
-            *retModifiers |= ECSModifier_Super;
-        }
-        else
-        {
-            *retKey = SDL_GetKeyFromName(part);
-        }
-    }
-
-    SDL_free(copy);
-
-    if (*retKey == SDLK_UNKNOWN)
-    {
-        if (report)
-        {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a key combination.", text);
-        }
-
-        return SHUResult_ErrBadData;
-    }
-
-    return SHUResult_Ok;
-}
-
 /// @brief Reads the core prefix from the setting ecs.prefix if the setting changed. A key text that cannot be read is reported, and the default is used.
 static void ECSI_InputReadPrefix(void)
 {
@@ -1418,6 +1363,63 @@ static void SDLCALL ECSI_InputDialogAnswer(void *userData, const char *const *fi
 }
 
 #pragma endregion Source Only
+
+SHUResult ECSI_InputParseKey(const char *text, bool report, u32 *retKey, u32 *retModifiers)
+{
+    SDL_assert(text != NULL);
+    SDL_assert(retKey != NULL);
+    SDL_assert(retModifiers != NULL);
+
+    char *copy = SDL_strdup(text);
+
+    if (copy == NULL)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    *retKey = SDLK_UNKNOWN;
+    *retModifiers = ECSModifier_None;
+
+    char *save = NULL;
+
+    for (char *part = SDL_strtok_r(copy, "+", &save); part != NULL; part = SDL_strtok_r(NULL, "+", &save))
+    {
+        if (SDL_strcasecmp(part, "Ctrl") == 0)
+        {
+            *retModifiers |= ECSModifier_Ctrl;
+        }
+        else if (SDL_strcasecmp(part, "Shift") == 0)
+        {
+            *retModifiers |= ECSModifier_Shift;
+        }
+        else if (SDL_strcasecmp(part, "Alt") == 0)
+        {
+            *retModifiers |= ECSModifier_Alt;
+        }
+        else if (SDL_strcasecmp(part, "Super") == 0)
+        {
+            *retModifiers |= ECSModifier_Super;
+        }
+        else
+        {
+            *retKey = SDL_GetKeyFromName(part);
+        }
+    }
+
+    SDL_free(copy);
+
+    if (*retKey == SDLK_UNKNOWN)
+    {
+        if (report)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a key combination.", text);
+        }
+
+        return SHUResult_ErrBadData;
+    }
+
+    return SHUResult_Ok;
+}
 
 SHUResult ECSI_InputInitialize(void)
 {

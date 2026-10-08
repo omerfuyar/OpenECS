@@ -12,6 +12,14 @@
 /// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrBadData if a name of the core is taken.
 SHUWUR SHUResult ECSI_InputInitialize(void);
 
+/// @brief Reads a key combination written as text, such as "Ctrl+Shift+P". Key names are SDL's.
+/// @param text The text.
+/// @param report true to report a text that is not a key combination.
+/// @param retKey The SDL key code.
+/// @param retModifiers The ECSModifier bits.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the text is not a key combination, or SHUResult_ErrAllocation.
+SHUResult ECSI_InputParseKey(const char *text, bool report, u32 *retKey, u32 *retModifiers);
+
 /// @brief Sets the preset's key bindings for the whole tool. Key texts that are not key combinations are reported.
 /// @param keys A table of key texts and function names, or NULL. The core copies it.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.

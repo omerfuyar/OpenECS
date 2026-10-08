@@ -39,6 +39,12 @@ void ECSI_SessionFreeInfo(ECSI_PresetInfo *info);
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the file has no workspaces, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_SessionApply(const char *path, const ECSI_PresetInfo *info);
 
+/// @brief Builds a session: the file it came from, with the current workspaces, panels and their saved state.
+/// @param info What the preset or session that started this tool said.
+/// @param retSession The value to fill.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_SessionBuild(const ECSI_PresetInfo *info, ECSValue *retSession);
+
 /// @brief Writes a session: the file it came from, with the current workspaces, panels and their saved state.
 /// @param path Path of the session file.
 /// @param info What the preset or session that started this tool said.
