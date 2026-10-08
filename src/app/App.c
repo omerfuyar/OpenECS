@@ -6,8 +6,11 @@
 #include "base/Lua.h"
 #include "base/Sanitizers.h"
 #include "interface/Input.h"
+#include "interface/Keys.h"
 #include "interface/Layout.h"
+#include "interface/Menus.h"
 #include "interface/Panels.h"
+#include "interface/Window.h"
 #include "runtime/Events.h"
 #include "runtime/Plugins.h"
 #include "runtime/Services.h"
@@ -83,7 +86,7 @@ static void ECSI_RemoveRegistrations(ECSPlugin plugin)
     ECSI_SettingsRemovePlugin(plugin);
     ECSI_EventsStopTimersOfPlugin(plugin);
     ECSI_EventsRemovePlugin(plugin);
-    ECSI_InputRemovePlugin(plugin);
+    ECSI_KeysRemovePlugin(plugin);
 }
 
 /// @brief Stops the program if a start-up step failed. The details are already in the log.
@@ -269,7 +272,9 @@ void ECSI_AppStart(const ECSI_Arguments *arguments)
 
     char *fontPath = NULL;
     ECSI_CheckStart(SDL_asprintf(&fontPath, "%s%s", SDL_GetBasePath(), OPENECS_FONT_FILE) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok, "finding the font");
-    ECSI_CheckStart(ECSI_LayoutInitialize(APP.preset.appName, fontPath), "opening the window");
+    ECSI_CheckStart(ECSI_WindowInitialize(APP.preset.appName, fontPath), "opening the window");
+    ECSI_CheckStart(ECSI_KeysInitialize(), "declaring the key settings");
+    ECSI_CheckStart(ECSI_MenusInitialize(), "registering the core's functions");
     ECSI_CheckStart(ECSI_InputInitialize(), "declaring the input settings");
     SDL_free(fontPath);
 
@@ -291,7 +296,7 @@ int ECSI_AppRun(void)
     while (running)
     {
         SDL_Event event;
-        i32 wait = ECSI_ShorterWait(ECSI_EventsGetWait(), ECSI_LayoutGetFrameWait());
+        i32 wait = ECSI_ShorterWait(ECSI_EventsGetWait(), ECSI_WindowGetFrameWait());
         wait = ECSI_ShorterWait(wait, ECSI_TestGetWait());
 
         if (SDL_WaitEventTimeout(&event, wait))
@@ -313,11 +318,11 @@ int ECSI_AppRun(void)
         ECSI_PanelsDestroyClosed();
 
         // while a test runs, frames are not paced, so each step of the test sees a drawn window
-        i32 frameWait = ECSI_LayoutGetFrameWait();
+        i32 frameWait = ECSI_WindowGetFrameWait();
 
         if (frameWait == 0 || (frameWait > 0 && ECSI_TestIsRunning()))
         {
-            ECSI_LayoutRender(SDL_GetTicksNS());
+            ECSI_WindowRender(SDL_GetTicksNS());
         }
 
         running = ECSI_TestStep();
@@ -336,9 +341,12 @@ void ECSI_AppStop(void)
         SDL_Log("Session saved to '%s'.", APP.lastSession);
     }
 
-    // panels are destroyed before their types, handles' objects before their plugins shut down, and plugins before they are unloaded
+    // panels are destroyed before the renderer that made their textures and before their types, handles' objects before their plugins shut down, and plugins before they are unloaded
     ECSI_InputTerminate();
+    ECSI_MenusTerminate();
+    ECSI_KeysTerminate();
     ECSI_LayoutTerminate();
+    ECSI_WindowTerminate();
     ECSI_PanelsTerminate();
     ECSI_ServicesTerminate();
 

@@ -1,8 +1,9 @@
 #include "app/Test.h"
 #include "base/Lua.h"
-#include "interface/Input.h"
+#include "interface/Keys.h"
 #include "interface/Layout.h"
 #include "interface/Panels.h"
+#include "interface/Window.h"
 #include "runtime/Services.h"
 
 #include "lua/lauxlib.h"
@@ -68,7 +69,7 @@ static const char ECSI_TEST_MATCH[] =
 /// @brief Adds an input event for the loop, in the test's OS window.
 static void ECSI_TestSend(SDL_Event event)
 {
-    SDL_Window *window = ECSI_LayoutGetWindow();
+    SDL_Window *window = ECSI_WindowGetMain();
     SDL_WindowID id = window != NULL ? SDL_GetWindowID(window) : 0;
 
     switch (event.type)
@@ -155,7 +156,7 @@ static int ECSI_TestKey(lua_State *state)
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSI_InputParseKey(text, false, &key, &modifiers))
+    if (ECSI_KeysParse(text, false, &key, &modifiers))
     {
         return luaL_error(state, "'%s' is not a key combination", text);
     }
@@ -337,7 +338,7 @@ static int ECSI_TestScreenshot(lua_State *state)
 {
     const char *path = luaL_checkstring(state, 1);
 
-    if (ECSI_LayoutScreenshot(path))
+    if (ECSI_WindowScreenshot(path))
     {
         return luaL_error(state, "cannot save a screenshot to '%s'", path);
     }
