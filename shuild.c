@@ -411,6 +411,9 @@ static void Shuild_OpenECS(void)
 
     SHUI_SFormat(&tempStr, "%sbin/", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_Executable);
+
+    SHUI_SFormat(&tempStr, "%sinclude/", OUTPUT_DIRECTORY.data);
+    CopyFile("include/OpenECS.h", tempStr.data);
 }
 
 /// @brief Checks whether a file name ends with a suffix.
@@ -483,9 +486,6 @@ static void Shuild_other(void)
     SHUI_SFormat(&tempStr, "%sinclude/shu/", OUTPUT_DIRECTORY.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/shu/shu.h", tempStr.data);
-
-    SHUI_SFormat(&tempStr, "%sinclude/", OUTPUT_DIRECTORY.data);
-    CopyFile("include/OpenECS.h", tempStr.data);
 
     SHUI_SFormat(&tempStr, "%sbin/", OUTPUT_DIRECTORY.data);
 
