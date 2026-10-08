@@ -44,7 +44,7 @@ static struct
 /// @brief A file dialog waiting for its answer, with copies of everything SDL reads until it answers.
 typedef struct ECSIDialog
 {
-    ECSPlugin plugin;
+    ECSPlugin plugin; // NULL for the core
     ECSDialogDoneFunction Done;
     void *data;
     SDL_DialogFileFilter *filters; // stb_ds array
@@ -465,7 +465,7 @@ static void SDLCALL ECSIInput_DialogAnswer(void *userData, const char *const *fi
 
     if (files == NULL)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A file dialog of plugin '%s' failed: %s", ECSIPlugin_GetName(dialog->plugin), SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A file dialog of %s%s failed: %s", dialog->plugin == NULL ? "the core" : "plugin ", dialog->plugin == NULL ? "" : ECSIPlugin_GetName(dialog->plugin), SDL_GetError());
     }
 
     // a cancelled dialog gives an empty list, which reaches the plugin as NULL, like a failed one
@@ -804,6 +804,11 @@ SHUResult ECSClipboard_GetData(const char *mimeType, SHUSlice *retData)
 SHUResult ECSDialog_Show(ECSPlugin plugin, const ECSDialogDesc *desc)
 {
     SDL_assert(plugin != NULL);
+    return ECSIInput_ShowDialog(plugin, desc);
+}
+
+SHUResult ECSIInput_ShowDialog(ECSPlugin plugin, const ECSDialogDesc *desc)
+{
     SDL_assert(desc != NULL && desc->Done != NULL);
     SDL_assert(desc->filters != NULL || desc->filterCount == 0);
 

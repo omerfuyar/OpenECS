@@ -1,6 +1,6 @@
 #pragma once
 
-// Session: reading presets and sessions, and building the workspaces they describe.
+// Session: reading presets and sessions, building the workspaces they describe, and saving sessions.
 
 #include "base/Values.h"
 #include "runtime/Plugins.h"
@@ -45,10 +45,12 @@ SHUWUR SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info)
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession);
 
-/// @brief Writes a session: the file it came from, with the current workspaces, panels and their saved state.
-/// @param path Path of the session file.
-/// @param info What the preset or session that started this tool said.
-/// @return SHUResult_Ok, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSISession_Save(const char *path, const ECSIPresetInfo *info);
+/// @brief Registers the core's function ecs.saveSession, which saves the session to a file the user chooses.
+/// @param folder The folder where its dialog starts, ending with a separator, or NULL to let the system choose. It is created when the dialog opens.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSISession_Initialize(const char *folder);
+
+/// @brief Frees what the Session module holds.
+void ECSISession_Terminate(void);
 
 #pragma endregion Declarations

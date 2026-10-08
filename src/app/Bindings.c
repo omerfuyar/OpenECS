@@ -809,6 +809,31 @@ static const luaL_Reg OPENECS_BINDINGS_WORKSPACE[] = {
 
 #pragma endregion Layout
 
+#pragma region Session
+
+static int ECSIBindings_SessionSave(lua_State *state)
+{
+    const char *path = luaL_checkstring(state, 1);
+    SHUResult result = ECSSession_Save(path);
+
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "the session is not saved to '%s' (%s)", path, SHUResult_String(result));
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
+static const luaL_Reg OPENECS_BINDINGS_SESSION[] = {
+    {"save", ECSIBindings_SessionSave},
+    {NULL, NULL},
+};
+
+#pragma endregion Session
+
 #pragma region Clipboard
 
 static int ECSIBindings_ClipboardSetText(lua_State *state)
@@ -1644,6 +1669,7 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIBindings_AddTable(state, plugin, "input", OPENECS_BINDINGS_INPUT);
     ECSIBindings_AddTable(state, plugin, "layout", OPENECS_BINDINGS_LAYOUT);
     ECSIBindings_AddTable(state, plugin, "workspace", OPENECS_BINDINGS_WORKSPACE);
+    ECSIBindings_AddTable(state, plugin, "session", OPENECS_BINDINGS_SESSION);
     ECSIBindings_AddTable(state, plugin, "clipboard", OPENECS_BINDINGS_CLIPBOARD);
     ECSIBindings_AddTable(state, plugin, "dialog", OPENECS_BINDINGS_DIALOG);
     ECSIBindings_AddTable(state, plugin, "event", OPENECS_BINDINGS_EVENT);

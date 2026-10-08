@@ -614,6 +614,12 @@ OPENECS_EXPORT const char *ECSWorkspace_GetName(usz number);
 /// @lua ecs.workspace.switch
 OPENECS_EXPORT void ECSWorkspace_Switch(usz number);
 
+/// @brief Writes the session to a file: the plugins' state, the workspaces and the panels with their saved state. Quitting still saves the tool's last session. Main thread only.
+/// @param path Path of the file. Missing folders are created.
+/// @return SHUResult_Ok, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
+/// @lua ecs.session.save
+OPENECS_EXPORT SHUWUR SHUResult ECSSession_Save(const char *path);
+
 /// @brief Puts text on the clipboard. Main thread only.
 /// @param text The text. The core copies it.
 /// @return SHUResult_Ok, or SHUResult_ErrInternal if the system refuses it.

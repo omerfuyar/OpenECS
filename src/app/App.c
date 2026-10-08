@@ -28,6 +28,8 @@
 #define OPENECS_LAST_SESSION_FILE "session.lua"
 /// @brief The log file, in the state folder. Each start writes it anew.
 #define OPENECS_LOG_FILE "openecs.log"
+/// @brief Where the user's saved sessions go by default, in the data folder.
+#define OPENECS_SESSIONS_FOLDER "sessions/"
 
 static struct
 {
@@ -296,6 +298,19 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_CheckStart(ECSIMenus_Initialize(), "registering the core's functions");
     ECSIApp_CheckStart(ECSIInput_Initialize(), "declaring the input settings");
 
+    // a test has no data folder, so the dialog of ecs.saveSession starts where the system chooses
+    char *dataFolder = APP.test ? NULL : ECSIApp_XdgFolder("XDG_DATA_HOME", ".local/share");
+    char *sessionsFolder = NULL;
+
+    if (dataFolder != NULL && SDL_asprintf(&sessionsFolder, "%s%s", dataFolder, OPENECS_SESSIONS_FOLDER) < 0)
+    {
+        sessionsFolder = NULL;
+    }
+
+    ECSIApp_CheckStart(ECSISession_Initialize(sessionsFolder), "registering the session functions");
+    SDL_free(dataFolder);
+    SDL_free(sessionsFolder);
+
     ECSIBindings_Initialize();
     ECSIPluginHooks hooks = {.StartLua = ECSIBindings_StartPlugin, .RemoveRegistrations = ECSIApp_RemoveRegistrations};
     ECSIPlugins_SetHooks(&hooks);
@@ -362,7 +377,7 @@ void ECSIApp_Stop(void)
     ECSISanitizers_KeepLibraries();
     ECSITest_Terminate();
 
-    if (APP.lastSession != NULL && ECSISession_Save(APP.lastSession, &APP.preset) == SHUResult_Ok)
+    if (APP.lastSession != NULL && ECSSession_Save(APP.lastSession) == SHUResult_Ok)
     {
         SDL_Log("Session saved to '%s'.", APP.lastSession);
     }
@@ -382,6 +397,7 @@ void ECSIApp_Stop(void)
     ECSIPlugins_Unload();
     ECSISettings_Terminate();
     ECSIBindings_Terminate();
+    ECSISession_Terminate();
     ECSISession_FreeInfo(&APP.preset);
     SDL_free(APP.presetPath);
     SDL_free(APP.sessionPath);

@@ -454,6 +454,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | `ecs.lock`                            | Lock or unlock the group                                                                                 |
   | `ecs.reopen`                          | Reopen the last closed panel                                                                             |
   | `ecs.restart`                         | Restart the failed panel                                                                                 |
+  | `ecs.saveSession`                     | Save the session to a file, which a save dialog asks for                                                 |
   | `ecs.workspace1` to `ecs.workspace10` | Switch to workspace 1 to 10                                                                              |
 
 - Escape after the prefix cancels. It is not a function, so it always works.
@@ -714,7 +715,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 | `ecs.timer`                   | timers                              |
 | `ecs.service`                 | register and look up functions      |
 | `ecs.settings`                | declare, get, set, list and explain |
-| `ecs.session`                 | save and load                       |
+| `ecs.session`                 | saving the session                  |
 | `ecs.plugin`                  | information about plugins           |
 | `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs               |
 | `ecs.log`                     | `debug`, `info`, `warn` and `error` |
@@ -829,6 +830,7 @@ The core converts only layout data.
 - Named fields are read and written in the order of their names, so the same session always writes the same file.
 - A session is written from the file it came from, with the current workspaces. So fields that the core does not use are kept.
 - A file is written to a temporary file, then renamed over the old one, so it is never left half-written.
+- `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. `ecs.saveSession` asks for the file with a save dialog that starts in the folder of saved sessions (16). Quitting still saves the tool's last session.
 
 ### 13.5 Command line
 

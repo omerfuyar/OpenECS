@@ -2,9 +2,11 @@
 
 #include "base/Lua.h"
 #include "base/Values.h"
+#include "interface/Input.h"
 #include "interface/Keys.h"
 #include "interface/Layout.h"
 #include "interface/Panels.h"
+#include "runtime/Services.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -16,6 +18,12 @@
 
 /// @brief Longest path to a part of a file that a problem report names.
 #define OPENECS_SESSION_PATH_SIZE 256
+
+static struct
+{
+    const ECSIPresetInfo *info; // the preset or session in use, which saved sessions are written from
+    char *folder;               // where the dialog of ecs.saveSession starts, or NULL
+} SESSION = {0};
 
 /// @brief State while the workspaces of a file are built.
 typedef struct ECSISessionReader
@@ -223,6 +231,38 @@ static SHUResult ECSISession_ReadWorkspace(ECSISessionReader *reader, const ECSV
     return ECSIKeys_AddWorkspace(ECSValue_GetTableField(saved, "keys"));
 }
 
+/// @brief Saves the session to the file the user chose; a cancelled dialog gives no file.
+static void ECSISession_SaveChosen(void *data, const char *const *files, usz count)
+{
+    (void)data;
+
+    if (count > 0 && ECSSession_Save(files[0]) == SHUResult_Ok)
+    {
+        SDL_Log("Session saved to '%s'.", files[0]);
+    }
+    else if (count > 0)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot save the session to '%s'.", files[0]);
+    }
+}
+
+/// @brief ecs.saveSession: asks for a file and saves the session to it.
+static void ECSISession_SaveWithDialog(void)
+{
+    if (SESSION.folder != NULL && !SDL_CreateDirectory(SESSION.folder))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot make the sessions folder '%s': %s", SESSION.folder, SDL_GetError());
+    }
+
+    ECSDialogFilter filter = {"OpenECS sessions", "lua"};
+    ECSDialogDesc desc = {.type = ECSDialogType_SaveFile, .filters = &filter, .filterCount = 1, .location = SESSION.folder, .Done = ECSISession_SaveChosen};
+
+    if (ECSIInput_ShowDialog(NULL, &desc))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask where to save the session.");
+    }
+}
+
 #pragma endregion Source Only
 
 SHUResult ECSISession_FindPreset(char **retPath, const char *nameOrPath)
@@ -306,6 +346,7 @@ SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info)
     SDL_assert(info != NULL);
 
     ECSISessionReader reader = {.file = path, .path = "workspaces"};
+    SESSION.info = info;
     SHU_ReturnResult(ECSIKeys_SetTool(ECSValue_GetTableField(info->file, "keys")));
 
     // plugins get their state before panels are created, so panels find their data
@@ -390,14 +431,32 @@ SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
     return result;
 }
 
-SHUResult ECSISession_Save(const char *path, const ECSIPresetInfo *info)
+SHUResult ECSISession_Initialize(const char *folder)
+{
+    SESSION.folder = folder == NULL ? NULL : SDL_strdup(folder);
+
+    if (folder != NULL && SESSION.folder == NULL)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    return ECSIServices_RegisterCore("ecs.saveSession", (ECSFunction)ECSISession_SaveWithDialog, "void()", "Save the session to a file");
+}
+
+void ECSISession_Terminate(void)
+{
+    SDL_free(SESSION.folder);
+    SDL_zero(SESSION);
+}
+
+SHUResult ECSSession_Save(const char *path)
 {
     SDL_assert(path != NULL);
-    SDL_assert(info != NULL);
+    SDL_assert(SESSION.info != NULL);
 
     ECSValue *session = NULL;
     SHU_ReturnResult(ECSValue_Create(&session));
-    SHUResult result = ECSISession_Build(info, session);
+    SHUResult result = ECSISession_Build(SESSION.info, session);
     result = result ? result : ECSILua_WriteData(path, session);
 
     ECSValue_Destroy(&session);

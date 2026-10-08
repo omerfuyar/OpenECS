@@ -290,6 +290,17 @@ function ecs.workspace.getName(number) end
 ---@param number integer From 1.
 function ecs.workspace.switch(number) end
 
+-- Session
+
+---@class ecs.session
+ecs.session = {}
+
+---Writes the session to a file: the plugins' state, the workspaces and the panels with their saved state. Quitting still saves the tool's last session.
+---@param path string Missing folders are created.
+---@return true|nil ok
+---@return string? message Why the session is not saved.
+function ecs.session.save(path) end
+
 -- Input
 
 ---@class ecs.input
