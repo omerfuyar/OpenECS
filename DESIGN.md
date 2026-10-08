@@ -660,7 +660,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 ### 10.5 Lookup
 
 - A plugin asks for a function by name and states the signature it expects. The core compares it with the registered signature and refuses a mismatch, so a version mismatch shows up at lookup instead of crashing a call.
-- A plugin may look up its own functions, and functions of plugins named in its manifest's dependencies. If a provider fails, its users are told.
+- A plugin may look up its own functions, and functions of plugins named in its manifest's dependencies. A provider fails only while it loads, before the plugins that depend on it, and those are skipped (14.2). So a plugin never uses a failed provider.
 - C: `ECSService_GetFunction(plugin, &play, "audio.play", "int(string, float)")`. Lua: `ecs.service.get("audio.play", "int(string, float)")`, where the signature may be left out.
 
 ### 10.6 Handles
@@ -671,7 +671,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - The core's own handle type is `ecs.panel`: Lua's panel handles (11.4).
 - A Lua plugin provides a handle type too: `ecs.handle.registerType(name)`, `ecs.handle.new(name, value)` for a handle that stands for a Lua value, and `ecs.handle.value(handle, name)`, which gives the value back to the plugin that owns the type. Users see such a handle like any other. The core keeps the value until the handle is collected.
 - Handles that wait for their finalizer at exit are collected before the handle types are freed.
-- When a provider goes away, its handles become invalid and their users are told. A failed plugin's handles become invalid without their destructor. On exit, the objects of handles that Lua still holds are destroyed before plugins shut down.
+- A failed plugin's handles become invalid without their destructor. On exit, the objects of handles that Lua still holds are destroyed before plugins shut down.
 
 ### 10.7 Buffers
 
@@ -850,7 +850,7 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [FILE...]
 | Missing dependency or version mismatch                                                | The plugin and its dependents are skipped and reported. The report names what needs the plugin (a plugin, the preset, a session or the user's settings) and, for a missing plugin, each path that was looked in. |
 | Dependency cycle                                                                      | The plugins in the cycle are skipped and reported.                                                                                                 |
 | Plugin API version mismatch                                                           | The plugin is refused before any of its code runs.                                                                                                 |
-| `ECSPlugin_Init` fails                                                                | The plugin is marked failed and its registrations are removed.                                                                                     |
+| `ECSPlugin_Init` or the plugin's Lua file fails                                       | The plugin is marked failed and its registrations are removed. Plugins that depend on it are skipped and reported.                                 |
 | Invalid registration (bad signature, bad or duplicate name, the core prefix as a key) | That registration is rejected and the error is returned to the plugin, which continues.                                                            |
 | A panel callback raises an error                                                      | The panel becomes a faulted placeholder that shows the error. Its menu has a "Restart" entry (`ecs.restart`), which recreates the panel in place from its last saved state: the state the session last saved, or the one it was created with. |
 | A plugin callback (timer, event handler) raises an error                              | The error is reported. Repeats of the same error are counted, not reported again.                                                                  |
@@ -914,6 +914,7 @@ OpenECS follows the XDG Base Directory specification:
 
 - SDL3 and SDL3_ttf are shared libraries shipped next to the executable and found through an `$ORIGIN` run path. So the core, the sdl plugin and any plugin that links an SDL library, such as SDL3_mixer or SDL3_net, share one copy of SDL.
 - Lua, Clay, libffi and stb are linked statically into the executable.
+- libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.
 - Native plugins are shared libraries, built against the plugin header only. They do not link against the core; their calls to it are resolved when they are loaded.
 - A first-party plugin is built from every C file in its folder, `plugins/<name>/`, so the build needs no settings for each plugin.
@@ -962,6 +963,7 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 ## 18. Platform notes
 
 - OpenECS supports X11 and Wayland, through SDL3.
+- OpenECS runs on x86_64 and aarch64 processors (17.2).
 - On Wayland, dragging a panel out of its window still works, because the core keeps receiving pointer events while the button is held (7.2). Only the position of the new window cannot be chosen.
 - Popups are positioned relative to their parent window, which Wayland supports.
 
