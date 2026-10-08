@@ -2,6 +2,7 @@
 
 #include "OpenECS.h"
 
+#include <inttypes.h>
 #include <math.h>
 
 #pragma region Source Only
@@ -277,6 +278,37 @@ static SHUSlice DemoReverse(SHUSlice buffer)
     return buffer;
 }
 
+/// @brief A counter that Lua holds as a handle<demo.counter>.
+typedef struct DemoCounter
+{
+    i64 count;
+} DemoCounter;
+
+static DemoCounter *DemoCounterCreate(i64 start)
+{
+    DemoCounter *counter = calloc(1, sizeof(DemoCounter));
+
+    if (counter != NULL)
+    {
+        counter->count = start;
+    }
+
+    return counter;
+}
+
+static i64 DemoCounterAdd(DemoCounter *counter, i64 amount)
+{
+    counter->count += amount;
+    return counter->count;
+}
+
+/// @brief Frees a counter when Lua no longer uses its handle.
+static void DemoCounterDestroy(void *counter)
+{
+    ECS_Log(DEMO.plugin, ECSLogLevel_Info, "A counter at %" PRIi64 " is freed.", ((DemoCounter *)counter)->count);
+    free(counter);
+}
+
 #pragma endregion Service
 
 #pragma endregion Source Only
@@ -334,6 +366,9 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.repeat", (ECSFunction)DemoRepeat, "string(string, int)", "Repeats a text"));
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.split", (ECSFunction)DemoSplit, "void(double, out int64, out double)", "Splits a number into its whole and fraction parts"));
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.describe", (ECSFunction)DemoDescribe, "int(value, out value)", "Gives a value's type and counts its items"));
+    SHU_ReturnResult(ECSHandle_RegisterType(plugin, "demo.counter", DemoCounterDestroy));
+    SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.counter", (ECSFunction)DemoCounterCreate, "handle<demo.counter>(int64)", "Makes a counter"));
+    SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.counter_add", (ECSFunction)DemoCounterAdd, "int64(handle<demo.counter>, int64)", "Adds to a counter and gives its count"));
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.reverse", (ECSFunction)DemoReverse, "buffer(buffer)", "Reverses the bytes of a buffer"));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &color));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &gradient));

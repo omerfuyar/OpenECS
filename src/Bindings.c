@@ -16,7 +16,7 @@
 
 /// @brief Name of the metatable of timer handles.
 #define OPENECS_LUA_TIMER "ecs.timer"
-/// @brief Name of the metatable of panel handles.
+/// @brief Name of the handle type of panels.
 #define OPENECS_LUA_PANEL "ecs.panel"
 /// @brief Name of the metatable of surfaces given to draw.
 #define OPENECS_LUA_SURFACE "ecs.surface"
@@ -42,7 +42,7 @@ typedef struct ECSI_LuaPanel
     ECSI_LuaPanelType *type;
     ECSPanel panel;
     int state;   // registry reference of the value that create returned
-    int handle;  // registry reference of the panel's handle
+    int handle;  // registry reference of the panel's handle, which keeps it the same while the panel lives
     int surface; // registry reference of the surface handle given to draw
 } ECSI_LuaPanel;
 
@@ -282,6 +282,14 @@ static const luaL_Reg ECSI_BINDINGS_SETTINGS[] = {
 
 #pragma region Timers
 
+/// @brief Clears the handle a Lua value points to, so Lua cannot reach a destroyed object through it.
+static void ECSI_BindingsClearHandle(lua_State *state, int reference)
+{
+    lua_rawgeti(state, LUA_REGISTRYINDEX, reference);
+    *(void **)lua_touserdata(state, -1) = NULL;
+    lua_pop(state, 1);
+}
+
 static void ECSI_BindingsTimerTick(void *data)
 {
     ECSI_LuaTimer *timer = data;
@@ -302,9 +310,7 @@ static void ECSI_BindingsTimerRelease(void *data)
     ECSI_LuaTimer *timer = data;
     lua_State *state = ECSI_LuaGetState();
 
-    lua_rawgeti(state, LUA_REGISTRYINDEX, timer->handle);
-    *(ECSI_LuaTimer **)lua_touserdata(state, -1) = NULL;
-    lua_pop(state, 1);
+    ECSI_BindingsClearHandle(state, timer->handle);
 
     luaL_unref(state, LUA_REGISTRYINDEX, timer->function);
     luaL_unref(state, LUA_REGISTRYINDEX, timer->handle);
@@ -449,14 +455,8 @@ static const luaL_Reg ECSI_BINDINGS_SERVICE[] = {
 
 static ECSPanel ECSI_BindingsCheckPanel(lua_State *state, int index)
 {
-    ECSPanel *handle = luaL_checkudata(state, index, OPENECS_LUA_PANEL);
-
-    if (*handle == NULL)
-    {
-        luaL_error(state, "the panel is closed");
-    }
-
-    return *handle;
+    (void)state;
+    return ECSI_ServicesCheckHandle(index, OPENECS_LUA_PANEL);
 }
 
 static ECSSurface *ECSI_BindingsCheckSurface(lua_State *state, int index)
@@ -496,17 +496,9 @@ static void ECSI_BindingsPanelFailed(lua_State *state, const ECSI_LuaPanel *luaP
     lua_pop(state, 1);
 }
 
-/// @brief Clears the handle a Lua value points to, so Lua cannot reach a destroyed object through it.
-static void ECSI_BindingsClearHandle(lua_State *state, int reference)
-{
-    lua_rawgeti(state, LUA_REGISTRYINDEX, reference);
-    *(void **)lua_touserdata(state, -1) = NULL;
-    lua_pop(state, 1);
-}
-
 static void ECSI_BindingsPanelFree(lua_State *state, ECSI_LuaPanel *luaPanel)
 {
-    ECSI_BindingsClearHandle(state, luaPanel->handle);
+    ECSI_ServicesForgetHandle(luaPanel->panel);
     luaL_unref(state, LUA_REGISTRYINDEX, luaPanel->state);
     luaL_unref(state, LUA_REGISTRYINDEX, luaPanel->handle);
     luaL_unref(state, LUA_REGISTRYINDEX, luaPanel->surface);
@@ -527,9 +519,7 @@ static SHUResult ECSI_BindingsPanelCreate(ECSPanel panel, const ECSValue *savedS
     luaPanel->panel = panel;
     luaPanel->state = LUA_NOREF;
 
-    ECSPanel *handle = lua_newuserdatauv(state, sizeof(ECSPanel), 0);
-    *handle = panel;
-    luaL_setmetatable(state, OPENECS_LUA_PANEL);
+    ECSI_ServicesPushHandle(OPENECS_LUA_PANEL, panel);
     luaPanel->handle = luaL_ref(state, LUA_REGISTRYINDEX);
 
     ECSSurface **surface = lua_newuserdatauv(state, sizeof(ECSSurface *), 0);
@@ -969,7 +959,7 @@ void ECSI_BindingsInitialize(void)
     lua_setfield(state, -2, "__index");
     lua_pop(state, 1);
 
-    luaL_newmetatable(state, OPENECS_LUA_PANEL);
+    ECSI_ServicesPushHandleMetatable(OPENECS_LUA_PANEL);
     luaL_newlib(state, ECSI_BINDINGS_PANEL_METHODS);
     lua_setfield(state, -2, "__index");
     lua_pop(state, 1);

@@ -310,7 +310,7 @@ OPENECS_EXPORT const ECSValue *ECSSetting_Get(const char *name);
 /// @param plugin The plugin that provides the function.
 /// @param name Name of the function. It must start with the plugin's name and a dot, such as "audio.play".
 /// @param function The function, cast to ECSFunction. Its real type must match the signature; the core cannot check that.
-/// @param signature The function's signature, such as "int(string, float)". Types: void (result only), bool, int, int64, float, double, string.
+/// @param signature The function's signature, such as "int(string, out float)". Types: void (result only), bool, int, int64, float, double, string, buffer, value, handle<name>, and out before a type.
 /// @param description One line that says what the function does.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the name or signature is invalid or the name is taken, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSService_RegisterFunction(ECSPlugin plugin, const char *name, ECSFunction function, const char *signature, const char *description);
@@ -339,6 +339,13 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSetting_List(ECSValue *retList);
 /// @param retExplanation The value to set to a table: name, type, description, owner, value, layer, file (of that layer; missing for defaults), choices (choice settings), and layers, which holds the value of each layer that sets it: default, preset, window and user.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no setting has the name, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation);
+
+/// @brief Registers a type of handles, for services that pass objects as handle<name>. In Lua, a handle is a userdata that names its type; the same object always gets the same Lua handle. Main thread only.
+/// @param plugin The plugin that provides the objects.
+/// @param name Name of the type. It must start with the plugin's name and a dot, such as "audio.sound".
+/// @param Destroy Called with the object when Lua no longer uses its handle, or NULL. A provider that keeps using the object counts references.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the name is invalid or taken, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, void (*Destroy)(void *object));
 
 /// @brief Starts a timer that calls a function on the main thread, once or repeatedly. Main thread only.
 /// @param plugin The plugin that owns the timer.

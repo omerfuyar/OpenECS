@@ -75,3 +75,9 @@ ecs.service.register("hello", {
 local whole, fraction = ecs.service.get("demo.split")(3.25)
 local type, counted = ecs.service.get("demo.describe")({ 1, 2, 3, name = "x" })
 ecs.log.info(("demo.split: %d %.2f, demo.describe: %d %d, demo.reverse: %s"):format(whole, fraction, type, counted.items, ecs.service.get("demo.reverse")("abc")))
+
+-- a handle stands for an object of the demo plugin; the garbage collector frees it
+local counter = ecs.service.get("demo.counter")(10)
+ecs.log.info("counter: " .. ecs.service.get("demo.counter_add")(counter, 5) .. " " .. tostring(counter))
+counter = nil
+collectgarbage()

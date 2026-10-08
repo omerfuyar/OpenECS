@@ -284,6 +284,7 @@ int main(int argc, char **argv)
     ECSI_CheckStart(ECSI_InputInitialize(), "declaring the input settings");
     SDL_free(fontPath);
 
+    ECSI_CheckStart(ECSI_ServicesInitialize(), "preparing services");
     ECSI_BindingsInitialize();
     ECSI_PluginHooks hooks = {.StartLua = ECSI_BindingsStartPlugin, .RemoveRegistrations = ECSI_RemoveRegistrations};
     ECSI_PluginsSetHooks(&hooks);

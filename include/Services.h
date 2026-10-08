@@ -6,8 +6,31 @@
 
 #pragma region Declarations
 
-/// @brief Frees every registered function.
+/// @brief Prepares the table that gives each object one Lua handle, and registers the core's handle type ecs.panel.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_ServicesInitialize(void);
+
+/// @brief Destroys the objects of every handle Lua still holds, while their plugins are loaded, and frees every registered function and handle type.
 void ECSI_ServicesTerminate(void);
+
+/// @brief Pushes the Lua handle of an object: the one Lua already has, or a new one.
+/// @param type Name of the object's handle type.
+/// @param object The object, or NULL for nil.
+void ECSI_ServicesPushHandle(const char *type, void *object);
+
+/// @brief Reads a Lua handle of a type. Raises a Lua error if the value is not a handle of that type, or its object is gone.
+/// @param index Index of the handle on the Lua stack.
+/// @param type Name of the handle type.
+/// @return The object.
+void *ECSI_ServicesCheckHandle(int index, const char *type);
+
+/// @brief Makes an object's Lua handle invalid, without destroying the object, because the object is gone.
+/// @param object The object.
+void ECSI_ServicesForgetHandle(void *object);
+
+/// @brief Pushes the metatable of a handle type, so the Bindings module can give its handles methods.
+/// @param type Name of the handle type.
+void ECSI_ServicesPushHandleMetatable(const char *type);
 
 /// @brief Removes every function a plugin registered.
 /// @param plugin The plugin.
