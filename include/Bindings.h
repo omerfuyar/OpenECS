@@ -9,7 +9,7 @@
 /// @brief Prepares the types of values that the ecs table gives to Lua, such as timers.
 void ECSI_BindingsInitialize(void);
 
-/// @brief Reports how often repeated errors happened, and frees what the bindings keep. Call it while Lua still runs.
+/// @brief Frees what the bindings keep. Call it while Lua still runs.
 void ECSI_BindingsTerminate(void);
 
 /// @brief Runs a plugin's Lua code in its own environment, which holds the plugin's ecs table. Given to ECSI_PluginsSetLuaStarter.

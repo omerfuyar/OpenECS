@@ -41,6 +41,11 @@ static struct
     const char *const *directories;
     usz directoryCount;
     const char **loading; // stb_ds array of the plugins being loaded, to find dependency cycles
+    struct
+    {
+        char *key; // "plugin: message"
+        u64 value; // how often it happened
+    } *errors; // stb_ds hash map with copied keys
     ECSI_PluginLuaStarter StartLua;
 } PLUGINS = {0};
 
@@ -358,6 +363,14 @@ SHUResult ECSI_PluginsLoad(const char *const *directories, usz directoryCount, c
 
 void ECSI_PluginsUnload(void)
 {
+    for (usz i = 0; i < shlenu(PLUGINS.errors); i++)
+    {
+        if (PLUGINS.errors[i].value > 1)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "This error happened %" SDL_PRIu64 " times: %s", PLUGINS.errors[i].value, PLUGINS.errors[i].key);
+        }
+    }
+
     for (usz i = shlenu(PLUGINS.plugins); i > 0; i--)
     {
         ECSI_Plugin *plugin = PLUGINS.plugins[i - 1].value;
@@ -377,6 +390,7 @@ void ECSI_PluginsUnload(void)
     }
 
     shfree(PLUGINS.plugins);
+    shfree(PLUGINS.errors);
     arrfree(PLUGINS.loading);
     SDL_zero(PLUGINS);
 }
@@ -400,6 +414,33 @@ const char *ECSI_PluginGetName(ECSPlugin plugin)
     SDL_assert(plugin != NULL);
 
     return plugin->name;
+}
+
+void ECSI_PluginReportError(ECSPlugin plugin, const char *message)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(message != NULL);
+
+    char *key = NULL;
+
+    if (SDL_asprintf(&key, "%s: %s", plugin->name, message) < 0)
+    {
+        return;
+    }
+
+    if (PLUGINS.errors == NULL)
+    {
+        sh_new_strdup(PLUGINS.errors);
+    }
+
+    u64 count = shget(PLUGINS.errors, key);
+    shput(PLUGINS.errors, key, count + 1);
+    SDL_free(key);
+
+    if (count == 0)
+    {
+        ECS_Log(plugin, ECSLogLevel_Error, "%s", message);
+    }
 }
 
 bool ECSI_PluginDependsOn(ECSPlugin plugin, ECSPlugin other)

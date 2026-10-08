@@ -49,11 +49,6 @@ typedef struct ECSI_LuaTimer
 
 static struct
 {
-    struct
-    {
-        char *key; // "plugin: message"
-        u64 value; // how often it happened
-    } *errors;                  // stb_ds hash map with copied keys
     ECSI_LuaPanelType **types; // stb_ds array
 } BINDINGS = {0};
 
@@ -62,31 +57,6 @@ static const char *const ECSI_BINDINGS_EVENT_TYPES[] = {"pointer_down", "pointer
 
 /// @brief Names of the setting types in Lua, in the order of ECSSettingType.
 static const char *const ECSI_BINDINGS_SETTING_TYPES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", NULL};
-
-/// @brief Reports an error of a plugin's Lua callback. Repeats of the same error are counted, not reported again.
-static void ECSI_BindingsReport(ECSPlugin plugin, const char *message)
-{
-    char *key = NULL;
-
-    if (SDL_asprintf(&key, "%s: %s", ECSI_PluginGetName(plugin), message) < 0)
-    {
-        return;
-    }
-
-    if (BINDINGS.errors == NULL)
-    {
-        sh_new_strdup(BINDINGS.errors);
-    }
-
-    u64 count = shget(BINDINGS.errors, key);
-    shput(BINDINGS.errors, key, count + 1);
-    SDL_free(key);
-
-    if (count == 0)
-    {
-        ECS_Log(plugin, ECSLogLevel_Error, "%s", message);
-    }
-}
 
 /// @brief Gets the plugin that owns the ecs table a function came from. Every function of a plugin's ecs table has the plugin as its upvalue.
 static ECSPlugin ECSI_BindingsPlugin(lua_State *state)
@@ -210,7 +180,7 @@ static void ECSI_BindingsTimerTick(void *data)
 
     if (ECSI_LuaCall(0, 0))
     {
-        ECSI_BindingsReport(timer->plugin, lua_tostring(state, -1));
+        ECSI_PluginReportError(timer->plugin, lua_tostring(state, -1));
         lua_pop(state, 1);
     }
 }
@@ -367,7 +337,7 @@ static bool ECSI_BindingsPushCallback(lua_State *state, const ECSI_LuaPanelType 
 static void ECSI_BindingsPanelFailed(lua_State *state, const ECSI_LuaPanel *luaPanel)
 {
     const char *message = lua_tostring(state, -1);
-    ECSI_BindingsReport(luaPanel->type->plugin, message);
+    ECSI_PluginReportError(luaPanel->type->plugin, message);
     ECSI_PanelFault(luaPanel->panel, message);
     lua_pop(state, 1);
 }
@@ -447,7 +417,7 @@ static void ECSI_BindingsPanelDestroy(void *data)
 
         if (ECSI_LuaCall(1, 0))
         {
-            ECSI_BindingsReport(luaPanel->type->plugin, lua_tostring(state, -1));
+            ECSI_PluginReportError(luaPanel->type->plugin, lua_tostring(state, -1));
             lua_pop(state, 1);
         }
     }
@@ -851,21 +821,12 @@ void ECSI_BindingsInitialize(void)
 
 void ECSI_BindingsTerminate(void)
 {
-    for (usz i = 0; i < shlenu(BINDINGS.errors); i++)
-    {
-        if (BINDINGS.errors[i].value > 1)
-        {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "This error happened %" SDL_PRIu64 " times: %s", BINDINGS.errors[i].value, BINDINGS.errors[i].key);
-        }
-    }
-
     // the types' tables go with the Lua state
     for (usz i = 0; i < arrlenu(BINDINGS.types); i++)
     {
         SDL_free(BINDINGS.types[i]);
     }
 
-    shfree(BINDINGS.errors);
     arrfree(BINDINGS.types);
     SDL_zero(BINDINGS);
 }

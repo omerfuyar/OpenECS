@@ -36,6 +36,11 @@ const char *ECSI_PluginGetName(ECSPlugin plugin);
 /// @return The version its manifest gives.
 const char *ECSI_PluginGetVersion(ECSPlugin plugin);
 
+/// @brief Reports an error of a plugin's callback. Repeats of the same error are counted, not reported again; ECSI_PluginsUnload reports the counts.
+/// @param plugin The plugin.
+/// @param message The error.
+void ECSI_PluginReportError(ECSPlugin plugin, const char *message);
+
 /// @brief Checks whether a plugin's manifest depends on another plugin. A plugin counts as depending on itself.
 /// @param plugin The plugin.
 /// @param other The other plugin.
