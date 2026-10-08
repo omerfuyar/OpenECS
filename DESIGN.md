@@ -157,7 +157,8 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 7. Build the settings layers (OVERVIEW 10.4).
 8. Restore plugin state, then build the layout and panels, from this tool's last session or from the preset (OVERVIEW 10.2).
 9. Report the settings and keys whose names nothing registered (7.8, 12.1).
-10. Enter the main loop.
+10. Pass the files of the command line to the `open` function (13.5).
+11. Enter the main loop.
 
 ### 2.4 Shutdown
 
@@ -838,7 +839,7 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [FILE...]
 - `--fresh` starts from the preset instead of the tool's last session.
 - `--test` runs a test (17.5).
 - A session's identity wins over the preset's, so the session is saved again as the last session of its own tool.
-- Files are passed to the function that the preset names in `open`.
+- Files are passed to the function that the preset or session names in `open`. Its signature is `void(string)`. It is called once for each file, in order, once the session is built (2.3). Without an `open` function, the files are reported and not opened.
 - A tool's `.desktop` file runs, for example, `openecs --preset paint %F`.
 
 ## 14. Errors and logging
@@ -941,7 +942,7 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 ### 17.5 Tests
 
 - A test is a Lua file in `tests/`. Debug builds run it with `openecs --test FILE`; other builds refuse the option.
-- The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `default` if left out), and `run`, a function that gets the `test` table.
+- The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `default` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.5), and `run`, a function that gets the `test` table.
 - Tests keep their presets and test plugins in `tests/presets/` and `tests/plugins/`, so a change to a first-party preset does not change a test.
 - A test starts from its preset alone. It reads none of the user's settings, plugins or sessions, and writes no session and no log file. SDL's offscreen video driver and software renderer are the defaults, so a test needs no display; the variables `SDL_VIDEO_DRIVER` and `SDL_RENDER_DRIVER` choose others, for example to watch a test.
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).

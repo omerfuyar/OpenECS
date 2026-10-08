@@ -184,6 +184,23 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
 }
 
 /// @brief Gives the shorter of two waits in milliseconds, where -1 means no wait.
+/// @brief Passes files to the function that the preset or session names in open, one call for each file.
+static void ECSIApp_OpenFiles(char **files, usz count)
+{
+    const char *open = ECSValue_GetString(ECSValue_GetTableField(APP.preset.file, "open"), NULL);
+
+    if (count > 0 && open == NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The preset names no function to open files with, so %zu files are not opened.", count);
+        return;
+    }
+
+    for (usz i = 0; i < count; i++)
+    {
+        ECSIServices_CallOpen(open, files[i]);
+    }
+}
+
 static i32 ECSIApp_ShorterWait(i32 a, i32 b)
 {
     return a < 0 || (b >= 0 && b < a) ? b : a;
@@ -288,6 +305,10 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     // misspelt names change nothing, so they are reported once everything is registered
     ECSISettings_ReportUndeclared();
     ECSIKeys_ReportUnknownFunctions();
+
+    usz fileCount = arguments->fileCount;
+    char **files = APP.test ? ECSITest_GetFiles(&fileCount) : arguments->files;
+    ECSIApp_OpenFiles(files, fileCount);
 
     // drivers, plugins and system libraries are loaded now
     ECSISanitizers_KeepLibraries();

@@ -13,6 +13,8 @@ typedef struct ECSIArguments
     const char *session; // path of a session, or NULL if the command line names none
     bool fresh;          // true to start from the preset, not from the tool's last session
     const char *test;    // path of a test to run, or NULL
+    char **files;        // the files to open, as the command line names them
+    usz fileCount;
 } ECSIArguments;
 
 /// @brief Starts every module, loads the plugins and builds the layout from the session or the preset. If a step fails, it tells the user and exits the program.

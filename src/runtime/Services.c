@@ -38,6 +38,9 @@ static const char *const OPENECS_PARAMETER_TYPE_NAMES[ECSIParameterType_Count] =
 /// @brief A bound function that takes the focused panel: void(handle<ecs.panel>).
 typedef void (*ECSIPanelFunction)(ECSPanel panel);
 
+/// @brief A preset's open function, which takes a file's path: void(string).
+typedef void (*ECSIOpenFunction)(const char *path);
+
 /// @brief A registered type of handles.
 typedef struct ECSIHandleType
 {
@@ -1421,6 +1424,29 @@ SHUResult ECSIServices_CallBound(const char *name, ECSPanel focus)
 
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A key is bound to '%s', which is %s; a bound function is void() or void(handle<ecs.panel>).", name, function->signature.text);
     return SHUResult_ErrBadData;
+}
+
+SHUResult ECSIServices_CallOpen(const char *name, const char *path)
+{
+    SDL_assert(name != NULL);
+    SDL_assert(path != NULL);
+
+    ECSIFunction *function = SERVICES.functions == NULL ? NULL : shget(SERVICES.functions, name);
+
+    if (function == NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The preset opens files with '%s', which is not registered.", name);
+        return SHUResult_ErrNotFound;
+    }
+
+    if (SDL_strcmp(function->signature.text, "void(string)") != 0)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The preset opens files with '%s', which is %s; it must be void(string).", name, function->signature.text);
+        return SHUResult_ErrBadData;
+    }
+
+    ((ECSIOpenFunction)function->pointer)(path);
+    return SHUResult_Ok;
 }
 
 const char *ECSIServices_GetDescription(const char *name)

@@ -5,6 +5,7 @@ return {
   app = { id = "openecs.test.sketch", name = "Sketch" },
   depends = { sketch_c = "0.1", sketch_lua = "0.1" },
   settings = { ["sketch_c.brushColor"] = "red", ["sketch_lua.brushColor"] = "green" },
+  open = "sketch_c.open",
   keys = { ["Ctrl+Tab"] = "sketch_c.nextWorkspace" },
   workspaces = {
     { name = "C",

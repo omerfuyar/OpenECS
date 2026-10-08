@@ -8,9 +8,10 @@
 /// @brief Preset used when the command line names none.
 #define OPENECS_DEFAULT_PRESET "default"
 
+/// @brief Reads the options, and moves the files to the start of argv, over options already read.
 static ECSIArguments ECSIMain_ReadArguments(int argc, char **argv)
 {
-    ECSIArguments arguments = {.preset = OPENECS_DEFAULT_PRESET};
+    ECSIArguments arguments = {.preset = OPENECS_DEFAULT_PRESET, .files = argv + 1};
 
     for (int i = 1; i < argc; i++)
     {
@@ -30,9 +31,13 @@ static ECSIArguments ECSIMain_ReadArguments(int argc, char **argv)
         {
             arguments.test = argv[++i];
         }
+        else if (SDL_strncmp(argv[i], "--", 2) != 0)
+        {
+            arguments.files[arguments.fileCount++] = argv[i];
+        }
         else
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Unknown argument '%s'. Usage: openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE]", argv[i]);
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Unknown argument '%s'. Usage: openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [FILE...]", argv[i]);
         }
     }
 
