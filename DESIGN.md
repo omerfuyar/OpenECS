@@ -621,8 +621,10 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 
 ### 12.1 Declaring
 
-- The core and plugins declare settings with a name, a type, a default and a description. Owners are told when their settings change.
+- The core and plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. Owners are told when their settings change.
 - Types: `bool`, `integer`, `number`, `string`, `choice` (one of a list), `key` (a key combination), `list` and `table`.
+- `ECSSetting_Get(name)` returns the value in effect as a value (10.3). It comes from the highest layer that sets the setting with a value of its type; otherwise it is the default. A value of another type is reported with its file and skipped.
+- The core reads a key combination when it uses it. A key text that cannot be read is reported, and the default is used.
 
 ### 12.2 Interface
 
@@ -631,7 +633,7 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 
 ### 12.3 User files
 
-The part for one tool is keyed by the tool's app id and wins over the general part of the same file.
+The part for one tool is keyed by the tool's app id and wins over the general part of the same file. A field whose name has a dot is a setting. The settings window's file has the same shape.
 
 ```lua
 -- ~/.config/openecs/settings.lua
