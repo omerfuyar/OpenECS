@@ -233,8 +233,8 @@ typedef struct ECSPanelTypeDesc
 
 ### 4.5 Unsaved work
 
-- A panel sets its flag with `ECSPanel_SetUnsaved`. Save calls the type's `Save`; if that fails, the close is cancelled.
-- The question is a message dialog (`SDL_ShowMessageBox`). When several panels have unsaved work, one dialog lists them all.
+- A panel sets its flag with `ECSPanel_SetUnsaved`, and a Lua panel with `panel:set_unsaved(true)`. Its tab shows a mark. Save calls the type's `Save`; if that fails, the close is cancelled.
+- The question is a message dialog (`SDL_ShowMessageBox`) with Save, Discard and Cancel. When several panels have unsaved work, one dialog lists them all.
 
 ### 4.6 Popups, pointer and text input
 
