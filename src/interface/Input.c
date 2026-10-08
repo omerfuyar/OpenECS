@@ -16,6 +16,9 @@
 /// @brief Choices of the setting ecs.focus; the first is the default.
 static const char *const ECSI_FOCUS_CHOICES[] = {"click", "hover", NULL};
 
+/// @brief Core functions in every panel's menu. They act on the focused panel, which the menu's panel becomes.
+static const char *const ECSI_MENU_FUNCTIONS[] = {"ecs.close", "ecs.maximize", "ecs.lock", "ecs.move_left", "ecs.move_right", "ecs.move_up", "ecs.move_down"};
+
 /// @brief The default keys after the core prefix, with the functions they run. The setting ecs.prefix_keys adds to them and changes them.
 static const char *const ECSI_PREFIX_KEYS[][2] = {
     {"Left", "ecs.focus_left"},
@@ -92,6 +95,13 @@ static struct
     ECSValue *toolKeys;               // the preset's bindings for the whole tool, or NULL
     ECSValue **workspaceKeys;         // stb_ds array of the preset's bindings for each workspace; NULL for none
     ECSPanel pointerPanel;            // panel that got the press; it gets pointer events until the release
+    bool menuOpen;                    // a panel menu is shown, and gets the pointer and the keys
+    const char **menuFunctions;       // stb_ds array of the menu's functions
+    const char **menuLines;           // stb_ds array of the menu's lines: key text, label, and so on
+    char **menuTexts;                 // stb_ds array of the key texts made for the menu
+    usz menuSelected;
+    f32 menuX;
+    f32 menuY;
     void *clipboard;                  // what a clipboard getter returned last, freed by the next call
 } INPUT = {0};
 
@@ -441,6 +451,160 @@ static void ECSI_InputFocus(ECSPanel panel)
     if (panel != NULL)
     {
         ECSI_LayoutSetFocus(panel);
+    }
+}
+
+/// @brief Closes the panel menu, if it is open.
+static void ECSI_InputCloseMenu(void)
+{
+    for (usz i = 0; i < arrlenu(INPUT.menuTexts); i++)
+    {
+        SDL_free(INPUT.menuTexts[i]);
+    }
+
+    arrfree(INPUT.menuTexts);
+    arrfree(INPUT.menuLines);
+    arrfree(INPUT.menuFunctions);
+
+    if (INPUT.menuOpen)
+    {
+        INPUT.menuOpen = false;
+        ECSI_LayoutShowMenu(0.0f, 0.0f, NULL, 0, 0);
+    }
+}
+
+/// @brief Opens a panel's menu at a point. Each entry shows the keys that run its function after the prefix.
+static void ECSI_InputOpenMenu(ECSPanel panel, f32 x, f32 y)
+{
+    ECSI_InputCloseMenu();
+    ECSI_LayoutSetFocus(panel);
+    ECSI_InputReadPrefixKeys();
+    const char *prefix = ECSValue_GetString(ECSSetting_Get("ecs.prefix"), OPENECS_DEFAULT_PREFIX);
+
+    for (usz i = 0; i < SDL_arraysize(ECSI_MENU_FUNCTIONS); i++)
+    {
+        const char *function = ECSI_MENU_FUNCTIONS[i];
+        const char *description = ECSI_ServicesGetDescription(function);
+        char *keys = NULL;
+
+        for (usz j = 0; keys == NULL && j < arrlenu(INPUT.prefixKeys); j++)
+        {
+            if (SDL_strcmp(INPUT.prefixKeys[j].function, function) == 0 && SDL_asprintf(&keys, "%s, %s", prefix, INPUT.prefixKeys[j].text) < 0)
+            {
+                keys = NULL;
+            }
+        }
+
+        if (keys != NULL)
+        {
+            arrput(INPUT.menuTexts, keys);
+        }
+
+        arrput(INPUT.menuFunctions, function);
+        arrput(INPUT.menuLines, keys == NULL ? "" : keys);
+        arrput(INPUT.menuLines, description == NULL ? function : description);
+    }
+
+    INPUT.menuOpen = true;
+    INPUT.menuSelected = 0;
+    INPUT.menuX = x;
+    INPUT.menuY = y;
+    ECSI_LayoutShowMenu(x, y, INPUT.menuLines, arrlenu(INPUT.menuFunctions), 0);
+}
+
+/// @brief Highlights a menu entry.
+static void ECSI_InputSelectMenuItem(usz index)
+{
+    INPUT.menuSelected = index;
+    ECSI_LayoutShowMenu(INPUT.menuX, INPUT.menuY, INPUT.menuLines, arrlenu(INPUT.menuFunctions), index);
+}
+
+/// @brief Closes the menu and runs the function of one of its entries on the focused panel.
+static void ECSI_InputRunMenuItem(usz index)
+{
+    const char *function = INPUT.menuFunctions[index];
+    ECSI_InputCloseMenu();
+    ECSI_ServicesCallBound(function, ECSI_LayoutGetFocus());
+}
+
+/// @brief Gives an event to the open panel menu. Pointer and key events go to the menu only.
+/// @return true if the menu used the event.
+static bool ECSI_InputMenuHandle(const SDL_Event *event)
+{
+    if (!INPUT.menuOpen)
+    {
+        return false;
+    }
+
+    usz count = arrlenu(INPUT.menuFunctions);
+
+    switch (event->type)
+    {
+    case SDL_EVENT_MOUSE_MOTION:
+    {
+        i32 item = ECSI_LayoutMenuItemAt(event->motion.x, event->motion.y);
+
+        if (item >= 0 && (usz)item != INPUT.menuSelected)
+        {
+            ECSI_InputSelectMenuItem((usz)item);
+        }
+
+        return true;
+    }
+
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    {
+        // a press outside the menu only closes it
+        i32 item = ECSI_LayoutMenuItemAt(event->button.x, event->button.y);
+
+        if (item >= 0 && event->button.button == SDL_BUTTON_LEFT)
+        {
+            ECSI_InputRunMenuItem((usz)item);
+        }
+        else if (!ECSI_LayoutMenuContains(event->button.x, event->button.y))
+        {
+            ECSI_InputCloseMenu();
+        }
+
+        return true;
+    }
+
+    case SDL_EVENT_KEY_DOWN:
+        switch (event->key.key)
+        {
+        case SDLK_UP:
+            ECSI_InputSelectMenuItem((INPUT.menuSelected + count - 1) % count);
+            break;
+        case SDLK_DOWN:
+            ECSI_InputSelectMenuItem((INPUT.menuSelected + 1) % count);
+            break;
+        case SDLK_RETURN:
+        case SDLK_KP_ENTER:
+        case SDLK_SPACE:
+            ECSI_InputRunMenuItem(INPUT.menuSelected);
+            break;
+        case SDLK_ESCAPE:
+            ECSI_InputCloseMenu();
+            break;
+        default:
+            break;
+        }
+
+        return true;
+
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+    case SDL_EVENT_MOUSE_WHEEL:
+    case SDL_EVENT_KEY_UP:
+    case SDL_EVENT_TEXT_INPUT:
+        return true;
+
+    case SDL_EVENT_WINDOW_FOCUS_LOST:
+    case SDL_EVENT_WINDOW_RESIZED:
+        ECSI_InputCloseMenu();
+        return false;
+
+    default:
+        return false;
     }
 }
 
@@ -838,6 +1002,7 @@ void ECSI_InputRemovePlugin(ECSPlugin plugin)
 
 void ECSI_InputTerminate(void)
 {
+    ECSI_InputCloseMenu();
     ECSI_InputFreeBindings(&INPUT.prefixKeys);
 
     for (usz i = 0; i < arrlenu(INPUT.panelBindings); i++)
@@ -861,6 +1026,11 @@ void ECSI_InputTerminate(void)
 bool ECSI_InputHandle(const SDL_Event *event)
 {
     SDL_assert(event != NULL);
+
+    if (ECSI_InputMenuHandle(event))
+    {
+        return true;
+    }
 
     switch (event->type)
     {
@@ -891,7 +1061,24 @@ bool ECSI_InputHandle(const SDL_Event *event)
             ECSI_InputSetPrefix(false);
         }
 
-        if (ECSI_LayoutPointerDown(button->x, button->y))
+        // on a tab or grip, the middle button closes the panel and the right button opens its menu
+        ECSPanel tab = button->button == SDL_BUTTON_LEFT ? NULL : ECSI_LayoutTabAt(button->x, button->y);
+
+        if (tab != NULL)
+        {
+            if (button->button == SDL_BUTTON_RIGHT)
+            {
+                ECSI_InputOpenMenu(tab, button->x, button->y);
+            }
+            else if (button->button == SDL_BUTTON_MIDDLE && !ECSI_LayoutIsLocked(tab))
+            {
+                (void)ECSLayout_Close(tab);
+            }
+
+            break;
+        }
+
+        if (button->button == SDL_BUTTON_LEFT && ECSI_LayoutPointerDown(button->x, button->y))
         {
             break;
         }
@@ -939,7 +1126,14 @@ bool ECSI_InputHandle(const SDL_Event *event)
     case SDL_EVENT_MOUSE_BUTTON_UP:
     {
         const SDL_MouseButtonEvent *button = &event->button;
-        ECSI_LayoutPointerUp();
+
+        // a click on a grip opens the panel's menu
+        ECSPanel clicked = button->button == SDL_BUTTON_LEFT ? ECSI_LayoutPointerUp() : NULL;
+
+        if (clicked != NULL)
+        {
+            ECSI_InputOpenMenu(clicked, button->x, button->y);
+        }
 
         if (ECSI_InputPointerPanel() != NULL)
         {

@@ -94,20 +94,27 @@ void ECSI_LayoutRender(u64 nowTicks);
 /// @return The panel, or NULL.
 ECSPanel ECSI_LayoutPanelAt(f32 x, f32 y);
 
-/// @brief Handles a pointer press on the core's interface: dividers, tabs and grips. A press on a tab or grip can start dragging its panel.
+/// @brief Handles a press of the main pointer button on the core's interface: dividers, tabs, close buttons, tab rows and grips. A press on a tab or grip can start dragging its panel, and a press on a tab row's empty part its whole group.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
 /// @return true if the core's interface used the press.
 bool ECSI_LayoutPointerDown(f32 x, f32 y);
 
-/// @brief Handles pointer movement: dragging a divider or a panel, and showing grips.
+/// @brief Handles pointer movement: dragging a divider, a panel or a group, showing grips, and the pointer's shape over dividers.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
 /// @return true if a divider or a panel is being dragged.
 bool ECSI_LayoutPointerMove(f32 x, f32 y);
 
-/// @brief Handles a pointer release: a dragged panel lands where the pointer is.
-void ECSI_LayoutPointerUp(void);
+/// @brief Handles a release of the main pointer button: a dragged panel or group lands where the pointer is.
+/// @return The panel whose grip was clicked without dragging, for its menu, or NULL.
+ECSPanel ECSI_LayoutPointerUp(void);
+
+/// @brief Finds the panel whose tab or grip is at a point, as drawn in the last frame.
+/// @param x Horizontal position in layout units.
+/// @param y Vertical position in layout units.
+/// @return The panel, or NULL.
+ECSPanel ECSI_LayoutTabAt(f32 x, f32 y);
 
 /// @brief Stops dragging a panel without moving it.
 /// @return true if a panel was being dragged.
@@ -168,5 +175,20 @@ ECSPanel *ECSI_LayoutGetPanels(void);
 /// @param lines Each key's text and description, one after the other. They must stay valid while they are shown.
 /// @param count Number of keys; 0 hides the list.
 void ECSI_LayoutShowPrefixKeys(const char *const *lines, usz count);
+
+/// @brief Shows or hides a panel menu, kept inside the OS window.
+/// @param x Horizontal position of its top-left corner, in layout units.
+/// @param y Vertical position of its top-left corner, in layout units.
+/// @param lines Each entry's key text and label, one after the other. They must stay valid while they are shown.
+/// @param count Number of entries; 0 hides the menu.
+/// @param selected Index of the highlighted entry.
+void ECSI_LayoutShowMenu(f32 x, f32 y, const char *const *lines, usz count, usz selected);
+
+/// @brief Finds the menu entry at a point, as drawn in the last frame.
+/// @return Index of the entry, or -1.
+i32 ECSI_LayoutMenuItemAt(f32 x, f32 y);
+
+/// @brief Checks whether a point is on the shown menu.
+bool ECSI_LayoutMenuContains(f32 x, f32 y);
 
 #pragma endregion Declarations
