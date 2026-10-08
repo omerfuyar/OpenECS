@@ -25,6 +25,8 @@ struct ECSI_Panel
     char *typeName;
     char *title;
     void *state;
+    ECSValue *savedState; // the saved state the panel was created with; a placeholder keeps it to save it again
+    u32 stateVersion;     // version of savedState
     bool needsDraw;
     f32 x; // rectangle in layout units, set by the layout
     f32 y;
@@ -42,8 +44,10 @@ void ECSI_PanelsTerminate(void);
 /// @brief Creates a panel. If its type is missing or fails to create the panel, the panel becomes a placeholder.
 /// @param retPanel The new panel.
 /// @param typeName Name of the panel's type.
+/// @param savedState Saved state to create the panel from, or NULL for a new panel. The panel keeps a copy.
+/// @param stateVersion Version of the saved state.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName);
+SHUWUR SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName, const ECSValue *savedState, u32 stateVersion);
 
 /// @brief Destroys a panel at once and sets the handle to NULL. Use ECSI_PanelClose for a panel that may still have queued events.
 /// @param panel Panel to destroy.

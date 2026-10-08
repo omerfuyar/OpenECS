@@ -30,7 +30,6 @@ static u32 *DemoRow(ECSSurface *surface, i32 y)
 
 static SHUResult DemoCreate(ECSPanel panel, const ECSValue *savedState, u32 version, void **retState)
 {
-    (void)savedState;
     (void)version;
 
     DemoPanel *demo = calloc(1, sizeof(DemoPanel));
@@ -40,6 +39,9 @@ static SHUResult DemoCreate(ECSPanel panel, const ECSValue *savedState, u32 vers
         return SHUResult_ErrAllocation;
     }
 
+    // a missing or wrong colour in the saved state falls back to the first one
+    i64 color = ECSValue_GetInteger(ECSValue_GetField(savedState, "color"), 0);
+    demo->color = color >= 0 && (usz)color < sizeof(DEMO_COLORS) / sizeof(*DEMO_COLORS) ? (usz)color : 0;
     demo->panel = panel;
     demo->pointerX = -1.0f;
     demo->pointerY = -1.0f;

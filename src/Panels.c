@@ -2,6 +2,7 @@
 
 #include "Events.h"
 #include "Plugins.h"
+#include "Values.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -76,7 +77,7 @@ void ECSI_PanelsTerminate(void)
     SDL_zero(PANELS);
 }
 
-SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName)
+SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName, const ECSValue *savedState, u32 stateVersion)
 {
     SDL_assert(retPanel != NULL);
     SDL_assert(typeName != NULL);
@@ -92,13 +93,19 @@ SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName)
     panel->typeName = SDL_strdup(typeName);
     panel->title = SDL_strdup(type == NULL ? typeName : type->title);
 
-    if (panel->typeName == NULL || panel->title == NULL)
+    if (panel->typeName == NULL || panel->title == NULL || (savedState != NULL && ECSI_ValueCreate(&panel->savedState)))
     {
         ECSI_PanelDestroy(&panel);
         return SHUResult_ErrAllocation;
     }
 
+    if (savedState != NULL)
+    {
+        SHU_ReturnResult(ECSI_ValueCopy(panel->savedState, savedState), ECSI_PanelDestroy(&panel););
+    }
+
     panel->id = ++PANELS.nextPanelId;
+    panel->stateVersion = stateVersion;
     panel->needsDraw = true;
 
     if (type == NULL)
@@ -110,7 +117,7 @@ SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName)
         // the type may set the title while it creates the panel, so the type is set first
         panel->type = type;
 
-        if (type->desc.Create(panel, NULL, 0, &panel->state))
+        if (type->desc.Create(panel, panel->savedState, stateVersion, &panel->state))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' failed to create a panel; showing a placeholder.", typeName);
             panel->type = NULL;
@@ -140,6 +147,7 @@ void ECSI_PanelDestroy(ECSPanel *panel)
     }
 
     SDL_DestroySurface(target->pixels);
+    ECSI_ValueDestroy(&target->savedState);
     SDL_free(target->typeName);
     SDL_free(target->title);
     SDL_free(target);

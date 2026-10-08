@@ -2,7 +2,7 @@
 
 // Lua: the Lua state. Reads presets, sessions, manifests and settings files as data.
 
-#include "shu/shu.h"
+#include "Values.h"
 
 #pragma region Declarations
 
@@ -58,6 +58,12 @@ const char *ECSI_LuaDataGetText(const char *key, const char *fallback);
 /// @param fallback Value returned if the field is missing or not a number.
 /// @return The number.
 f64 ECSI_LuaDataGetNumber(const char *key, f64 fallback);
+
+/// @brief Copies a field of the current table into a value. Integer keys from 1 up to the first missing one become list items, and text keys named fields. Other keys, and functions and other values that are not data, are skipped and reported.
+/// @param key Name of the field.
+/// @param value The value to set; nil if the field is missing.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if tables are nested too deeply, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_LuaDataGetValue(const char *key, ECSValue *value);
 
 /// @brief Calls a function for every field of the current table whose key and value are texts.
 /// @param function Function to call.

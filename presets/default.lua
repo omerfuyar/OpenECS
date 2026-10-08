@@ -8,7 +8,7 @@ return {
     { name = "main",
       windows = {
         { split = "horizontal",
-          { size = 220, panels = { { type = "demo.color" } } },
+          { size = 220, panels = { { type = "demo.color", state = { color = 2 } } } },
           { share = 1, split = "vertical",
             { share = 2, panels = { { type = "demo.gradient" }, { type = "demo.checker" } } },
             { share = 1, panels = { { type = "demo.blink" }, { type = "demo.color" }, { type = "demo.missing" } } },

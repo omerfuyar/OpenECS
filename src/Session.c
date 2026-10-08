@@ -3,6 +3,7 @@
 #include "Layout.h"
 #include "Lua.h"
 #include "Panels.h"
+#include "Values.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -66,7 +67,17 @@ static SHUResult ECSI_SessionReadNode(ECSI_Node **retNode)
         }
 
         ECSPanel panel = NULL;
-        SHUResult result = ECSI_PanelCreate(&panel, ECSI_LuaDataGetText("type", ""));
+        ECSValue *state = NULL;
+        SHUResult result = ECSI_ValueCreate(&state);
+        result = result ? result : ECSI_LuaDataGetValue("state", state);
+
+        if (!result)
+        {
+            bool hasState = ECSValue_GetType(state) != ECSValueType_Nil;
+            result = ECSI_PanelCreate(&panel, ECSI_LuaDataGetText("type", ""), hasState ? state : NULL, (u32)ECSI_LuaDataGetNumber("state_version", 0.0));
+        }
+
+        ECSI_ValueDestroy(&state);
 
         if (!result)
         {
