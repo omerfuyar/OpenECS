@@ -120,7 +120,7 @@ In order: a module includes only the modules above it (1.5).
 | Services | Function registry, signatures, calls between C and Lua. The only module that calls libffi.                          |
 | Panels   | Panel types, panels, and the pixels each panel draws.                                                               |
 | Layout   | OS windows and their renderers, layout trees, workspaces, hit testing, docking, the core's own interface. The only module that calls Clay. |
-| Input    | SDL's input events, focus, pointer routing, key dispatch, text input, the clipboard.                                |
+| Input    | SDL's input events, focus, pointer routing, key dispatch, text input, the clipboard, dialogs.                       |
 | Session  | Reading presets and sessions, applying them, writing them.                                                          |
 | Bindings | The `ecs` table: the plugin interface for Lua plugins (11.3).                                                       |
 
@@ -181,7 +181,7 @@ The wait uses `SDL_WaitEventTimeout` with the time until the next timer, and doe
 - Background work posts its result to the main thread, which delivers it.
 - `ECS_RunInBackground(plugin, work, done, data)`: `work` runs on a worker thread from a small pool, then `done` runs on the main thread. Lua code never runs on worker threads; Lua plugins use services that do their work in the background.
 - The pool has one thread for each processor core but one, at most 4. It starts when background work first comes.
-- A function that reaches the main thread runs between passes of the main loop, and the loop makes a pass after it.
+- A function that reaches the main thread runs between passes of the main loop, and the loop makes a pass after it. A function that the main thread sends to itself runs after the current callback returns, with the queued events (8.2).
 - On exit, running work finishes and waiting work does not run, nor does its `done`.
 - The thread-safe functions are: running a function on the main thread (`ECS_RunOnMainThread`, built on `SDL_RunOnMainThread`), `ECS_RunInBackground`, and logging. Every other function is for the main thread only. Each function documents its thread rule.
 - Native plugins may create their own threads, under the same rule.
@@ -412,7 +412,12 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - `ECSClipboard_SetText` and `ECSClipboard_GetText` move text; `ECSClipboard_SetData` and `ECSClipboard_GetData` move data of a MIME type, such as `image/png`. Lua: `ecs.clipboard.set_text`, `get_text`, `set_data` and `get_data`.
 - The core copies what it puts on the clipboard. What a getter returns stays valid until the next clipboard call.
 
-### 7.7 Binding keys
+### 7.7 Dialogs
+
+- `ECSDialog_Show(plugin, &desc)` shows an open file, save file or open folder dialog, with filters such as `{ "Images", "png;jpg" }`. It does not wait: the description's `Done` function gets the paths on the main thread, or `NULL` when the user cancels or the dialog fails. Lua: `ecs.dialog.show(desc, function(files) end)`.
+- `ECSDialog_ShowMessage(title, message, buttons, count, &button)` waits for the user. Enter presses the first button and Escape the last. Lua: `ecs.dialog.message(title, text, buttons)`.
+
+### 7.8 Binding keys
 
 - Keybindings are settings of type `key`.
 - Plugins have no function for workspace or global bindings.
