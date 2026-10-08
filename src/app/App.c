@@ -14,6 +14,10 @@
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
 
+#ifdef DEBUG
+#include <sanitizer/lsan_interface.h>
+#endif
+
 #pragma region Source Only
 
 /// @brief Font of the core's interface, relative to the executable.
@@ -281,8 +285,13 @@ void ECSI_AppStop(void)
     SDL_free(APP.lastSession);
     SDL_free(APP.configFolder);
     SDL_free(APP.stateFolder);
-    SDL_Quit();
-
-    ECSI_LogTerminate();
     ECSI_LuaTerminate();
+
+    // Debug builds check for leaks here, when OpenECS has freed its memory but the drivers that SDL loaded are still loaded, so their leaks can be told apart by library name
+#ifdef DEBUG
+    __lsan_do_leak_check();
+#endif
+
+    SDL_Quit();
+    ECSI_LogTerminate();
 }

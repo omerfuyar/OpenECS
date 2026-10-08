@@ -104,7 +104,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 - Before writing a function, check that no dependency already has it.
 - The core calls SDL directly, without wrappers, for memory, text, files and paths, shared libraries, logging and assertions: `SDL_malloc`, `SDL_strdup`, `SDL_asprintf`, `SDL_GetPrefPath`, `SDL_LoadObject`, `SDL_Log`, `SDL_assert`.
 - Dynamic arrays and hash maps come from `stb_ds.h`. The core includes it through the glue header `stb/stbSDL3.h`, which sets it to use SDL's allocator and assertions. The core has no fixed limits on counts, such as the number of plugins or panels.
-- Each job has one implementation, used everywhere. For example, all logging goes through SDL's log, and all memory comes from SDL's allocator.
+- Each job has one implementation, used everywhere. For example, all logging goes through SDL's log, and all memory comes from SDL's allocator, Lua's included.
 
 ## 2. Program structure
 
@@ -861,7 +861,8 @@ OpenECS follows the XDG Base Directory specification:
 
 - Warnings: `-Wall -Wextra -Wpedantic -Wconversion -Wshadow`.
 - Debug builds of the core and of plugins add the static analyzer (`-fanalyzer`) and the address, leak and undefined-behaviour sanitizers (`-fsanitize=address,undefined`). Dependencies get neither.
-- `src/Sanitizers.c` sets the sanitizers' options and hides leaks inside graphics drivers. It is compiled only in Debug builds.
+- `src/Sanitizers.c` sets the sanitizers' options and hides leaks inside the system libraries that SDL loads: graphics drivers, display servers, input methods and D-Bus. It is compiled only in Debug builds.
+- Debug builds check for leaks at shutdown, after OpenECS has freed its memory and before `SDL_Quit` unloads those libraries, so their leaks can be matched by library name.
 - Release builds set `SDL_ASSERT_LEVEL` to 0, so they have no assertions. Debug builds set it to 2.
 
 ### 17.4 Dependency versions

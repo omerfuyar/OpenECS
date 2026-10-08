@@ -260,16 +260,71 @@ static int ECSI_LuaWriteProtected(lua_State *state)
     return 1;
 }
 
+/// @brief Lua's allocator: SDL's, like the rest of the core.
+static void *ECSI_LuaAllocate(void *userData, void *block, size_t oldSize, size_t newSize)
+{
+    (void)userData;
+    (void)oldSize;
+
+    if (newSize == 0)
+    {
+        SDL_free(block);
+        return NULL;
+    }
+
+    return SDL_realloc(block, newSize);
+}
+
+/// @brief Logs an error raised outside a protected call. Lua aborts the program after it.
+static int ECSI_LuaPanic(lua_State *state)
+{
+    const char *message = lua_tostring(state, -1);
+    SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, "Lua error outside a protected call: %s", message == NULL ? "?" : message);
+    return 0;
+}
+
+/// @brief Logs Lua's warnings. A warning may come in pieces, which are joined first; control messages such as "@on" are ignored.
+static void ECSI_LuaWarn(void *userData, const char *message, int toContinue)
+{
+    (void)userData;
+    static char *pending = NULL;
+
+    if (pending == NULL && !toContinue && message[0] == '@')
+    {
+        return;
+    }
+
+    char *joined = NULL;
+
+    if (SDL_asprintf(&joined, "%s%s", pending == NULL ? "" : pending, message) < 0)
+    {
+        joined = NULL;
+    }
+
+    SDL_free(pending);
+    pending = joined;
+
+    if (!toContinue && pending != NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Lua: %s", pending);
+        SDL_free(pending);
+        pending = NULL;
+    }
+}
+
 #pragma endregion Source Only
 
 SHUResult ECSI_LuaInitialize(void)
 {
-    LUA.state = luaL_newstate();
+    LUA.state = lua_newstate(ECSI_LuaAllocate, NULL, luaL_makeseed(NULL));
 
     if (LUA.state == NULL)
     {
         return SHUResult_ErrAllocation;
     }
+
+    lua_atpanic(LUA.state, ECSI_LuaPanic);
+    lua_setwarnf(LUA.state, ECSI_LuaWarn, NULL);
 
     // every library is open for plugins; data files see only a few, through their own environment
     luaL_openlibs(LUA.state);
