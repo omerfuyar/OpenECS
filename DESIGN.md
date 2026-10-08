@@ -407,8 +407,15 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 6.10 Maximize, pop-out and workspaces
 
-- Maximize is a mark on one group. The mark is saved in the session.
-- Pop-out creates an OS window with a new root that holds one group with the panel.
+- Maximize is a mark on one group of a root. The mark is saved in the session.
+- Pop-out creates an OS window with a new root that holds one group with the panel. The window has the panel's size and opens at the pointer; on Wayland, the compositor places it (OVERVIEW 6.4).
+- `ecs.layout.popOut` pops out the focused panel. A panel alone in its OS window, and a panel of a locked group, stay. Code pops a panel out with the zone `ECSZone_Window`, in Lua `"window"`: `ECSLayout_Open(plugin, &panel, "text.editor", NULL, NULL, ECSZone_Window)` or `ECSLayout_Move(panel, NULL, ECSZone_Window)`.
+- Inside a pop-out window, every layout operation works as in the main window: splits, tabs, maximize, dragging and docking along its edges. Panels move between OS windows by dragging or by code.
+- A pop-out window closes when its last panel leaves it. Its close button closes its panels, after asking about unsaved work (4.5); Cancel keeps the window. Closing the main window quits.
+- The keys that move focus or panels (7.5) act within the focused panel's OS window. Focusing a panel in another OS window raises that window (7.1).
+- The core's menus and the list of prefix keys show in the OS window of the focused panel.
+- Switching workspaces hides the pop-out windows of the old workspace and shows those of the new one.
+- A session's `windows` list holds the main window's tree first, then one tree for each pop-out window (13.2). A pop-out window's tree also has `width` and `height`, its size in layout units. Positions are not saved, because Wayland does not let them be chosen.
 
 ## 7. Input, focus and keys
 
@@ -800,7 +807,7 @@ return {
   keys = { ["Ctrl+N"] = "canvas.new" },      -- bindings for the whole tool
   workspaces = {
     { name = "drawing",
-      windows = {                            -- one layout tree per OS window
+      windows = {                            -- one layout tree per OS window: the main window first, then pop-out windows
         { split = "horizontal",
           { size = 240, panels = { { type = "palette.view" } } },
           { share = 1,  panels = { { type = "canvas.view", state = { document = 1 } } } },
