@@ -18,20 +18,21 @@ typedef enum ECSISettingsLayer
     ECSISettingsLayer_Count,
 } ECSISettingsLayer;
 
-/// @brief Reads the settings layers of the preset and the user's files. Missing user files are fine.
+/// @brief Reads the settings layers: the core's settings file, the preset, and the user's files. Missing user files are fine.
+/// @param corePath Path of the core's settings file, which holds the value of every core setting.
 /// @param presetSettings The preset's settings table, or NULL.
 /// @param presetPath Path of the preset, named where its settings are explained.
 /// @param appId The tool's app id, which chooses the tool's own part of the user's files.
 /// @param configFolder The user's configuration folder, ending with a separator, or NULL if there is none.
-/// @return SHUResult_Ok, or SHUResult_ErrAllocation. A user file that cannot be read is reported and skipped.
-SHUWUR SHUResult ECSISettings_Initialize(const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder);
+/// @return SHUResult_Ok, SHUResult_ErrFile or SHUResult_ErrBadData if the core's settings file cannot be read, or SHUResult_ErrAllocation. A user file that cannot be read is reported and skipped.
+SHUWUR SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder);
 
 /// @brief Frees every declaration and layer.
 void ECSISettings_Terminate(void);
 
-/// @brief Declares a setting of the core. Its name starts with "ecs.".
+/// @brief Declares a setting of the core. Its name starts with "ecs.", and its default is its value in the core's settings file; the description's default fields are not used.
 /// @param desc Description of the setting.
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid or the name is taken, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, the name is taken, or the core's settings file gives no value of the setting's type, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISettings_DeclareCore(const ECSSettingDesc *desc);
 
 /// @brief Declares a plugin's setting, like ECSSetting_Declare, with its default given as a value. The Bindings module uses it for Lua.
@@ -40,6 +41,11 @@ SHUWUR SHUResult ECSISettings_DeclareCore(const ECSSettingDesc *desc);
 /// @param defaultValue The default, or NULL to take it from the description.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description or the default is invalid or the name is taken, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISettings_DeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *desc, const ECSValue *defaultValue);
+
+/// @brief Gets a declared setting's default: for a core setting, its value in the core's settings file.
+/// @param name Name of the setting.
+/// @return The default, or NULL if no setting has the name. Valid while the setting is declared.
+const ECSValue *ECSISettings_GetDefault(const char *name);
 
 /// @brief Gets the key bindings of a user file: its keys table for every tool, with the tool's own keys, which win.
 /// @param layer ECSISettingsLayer_Window or ECSISettingsLayer_User.

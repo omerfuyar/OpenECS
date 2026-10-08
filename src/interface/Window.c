@@ -775,7 +775,7 @@ static void ECSIWindow_ReadVsync(void *data)
 {
     (void)data;
 
-    i64 percent = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.vsync"), 100), 0, 100);
+    i64 percent = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.vsync"), 0), 0, 100);
     WINDOW.framePercent = percent;
     ECSILayout_RequestFrame();
 
@@ -826,7 +826,6 @@ SHUResult ECSIWindow_Initialize(const char *title, const char *fontPath)
         .name = "ecs.vsync",
         .type = ECSSettingType_Integer,
         .description = "Frame rate in percent of the display's refresh rate: 100 waits for every refresh, 50 for every second one, 0 turns vsync off",
-        .defaultInteger = 100,
         .Changed = ECSIWindow_ReadVsync,
     };
 

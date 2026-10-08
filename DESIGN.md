@@ -434,26 +434,27 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 7.5 The core prefix
 
 - The prefix is the setting `ecs.prefix`. It is one key combination, never a whole modifier.
-- The keys after the prefix are the setting `ecs.prefix_keys`: a table of key combinations and the names of the functions they run. Its entries are added to the core's defaults, and `false` removes a key. So presets and the user can add entries that run service functions.
-- While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's other functions) and More (service functions). Like the menus (6.8), the list leaves out what cannot be done now.
+- The keys after the prefix are the setting `ecs.prefix_keys`: a table of key combinations and the names of the functions they run. Its entries are added to its value in the core's settings file (12.1), and `false` removes a key. So presets and the user can add entries that run service functions.
+- While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's other functions) and More (service functions). Within a section, the keys follow the order of the core's functions below. Like the menus (6.8), the list leaves out what cannot be done now.
 - Keys of one kind share a line. The keys that switch workspaces show the first workspace's key to the last one's: `1...0`. Focus and move show `Arrows` and `Shift+Arrows` when their four functions are on the four arrows with the same modifiers.
 - The prefix and the key after it are the only key sequence the core handles.
-- The default `ecs.prefix_keys`:
+- The core's functions after the prefix, in the order the list shows them. Their keys are the value of `ecs.prefix_keys` in the core's settings file (12.1).
 
-  | Key          | Function                                     | Action                                                                                                  |
-  | ------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-  | Arrows       | `ecs.focus_left` and so on                   | Move focus                                                                                              |
-  | Shift+Arrows | `ecs.move_left` and so on                    | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
-  | 1 to 9, 0    | `ecs.workspace_1` to `ecs.workspace_10`      | Switch to workspace 1 to 10; 0 is workspace 10                                                          |
-  | Tab          | `ecs.next_tab`                               | Show the next tab                                                                                       |
-  | M            | `ecs.maximize`                               | Maximize or restore                                                                                     |
-  | P            | `ecs.pop_out`                                | Pop out                                                                                                 |
-  | X            | `ecs.close`                                  | Close the panel                                                                                         |
-  | Shift+X      | `ecs.close_group`                            | Close the group's panels                                                                                |
-  | L            | `ecs.lock`                                   | Lock or unlock the group                                                                                |
-  | T            | `ecs.reopen`                                 | Reopen the last closed panel                                                                            |
-  | R            | `ecs.restart`                                | Restart the failed panel                                                                                |
-  | Escape       |                                              | Cancel; it is not a function, so it always works                                                        |
+  | Function                                | Action                                                                                                   |
+  | --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+  | `ecs.focus_left` and so on              | Move focus                                                                                               |
+  | `ecs.move_left` and so on               | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
+  | `ecs.next_tab`                          | Show the next tab                                                                                        |
+  | `ecs.maximize`                          | Maximize or restore                                                                                      |
+  | `ecs.pop_out`                           | Pop out                                                                                                  |
+  | `ecs.close`                             | Close the panel                                                                                          |
+  | `ecs.close_group`                       | Close the group's panels                                                                                 |
+  | `ecs.lock`                              | Lock or unlock the group                                                                                 |
+  | `ecs.reopen`                            | Reopen the last closed panel                                                                             |
+  | `ecs.restart`                           | Restart the failed panel                                                                                 |
+  | `ecs.workspace_1` to `ecs.workspace_10` | Switch to workspace 1 to 10                                                                              |
+
+- Escape after the prefix cancels. It is not a function, so it always works.
 
 ### 7.6 Clipboard
 
@@ -732,8 +733,9 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 
 ### 12.1 Declaring
 
-- The core and plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. Owners are told when their settings change: the description's `Changed` function runs after the queued events (3.1, step 4), and only when the value in effect really changed.
+- Plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. The core declares its own with a name, a type and a description; their defaults are in the core's settings file. Owners are told when their settings change: the description's `Changed` function runs after the queued events (3.1, step 4), and only when the value in effect really changed.
 - Types: `bool`, `integer`, `number`, `string`, `choice` (one of a list), `key` (a key combination), `list` and `table`.
+- The core's settings file is `resources/settings.lua` next to the executable, in the format of the user's file (12.3). It is the core layer, and the only place that gives the core's settings their defaults. OpenECS does not start if the file cannot be read, or if it gives a core setting no value of its type. Its `ecs.prefix` must be a key combination, because a prefix that cannot be read falls back to it.
 - `ECSSetting_Get(name)` returns the value in effect as a value (10.3). It comes from the highest layer that sets the setting with a value of its type; otherwise it is the default. A value of another type is reported with its file and skipped.
 - The core reads a key combination when it uses it. A key text that cannot be read is reported, and the default is used.
 
@@ -883,6 +885,7 @@ OpenECS follows the XDG Base Directory specification:
 | A tool's last session           | `$XDG_STATE_HOME/openecs/<app id>/session.lua` (default `~/.local/state`) |
 | The log                         | `$XDG_STATE_HOME/openecs/openecs.log`                                     |
 | First-party plugins and presets | `plugins/` and `presets/` next to the executable                          |
+| The core's settings             | `resources/settings.lua` next to the executable                           |
 
 - The data folders come from `SDL_GetPrefPath`, which follows `XDG_DATA_HOME`. SDL has no function for the configuration and state folders, so the core reads `XDG_CONFIG_HOME` and `XDG_STATE_HOME` itself.
 

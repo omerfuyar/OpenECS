@@ -27,6 +27,11 @@ bool ECSIMenus_Offers(const char *function, ECSPanel panel);
 /// @return The label, valid while the function is registered.
 const char *ECSIMenus_LabelOf(const char *function, ECSPanel panel);
 
+/// @brief Gets a function's position among the core's functions, so lists of them keep one order.
+/// @param function Name of the function.
+/// @return Its position, starting at 0, or the number of the core's functions if it is not one of them.
+usz ECSIMenus_GetOrder(const char *function);
+
 /// @brief Opens a panel's menu, or the menu of the panel's group, at a point. The panel gets the focus.
 /// @param panel The panel, or the group's shown panel.
 /// @param x Horizontal position in layout units.

@@ -334,7 +334,7 @@ A **session** uses the same format as a preset, but OpenECS writes it.
 
 Settings come in layers. A higher layer overrides the lower ones:
 
-1. Core defaults.
+1. The core's settings, from a file shipped with OpenECS.
 2. Plugin defaults.
 3. The preset.
 4. Changes made in the settings window, kept in a file that OpenECS writes.

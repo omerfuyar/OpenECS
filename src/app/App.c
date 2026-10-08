@@ -21,6 +21,9 @@
 
 #pragma region Source Only
 
+/// @brief The core's settings file, relative to the executable.
+#define OPENECS_CORE_SETTINGS_FILE "resources/settings.lua"
+
 /// @brief Font of the core's interface, relative to the executable.
 #define OPENECS_FONT_FILE "resources/Roboto-Regular.ttf"
 
@@ -253,7 +256,10 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 
     const char *sourcePath = APP.sessionPath != NULL ? APP.sessionPath : APP.presetPath;
 
-    ECSIApp_CheckStart(ECSISettings_Initialize(ECSValue_GetTableField(APP.preset.file, "settings"), sourcePath, APP.preset.appId, APP.configFolder), "reading the settings");
+    char *coreSettingsPath = NULL;
+    ECSIApp_CheckStart(SDL_asprintf(&coreSettingsPath, "%s%s", SDL_GetBasePath(), OPENECS_CORE_SETTINGS_FILE) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok, "finding the core's settings");
+    ECSIApp_CheckStart(ECSISettings_Initialize(coreSettingsPath, ECSValue_GetTableField(APP.preset.file, "settings"), sourcePath, APP.preset.appId, APP.configFolder), "reading the settings");
+    SDL_free(coreSettingsPath);
 
     SDL_SetAppMetadata(APP.preset.appName, NULL, APP.preset.appId);
 
