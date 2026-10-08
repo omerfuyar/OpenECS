@@ -165,12 +165,14 @@ One pass of the loop:
 6. Draw the visible panels that need it: continuous panels, and panels that asked to be redrawn or changed size or scale.
 7. Compose and present.
 
-The wait uses `SDL_WaitEventTimeout` with the time until the next timer. Continuous drawing is paced by the display's refresh (vsync).
+The wait uses `SDL_WaitEventTimeout` with the time until the next timer, and does not wait while events are queued. Continuous drawing is paced by the display's refresh (vsync).
 
 ### 3.2 Timers
 
-- Plugins ask for timers: once or repeating, with an interval. Timers run on the main thread.
-- Illustrative: `ECSTimer_Start(plugin, &timer, 0.1, true, function, data)` writes a new timer into `timer`; `ECSTimer_Stop(&timer)` stops it. Lua: `ecs.timer.start(0.1, true, fn)`. A timer that belongs to a panel stops when the panel closes.
+- Plugins ask for timers: once or repeating, with an interval. Timers run on the main thread, in step 3 of the loop.
+- `ECSTimer_Start(plugin, &timer, 0.1, true, function, data)` writes a new timer into `timer`; `ECSTimer_Stop(&timer)` stops it. Lua: `ecs.timer.start(0.1, true, fn)`.
+- `ECSPanel_StartTimer(panel, &timer, ...)` starts a timer that belongs to a panel. It stops when the panel closes, and its handle is invalid then.
+- A one-shot timer ends after its function returns, and its handle is invalid then. A repeating timer that falls behind skips the calls it missed.
 
 ### 3.3 Threads
 
