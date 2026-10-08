@@ -38,4 +38,40 @@ return {
 
   -- frame rate in percent of the display's refresh rate: 100 waits for every refresh, 50 for every second one, 0 turns vsync off
   ["ecs.vsync"] = 100,
+
+  -- the OS window when it opens, in layout units, and the core's font; a relative font path starts at the executable's folder
+  ["ecs.window_width"] = 1280,
+  ["ecs.window_height"] = 800,
+  ["ecs.font"] = "resources/Roboto-Regular.ttf",
+  ["ecs.font_size"] = 14,
+
+  -- colours of the core's interface: "#RRGGBB", or "#RRGGBBAA" with opacity
+  ["ecs.color_background"] = "#18191C",
+  ["ecs.color_tab_row"] = "#202226",
+  ["ecs.color_tab"] = "#282B30",
+  ["ecs.color_tab_shown"] = "#3A3E46",
+  ["ecs.color_text"] = "#DCDEE2",
+  ["ecs.color_text_dim"] = "#969AA0",
+  ["ecs.color_accent"] = "#4C8BF5",
+  ["ecs.color_placeholder"] = "#2C1E22",
+  ["ecs.color_overlay"] = "#1C1E22F5",
+  ["ecs.color_drop"] = "#4C8BF546",
+  ["ecs.color_selected"] = "#3A3E46",
+
+  -- sizes, in layout units
+  ["ecs.tab_row_height"] = 26,
+  ["ecs.divider_size"] = 4,
+  ["ecs.grip_height"] = 20,
+
+  -- distances, in layout units: a grip shows within grip_zone of a panel's top edge; a press drags after moving drag_threshold;
+  -- a dragged panel docks within dock_edge of the OS window's edge, and splits a panel within split_depth of its edge;
+  -- a wheel step scrolls a tab row by tab_scroll_step
+  ["ecs.grip_zone"] = 24,
+  ["ecs.drag_threshold"] = 6,
+  ["ecs.dock_edge"] = 16,
+  ["ecs.split_depth"] = 80,
+  ["ecs.tab_scroll_step"] = 40,
+
+  -- how many closed panels ecs.reopen remembers
+  ["ecs.reopen_limit"] = 20,
 }

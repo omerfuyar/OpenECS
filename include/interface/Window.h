@@ -6,11 +6,10 @@
 
 #pragma region Declarations
 
-/// @brief Opens the main OS window and its renderer, loads the font of the core's interface, and declares ecs.vsync.
+/// @brief Declares the window's settings, then opens the main OS window and its renderer with the core's font.
 /// @param title Title of the OS window.
-/// @param fontPath Path of the TrueType font of the core's interface.
-/// @return SHUResult_Ok, SHUResult_ErrFile if the font cannot be loaded, SHUResult_ErrInternal if SDL fails, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSIWindow_Initialize(const char *title, const char *fontPath);
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the core's settings file gives a setting no valid value, SHUResult_ErrFile if the font cannot be loaded, SHUResult_ErrInternal if SDL fails, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSIWindow_Initialize(const char *title);
 
 /// @brief Closes the OS window and frees what the window holds. Also releases what a failed ECSIWindow_Initialize made.
 void ECSIWindow_Terminate(void);

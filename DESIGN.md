@@ -343,7 +343,7 @@ After every operation:
 
 ### 6.4 Grips and locked groups
 
-- A grip appears when the pointer is within 24 layout units of a panel's top edge. It shows the panel's title. While it is shown, pointer events over it go to the core.
+- A grip appears when the pointer is within `ecs.grip_zone` layout units of a panel's top edge. It shows the panel's title. While it is shown, pointer events over it go to the core.
 - A locked group's grip also shows "locked". It opens the panel's menu, but it cannot be dragged, and pulling it is not a click.
 - Locked groups accept no dropped panels. Their panels cannot be dragged, moved with keys or closed by the user.
 - `ecs.lock` locks or unlocks the focused group.
@@ -351,7 +351,7 @@ After every operation:
 ### 6.5 Operations
 
 - Besides the operations in OVERVIEW 6.3, there are cycling tabs, reopening the last closed panel, and moving a panel to another workspace.
-- The core remembers the last 20 closed panels with their type and saved state. `ecs.reopen` opens the last one again next to a panel that stayed in its group, wherever that panel is now, or else in the focused group, and shows its workspace.
+- The core remembers the last `ecs.reopen_limit` closed panels with their type and saved state. `ecs.reopen` opens the last one again next to a panel that stayed in its group, wherever that panel is now, or else in the focused group, and shows its workspace.
 - `ecs.move_to_workspace_1` to `ecs.move_to_workspace_10` move the focused panel into that workspace's focused group; the current workspace stays shown.
 - `ecs.split_right` and `ecs.split_down` open another panel of the focused panel's type beside it.
 - Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)` (also from another workspace), `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles.
@@ -370,14 +370,14 @@ After every operation:
 While a panel is dragged, the zones are checked in this order:
 
 1. Outside every OS window: pop out.
-2. Within 16 layout units of an OS window's edge: dock along that whole edge.
+2. Within `ecs.dock_edge` layout units of an OS window's edge: dock along that whole edge.
 3. Over a tab row: insert between tabs, at the nearest gap between tab midpoints.
-4. In the outer quarter of a panel, at most 80 layout units deep: split toward that side.
+4. In the outer quarter of a panel, at most `ecs.split_depth` layout units deep: split toward that side.
 5. Anywhere else over a panel: group with it.
 
 On release, the matching operation is called. In small panels, the edge bands shrink so that the centre stays at least a third of the panel.
 
-- A press on a tab or a grip starts a drag once the pointer moves 6 layout units. A press on the empty part of a tab row drags the whole group the same way. Escape cancels the drag.
+- A press on a tab or a grip starts a drag once the pointer moves `ecs.drag_threshold` layout units. A press on the empty part of a tab row drags the whole group the same way. Escape cancels the drag.
 - A drop that would change nothing is not highlighted and does nothing: a panel on its own group or next to its own tab, a whole group on itself, or a group that fills the OS window on an edge of it.
 - The pointer shows a resize arrow over a divider and while it is dragged, and a move arrow while a panel or group is dragged.
 - The drop place is highlighted while the panel is dragged.
@@ -395,7 +395,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The group's menu: the submenu Tabs, which shows any of its panels and marks the shown one with `•`; then maximize, lock, close the group's panels, and reopen.
 - Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. Escape in the first menu, or a press outside the menus, closes them. While a menu is open, pointer and key events go to the menus only.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
-- The wheel over a tab row scrolls it, 40 layout units a step; down and right go toward the last tab. When a group shows another panel, its tab scrolls into view.
+- The wheel over a tab row scrolls it by `ecs.tab_scroll_step` layout units a step; down and right go toward the last tab. When a group shows another panel, its tab scrolls into view.
 
 ### 6.9 Clay
 
@@ -735,6 +735,7 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 
 - Plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. The core declares its own with a name, a type and a description; their defaults are in the core's settings file. Owners are told when their settings change: the description's `Changed` function runs after the queued events (3.1, step 4), and only when the value in effect really changed.
 - Types: `bool`, `integer`, `number`, `string`, `choice` (one of a list), `key` (a key combination), `list` and `table`.
+- The core's settings hold the core's choices of look and behaviour: the keys, focus and vsync, the window's size, font and colours, the sizes of tab rows, dividers and grips, the distances that start drags and drops, and the reopen limit.
 - The core's settings file is `resources/settings.lua` next to the executable, in the format of the user's file (12.3). It is the core layer, and the only place that gives the core's settings their defaults. OpenECS does not start if the file cannot be read, or if it gives a core setting no value of its type. Its `ecs.prefix` must be a key combination, because a prefix that cannot be read falls back to it.
 - `ECSSetting_Get(name)` returns the value in effect as a value (10.3). It comes from the highest layer that sets the setting with a value of its type; otherwise it is the default. A value of another type is reported with its file and skipped.
 - The core reads a key combination when it uses it. A key text that cannot be read is reported, and the default is used.

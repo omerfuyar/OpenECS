@@ -10,27 +10,10 @@
 
 #pragma region Source Only
 
-/// @brief Size of the OS window when it opens, in layout units.
-#define OPENECS_WINDOW_WIDTH 1280
-#define OPENECS_WINDOW_HEIGHT 800
-/// @brief Size of the core's font when it is loaded, in layout units.
-#define OPENECS_FONT_SIZE 14
 /// @brief Refresh rate assumed when the display's is unknown.
 #define OPENECS_FALLBACK_FRAME_RATE 60.0f
 /// @brief How far the frame limit is above the refresh rate.
 #define OPENECS_FRAME_RATE_MARGIN 1.1f
-/// @brief Distance from a panel's top edge within which its grip appears.
-#define OPENECS_GRIP_ZONE 24.0f
-/// @brief Height of a grip, which shows the panel's title.
-#define OPENECS_GRIP_HEIGHT 20.0f
-/// @brief Distance the pointer moves from a press on a tab or grip before the panel is dragged.
-#define OPENECS_DRAG_THRESHOLD 6.0f
-/// @brief Distance from an edge of the OS window within which a dragged panel docks along that edge.
-#define OPENECS_DOCK_EDGE 16.0f
-/// @brief Deepest edge band of a panel in which a dragged panel splits it.
-#define OPENECS_SPLIT_DEPTH 80.0f
-/// @brief How far one step of the wheel scrolls a tab row.
-#define OPENECS_TAB_SCROLL_STEP 40.0f
 /// @brief Width of the mark between tabs where a dragged panel is inserted.
 #define OPENECS_TAB_GAP_WIDTH 3.0f
 /// @brief Padding around a panel menu and inside its entries.
@@ -41,18 +24,47 @@
 /// @brief Most menus open at once: the panel menu and its submenus.
 #define OPENECS_MENU_DEPTH 4
 
-/// @brief Background colour; it shows through the gaps between panels.
-#define OPENECS_COLOR_BACKGROUND 0x18, 0x19, 0x1C, 0xFF
-#define OPENECS_COLOR_TAB_ROW ((Clay_Color){32, 34, 38, 255})
-#define OPENECS_COLOR_TAB ((Clay_Color){40, 43, 48, 255})
-#define OPENECS_COLOR_TAB_SHOWN ((Clay_Color){58, 62, 70, 255})
-#define OPENECS_COLOR_TEXT ((Clay_Color){220, 222, 226, 255})
-#define OPENECS_COLOR_TEXT_DIM ((Clay_Color){150, 154, 160, 255})
-#define OPENECS_COLOR_ACCENT ((Clay_Color){76, 139, 245, 255})
-#define OPENECS_COLOR_PLACEHOLDER ((Clay_Color){44, 30, 34, 255})
-#define OPENECS_COLOR_OVERLAY ((Clay_Color){28, 30, 34, 245})
-#define OPENECS_COLOR_DROP ((Clay_Color){76, 139, 245, 70})
-#define OPENECS_COLOR_SELECTED ((Clay_Color){58, 62, 70, 255})
+/// @brief A colour of the core's interface. Each is a setting, in OPENECS_WINDOW_SETTINGS.
+typedef enum ECSIColor
+{
+    ECSIColor_Background = 0,
+    ECSIColor_TabRow,
+    ECSIColor_Tab,
+    ECSIColor_TabShown,
+    ECSIColor_Text,
+    ECSIColor_TextDim,
+    ECSIColor_Accent,
+    ECSIColor_Placeholder,
+    ECSIColor_Overlay,
+    ECSIColor_Drop,
+    ECSIColor_Selected,
+    ECSIColor_Count,
+} ECSIColor;
+
+/// @brief The window's core settings; their values are in the core's settings file. The colours come first, in the order of ECSIColor.
+static const ECSSettingDesc OPENECS_WINDOW_SETTINGS[] = {
+    {.name = "ecs.color_background", .type = ECSSettingType_String, .description = "Colour between panels, such as \"#18191C\" or \"#18191CFF\""},
+    {.name = "ecs.color_tab_row", .type = ECSSettingType_String, .description = "Colour of tab rows"},
+    {.name = "ecs.color_tab", .type = ECSSettingType_String, .description = "Colour of tabs"},
+    {.name = "ecs.color_tab_shown", .type = ECSSettingType_String, .description = "Colour of the shown tab"},
+    {.name = "ecs.color_text", .type = ECSSettingType_String, .description = "Colour of text"},
+    {.name = "ecs.color_text_dim", .type = ECSSettingType_String, .description = "Colour of dim text"},
+    {.name = "ecs.color_accent", .type = ECSSettingType_String, .description = "Colour of the focus border, keys and highlights"},
+    {.name = "ecs.color_placeholder", .type = ECSSettingType_String, .description = "Colour of a placeholder panel"},
+    {.name = "ecs.color_overlay", .type = ECSSettingType_String, .description = "Colour of menus, grips and the list of prefix keys"},
+    {.name = "ecs.color_drop", .type = ECSSettingType_String, .description = "Colour of the place where a dragged panel lands"},
+    {.name = "ecs.color_selected", .type = ECSSettingType_String, .description = "Colour of the selected menu entry"},
+    {.name = "ecs.window_width", .type = ECSSettingType_Integer, .description = "Width of the OS window when it opens, in layout units"},
+    {.name = "ecs.window_height", .type = ECSSettingType_Integer, .description = "Height of the OS window when it opens, in layout units"},
+    {.name = "ecs.font", .type = ECSSettingType_String, .description = "TrueType font of the core's interface, read when the window opens; a relative path starts at the executable's folder"},
+    {.name = "ecs.font_size", .type = ECSSettingType_Number, .description = "Size of the core's font, in layout units"},
+    {.name = "ecs.grip_height", .type = ECSSettingType_Number, .description = "Height of a grip, in layout units"},
+    {.name = "ecs.grip_zone", .type = ECSSettingType_Number, .description = "Distance from a panel's top edge within which its grip shows, in layout units"},
+    {.name = "ecs.drag_threshold", .type = ECSSettingType_Number, .description = "How far the pointer moves from a press on a tab or grip before the panel is dragged, in layout units"},
+    {.name = "ecs.dock_edge", .type = ECSSettingType_Number, .description = "Distance from an edge of the OS window within which a dragged panel docks along that edge, in layout units"},
+    {.name = "ecs.split_depth", .type = ECSSettingType_Number, .description = "Deepest edge band of a panel in which a dragged panel splits it, in layout units"},
+    {.name = "ecs.tab_scroll_step", .type = ECSSettingType_Number, .description = "How far one step of the wheel scrolls a tab row, in layout units"},
+};
 
 /// @brief A tab drawn in the last frame, so a click can find it.
 typedef struct ECSITabRef
@@ -107,6 +119,16 @@ static struct
     SDL_SystemCursor cursor;                      // the pointer's shape now
 
     ECSIMenuView menus[OPENECS_MENU_DEPTH]; // the panel menu, then its open submenus
+
+    // from the settings
+    Clay_Color colors[ECSIColor_Count];
+    f32 fontSize;
+    f32 gripHeight;
+    f32 gripZone;
+    f32 dragThreshold;
+    f32 dockEdge;
+    f32 splitDepth;
+    f32 tabScrollStep;
 } WINDOW = {0};
 
 /// @brief Width of the key column in the list of prefix keys.
@@ -168,7 +190,7 @@ static void ECSIWindow_Forget(void)
 static ECSINode *ECSIWindow_TabRowGroupAt(f32 x, f32 y)
 {
     ECSINode *group = ECSILayout_GroupAt(x, y);
-    return group != NULL && arrlenu(group->panels) >= 2 && y < group->y + OPENECS_TAB_ROW_HEIGHT ? group : NULL;
+    return group != NULL && arrlenu(group->panels) >= 2 && y < group->y + ECSILayout_GetTabRowHeight() ? group : NULL;
 }
 
 /// @brief Finds the gap between a group's tabs nearest to a point, from the tabs drawn in the last frame.
@@ -198,7 +220,7 @@ static ECSIDrop ECSIWindow_FindTabGap(ECSINode *group, f32 x, SDL_FRect *retRect
         }
     }
 
-    *retRect = (SDL_FRect){gapX - OPENECS_TAB_GAP_WIDTH / 2.0f, group->y, OPENECS_TAB_GAP_WIDTH, OPENECS_TAB_ROW_HEIGHT};
+    *retRect = (SDL_FRect){gapX - OPENECS_TAB_GAP_WIDTH / 2.0f, group->y, OPENECS_TAB_GAP_WIDTH, ECSILayout_GetTabRowHeight()};
     return drop;
 }
 
@@ -215,11 +237,11 @@ static ECSIDrop ECSIWindow_FindDrop(f32 x, f32 y, SDL_FRect *retRect)
         return (ECSIDrop){0};
     }
 
-    if (x < OPENECS_DOCK_EDGE || x >= width - OPENECS_DOCK_EDGE || y < OPENECS_DOCK_EDGE || y >= height - OPENECS_DOCK_EDGE)
+    if (x < WINDOW.dockEdge || x >= width - WINDOW.dockEdge || y < WINDOW.dockEdge || y >= height - WINDOW.dockEdge)
     {
-        ECSIZone zone = x < OPENECS_DOCK_EDGE            ? ECSIZone_WindowLeft
-                         : x >= width - OPENECS_DOCK_EDGE ? ECSIZone_WindowRight
-                         : y < OPENECS_DOCK_EDGE          ? ECSIZone_WindowTop
+        ECSIZone zone = x < WINDOW.dockEdge            ? ECSIZone_WindowLeft
+                         : x >= width - WINDOW.dockEdge ? ECSIZone_WindowRight
+                         : y < WINDOW.dockEdge          ? ECSIZone_WindowTop
                                                           : ECSIZone_WindowBottom;
 
         *retRect = zone == ECSIZone_WindowLeft    ? (SDL_FRect){0.0f, 0.0f, width / 4.0f, height}
@@ -237,15 +259,15 @@ static ECSIDrop ECSIWindow_FindDrop(f32 x, f32 y, SDL_FRect *retRect)
     }
 
     // a locked group accepts no dropped panels
-    if (arrlenu(group->panels) >= 2 && y < group->y + OPENECS_TAB_ROW_HEIGHT)
+    if (arrlenu(group->panels) >= 2 && y < group->y + ECSILayout_GetTabRowHeight())
     {
         return group->locked ? (ECSIDrop){0} : ECSIWindow_FindTabGap(group, x, retRect);
     }
 
     // edge bands are a quarter of the panel deep at most, so the centre keeps at least half of it
     ECSPanel panel = group->panels[group->shown];
-    f32 bandX = SDL_min(panel->width / 4.0f, OPENECS_SPLIT_DEPTH);
-    f32 bandY = SDL_min(panel->height / 4.0f, OPENECS_SPLIT_DEPTH);
+    f32 bandX = SDL_min(panel->width / 4.0f, WINDOW.splitDepth);
+    f32 bandY = SDL_min(panel->height / 4.0f, WINDOW.splitDepth);
     const f32 distances[] = {
         (x - panel->x) / bandX,
         (panel->x + panel->width - x) / bandX,
@@ -372,7 +394,7 @@ static void ECSIWindow_FindGripGroup(ECSINode *group, void *userData)
 {
     ECSIGripHit *hit = userData;
 
-    if (arrlenu(group->panels) == 1 && ECSIWindow_Contains(hit->x, hit->y, group->x, group->y, group->width, OPENECS_GRIP_ZONE))
+    if (arrlenu(group->panels) == 1 && ECSIWindow_Contains(hit->x, hit->y, group->x, group->y, group->width, WINDOW.gripZone))
     {
         hit->group = group;
     }
@@ -400,11 +422,11 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
     {
         CLAY_AUTO_ID({
             .layout = {
-                .sizing = {CLAY_SIZING_FIXED(group->width), CLAY_SIZING_FIXED(OPENECS_TAB_ROW_HEIGHT)},
+                .sizing = {CLAY_SIZING_FIXED(group->width), CLAY_SIZING_FIXED(ECSILayout_GetTabRowHeight())},
                 .childGap = 1,
                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
             },
-            .backgroundColor = OPENECS_COLOR_TAB_ROW,
+            .backgroundColor = WINDOW.colors[ECSIColor_TabRow],
             .clip = {.horizontal = true, .childOffset = {-group->tabScroll, 0.0f}},
             .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x, group->y}},
         })
@@ -417,20 +439,20 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
                                                                          .padding = {12, 12, 0, 0},
                                                                          .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                                                                      },
-                                                                     .backgroundColor = i == group->shown ? OPENECS_COLOR_TAB_SHOWN : OPENECS_COLOR_TAB,
+                                                                     .backgroundColor = i == group->shown ? WINDOW.colors[ECSIColor_TabShown] : WINDOW.colors[ECSIColor_Tab],
                                                                  })
                 {
                     CLAY_TEXT(ECSIWindow_ClayText(group->panels[i]->title),
                               CLAY_TEXT_CONFIG({
-                                  .textColor = i == group->shown ? OPENECS_COLOR_TEXT : OPENECS_COLOR_TEXT_DIM,
-                                  .fontSize = OPENECS_FONT_SIZE,
+                                  .textColor = i == group->shown ? WINDOW.colors[ECSIColor_Text] : WINDOW.colors[ECSIColor_TextDim],
+                                  .fontSize = (u16)WINDOW.fontSize,
                                   .wrapMode = CLAY_TEXT_WRAP_NONE,
                               }));
 
                     // the mark of unsaved work
                     if (group->panels[i]->unsaved)
                     {
-                        CLAY_TEXT(CLAY_STRING(" *"), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_ACCENT, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                        CLAY_TEXT(CLAY_STRING(" *"), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Accent], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                     }
 
                     // panels of a locked group cannot be closed by the user
@@ -438,7 +460,7 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
                     {
                         CLAY(CLAY_IDI("TabClose", (u32)arrlenu(WINDOW.tabs)), {.layout = {.padding = {8, 0, 0, 0}}})
                         {
-                            CLAY_TEXT(CLAY_STRING("\u00D7"), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                            CLAY_TEXT(CLAY_STRING("\u00D7"), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                         }
                     }
                 }
@@ -459,18 +481,18 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
                 .childGap = 6,
                 .layoutDirection = CLAY_TOP_TO_BOTTOM,
             },
-            .backgroundColor = OPENECS_COLOR_PLACEHOLDER,
+            .backgroundColor = WINDOW.colors[ECSIColor_Placeholder],
             .clip = {.horizontal = true, .vertical = true},
             .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {panel->x, panel->y}},
         })
         {
             Clay_String heading = panel->fault != NULL ? CLAY_STRING("Panel failed") : CLAY_STRING("Missing panel type");
-            CLAY_TEXT(heading, CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
-            CLAY_TEXT(ECSIWindow_ClayText(panel->typeName), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE}));
+            CLAY_TEXT(heading, CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize}));
+            CLAY_TEXT(ECSIWindow_ClayText(panel->typeName), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize}));
 
             if (panel->fault != NULL)
             {
-                CLAY_TEXT(ECSIWindow_ClayText(panel->fault), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
+                CLAY_TEXT(ECSIWindow_ClayText(panel->fault), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize}));
             }
         }
     }
@@ -535,7 +557,7 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(void)
         {
             CLAY_AUTO_ID({
                 .layout = {.sizing = {CLAY_SIZING_FIXED(focus->width), CLAY_SIZING_FIXED(focus->height)}},
-                .border = {.color = OPENECS_COLOR_ACCENT, .width = {2, 2, 2, 2, 0}},
+                .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {2, 2, 2, 2, 0}},
                 .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {focus->x, focus->y}, .zIndex = 1, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
             })
             {
@@ -549,7 +571,7 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(void)
             const char *title = group->panels[0]->title;
             int titleWidth = 0;
             int lockedWidth = 0;
-            TTF_SetFontSize(WINDOW.fonts[0], OPENECS_FONT_SIZE);
+            TTF_SetFontSize(WINDOW.fonts[0], WINDOW.fontSize);
             TTF_GetStringSize(WINDOW.fonts[0], title, 0, &titleWidth, NULL);
 
             if (group->locked)
@@ -562,23 +584,23 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(void)
 
             CLAY(CLAY_ID("Grip"), {
                                       .layout = {
-                                          .sizing = {CLAY_SIZING_FIXED(width), CLAY_SIZING_FIXED(OPENECS_GRIP_HEIGHT)},
+                                          .sizing = {CLAY_SIZING_FIXED(width), CLAY_SIZING_FIXED(WINDOW.gripHeight)},
                                           .padding = {(u16)OPENECS_MENU_ITEM_PADDING, (u16)OPENECS_MENU_ITEM_PADDING, 0, 0},
                                           .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
                                           .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                                       },
-                                      .backgroundColor = OPENECS_COLOR_OVERLAY,
+                                      .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
                                       .cornerRadius = {0, 0, 6, 6},
-                                      .border = {.color = OPENECS_COLOR_TEXT_DIM, .width = {1, 1, 0, 1, 0}},
+                                      .border = {.color = WINDOW.colors[ECSIColor_TextDim], .width = {1, 1, 0, 1, 0}},
                                       .clip = {.horizontal = true},
                                       .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + (group->width - width) / 2.0f, group->y}, .zIndex = 2},
                                   })
             {
-                CLAY_TEXT(ECSIWindow_ClayText(title), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                CLAY_TEXT(ECSIWindow_ClayText(title), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
 
                 if (group->locked)
                 {
-                    CLAY_TEXT(CLAY_STRING(OPENECS_LOCKED_MARK), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                    CLAY_TEXT(CLAY_STRING(OPENECS_LOCKED_MARK), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                 }
             }
         }
@@ -589,8 +611,8 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(void)
 
             CLAY_AUTO_ID({
                 .layout = {.sizing = {CLAY_SIZING_FIXED(rect.w), CLAY_SIZING_FIXED(rect.h)}},
-                .backgroundColor = OPENECS_COLOR_DROP,
-                .border = {.color = OPENECS_COLOR_ACCENT, .width = {2, 2, 2, 2, 0}},
+                .backgroundColor = WINDOW.colors[ECSIColor_Drop],
+                .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {2, 2, 2, 2, 0}},
                 .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = 4, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
             })
             {
@@ -608,9 +630,9 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(void)
                                                        .padding = CLAY_PADDING_ALL((u16)OPENECS_MENU_PADDING),
                                                        .layoutDirection = CLAY_TOP_TO_BOTTOM,
                                                    },
-                                                   .backgroundColor = OPENECS_COLOR_OVERLAY,
+                                                   .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
                                                    .cornerRadius = CLAY_CORNER_RADIUS(6),
-                                                   .border = {.color = OPENECS_COLOR_TEXT_DIM, .width = {1, 1, 1, 1, 0}},
+                                                   .border = {.color = WINDOW.colors[ECSIColor_TextDim], .width = {1, 1, 1, 1, 0}},
                                                    .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = (i16)(5 + level)},
                                                })
             {
@@ -624,13 +646,13 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(void)
                             .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
                             .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                         },
-                        .backgroundColor = i == menu->selected ? OPENECS_COLOR_SELECTED : (Clay_Color){0},
+                        .backgroundColor = i == menu->selected ? WINDOW.colors[ECSIColor_Selected] : (Clay_Color){0},
                         .cornerRadius = CLAY_CORNER_RADIUS(4),
                     })
                     {
-                        CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                        CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                         CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}}}) {}
-                        CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                        CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                     }
                 }
             }
@@ -640,9 +662,9 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(void)
         {
             CLAY_AUTO_ID({
                 .layout = {.padding = CLAY_PADDING_ALL(14), .childGap = 4, .layoutDirection = CLAY_TOP_TO_BOTTOM},
-                .backgroundColor = OPENECS_COLOR_OVERLAY,
+                .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
                 .cornerRadius = CLAY_CORNER_RADIUS(6),
-                .border = {.color = OPENECS_COLOR_ACCENT, .width = {1, 1, 1, 1, 0}},
+                .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {1, 1, 1, 1, 0}},
                 .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {24.0f, 24.0f}, .zIndex = 3},
             })
             {
@@ -653,7 +675,7 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(void)
                     {
                         CLAY_AUTO_ID({.layout = {.padding = {0, 0, i == 0 ? 0 : 6, 0}}})
                         {
-                            CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
+                            CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize}));
                         }
 
                         continue;
@@ -663,10 +685,10 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(void)
                     {
                         CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(OPENECS_PREFIX_KEY_COLUMN), CLAY_SIZING_FIT(0)}}})
                         {
-                            CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_ACCENT, .fontSize = OPENECS_FONT_SIZE}));
+                            CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Accent], .fontSize = (u16)WINDOW.fontSize}));
                         }
 
-                        CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE}));
+                        CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize}));
                     }
                 }
             }
@@ -703,7 +725,7 @@ static void ECSIWindow_ShowGroup(ECSINode *group, void *userData)
 #pragma endregion Drawing
 
 /// @brief Opens the OS window, its renderer and the core's font.
-static SHUResult ECSIWindow_Open(const char *title, const char *fontPath)
+static SHUResult ECSIWindow_Open(const char *title)
 {
     if (!TTF_Init())
     {
@@ -711,15 +733,28 @@ static SHUResult ECSIWindow_Open(const char *title, const char *fontPath)
         return SHUResult_ErrInternal;
     }
 
-    WINDOW.fonts[0] = TTF_OpenFont(fontPath, OPENECS_FONT_SIZE);
+    // a relative font path starts at the executable's folder
+    const char *font = ECSValue_GetString(ECSSetting_Get("ecs.font"), "");
+    char *fontPath = NULL;
+
+    if (SDL_asprintf(&fontPath, "%s%s", font[0] == '/' ? "" : SDL_GetBasePath(), font) < 0)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    WINDOW.fonts[0] = TTF_OpenFont(fontPath, WINDOW.fontSize);
 
     if (WINDOW.fonts[0] == NULL)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot load the font '%s': %s", fontPath, SDL_GetError());
+        SDL_free(fontPath);
         return SHUResult_ErrFile;
     }
 
-    WINDOW.window = SDL_CreateWindow(title, OPENECS_WINDOW_WIDTH, OPENECS_WINDOW_HEIGHT, SDL_WINDOW_RESIZABLE);
+    SDL_free(fontPath);
+    i64 width = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.window_width"), 0), 1, SDL_MAX_SINT32);
+    i64 height = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.window_height"), 0), 1, SDL_MAX_SINT32);
+    WINDOW.window = SDL_CreateWindow(title, (int)width, (int)height, SDL_WINDOW_RESIZABLE);
 
     if (WINDOW.window == NULL)
     {
@@ -770,6 +805,89 @@ static SHUResult ECSIWindow_Open(const char *title, const char *fontPath)
     return SHUResult_Ok;
 }
 
+/// @brief Reads a colour written as "#RRGGBB" or "#RRGGBBAA".
+static bool ECSIWindow_ParseColor(const char *text, Clay_Color *retColor)
+{
+    usz length = SDL_strlen(text);
+    u8 parts[4] = {0, 0, 0, 255};
+
+    if ((length != 7 && length != 9) || text[0] != '#')
+    {
+        return false;
+    }
+
+    for (usz i = 1; i < length; i++)
+    {
+        if (!SDL_isxdigit((unsigned char)text[i]))
+        {
+            return false;
+        }
+    }
+
+    for (usz i = 0; 2 * i + 1 < length; i++)
+    {
+        char pair[3] = {text[2 * i + 1], text[2 * i + 2], '\0'};
+        parts[i] = (u8)SDL_strtoul(pair, NULL, 16);
+    }
+
+    *retColor = (Clay_Color){parts[0], parts[1], parts[2], parts[3]};
+    return true;
+}
+
+/// @brief Reads a colour setting. A value that is not a colour is reported, and the core's settings file's colour is used.
+/// @return false if neither is a colour.
+static bool ECSIWindow_ReadColor(const char *name, Clay_Color *retColor)
+{
+    if (ECSIWindow_ParseColor(ECSValue_GetString(ECSSetting_Get(name), ""), retColor))
+    {
+        return true;
+    }
+
+    if (ECSIWindow_ParseColor(ECSValue_GetString(ECSISettings_GetDefault(name), ""), retColor))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Setting '%s' must be a colour such as \"#18191C\" or \"#18191CFF\"; the default is used.", name);
+        return true;
+    }
+
+    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The core's settings file gives '%s' no colour such as \"#18191C\" or \"#18191CFF\".", name);
+    return false;
+}
+
+/// @brief Reads a number setting of the window, in layout units; a negative value counts as 0.
+static f32 ECSIWindow_ReadNumber(const char *name)
+{
+    return (f32)SDL_max(0.0, ECSValue_GetNumber(ECSSetting_Get(name), 0.0));
+}
+
+/// @brief Reads the window's settings, except ecs.vsync and the ones read when the window opens.
+/// @return false if a colour setting and its default are not colours.
+static bool ECSIWindow_Read(void)
+{
+    bool valid = true;
+
+    for (usz i = 0; i < ECSIColor_Count; i++)
+    {
+        valid = ECSIWindow_ReadColor(OPENECS_WINDOW_SETTINGS[i].name, &WINDOW.colors[i]) && valid;
+    }
+
+    WINDOW.fontSize = ECSIWindow_ReadNumber("ecs.font_size");
+    WINDOW.gripHeight = ECSIWindow_ReadNumber("ecs.grip_height");
+    WINDOW.gripZone = ECSIWindow_ReadNumber("ecs.grip_zone");
+    WINDOW.dragThreshold = ECSIWindow_ReadNumber("ecs.drag_threshold");
+    WINDOW.dockEdge = ECSIWindow_ReadNumber("ecs.dock_edge");
+    WINDOW.splitDepth = ECSIWindow_ReadNumber("ecs.split_depth");
+    WINDOW.tabScrollStep = ECSIWindow_ReadNumber("ecs.tab_scroll_step");
+    return valid;
+}
+
+/// @brief The Changed function of the window's settings.
+static void ECSIWindow_ReadSettings(void *data)
+{
+    (void)data;
+    (void)ECSIWindow_Read();
+    ECSILayout_RequestFrame();
+}
+
 /// @brief Reads ecs.vsync and sets the renderer's vsync. Also the Changed function of ecs.vsync.
 static void ECSIWindow_ReadVsync(void *data)
 {
@@ -807,7 +925,8 @@ static void ECSIWindow_DrawFrame(u64 nowTicks)
     Clay_RenderCommandArray commands = ECSIWindow_DeclareInterface();
     ECSIWindow_FitTabs();
 
-    SDL_SetRenderDrawColor(WINDOW.renderer, OPENECS_COLOR_BACKGROUND);
+    Clay_Color background = WINDOW.colors[ECSIColor_Background];
+    SDL_SetRenderDrawColor(WINDOW.renderer, (u8)background.r, (u8)background.g, (u8)background.b, (u8)background.a);
     SDL_RenderClear(WINDOW.renderer);
     ECSILayout_ForEachGroup(ECSIWindow_ShowGroup, NULL);
     SDL_Clay_RenderClayCommands(&WINDOW.clayRenderer, &commands);
@@ -815,12 +934,24 @@ static void ECSIWindow_DrawFrame(u64 nowTicks)
 
 #pragma endregion Source Only
 
-SHUResult ECSIWindow_Initialize(const char *title, const char *fontPath)
+SHUResult ECSIWindow_Initialize(const char *title)
 {
     SDL_assert(title != NULL);
-    SDL_assert(fontPath != NULL);
 
-    SHU_ReturnResult(ECSIWindow_Open(title, fontPath), ECSIWindow_Terminate(););
+    for (usz i = 0; i < SDL_arraysize(OPENECS_WINDOW_SETTINGS); i++)
+    {
+        ECSSettingDesc desc = OPENECS_WINDOW_SETTINGS[i];
+        desc.Changed = ECSIWindow_ReadSettings;
+        SHU_ReturnResult(ECSISettings_DeclareCore(&desc));
+    }
+
+    // the core's settings file must give colours, because a colour that cannot be read falls back to it
+    if (!ECSIWindow_Read())
+    {
+        return SHUResult_ErrBadData;
+    }
+
+    SHU_ReturnResult(ECSIWindow_Open(title), ECSIWindow_Terminate(););
 
     const ECSSettingDesc vsync = {
         .name = "ecs.vsync",
@@ -1006,7 +1137,7 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
     if (WINDOW.dragPanel != NULL)
     {
         bool wasDragging = WINDOW.dragging;
-        bool moved = SDL_fabsf(x - WINDOW.dragStartX) + SDL_fabsf(y - WINDOW.dragStartY) >= OPENECS_DRAG_THRESHOLD;
+        bool moved = SDL_fabsf(x - WINDOW.dragStartX) + SDL_fabsf(y - WINDOW.dragStartY) >= WINDOW.dragThreshold;
 
         // a locked grip is never dragged, and pulling it is not a click
         if (moved && WINDOW.dragLocked)
@@ -1110,7 +1241,7 @@ bool ECSIWindow_ScrollTabs(f32 x, f32 y, f32 steps)
         return false;
     }
 
-    group->tabScroll = SDL_clamp(group->tabScroll + steps * OPENECS_TAB_SCROLL_STEP, 0.0f, SDL_max(0.0f, group->tabsWidth - group->width));
+    group->tabScroll = SDL_clamp(group->tabScroll + steps * WINDOW.tabScrollStep, 0.0f, SDL_max(0.0f, group->tabsWidth - group->width));
     ECSILayout_RequestFrame();
     return true;
 }
@@ -1139,7 +1270,7 @@ void ECSIWindow_ShowMenu(usz level, SDL_FRect anchor, const char *const *lines, 
 
     // the menu's size is measured here, so it can be kept inside the OS window
     TTF_Font *font = WINDOW.fonts[0];
-    TTF_SetFontSize(font, OPENECS_FONT_SIZE);
+    TTF_SetFontSize(font, WINDOW.fontSize);
     f32 width = 0.0f;
 
     for (usz i = 0; i < count; i++)

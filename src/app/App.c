@@ -24,9 +24,6 @@
 /// @brief The core's settings file, relative to the executable.
 #define OPENECS_CORE_SETTINGS_FILE "resources/settings.lua"
 
-/// @brief Font of the core's interface, relative to the executable.
-#define OPENECS_FONT_FILE "resources/Roboto-Regular.ttf"
-
 /// @brief A tool's last session, in its folder in the state folder.
 #define OPENECS_LAST_SESSION_FILE "session.lua"
 /// @brief The log file, in the state folder. Each start writes it anew.
@@ -276,13 +273,11 @@ void ECSIApp_Start(const ECSIArguments *arguments)
         ECSIApp_CheckStart(SHUResult_ErrInternal, "starting SDL");
     }
 
-    char *fontPath = NULL;
-    ECSIApp_CheckStart(SDL_asprintf(&fontPath, "%s%s", SDL_GetBasePath(), OPENECS_FONT_FILE) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok, "finding the font");
-    ECSIApp_CheckStart(ECSIWindow_Initialize(APP.preset.appName, fontPath), "opening the window");
+    ECSIApp_CheckStart(ECSILayout_Initialize(), "declaring the layout settings");
+    ECSIApp_CheckStart(ECSIWindow_Initialize(APP.preset.appName), "opening the window");
     ECSIApp_CheckStart(ECSIKeys_Initialize(), "declaring the key settings");
     ECSIApp_CheckStart(ECSIMenus_Initialize(), "registering the core's functions");
     ECSIApp_CheckStart(ECSIInput_Initialize(), "declaring the input settings");
-    SDL_free(fontPath);
 
     ECSIBindings_Initialize();
     ECSIPluginHooks hooks = {.StartLua = ECSIBindings_StartPlugin, .RemoveRegistrations = ECSIApp_RemoveRegistrations};
