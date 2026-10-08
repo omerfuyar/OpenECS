@@ -1,5 +1,7 @@
 -- Sketch in Lua: canvases to draw on with the mouse, and a clock. The sketch_c plugin does the same in C, so the two can be compared.
 
+local ecs = require("ecs")
+
 local NAME = ecs.plugin.name
 
 -- makes a name of this plugin, such as "sketch_lua.canvas"
@@ -400,7 +402,7 @@ local function exportChosen(id, files)
   local panel = ecs.layout.find(id)
   local canvas = panel and files and canvases[panel]
 
-  if not canvas or canvas.width <= 0 then
+  if not panel or not canvas or canvas.width <= 0 then
     return
   end
 
@@ -548,7 +550,7 @@ function services.stats()
   local own = 0
 
   -- the plugin's settings are counted from the list of every setting
-  for _, setting in ipairs(ecs.settings.list()) do
+  for _, setting in ipairs(ecs.settings.list() or {}) do
     if setting:sub(1, #NAME + 1) == NAME .. "." then
       own = own + 1
     end

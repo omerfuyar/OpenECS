@@ -15,16 +15,16 @@ This is the only file written for agents. Everything else is written for humans.
 
 Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 
-| Path               | What it holds                              |
-| ------------------ | ------------------------------------------ |
-| `include/`         | Headers: the plugin header and the core's module headers (DESIGN.md, section 1.5). |
-| `src/`             | The core's source files.                   |
-| `plugins/`         | First-party plugins.                       |
-| `presets/`         | First-party presets.                       |
-| `dependencies/`    | Third-party git submodules.                |
-| `resources/`       | Files the program loads at run time.       |
-| `tests/`           | Tests that Debug builds run (DESIGN.md, section 17.5). |
-| `shuild.c`         | The build script (see README.md).          |
+| Path            | What it holds                                                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `include/`      | Headers: the plugin header and the core's module headers, and `ecs.lua` for editors (DESIGN.md, sections 1.5 and 9.6). |
+| `src/`          | The core's source files.                                                                                               |
+| `plugins/`      | First-party plugins.                                                                                                   |
+| `presets/`      | First-party presets.                                                                                                   |
+| `dependencies/` | Third-party git submodules.                                                                                            |
+| `resources/`    | Files the program loads at run time.                                                                                   |
+| `tests/`        | Tests that Debug builds run (DESIGN.md, section 17.5).                                                                 |
+| `shuild.c`      | The build script (see README.md).                                                                                      |
 
 ## Current stage
 

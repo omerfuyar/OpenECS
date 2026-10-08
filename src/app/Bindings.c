@@ -1661,6 +1661,21 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     lua_setfield(state, -2, "plugin");
 }
 
+/// @brief The require of a plugin's environment: gives the plugin's ecs table for "ecs", and Lua's require gives other modules.
+static int ECSIBindings_Require(lua_State *state)
+{
+    if (SDL_strcmp(luaL_checkstring(state, 1), "ecs") == 0)
+    {
+        lua_pushvalue(state, lua_upvalueindex(1));
+        return 1;
+    }
+
+    lua_getglobal(state, "require");
+    lua_insert(state, 1);
+    lua_call(state, lua_gettop(state) - 1, LUA_MULTRET);
+    return lua_gettop(state);
+}
+
 #pragma endregion Source Only
 
 void ECSIBindings_Initialize(void)
@@ -1723,10 +1738,11 @@ SHUResult ECSIBindings_StartPlugin(ECSPlugin plugin, const char *path)
         return SHUResult_ErrFile;
     }
 
-    // the plugin's environment holds its own ecs table, and reads other globals from the shared global table
+    // the plugin's environment has its own require, which gives the plugin's ecs table; it reads other globals from the shared global table
     lua_newtable(state);
     ECSIBindings_PushEcs(state, plugin);
-    lua_setfield(state, -2, "ecs");
+    lua_pushcclosure(state, ECSIBindings_Require, 1);
+    lua_setfield(state, -2, "require");
     lua_newtable(state);
     lua_pushglobaltable(state);
     lua_setfield(state, -2, "__index");

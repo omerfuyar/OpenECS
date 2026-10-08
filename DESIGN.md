@@ -63,7 +63,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 - Internal names follow the public ones with `ECSI` in place of `ECS`. An internal enumeration value is `<Type>_<Value>` too: `ECSINodeType_Split`.
 - `main.c` and Lua files, such as `manifest.lua` and presets, keep lowercase names.
 - A type that tells variants apart ends with `Type`, never `Kind`: `ECSSurfaceType`, `ECSPanelEventType`. Its field is named `type`.
-- Lua names use camelCase: `ecs.panel.registerType`, `saveState`, the setting `ecs.prefixKeys` and the event type `pointerDown`. The core's Lua names live under the global table `ecs`. The core's own settings, events and bindable functions start with `ecs.`, for example the setting `ecs.focus`.
+- Lua names use camelCase: `ecs.panel.registerType`, `saveState`, the setting `ecs.prefixKeys` and the event type `pointerDown`. The core's Lua names live in the `ecs` module (9.6). The core's own settings, events and bindable functions start with `ecs.`, for example the setting `ecs.focus`.
 
 ### 1.3 Types and results
 
@@ -85,7 +85,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 ### 1.5 Files
 
 - Headers are in `include/`, source files in `src/`.
-- `include/OpenECS.h` is the one header that plugins include. It holds every public type and function, with documentation. The build copies only this header to the build's `include/` folder, and plugins are built against that copy, so they never see the core's headers.
+- `include/OpenECS.h` is the one header that plugins include. It holds every public type and function, with documentation. The build copies only this header and `include/ecs.lua` (9.6) to the build's `include/` folder, and plugins are built against that copy, so they never see the core's headers.
 - Each module (2.1) is a pair of files in its group's folder: `include/<group>/<Module>.h` with the module's declarations and their documentation, and `src/<group>/<Module>.c` with the definitions. Includes name the folder: `#include "base/Values.h"`.
 - `src/main.c` only reads the command line and runs the App module.
 - A module includes only the modules listed before it in 2.1, so modules never depend on each other in a cycle. So a group includes only its own folder and the groups before it.
@@ -135,7 +135,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Menus    | The core's bindable functions, and the panel and group menus that offer them (6.8).                                 |
 |           | Input    | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input, the clipboard, dialogs. |
 | app       | Session  | Reading presets and sessions, applying them, writing them.                                                          |
-|           | Bindings | The `ecs` table: the plugin interface for Lua plugins (11.3).                                                       |
+|           | Bindings | The `ecs` module: the plugin interface for Lua plugins (11.3).                                                      |
 |           | Test     | Runs a test in Debug builds (17.5).                                                                                 |
 |           | App      | Start-up, the main loop and shutdown (2.3, 3.1, 2.4).                                                               |
 
@@ -575,8 +575,10 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 
 ### 9.6 Lua plugins
 
-- All Lua plugins share one Lua state. Each plugin's code runs in its own environment, which contains the `ecs` table and reads other globals from the shared global table.
-- Each plugin gets its own `ecs` table, whose functions carry the plugin. So the core knows which plugin made an `ecs` call.
+- All Lua plugins share one Lua state. Each plugin's code runs in its own environment, which reads globals from the shared global table.
+- A plugin gets the core's Lua names from the `ecs` module: `local ecs = require("ecs")`. There is no global `ecs`.
+- The environment has its own `require`. For `"ecs"` it gives the plugin's own `ecs` table, whose functions carry the plugin, so the core knows which plugin made an `ecs` call. Other names go to Lua's `require`.
+- `include/ecs.lua` describes the `ecs` module for editors: every function's parameters, results and documentation, in LuaLS annotations. It changes with the bindings. A plugin's author adds the build's `include/` folder to `workspace.library` in the plugin's `.luarc.json`.
 - The manifest's `lua` file runs once, in a protected call, after the native `ECSPlugin_Init`. An error fails the plugin.
 
 ### 9.7 Lifecycle
@@ -606,6 +608,8 @@ ECSService_RegisterFunction(plugin, "audio.play", (ECSFunction)AudioPlay, "int(s
 ```
 
 ```lua
+local ecs = require("ecs")
+
 ecs.service.register("audio", {
   play = { sig = "int(string, float)", doc = "Play a sound file",
            fn = function(path, volume) ... end },
@@ -694,7 +698,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 - Manifests, presets, sessions and settings files are read as data. They run without `ecs`, so they cannot call the core or plugins while they are read.
 - They are loaded as text only (`load(text, name, "t", env)`). The environment holds Lua's basic functions and the `string`, `table`, `math` and `utf8` libraries; there is no `io`, `os` or `require`. So all of these files can use loops and conditions.
 
-### 11.3 The `ecs` table
+### 11.3 The `ecs` module
 
 | Table                         | Contents                            |
 | ----------------------------- | ----------------------------------- |
@@ -777,7 +781,7 @@ return {
   version = "1.0.0",
   app = { id = "org.example.Paint", name = "Paint", icon = "paint.png" },
   depends = { canvas = "1.2", palette = "1.0" },
-  pluginsDir = "plugins",                   -- optional extra plugin directory
+  pluginsDir = "plugins",                    -- optional extra plugin directory
   open = "canvas.open",                      -- receives files from the command line
   settings = { ["canvas.grid"] = true },
   keys = { ["Ctrl+N"] = "canvas.new" },      -- bindings for the whole tool
@@ -1004,6 +1008,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 **Hit testing.** Finding which element is under a point, such as the pointer.
 
 **Input method.** Software that composes characters a keyboard cannot type directly, for languages such as Chinese or Japanese.
+
+**LuaLS (Lua language server).** The program behind Lua support in editors such as VS Code. It reads annotations in comments, such as `---@param`, to give completion, documentation and warnings.
 
 **Main thread.** The thread on which the program starts. OS windows, input and all Lua code run there.
 

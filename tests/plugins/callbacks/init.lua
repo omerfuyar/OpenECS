@@ -1,4 +1,8 @@
 -- calls the twins' eachCanvas with Lua functions, and saves what it saw in its plugin state
+
+local ecs = require("ecs")
+assert(require("string") == string, "require gives Lua's modules for other names")
+
 local SIGNATURE = "int(fn<void(handle<ecs.panel>, int)>)"
 local results = {}
 
