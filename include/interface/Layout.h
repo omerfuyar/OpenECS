@@ -2,7 +2,7 @@
 
 // Layout: the OS window, workspaces, layout trees, and the core's own interface (tab rows, grips, focus border).
 
-#include "Panels.h"
+#include "interface/Panels.h"
 
 #pragma region Declarations
 

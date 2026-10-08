@@ -1,10 +1,10 @@
-#include "Session.h"
+#include "app/Session.h"
 
-#include "Input.h"
-#include "Layout.h"
-#include "Lua.h"
-#include "Panels.h"
-#include "Values.h"
+#include "interface/Input.h"
+#include "interface/Layout.h"
+#include "base/Lua.h"
+#include "interface/Panels.h"
+#include "base/Values.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"

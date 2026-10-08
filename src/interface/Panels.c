@@ -1,8 +1,8 @@
-#include "Panels.h"
+#include "interface/Panels.h"
 
-#include "Events.h"
-#include "Plugins.h"
-#include "Values.h"
+#include "runtime/Events.h"
+#include "runtime/Plugins.h"
+#include "base/Values.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"

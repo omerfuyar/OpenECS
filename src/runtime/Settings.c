@@ -1,6 +1,6 @@
-#include "Settings.h"
+#include "runtime/Settings.h"
 
-#include "Lua.h"
+#include "base/Lua.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"

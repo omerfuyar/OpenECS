@@ -1,6 +1,6 @@
-#include "Layout.h"
+#include "interface/Layout.h"
 
-#include "Plugins.h"
+#include "runtime/Plugins.h"
 
 #include "SDL3/SDL.h"
 #include "SDL3_ttf/SDL_ttf.h"

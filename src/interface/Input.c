@@ -1,9 +1,9 @@
-#include "Input.h"
+#include "interface/Input.h"
 
-#include "Layout.h"
-#include "Panels.h"
-#include "Services.h"
-#include "Settings.h"
+#include "interface/Layout.h"
+#include "interface/Panels.h"
+#include "runtime/Services.h"
+#include "runtime/Settings.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"

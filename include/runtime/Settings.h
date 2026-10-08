@@ -2,8 +2,8 @@
 
 // Settings: declarations, layers, and the value in effect of each setting.
 
-#include "Plugins.h"
-#include "Values.h"
+#include "runtime/Plugins.h"
+#include "base/Values.h"
 
 #pragma region Declarations
 

@@ -2,7 +2,7 @@
 
 // Bindings: the ecs table, the plugin interface for Lua plugins.
 
-#include "Session.h"
+#include "app/Session.h"
 
 #pragma region Declarations
 

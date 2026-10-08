@@ -2,8 +2,8 @@
 
 // Session: reading presets and sessions, and building the workspaces they describe.
 
-#include "Plugins.h"
-#include "Values.h"
+#include "runtime/Plugins.h"
+#include "base/Values.h"
 
 #pragma region Declarations
 

@@ -1,11 +1,11 @@
-#include "Bindings.h"
+#include "app/Bindings.h"
 
-#include "Events.h"
-#include "Input.h"
-#include "Lua.h"
-#include "Panels.h"
-#include "Services.h"
-#include "Settings.h"
+#include "runtime/Events.h"
+#include "interface/Input.h"
+#include "base/Lua.h"
+#include "interface/Panels.h"
+#include "runtime/Services.h"
+#include "runtime/Settings.h"
 
 #include "lua/lauxlib.h"
 #include "lua/lua.h"
