@@ -46,7 +46,7 @@ static SHUResult DemoCreate(ECSPanel panel, const ECSValue *savedState, u32 vers
     }
 
     // a missing or wrong colour in the saved state falls back to the first one
-    i64 color = ECSValue_GetInteger(ECSValue_GetField(savedState, "color"), 0);
+    i64 color = ECSValue_GetInteger(ECSValue_GetTableField(savedState, "color"), 0);
     demo->color = color >= 0 && (usz)color < sizeof(DEMO_COLORS) / sizeof(*DEMO_COLORS) ? (usz)color : 0;
     demo->panel = panel;
     demo->pointerX = -1.0f;
@@ -85,7 +85,7 @@ static SHUResult DemoColorSaveState(void *state, ECSValue *retState)
     DemoPanel *demo = state;
     ECSValue *color = NULL;
 
-    SHU_ReturnResult(ECSValue_SetField(retState, "color", &color));
+    SHU_ReturnResult(ECSValue_TableSetField(retState, "color", &color));
     ECSValue_SetInteger(color, (i64)demo->color);
     return SHUResult_Ok;
 }
@@ -263,9 +263,9 @@ static i32 DemoDescribe(const ECSValue *value, ECSValue *retCopy)
 {
     ECSValue *field = NULL;
 
-    if (ECSValue_SetField(retCopy, "items", &field) == SHUResult_Ok)
+    if (ECSValue_TableSetField(retCopy, "items", &field) == SHUResult_Ok)
     {
-        ECSValue_SetInteger(field, (i64)ECSValue_GetCount(value));
+        ECSValue_SetInteger(field, (i64)ECSValue_GetTableCount(value));
     }
 
     return (i32)ECSValue_GetType(value);

@@ -297,19 +297,19 @@ OPENECS_EXPORT const char *ECSValue_GetString(const ECSValue *value, const char 
 /// @brief Counts the list items of a table.
 /// @param table The table, or NULL.
 /// @return Number of items; 0 if the value is not a table.
-OPENECS_EXPORT usz ECSValue_GetCount(const ECSValue *table);
+OPENECS_EXPORT usz ECSValue_GetTableCount(const ECSValue *table);
 
 /// @brief Gets a list item of a table.
 /// @param table The table, or NULL.
 /// @param index Position of the item, starting at 0.
 /// @return The item, or NULL if the value is not a table or has no such item.
-OPENECS_EXPORT const ECSValue *ECSValue_GetItem(const ECSValue *table, usz index);
+OPENECS_EXPORT const ECSValue *ECSValue_GetTableItem(const ECSValue *table, usz index);
 
 /// @brief Gets a named field of a table.
 /// @param table The table, or NULL.
 /// @param name Name of the field.
 /// @return The field, or NULL if the value is not a table or has no such field.
-OPENECS_EXPORT const ECSValue *ECSValue_GetField(const ECSValue *table, const char *name);
+OPENECS_EXPORT const ECSValue *ECSValue_GetTableField(const ECSValue *table, const char *name);
 
 /// @brief Makes a value nil.
 /// @param value The value.
@@ -344,14 +344,14 @@ OPENECS_EXPORT void ECSValue_SetTable(ECSValue *value);
 /// @param table The table.
 /// @param retItem The new item, to be set. Valid as long as the table is not set to something else.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
-OPENECS_EXPORT SHUWUR SHUResult ECSValue_AddItem(ECSValue *table, ECSValue **retItem);
+OPENECS_EXPORT SHUWUR SHUResult ECSValue_TableAddItem(ECSValue *table, ECSValue **retItem);
 
 /// @brief Gets a named field of a table to set it, and adds it as nil if it is missing. A value that is not a table becomes an empty table first.
 /// @param table The table.
 /// @param name Name of the field. The core copies it.
 /// @param retField The field, to be set. Valid as long as the table is not set to something else.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
-OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetField(ECSValue *table, const char *name, ECSValue **retField);
+OPENECS_EXPORT SHUWUR SHUResult ECSValue_TableSetField(ECSValue *table, const char *name, ECSValue **retField);
 
 /// @brief Declares a setting. Its value in effect comes from the highest settings layer that sets it with the right type; otherwise it is the default. Main thread only.
 /// @param plugin The plugin that owns the setting.

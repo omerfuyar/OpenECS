@@ -133,7 +133,7 @@ static SHUResult ECSI_ManifestFind(const char *name, ECSI_Manifest *retManifest)
         SDL_free(path);
         SHU_ReturnResult(result, ECSI_ManifestFree(retManifest););
 
-        if (SDL_strcmp(ECSValue_GetString(ECSValue_GetField(retManifest->file, "name"), ""), name) != 0)
+        if (SDL_strcmp(ECSValue_GetString(ECSValue_GetTableField(retManifest->file, "name"), ""), name) != 0)
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The manifest of plugin '%s' gives another name.", name);
             ECSI_ManifestFree(retManifest);
@@ -160,8 +160,8 @@ static SHUResult ECSI_PluginLoadAll(const ECSValue *plugins, const char *depende
 static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifest)
 {
     const ECSValue *file = manifest->file;
-    i64 api = ECSValue_GetInteger(ECSValue_GetField(file, "api"), 0);
-    const char *native = ECSValue_GetString(ECSValue_GetField(file, "native"), NULL);
+    i64 api = ECSValue_GetInteger(ECSValue_GetTableField(file, "api"), 0);
+    const char *native = ECSValue_GetString(ECSValue_GetTableField(file, "native"), NULL);
 
     if (api != OPENECS_API_VERSION)
     {
@@ -170,16 +170,16 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
     }
 
     arrput(PLUGINS.loading, name);
-    SHUResult dependencies = ECSI_PluginLoadAll(ECSValue_GetField(file, "depends"), name);
+    SHUResult dependencies = ECSI_PluginLoadAll(ECSValue_GetTableField(file, "depends"), name);
     (void)arrpop(PLUGINS.loading);
     SHU_ReturnResult(dependencies);
 
 
-    ECSI_Plugin plugin = {.name = SDL_strdup(name), .version = SDL_strdup(ECSValue_GetString(ECSValue_GetField(file, "version"), "0.0.0"))};
+    ECSI_Plugin plugin = {.name = SDL_strdup(name), .version = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "version"), "0.0.0"))};
     ECSI_Plugin *record = SDL_malloc(sizeof(ECSI_Plugin));
     SHUResult (*Init)(ECSPlugin plugin) = NULL;
 
-    ECSI_ValueForEachField(ECSValue_GetField(file, "depends"), ECSI_PluginAddDependency, &plugin);
+    ECSI_ValueTableForEachField(ECSValue_GetTableField(file, "depends"), ECSI_PluginAddDependency, &plugin);
 
     if (plugin.name == NULL || plugin.version == NULL || record == NULL)
     {
@@ -236,7 +236,7 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
     }
 
     // the native code starts first, then the Lua code
-    const char *lua = ECSValue_GetString(ECSValue_GetField(file, "lua"), NULL);
+    const char *lua = ECSValue_GetString(ECSValue_GetTableField(file, "lua"), NULL);
 
     if (lua != NULL)
     {
@@ -285,7 +285,7 @@ static SHUResult ECSI_PluginLoad(const char *name, const char *minimum)
     if (plugin == NULL)
     {
         SHU_ReturnResult(ECSI_ManifestFind(name, &manifest));
-        version = ECSValue_GetString(ECSValue_GetField(manifest.file, "version"), "0.0.0");
+        version = ECSValue_GetString(ECSValue_GetTableField(manifest.file, "version"), "0.0.0");
     }
 
     // the version is checked before the plugin's code runs
@@ -334,11 +334,11 @@ static void ECSI_PluginLoadField(const char *name, const ECSValue *field, void *
 static SHUResult ECSI_PluginLoadAll(const ECSValue *plugins, const char *dependent)
 {
     ECSI_PluginLoader loader = {.dependent = dependent, .result = SHUResult_Ok};
-    ECSI_ValueForEachField(plugins, ECSI_PluginLoadField, &loader);
+    ECSI_ValueTableForEachField(plugins, ECSI_PluginLoadField, &loader);
 
-    for (usz i = 0; i < ECSValue_GetCount(plugins); i++)
+    for (usz i = 0; i < ECSValue_GetTableCount(plugins); i++)
     {
-        const char *name = ECSValue_GetString(ECSValue_GetItem(plugins, i), NULL);
+        const char *name = ECSValue_GetString(ECSValue_GetTableItem(plugins, i), NULL);
 
         if (name != NULL)
         {

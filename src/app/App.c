@@ -131,7 +131,7 @@ static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
     }
 
     // the preset's plugins first, then the extra plugins that the user's settings name
-    SHUResult result = ECSI_PluginsLoad(directories, directoryCount, ECSValue_GetField(preset->file, "depends"));
+    SHUResult result = ECSI_PluginsLoad(directories, directoryCount, ECSValue_GetTableField(preset->file, "depends"));
     SHUResult extraResult = ECSI_PluginsLoad(directories, directoryCount, ECSI_SettingsGetPlugins());
 
     if (result || extraResult)
@@ -195,7 +195,7 @@ void ECSI_AppStart(const ECSI_Arguments *arguments)
 
     const char *sourcePath = APP.sessionPath != NULL ? APP.sessionPath : APP.presetPath;
 
-    ECSI_CheckStart(ECSI_SettingsInitialize(ECSValue_GetField(APP.preset.file, "settings"), sourcePath, APP.preset.appId, APP.configFolder), "reading the settings");
+    ECSI_CheckStart(ECSI_SettingsInitialize(ECSValue_GetTableField(APP.preset.file, "settings"), sourcePath, APP.preset.appId, APP.configFolder), "reading the settings");
 
     SDL_SetAppMetadata(APP.preset.appName, NULL, APP.preset.appId);
 

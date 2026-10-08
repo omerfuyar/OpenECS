@@ -130,7 +130,7 @@ static void ECSI_SettingResolve(ECSI_Setting *setting)
 {
     for (i32 layer = ECSI_SettingsLayer_User; layer >= ECSI_SettingsLayer_Preset; layer--)
     {
-        const ECSValue *value = ECSValue_GetField(SETTINGS.layers[layer], setting->name);
+        const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[layer], setting->name);
 
         if (value == NULL)
         {
@@ -282,7 +282,7 @@ static void ECSI_SettingsReadField(const char *name, const ECSValue *field, void
         return;
     }
 
-    reader->result = ECSValue_SetField(reader->layer, name, &copy);
+    reader->result = ECSValue_TableSetField(reader->layer, name, &copy);
     reader->result = reader->result ? reader->result : ECSI_ValueCopy(copy, field);
 }
 
@@ -293,7 +293,7 @@ static void ECSI_SettingsCopyField(const char *name, const ECSValue *field, void
 
     if (!copier->result)
     {
-        copier->result = ECSValue_SetField(copier->target, name, &copy);
+        copier->result = ECSValue_TableSetField(copier->target, name, &copy);
         copier->result = copier->result ? copier->result : ECSI_ValueCopy(copy, field);
     }
 }
@@ -301,16 +301,16 @@ static void ECSI_SettingsCopyField(const char *name, const ECSValue *field, void
 /// @brief Adds the plugins that a part of a user file names.
 static SHUResult ECSI_SettingsReadPlugins(const ECSValue *part)
 {
-    const ECSValue *plugins = ECSValue_GetField(part, "plugins");
+    const ECSValue *plugins = ECSValue_GetTableField(part, "plugins");
 
-    for (usz i = 0; i < ECSValue_GetCount(plugins); i++)
+    for (usz i = 0; i < ECSValue_GetTableCount(plugins); i++)
     {
-        const char *name = ECSValue_GetString(ECSValue_GetItem(plugins, i), NULL);
+        const char *name = ECSValue_GetString(ECSValue_GetTableItem(plugins, i), NULL);
         ECSValue *item = NULL;
 
         if (name != NULL)
         {
-            SHU_ReturnResult(ECSValue_AddItem(SETTINGS.plugins, &item));
+            SHU_ReturnResult(ECSValue_TableAddItem(SETTINGS.plugins, &item));
             SHU_ReturnResult(ECSValue_SetString(item, name));
         }
     }
@@ -325,10 +325,10 @@ static SHUResult ECSI_SettingsBuildLayer(ECSI_SettingsLayer layer, const ECSValu
     SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[layer]));
     ECSValue_SetTable(SETTINGS.layers[layer]);
 
-    const ECSValue *tool = ECSValue_GetField(ECSValue_GetField(file, "tools"), SETTINGS.appId);
+    const ECSValue *tool = ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId);
     ECSI_SettingsFileReader reader = {.layer = SETTINGS.layers[layer], .result = SHUResult_Ok};
-    ECSI_ValueForEachField(file, ECSI_SettingsReadField, &reader);
-    ECSI_ValueForEachField(tool, ECSI_SettingsReadField, &reader);
+    ECSI_ValueTableForEachField(file, ECSI_SettingsReadField, &reader);
+    ECSI_ValueTableForEachField(tool, ECSI_SettingsReadField, &reader);
     return reader.result;
 }
 
@@ -336,7 +336,7 @@ static SHUResult ECSI_SettingsBuildLayer(ECSI_SettingsLayer layer, const ECSValu
 static SHUResult ECSI_SettingsReadKeys(ECSI_SettingsLayer layer, const ECSValue *part)
 {
     ECSI_SettingsFileCopier copier = {.target = SETTINGS.keys[layer], .result = SHUResult_Ok};
-    ECSI_ValueForEachField(ECSValue_GetField(part, "keys"), ECSI_SettingsCopyField, &copier);
+    ECSI_ValueTableForEachField(ECSValue_GetTableField(part, "keys"), ECSI_SettingsCopyField, &copier);
     return copier.result;
 }
 
@@ -372,11 +372,11 @@ static SHUResult ECSI_SettingsReadFile(ECSI_SettingsLayer layer, const char *fol
     {
         ECSValue_SetTable(SETTINGS.keys[layer]);
         result = ECSI_SettingsReadKeys(layer, file);
-        result = result ? result : ECSI_SettingsReadKeys(layer, ECSValue_GetField(ECSValue_GetField(file, "tools"), SETTINGS.appId));
+        result = result ? result : ECSI_SettingsReadKeys(layer, ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId));
     }
 
     result = result ? result : ECSI_SettingsReadPlugins(file);
-    result = result ? result : ECSI_SettingsReadPlugins(ECSValue_GetField(ECSValue_GetField(file, "tools"), SETTINGS.appId));
+    result = result ? result : ECSI_SettingsReadPlugins(ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId));
 
     if (retFile != NULL && !result)
     {
@@ -394,7 +394,7 @@ static SHUResult ECSI_SettingsReadFile(ECSI_SettingsLayer layer, const char *fol
 static SHUResult ECSI_SettingsExplainField(ECSValue *explanation, const char *name, const ECSValue *value)
 {
     ECSValue *field = NULL;
-    SHU_ReturnResult(ECSValue_SetField(explanation, name, &field));
+    SHU_ReturnResult(ECSValue_TableSetField(explanation, name, &field));
     return ECSI_ValueCopy(field, value);
 }
 
@@ -402,7 +402,7 @@ static SHUResult ECSI_SettingsExplainField(ECSValue *explanation, const char *na
 static SHUResult ECSI_SettingsExplainText(ECSValue *explanation, const char *name, const char *text)
 {
     ECSValue *field = NULL;
-    SHU_ReturnResult(ECSValue_SetField(explanation, name, &field));
+    SHU_ReturnResult(ECSValue_TableSetField(explanation, name, &field));
     return ECSValue_SetString(field, text);
 }
 
@@ -608,10 +608,10 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
     SHUResult result = ECSI_ValueCopy(old, setting->value);
 
     // the tool's own part wins over the part for every tool, so a setting it already has is changed there
-    ECSValue *tool = (ECSValue *)ECSValue_GetField(ECSValue_GetField(SETTINGS.windowFile, "tools"), SETTINGS.appId);
-    ECSValue *part = ECSValue_GetField(tool, name) != NULL ? tool : SETTINGS.windowFile;
+    ECSValue *tool = (ECSValue *)ECSValue_GetTableField(ECSValue_GetTableField(SETTINGS.windowFile, "tools"), SETTINGS.appId);
+    ECSValue *part = ECSValue_GetTableField(tool, name) != NULL ? tool : SETTINGS.windowFile;
     ECSValue *field = NULL;
-    result = result ? result : ECSValue_SetField(part, name, &field);
+    result = result ? result : ECSValue_TableSetField(part, name, &field);
     result = result ? result : ECSI_ValueCopy(field, value);
     result = result ? result : ECSI_SettingsBuildLayer(ECSI_SettingsLayer_Window, SETTINGS.windowFile);
 
@@ -646,7 +646,7 @@ SHUResult ECSSetting_List(ECSValue *retList)
     for (usz i = 0; i < shlenu(SETTINGS.settings); i++)
     {
         ECSValue *item = NULL;
-        SHU_ReturnResult(ECSValue_AddItem(retList, &item));
+        SHU_ReturnResult(ECSValue_TableAddItem(retList, &item));
         SHU_ReturnResult(ECSValue_SetString(item, SETTINGS.settings[i].key));
     }
 
@@ -683,19 +683,19 @@ SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation)
     for (usz i = 0; i < arrlenu(setting->choices); i++)
     {
         ECSValue *item = NULL;
-        SHU_ReturnResult(choices == NULL ? ECSValue_SetField(retExplanation, "choices", &choices) : SHUResult_Ok);
-        SHU_ReturnResult(ECSValue_AddItem(choices, &item));
+        SHU_ReturnResult(choices == NULL ? ECSValue_TableSetField(retExplanation, "choices", &choices) : SHUResult_Ok);
+        SHU_ReturnResult(ECSValue_TableAddItem(choices, &item));
         SHU_ReturnResult(ECSValue_SetString(item, setting->choices[i]));
     }
 
     ECSValue *layers = NULL;
-    SHU_ReturnResult(ECSValue_SetField(retExplanation, "layers", &layers));
+    SHU_ReturnResult(ECSValue_TableSetField(retExplanation, "layers", &layers));
     ECSValue_SetTable(layers);
     SHU_ReturnResult(ECSI_SettingsExplainField(layers, "default", setting->defaultValue));
 
     for (i32 layer = ECSI_SettingsLayer_Preset; layer < ECSI_SettingsLayer_Count; layer++)
     {
-        const ECSValue *value = ECSValue_GetField(SETTINGS.layers[layer], setting->name);
+        const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[layer], setting->name);
 
         if (value != NULL)
         {

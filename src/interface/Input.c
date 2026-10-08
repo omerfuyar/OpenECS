@@ -303,7 +303,7 @@ static void ECSI_InputReadPrefixKeys(void)
         ECSI_InputPutBinding(&INPUT.prefixKeys, ECSI_PREFIX_KEYS[i][0], ECSI_PREFIX_KEYS[i][1]);
     }
 
-    ECSI_ValueForEachField(ECSSetting_Get("ecs.prefix_keys"), ECSI_InputAddPrefixKey, NULL);
+    ECSI_ValueTableForEachField(ECSSetting_Get("ecs.prefix_keys"), ECSI_InputAddPrefixKey, NULL);
 }
 
 /// @brief Keeps a binding that matches a key press, if it wins over the best one so far: a higher layer wins, then a more specific scope.
@@ -335,7 +335,7 @@ static void ECSI_InputConsiderTable(ECSI_BindingSearch *search, const ECSValue *
 {
     search->layer = layer;
     search->scope = scope;
-    ECSI_ValueForEachField(keys, ECSI_InputConsiderField, search);
+    ECSI_ValueTableForEachField(keys, ECSI_InputConsiderField, search);
 }
 
 /// @brief Finds the function that a key press runs: the binding of the highest settings layer, and within it the most specific one.
@@ -383,7 +383,7 @@ static void ECSI_InputCheckKey(const char *name, const ECSValue *field, void *us
 /// @brief Reports the key texts of a table of bindings that are not key combinations; they never match.
 static void ECSI_InputCheckKeys(const ECSValue *keys)
 {
-    ECSI_ValueForEachField(keys, ECSI_InputCheckKey, NULL);
+    ECSI_ValueTableForEachField(keys, ECSI_InputCheckKey, NULL);
 }
 
 static void ECSI_InputFreePanelBinding(ECSI_PanelBinding *binding)

@@ -134,7 +134,7 @@ static SHUResult ECSI_LuaToValue(int index, ECSValue *value, u32 depth)
     for (usz i = 1; i <= count; i++)
     {
         ECSValue *item = NULL;
-        SHU_ReturnResult(ECSValue_AddItem(value, &item));
+        SHU_ReturnResult(ECSValue_TableAddItem(value, &item));
 
         lua_rawgeti(state, index, (lua_Integer)i);
         SHUResult result = ECSI_LuaToValue(-1, item, depth + 1);
@@ -167,7 +167,7 @@ static SHUResult ECSI_LuaToValue(int index, ECSValue *value, u32 depth)
     for (usz i = 0; i < arrlenu(names) && !result; i++)
     {
         ECSValue *field = NULL;
-        result = ECSValue_SetField(value, names[i], &field);
+        result = ECSValue_TableSetField(value, names[i], &field);
 
         if (!result)
         {
@@ -211,13 +211,13 @@ static void ECSI_LuaPushOrderedValue(const ECSValue *value)
         break;
     }
 
-    usz count = ECSValue_GetCount(value);
+    usz count = ECSValue_GetTableCount(value);
     lua_createtable(state, 0, 2);
     lua_createtable(state, (int)SDL_min(count, (usz)SDL_MAX_SINT32), 1);
 
     for (usz i = 0; i < count; i++)
     {
-        ECSI_LuaPushOrderedValue(ECSValue_GetItem(value, i));
+        ECSI_LuaPushOrderedValue(ECSValue_GetTableItem(value, i));
         lua_rawseti(state, -2, (lua_Integer)i + 1);
     }
 
@@ -226,7 +226,7 @@ static void ECSI_LuaPushOrderedValue(const ECSValue *value)
     lua_setfield(state, -2, "items");
 
     lua_newtable(state);
-    ECSI_ValueForEachField(value, ECSI_LuaPushOrderedField, NULL);
+    ECSI_ValueTableForEachField(value, ECSI_LuaPushOrderedField, NULL);
     lua_setfield(state, -2, "fields");
 }
 
@@ -345,16 +345,16 @@ void ECSI_LuaPushValue(const ECSValue *value)
         }
     }
 
-    usz count = ECSValue_GetCount(value);
+    usz count = ECSValue_GetTableCount(value);
     lua_createtable(state, (int)SDL_min(count, (usz)SDL_MAX_SINT32), 0);
 
     for (usz i = 0; i < count; i++)
     {
-        ECSI_LuaPushValue(ECSValue_GetItem(value, i));
+        ECSI_LuaPushValue(ECSValue_GetTableItem(value, i));
         lua_rawseti(state, -2, (lua_Integer)i + 1);
     }
 
-    ECSI_ValueForEachField(value, ECSI_LuaPushField, NULL);
+    ECSI_ValueTableForEachField(value, ECSI_LuaPushField, NULL);
 }
 
 SHUResult ECSI_LuaCall(int argumentCount, int resultCount)

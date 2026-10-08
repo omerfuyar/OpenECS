@@ -201,9 +201,9 @@ SHUResult ECSI_PanelSave(ECSPanel panel, ECSValue *retPanel)
 
     ECSValue *field = NULL;
     ECSValue_SetTable(retPanel);
-    SHU_ReturnResult(ECSValue_SetField(retPanel, "id", &field));
+    SHU_ReturnResult(ECSValue_TableSetField(retPanel, "id", &field));
     ECSValue_SetInteger(field, panel->id);
-    SHU_ReturnResult(ECSValue_SetField(retPanel, "type", &field));
+    SHU_ReturnResult(ECSValue_TableSetField(retPanel, "type", &field));
     SHU_ReturnResult(ECSValue_SetString(field, panel->typeName));
 
     const ECSValue *state = panel->savedState;
@@ -229,12 +229,12 @@ SHUResult ECSI_PanelSave(ECSPanel panel, ECSValue *retPanel)
 
     if (state != NULL)
     {
-        result = ECSValue_SetField(retPanel, "state_version", &field);
+        result = ECSValue_TableSetField(retPanel, "state_version", &field);
 
         if (!result)
         {
             ECSValue_SetInteger(field, version);
-            result = ECSValue_SetField(retPanel, "state", &field);
+            result = ECSValue_TableSetField(retPanel, "state", &field);
         }
 
         result = result ? result : ECSI_ValueCopy(field, state);
