@@ -312,6 +312,7 @@ int main(int argc, char **argv)
 
         ECSI_EventsRunTimers();
         ECSI_EventsDeliver();
+        ECSI_SettingsDeliverChanges();
         ECSI_PanelsDestroyClosed();
 
         if (ECSI_LayoutWantsFrame())

@@ -41,6 +41,9 @@ SHUWUR SHUResult ECSI_SettingsDeclareCore(const ECSSettingDesc *desc);
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description or the default is invalid or the name is taken, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_SettingsDeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *desc, const ECSValue *defaultValue);
 
+/// @brief Tells owners about the settings whose value in effect changed since the last call. The main loop calls it after delivering events.
+void ECSI_SettingsDeliverChanges(void);
+
 /// @brief Removes every setting a plugin declared. The values in the layers are kept.
 /// @param plugin The plugin.
 void ECSI_SettingsRemovePlugin(ECSPlugin plugin);

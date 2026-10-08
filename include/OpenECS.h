@@ -153,6 +153,10 @@ typedef struct ECSSettingDesc
     f64 defaultNumber;
     const char *defaultString; // string, choice and key settings
     const char *const *choices; // choice settings: the allowed strings, ending with NULL
+
+    // optional, NULL if unused
+    void (*Changed)(void *data); // called after the value in effect changes, outside other callbacks
+    void *data;                  // passed to Changed
 } ECSSettingDesc;
 
 /// @brief Level of a log message.
@@ -318,6 +322,23 @@ OPENECS_EXPORT SHUWUR SHUResult ECSService_RegisterFunction(ECSPlugin plugin, co
 /// @param signature The signature the caller expects. It must match the registered one.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, SHUResult_ErrPrivileges if the plugin does not depend on the provider, or SHUResult_ErrBadData if the signature is invalid or does not match.
 OPENECS_EXPORT SHUWUR SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, const char *name, const char *signature);
+
+/// @brief Sets a setting in the settings window's layer, and writes that layer's file. A higher layer may still override it; ECSSetting_Explain tells. Main thread only.
+/// @param name Name of the setting.
+/// @param value The new value. It must have the setting's type. The core copies it.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if no setting has the name, SHUResult_ErrBadData if the value has the wrong type, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Set(const char *name, const ECSValue *value);
+
+/// @brief Lists every declared setting. Main thread only.
+/// @param retList The value to set to a list of setting names, in the order they were declared.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSSetting_List(ECSValue *retList);
+
+/// @brief Explains a setting: its value in effect, the layer it comes from, and what each layer says. Main thread only.
+/// @param name Name of the setting.
+/// @param retExplanation The value to set to a table: name, type, description, owner, value, layer, file (of that layer; missing for defaults), choices (choice settings), and layers, which holds the value of each layer that sets it: default, preset, window and user.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if no setting has the name, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation);
 
 /// @brief Starts a timer that calls a function on the main thread, once or repeatedly. Main thread only.
 /// @param plugin The plugin that owns the timer.

@@ -21,6 +21,14 @@
 /// @brief Name of the metatable of surfaces given to draw.
 #define OPENECS_LUA_SURFACE "ecs.surface"
 
+/// @brief A Lua function that a setting's owner gave to be told about changes.
+typedef struct ECSI_LuaListener
+{
+    ECSPlugin plugin;
+    char *name;   // the setting's name
+    int function; // registry reference of the Lua function
+} ECSI_LuaListener;
+
 /// @brief A panel type registered from Lua.
 typedef struct ECSI_LuaPanelType
 {
@@ -49,7 +57,8 @@ typedef struct ECSI_LuaTimer
 
 static struct
 {
-    ECSI_LuaPanelType **types; // stb_ds array
+    ECSI_LuaPanelType **types;     // stb_ds array
+    ECSI_LuaListener **listeners; // stb_ds array
 } BINDINGS = {0};
 
 /// @brief Names of the event types in Lua, in the order of ECSEventType.
@@ -104,9 +113,50 @@ static const luaL_Reg ECSI_BINDINGS_LOG[] = {
 
 #pragma region Settings
 
+/// @brief Tells a Lua owner that its setting changed, with the new value.
+static void ECSI_BindingsSettingChanged(void *data)
+{
+    ECSI_LuaListener *listener = data;
+    lua_State *state = ECSI_LuaGetState();
+
+    lua_rawgeti(state, LUA_REGISTRYINDEX, listener->function);
+    ECSI_LuaPushValue(ECSSetting_Get(listener->name));
+
+    if (ECSI_LuaCall(1, 0))
+    {
+        ECSI_PluginReportError(listener->plugin, lua_tostring(state, -1));
+        lua_pop(state, 1);
+    }
+}
+
 static int ECSI_BindingsSettingsDeclare(lua_State *state)
 {
     luaL_checktype(state, 1, LUA_TTABLE);
+    ECSI_LuaListener *listener = NULL;
+
+    // the listener is made first, because the checks below may raise errors and leave nothing to free but it
+    if (lua_getfield(state, 1, "changed") == LUA_TFUNCTION)
+    {
+        lua_getfield(state, 1, "name");
+        listener = SDL_calloc(1, sizeof(ECSI_LuaListener));
+        char *name = listener == NULL ? NULL : SDL_strdup(luaL_optstring(state, -1, ""));
+
+        if (name == NULL)
+        {
+            SDL_free(listener);
+            return luaL_error(state, "out of memory");
+        }
+
+        lua_pop(state, 1);
+        listener->plugin = ECSI_BindingsPlugin(state);
+        listener->name = name;
+        listener->function = luaL_ref(state, LUA_REGISTRYINDEX);
+        arrput(BINDINGS.listeners, listener);
+    }
+    else
+    {
+        lua_pop(state, 1);
+    }
 
     lua_getfield(state, 1, "name");
     lua_getfield(state, 1, "type");
@@ -118,6 +168,8 @@ static int ECSI_BindingsSettingsDeclare(lua_State *state)
         .name = luaL_checkstring(state, -5),
         .type = (ECSSettingType)luaL_checkoption(state, -4, NULL, ECSI_BINDINGS_SETTING_TYPES),
         .description = luaL_optstring(state, -3, ""),
+        .Changed = listener == NULL ? NULL : ECSI_BindingsSettingChanged,
+        .data = listener,
     };
 
     // the choices stay alive in the table on the stack
@@ -161,9 +213,68 @@ static int ECSI_BindingsSettingsGet(lua_State *state)
     return 1;
 }
 
+static int ECSI_BindingsSettingsSet(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+    ECSValue *value = NULL;
+    SHUResult result = ECSValue_Create(&value);
+    result = result ? result : ECSI_LuaGetValue(2, value);
+    result = result ? result : ECSSetting_Set(name, value);
+    ECSValue_Destroy(&value);
+
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "setting '%s' is not set (%s)", name, SHUResult_String(result));
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
+/// @brief Pushes a value that a settings function fills, or nil and a message.
+static int ECSI_BindingsSettingsPush(lua_State *state, SHUResult (*fill)(const char *name, ECSValue *retValue), const char *name)
+{
+    ECSValue *value = NULL;
+    SHUResult result = ECSValue_Create(&value);
+    result = result ? result : fill(name, value);
+
+    if (result)
+    {
+        ECSValue_Destroy(&value);
+        lua_pushnil(state);
+        lua_pushfstring(state, "no setting '%s' (%s)", name == NULL ? "" : name, SHUResult_String(result));
+        return 2;
+    }
+
+    ECSI_LuaPushValue(value);
+    ECSValue_Destroy(&value);
+    return 1;
+}
+
+static SHUResult ECSI_BindingsSettingsFillList(const char *name, ECSValue *retValue)
+{
+    (void)name;
+    return ECSSetting_List(retValue);
+}
+
+static int ECSI_BindingsSettingsList(lua_State *state)
+{
+    return ECSI_BindingsSettingsPush(state, ECSI_BindingsSettingsFillList, NULL);
+}
+
+static int ECSI_BindingsSettingsExplain(lua_State *state)
+{
+    return ECSI_BindingsSettingsPush(state, ECSSetting_Explain, luaL_checkstring(state, 1));
+}
+
 static const luaL_Reg ECSI_BINDINGS_SETTINGS[] = {
     {"declare", ECSI_BindingsSettingsDeclare},
     {"get", ECSI_BindingsSettingsGet},
+    {"set", ECSI_BindingsSettingsSet},
+    {"list", ECSI_BindingsSettingsList},
+    {"explain", ECSI_BindingsSettingsExplain},
     {NULL, NULL},
 };
 
@@ -878,7 +989,14 @@ void ECSI_BindingsTerminate(void)
         SDL_free(BINDINGS.types[i]);
     }
 
+    for (usz i = 0; i < arrlenu(BINDINGS.listeners); i++)
+    {
+        SDL_free(BINDINGS.listeners[i]->name);
+        SDL_free(BINDINGS.listeners[i]);
+    }
+
     arrfree(BINDINGS.types);
+    arrfree(BINDINGS.listeners);
     SDL_zero(BINDINGS);
 }
 

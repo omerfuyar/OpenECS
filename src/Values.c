@@ -124,6 +124,55 @@ SHUResult ECSI_ValueCopy(ECSValue *value, const ECSValue *source)
     return SHUResult_Ok;
 }
 
+bool ECSI_ValueEqual(const ECSValue *first, const ECSValue *second)
+{
+    ECSValueType type = ECSValue_GetType(first);
+
+    if (type != ECSValue_GetType(second))
+    {
+        return false;
+    }
+
+    switch (type)
+    {
+    case ECSValueType_Nil:
+        return true;
+    case ECSValueType_Bool:
+        return first->boolean == second->boolean;
+    case ECSValueType_Integer:
+        return first->integer == second->integer;
+    case ECSValueType_Number:
+        return first->number == second->number;
+    case ECSValueType_String:
+        return SDL_strcmp(first->string, second->string) == 0;
+    case ECSValueType_Table:
+        break;
+    }
+
+    if (arrlenu(first->items) != arrlenu(second->items) || shlenu(first->fields) != shlenu(second->fields))
+    {
+        return false;
+    }
+
+    for (usz i = 0; i < arrlenu(first->items); i++)
+    {
+        if (!ECSI_ValueEqual(first->items[i], second->items[i]))
+        {
+            return false;
+        }
+    }
+
+    for (usz i = 0; i < shlenu(first->fields); i++)
+    {
+        if (!ECSI_ValueEqual(first->fields[i].value, ECSValue_GetField(second, first->fields[i].key)))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void ECSI_ValueForEachField(const ECSValue *table, ECSI_ValueFieldFunction function, void *userData)
 {
     SDL_assert(function != NULL);
