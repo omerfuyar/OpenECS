@@ -34,8 +34,19 @@ typedef struct ECSI_Timer *ECSTimer;
 /// @param data The data given when the timer started.
 typedef void (*ECSTimerFunction)(void *data);
 
-/// @brief Saved state of a panel. Saving state is not implemented yet, so it is always NULL.
+/// @brief A generic value: nil, a boolean, an integer, a number, a string, or a table that holds a list and named fields. Saved state uses values. The core owns every value.
 typedef struct ECSI_Value ECSValue;
+
+/// @brief Type of a value.
+typedef enum ECSValueType
+{
+    ECSValueType_Nil = 0,
+    ECSValueType_Bool,
+    ECSValueType_Integer,
+    ECSValueType_Number,
+    ECSValueType_String,
+    ECSValueType_Table,
+} ECSValueType;
 
 /// @brief Type of picture a panel draws into.
 typedef enum ECSSurfaceType
@@ -152,6 +163,94 @@ OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel l
 /// @param desc Description of the panel type. Its name must start with the plugin's name and a dot.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc);
+
+/// @brief Gets the type of a value.
+/// @param value The value, or NULL.
+/// @return Its type; ECSValueType_Nil for NULL.
+OPENECS_EXPORT ECSValueType ECSValue_GetType(const ECSValue *value);
+
+/// @brief Reads a boolean.
+/// @param value The value, or NULL.
+/// @param fallback Returned if the value is not a boolean.
+/// @return The boolean.
+OPENECS_EXPORT bool ECSValue_GetBool(const ECSValue *value, bool fallback);
+
+/// @brief Reads an integer. A number with no fraction counts as an integer.
+/// @param value The value, or NULL.
+/// @param fallback Returned if the value is not an integer.
+/// @return The integer.
+OPENECS_EXPORT i64 ECSValue_GetInteger(const ECSValue *value, i64 fallback);
+
+/// @brief Reads a number. An integer counts as a number.
+/// @param value The value, or NULL.
+/// @param fallback Returned if the value is not a number.
+/// @return The number.
+OPENECS_EXPORT f64 ECSValue_GetNumber(const ECSValue *value, f64 fallback);
+
+/// @brief Reads a string.
+/// @param value The value, or NULL.
+/// @param fallback Returned if the value is not a string.
+/// @return The string. Valid as long as the value does not change.
+OPENECS_EXPORT const char *ECSValue_GetString(const ECSValue *value, const char *fallback);
+
+/// @brief Counts the list items of a table.
+/// @param table The table, or NULL.
+/// @return Number of items; 0 if the value is not a table.
+OPENECS_EXPORT usz ECSValue_GetCount(const ECSValue *table);
+
+/// @brief Gets a list item of a table.
+/// @param table The table, or NULL.
+/// @param index Position of the item, starting at 0.
+/// @return The item, or NULL if the value is not a table or has no such item.
+OPENECS_EXPORT const ECSValue *ECSValue_GetItem(const ECSValue *table, usz index);
+
+/// @brief Gets a named field of a table.
+/// @param table The table, or NULL.
+/// @param name Name of the field.
+/// @return The field, or NULL if the value is not a table or has no such field.
+OPENECS_EXPORT const ECSValue *ECSValue_GetField(const ECSValue *table, const char *name);
+
+/// @brief Makes a value nil.
+/// @param value The value.
+OPENECS_EXPORT void ECSValue_SetNil(ECSValue *value);
+
+/// @brief Makes a value a boolean.
+/// @param value The value.
+/// @param boolean The boolean.
+OPENECS_EXPORT void ECSValue_SetBool(ECSValue *value, bool boolean);
+
+/// @brief Makes a value an integer.
+/// @param value The value.
+/// @param integer The integer.
+OPENECS_EXPORT void ECSValue_SetInteger(ECSValue *value, i64 integer);
+
+/// @brief Makes a value a number.
+/// @param value The value.
+/// @param number The number.
+OPENECS_EXPORT void ECSValue_SetNumber(ECSValue *value, f64 number);
+
+/// @brief Makes a value a string. The core copies the text.
+/// @param value The value.
+/// @param string The string.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation; the value is unchanged then.
+OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetString(ECSValue *value, const char *string);
+
+/// @brief Makes a value an empty table.
+/// @param value The value.
+OPENECS_EXPORT void ECSValue_SetTable(ECSValue *value);
+
+/// @brief Adds a nil item to the end of a table's list. A value that is not a table becomes an empty table first.
+/// @param table The table.
+/// @param retItem The new item, to be set. Valid as long as the table is not set to something else.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSValue_AddItem(ECSValue *table, ECSValue **retItem);
+
+/// @brief Gets a named field of a table to set it, and adds it as nil if it is missing. A value that is not a table becomes an empty table first.
+/// @param table The table.
+/// @param name Name of the field. The core copies it.
+/// @param retField The field, to be set. Valid as long as the table is not set to something else.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetField(ECSValue *table, const char *name, ECSValue **retField);
 
 /// @brief Starts a timer that calls a function on the main thread, once or repeatedly. Main thread only.
 /// @param plugin The plugin that owns the timer.
