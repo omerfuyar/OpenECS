@@ -10,7 +10,7 @@
 typedef void (*ECSI_LuaTextFunction)(const char *key, const char *value, void *userData);
 
 /// @brief Starts the Lua state.
-/// @return SHUResult_Ok, or SHUResult_ErrAllocation if Lua cannot start.
+/// @return SHUResult_Ok, SHUResult_ErrAllocation if Lua cannot start, or SHUResult_ErrInternal if the data file writer does not load.
 SHUWUR SHUResult ECSI_LuaInitialize(void);
 
 /// @brief Stops the Lua state.
@@ -59,11 +59,17 @@ const char *ECSI_LuaDataGetText(const char *key, const char *fallback);
 /// @return The number.
 f64 ECSI_LuaDataGetNumber(const char *key, f64 fallback);
 
-/// @brief Copies a field of the current table, or the current table itself, into a value. Integer keys from 1 up to the first missing one become list items, and text keys named fields. Other keys, and functions and other values that are not data, are skipped and reported.
+/// @brief Copies a field of the current table, or the current table itself, into a value. Integer keys from 1 up to the first missing one become list items, and text keys named fields, in the order of their names. Other keys, and functions and other values that are not data, are skipped and reported.
 /// @param key Name of the field, or NULL for the current table.
 /// @param value The value to set; nil if the field is missing.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if tables are nested too deeply, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_LuaDataGetValue(const char *key, ECSValue *value);
+
+/// @brief Writes a value as a data file that returns it. The file is written to a temporary file first, then renamed over the old one, so it is never left half-written. Missing folders are created.
+/// @param path Path of the file.
+/// @param value The value to write.
+/// @return SHUResult_Ok, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_LuaWriteData(const char *path, const ECSValue *value);
 
 /// @brief Calls a function for every field of the current table whose key and value are texts.
 /// @param function Function to call.
