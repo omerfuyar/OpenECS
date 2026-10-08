@@ -62,7 +62,9 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 ## Git
 
 - Commit each finished piece of work. Do not leave changes uncommitted.
-- Work on a branch: `feature/<feature>`, `fix/<bug>`, `refactor/<area>` or `docs/<area>`.
+- Work on a branch: `feature/<feature>`, `fix/<bug>`, `refactor/<area>` or `docs/<area>`. Name it after the change; never use a generated name.
+- Create the branch from `main` and publish it at the start of the work, then push each commit to it.
+- Keep branches separate. Do not start a branch from another branch that is not merged yet.
 - Commit messages have one line per change, starting with `-`. Details go on lines starting with `--`.
 
 ## Writing documents
