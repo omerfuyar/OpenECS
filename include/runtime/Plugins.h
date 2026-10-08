@@ -25,8 +25,9 @@ void ECSI_PluginsSetHooks(const ECSI_PluginHooks *hooks);
 /// @param directories Directories that hold plugin folders, searched in order. Each ends with a separator.
 /// @param directoryCount Number of directories.
 /// @param plugins A table of the plugins to load: named fields give a plugin's name and its minimum version, such as depends = { ui = "1.0" }; list items give only a name. NULL loads nothing.
+/// @param neededBy What names these plugins, for reports, such as "the preset '/path/default.lua'".
 /// @return SHUResult_Ok if every plugin loaded; otherwise the last error. Failing plugins are reported and skipped.
-SHUWUR SHUResult ECSI_PluginsLoad(const char *const *directories, usz directoryCount, const ECSValue *plugins);
+SHUWUR SHUResult ECSI_PluginsLoad(const char *const *directories, usz directoryCount, const ECSValue *plugins, const char *neededBy);
 
 /// @brief Shuts every plugin down, in reverse load order: its Lua code's shutdown, then its ECSPlugin_Shutdown. Timers and events still work then.
 void ECSI_PluginsShutdown(void);

@@ -65,4 +65,8 @@ void ECSI_SettingsRemovePlugin(ECSPlugin plugin);
 /// @return A list of plugin names, for ECSI_PluginsLoad. Valid until ECSI_SettingsTerminate.
 const ECSValue *ECSI_SettingsGetPlugins(void);
 
+/// @brief Gets the path of the user's settings file, which may not exist.
+/// @return The path, or NULL if there is no config folder. Valid until ECSI_SettingsTerminate.
+const char *ECSI_SettingsGetUserPath(void);
+
 #pragma endregion Declarations
