@@ -512,11 +512,10 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 
 - A plain C function can be registered without a hand-written wrapper.
 - Each function also has a one-line description, so menus and key-binding editors can show it.
-
-Illustrative:
+- In C, a function of any type is passed as `ECSFunction` and cast back to its real type by the caller.
 
 ```c
-ECSService_RegisterFunction(plugin, "audio.play", AudioPlay, "int(string, float)", "Play a sound file");
+ECSService_RegisterFunction(plugin, "audio.play", (ECSFunction)AudioPlay, "int(string, float)", "Play a sound file");
 ```
 
 ```lua
@@ -535,13 +534,14 @@ ecs.service.register("audio", {
 | `int`, `int64`    | whole numbers                                      |
 | `float`, `double` | decimal numbers                                    |
 | `string`          | text ending in a zero byte                         |
-| `buffer`          | a `SHUSlice`                                       |
+| `buffer`          | a `SHUSlice`, passed by value                      |
 | `handle<name>`    | a typed handle (10.6)                              |
-| `value`           | a generic value (10.3)                             |
+| `value`           | a generic value (10.3): a `const ECSValue *` in C  |
 | `fn<signature>`   | a function to call back                            |
 | `out <type>`      | an output parameter; in Lua, an extra return value |
 
 - Structures are passed as handles or buffers, never by value.
+- In C, an `out` parameter is a pointer to its type. An `out value` is a value that the caller gives and the function fills.
 - There is no fixed limit on the number of parameters.
 
 ### 10.3 Values
@@ -559,12 +559,14 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - **C calls Lua:** the caller also gets a typed C function pointer: a libffi closure that converts the arguments, calls the Lua function in a protected call, and converts the result.
 - **Lua calls Lua:** a plain Lua call, because all plugins share one Lua state.
 - Callbacks (`fn<...>` parameters) work the same way in both directions.
+- Strings, buffers and values that a Lua function gives to C stay valid until that function returns again.
+- When a Lua function called from C raises an error or gives a value of the wrong type, the error is reported (14.2) and C gets zeros.
 
 ### 10.5 Lookup
 
 - A plugin asks for a function by name and states the signature it expects. The core compares it with the registered signature and refuses a mismatch, so a version mismatch shows up at lookup instead of crashing a call.
-- A plugin may look up only functions of plugins named in its manifest's dependencies. If a provider fails, its users are told.
-- Illustrative: `ECSService_GetFunction(plugin, &play, "audio.play", "int(string, float)")`.
+- A plugin may look up its own functions, and functions of plugins named in its manifest's dependencies. If a provider fails, its users are told.
+- C: `ECSService_GetFunction(plugin, &play, "audio.play", "int(string, float)")`. Lua: `ecs.service.get("audio.play", "int(string, float)")`, where the signature may be left out.
 
 ### 10.6 Handles
 
