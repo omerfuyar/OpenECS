@@ -313,6 +313,13 @@ OPENECS_EXPORT SHUWUR SHUResult ECS_RunOnMainThread(ECSTaskFunction function, vo
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc);
 
+/// @brief Adds a function to the menu of a panel type's panels, after the core's entries. The entry shows the function's description, and runs it on the panel. Main thread only.
+/// @param plugin The plugin that registered the panel type.
+/// @param panelType Name of the panel type.
+/// @param function Name of a service function whose signature is void(handle<ecs.panel>) or void().
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the panel type is not the plugin's, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, const char *function);
+
 /// @brief Creates a nil value, for a plugin that passes a value to the core or to a service. Main thread only.
 /// @param retValue The new value. Destroy it with ECSValue_Destroy.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.

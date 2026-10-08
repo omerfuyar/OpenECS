@@ -531,9 +531,10 @@ assert(ecs.service.register(NAME, {
   use_brush = { sig = "void(handle<sketch_lua.brush>, handle<ecs.panel>)", doc = "Makes a canvas draw with a brush", fn = services.use_brush },
 }))
 
--- keys work while a canvas has the focus; the user changes them in the settings
+-- keys work while a canvas has the focus, and the canvas's menu shows the same functions with their keys; the user changes the keys in the settings
 for setting, service in pairs({ clear_key = "clear", export_key = "export", copy_key = "copy", paste_key = "paste", beside_key = "open_beside", gather_key = "gather" }) do
   assert(ecs.input.bind(name("canvas"), name(setting), name(service)))
+  assert(ecs.panel.add_menu_entry(name("canvas"), name(service)))
 end
 
 -- events ----------------------------------------------------------------

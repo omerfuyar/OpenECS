@@ -22,6 +22,12 @@ static struct
 
 static void ECSI_PanelTypeFree(ECSI_PanelType *type)
 {
+    for (usz i = 0; i < arrlenu(type->menuEntries); i++)
+    {
+        SDL_free(type->menuEntries[i]);
+    }
+
+    arrfree(type->menuEntries);
     SDL_free(type->name);
     SDL_free(type->title);
     SDL_free(type);
@@ -221,8 +227,13 @@ SHUResult ECSI_PanelSave(ECSPanel panel, ECSValue *retPanel)
         }
         else
         {
-            state = saved;
-            version = panel->type->desc.stateVersion;
+            // the panel keeps it as its last saved state, which a restart after a fault uses
+            ECSValue_Destroy(&panel->savedState);
+            panel->savedState = saved;
+            panel->stateVersion = panel->type->desc.stateVersion;
+            saved = NULL;
+            state = panel->savedState;
+            version = panel->stateVersion;
         }
     }
 
@@ -504,6 +515,83 @@ u32 ECSI_PanelsGetStateVersion(const char *typeName)
 
     ECSI_PanelType *type = ECSI_PanelTypeFind(typeName);
     return type == NULL ? 0 : type->desc.stateVersion;
+}
+
+bool ECSI_PanelCanRestart(ECSPanel panel)
+{
+    SDL_assert(panel != NULL);
+
+    return panel->fault != NULL || panel->type == NULL;
+}
+
+bool ECSI_PanelRestart(ECSPanel panel)
+{
+    SDL_assert(panel != NULL);
+
+    ECSI_PanelType *type = ECSI_PanelTypeFind(panel->typeName);
+
+    if (!ECSI_PanelCanRestart(panel) || type == NULL)
+    {
+        SDL_Log("'%s' cannot be restarted%s.", panel->title, type == NULL ? "; its type is still missing" : "");
+        return false;
+    }
+
+    // a faulted panel's type is not called again, except Destroy, which frees the old state
+    if (panel->type != NULL && panel->state != NULL)
+    {
+        panel->type->desc.Destroy(panel->state);
+    }
+
+    ECSI_EventsStopTimersOf(panel);
+    SDL_free(panel->fault);
+    panel->fault = NULL;
+    panel->state = NULL;
+    panel->type = type;
+    panel->needsDraw = true;
+
+    if (type->desc.Create(panel, panel->savedState, panel->stateVersion, &panel->state))
+    {
+        ECSI_PanelFault(panel, "The panel type failed to create the panel again.");
+        panel->type = NULL;
+        panel->state = NULL;
+        return false;
+    }
+
+    SDL_Log("'%s' is restarted.", panel->title);
+    return true;
+}
+
+const char *const *ECSI_PanelGetMenuEntries(ECSPanel panel, usz *retCount)
+{
+    SDL_assert(panel != NULL);
+    SDL_assert(retCount != NULL);
+
+    *retCount = panel->type == NULL ? 0 : arrlenu(panel->type->menuEntries);
+    return *retCount == 0 ? NULL : (const char *const *)panel->type->menuEntries;
+}
+
+SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, const char *function)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(panelType != NULL && function != NULL);
+
+    ECSI_PanelType *type = ECSI_PanelTypeFind(panelType);
+
+    if (type == NULL || type->plugin != plugin)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' adds a menu entry to '%s', which is not one of its panel types.", ECSI_PluginGetName(plugin), panelType);
+        return SHUResult_ErrBadData;
+    }
+
+    char *copy = SDL_strdup(function);
+
+    if (copy == NULL)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    arrput(type->menuEntries, copy);
+    return SHUResult_Ok;
 }
 
 void ECSI_PanelFault(ECSPanel panel, const char *message)

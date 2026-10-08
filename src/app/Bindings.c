@@ -1485,8 +1485,26 @@ static const luaL_Reg ECSI_BINDINGS_PANEL_METHODS[] = {
     {NULL, NULL},
 };
 
+static int ECSI_BindingsPanelAddMenuEntry(lua_State *state)
+{
+    const char *type = luaL_checkstring(state, 1);
+    const char *function = luaL_checkstring(state, 2);
+
+    // an invalid entry is reported and returned; the plugin continues
+    if (ECSPanelType_AddMenuEntry(ECSI_BindingsPlugin(state), type, function))
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "'%s' is not added to the menu of '%s'", function, type);
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
 static const luaL_Reg ECSI_BINDINGS_PANEL[] = {
     {"register_type", ECSI_BindingsPanelRegisterType},
+    {"add_menu_entry", ECSI_BindingsPanelAddMenuEntry},
     {"redraw", ECSI_BindingsPanelRedraw},
     {"get_title", ECSI_BindingsPanelGetTitle},
     {"set_title", ECSI_BindingsPanelSetTitle},

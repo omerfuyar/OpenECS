@@ -340,7 +340,10 @@ After every operation:
 
 ### 6.5 Operations
 
-- Besides the operations in OVERVIEW 6.3, there are cycling tabs and reopening the last closed panel.
+- Besides the operations in OVERVIEW 6.3, there are cycling tabs, reopening the last closed panel, and moving a panel to another workspace.
+- The core remembers the last 20 closed panels with their type and saved state. `ecs.reopen` opens the last one again next to a panel that stayed in its group, wherever that panel is now, or else in the focused group, and shows its workspace.
+- `ecs.move_to_workspace_1` to `ecs.move_to_workspace_10` move the focused panel into that workspace's focused group; the current workspace stays shown.
+- `ecs.split_right` and `ecs.split_down` open another panel of the focused panel's type beside it.
 - Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)` (also from another workspace), `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles.
 - Workspaces are numbered from 1, in C and in Lua: `ECSWorkspace_Switch(10)` switches to workspace 10.
 - Closing a panel from code still asks about unsaved work. Focusing a panel shows its workspace and its tab.
@@ -374,7 +377,8 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - The core draws a panel's menu itself, inside the OS window, with Clay. It is kept inside the OS window.
 - A right click on a tab or grip, or a click on a grip, opens it. A right click on the rest of a tab row opens the menu of the group's shown panel. The panel gets the focus.
-- Its entries are core functions that act on the focused panel: close, maximize, lock and move. Each entry shows the keys that run its function after the prefix (7.5).
+- Its entries are core functions that act on the focused panel: close, restart (only for a failed panel or a placeholder, 14.2), maximize, lock, split right and down, reopen the last closed panel, move, and one entry for each other workspace, by number and name. Each entry shows the keys that run its function after the prefix (7.5).
+- After them come the entries of the panel's type: `ECSPanelType_AddMenuEntry(plugin, type, function)`, or `ecs.panel.add_menu_entry(type, function)` in Lua, adds a service function whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and the key the plugin bound to the same function for the type.
 - The arrow keys choose an entry and Enter runs it. Escape or a press outside the menu closes it. While it is open, pointer and key events go to the menu only.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
 - The wheel over a tab row scrolls it, 40 layout units a step; down and right go toward the last tab. When a group shows another panel, its tab scrolls into view.
@@ -431,6 +435,8 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | P            | `ecs.pop_out`                                | Pop out                                                                                                 |
   | X            | `ecs.close`                                  | Close the panel                                                                                         |
   | L            | `ecs.lock`                                   | Lock or unlock the group                                                                                |
+  | T            | `ecs.reopen`                                 | Reopen the last closed panel                                                                            |
+  | R            | `ecs.restart`                                | Restart the failed panel                                                                                |
   | Escape       |                                              | Cancel; it is not a function, so it always works                                                        |
 
 ### 7.6 Clipboard
@@ -820,7 +826,7 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [FILE...]
 | Plugin API version mismatch                                                           | The plugin is refused before any of its code runs.                                                                                                 |
 | `ECSPlugin_Init` fails                                                                | The plugin is marked failed and its registrations are removed.                                                                                     |
 | Invalid registration (bad signature, bad or duplicate name, the core prefix as a key) | That registration is rejected and the error is returned to the plugin, which continues.                                                            |
-| A panel callback raises an error                                                      | The panel becomes a faulted placeholder that shows the error. Its menu has a "Restart" entry, which recreates the panel from its last saved state. |
+| A panel callback raises an error                                                      | The panel becomes a faulted placeholder that shows the error. Its menu has a "Restart" entry (`ecs.restart`), which recreates the panel in place from its last saved state: the state the session last saved, or the one it was created with. |
 | A plugin callback (timer, event handler) raises an error                              | The error is reported. Repeats of the same error are counted, not reported again.                                                                  |
 | Problems while restoring a session                                                    | See 13.3.                                                                                                                                          |
 

@@ -1236,7 +1236,7 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
         SHU_ReturnResult(ECSService_RegisterFunction(plugin, services[i].name, services[i].function, services[i].signature, services[i].description));
     }
 
-    // keys work while a canvas has the focus; the user changes them in the settings
+    // keys work while a canvas has the focus, and the canvas's menu shows the same functions with their keys; the user changes the keys in the settings
     const char *const bindings[][2] = {
         {SKETCH_NAME("clear_key"), SKETCH_NAME("clear")},
         {SKETCH_NAME("export_key"), SKETCH_NAME("export")},
@@ -1249,6 +1249,7 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
     for (usz i = 0; i < sizeof(bindings) / sizeof(*bindings); i++)
     {
         SHU_ReturnResult(ECSKey_Bind(plugin, SKETCH_NAME("canvas"), bindings[i][0], bindings[i][1]));
+        SHU_ReturnResult(ECSPanelType_AddMenuEntry(plugin, SKETCH_NAME("canvas"), bindings[i][1]));
     }
 
     SHU_ReturnResult(ECSEvent_Declare(plugin, SKETCH_NAME("stroke_added"), "A canvas has a new stroke: { panel = id, strokes = count }"));

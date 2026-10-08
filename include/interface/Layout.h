@@ -184,6 +184,13 @@ SDL_Window *ECSI_LayoutGetWindow(void);
 /// @return stb_ds array of the panels. Free it with arrfree.
 ECSPanel *ECSI_LayoutGetPanels(void);
 
+/// @brief Opens the last closed panel again, with the state it had: next to a panel that stayed in its group, or else in the focused group. Its workspace is shown.
+void ECSI_LayoutReopen(void);
+
+/// @brief Moves the focused panel into another workspace's focused group. The current workspace stays shown. Locked panels stay.
+/// @param index Position of the other workspace, starting at 0.
+void ECSI_LayoutMoveToWorkspace(usz index);
+
 /// @brief Shows or hides the list of keys that follow the core prefix.
 /// @param lines Each key's text and description, one after the other. They must stay valid while they are shown.
 /// @param count Number of keys; 0 hides the list.

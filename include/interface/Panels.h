@@ -16,6 +16,7 @@ typedef struct ECSI_PanelType
     char *title;
     ECSPlugin plugin;
     void *typeData; // what the Bindings module keeps for a Lua panel type, or NULL
+    char **menuEntries; // stb_ds array of the functions the type adds to its panels' menu
 } ECSI_PanelType;
 
 /// @brief A panel: one instance of a panel type, placed in the layout.
@@ -58,6 +59,20 @@ SHUWUR SHUResult ECSI_PanelTypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc
 /// @param quitting true when the program quits. If the dialog cannot be shown, quitting discards the work, so it always finishes; closing panels is cancelled.
 /// @return true if the panels may close: none had unsaved work, the user discarded it, or every save worked.
 bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count, bool quitting);
+
+/// @brief Recreates a faulted panel, or a placeholder whose type is registered now, from its last saved state. The panel keeps its place and id.
+/// @param panel The panel.
+/// @return true if the panel runs again; false if it was not faulted, its type is still missing, or creating it failed again.
+bool ECSI_PanelRestart(ECSPanel panel);
+
+/// @brief Checks whether a panel can be restarted: it is faulted, or a placeholder.
+bool ECSI_PanelCanRestart(ECSPanel panel);
+
+/// @brief Gets the functions that a panel's type adds to its menu.
+/// @param panel The panel.
+/// @param retCount Number of functions.
+/// @return The function names, or NULL for none. Valid while the type is registered.
+const char *const *ECSI_PanelGetMenuEntries(ECSPanel panel, usz *retCount);
 
 /// @brief Removes every panel type a plugin registered. Call it before panels of those types exist.
 /// @param plugin The plugin.
