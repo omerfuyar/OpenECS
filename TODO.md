@@ -9,7 +9,6 @@ What is not decided yet, and work that is waiting. When an item is settled, writ
 - **Domain plugins.** Should plugins for specific domains, such as glTF models, audio or networking, live in their own repositories instead of being first-party? (OVERVIEW 3.3)
 - **Plugin events.** Should the core provide plugin events, or should plugins build them themselves, for example with services and callbacks? (OVERVIEW 9.2, DESIGN 8)
 - **Plugin state.** Should the core save plugin state into the session, or should plugins save their own data? (OVERVIEW 9.2, DESIGN 13.2, 13.3)
-- **Value allocation.** Every node of a value, its strings and its arrays are allocated on their own with SDL's allocator. Values are built at start-up, when a session is saved, when settings change and on service calls with `value` arguments, never on every frame. One option is an arena for each value tree, freed at once, and a scratch arena for the values of one call. Recommendation: keep SDL's allocator, measure a service call with a large value first, and add the arenas only if the measurement shows a cost. (DESIGN 10.3)
 - **Build system.** The repository builds with shuild. Decide whether it stays, then add build and test commands to README.md.
 
 ## Tasks
