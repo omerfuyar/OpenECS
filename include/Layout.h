@@ -46,6 +46,11 @@ void ECSI_LayoutGroupAdd(ECSI_Node *group, ECSPanel panel);
 /// @param index Position of the panel, starting at 0. Ignored if the group has no such panel.
 void ECSI_LayoutGroupShow(ECSI_Node *group, usz index);
 
+/// @brief Locks or unlocks a group: the user cannot move or close the panels of a locked group, and it accepts no dropped panels.
+/// @param group The group.
+/// @param locked true to lock it.
+void ECSI_LayoutGroupSetLocked(ECSI_Node *group, bool locked);
+
 /// @brief Destroys a node, its children and their panels, and sets the handle to NULL.
 /// @param node Node to destroy. Must not be part of a workspace.
 void ECSI_LayoutNodeDestroy(ECSI_Node **node);
@@ -130,6 +135,14 @@ void ECSI_LayoutMoveFocus(i32 dx, i32 dy);
 /// @brief Shows the next tab of the focused panel's group.
 /// @return The panel shown now, or NULL.
 ECSPanel ECSI_LayoutNextTab(void);
+
+/// @brief Checks whether a panel's group is locked.
+/// @param panel The panel.
+/// @return true if the user cannot move or close the panel.
+bool ECSI_LayoutIsLocked(ECSPanel panel);
+
+/// @brief Locks the focused panel's group, or unlocks it if it is locked.
+void ECSI_LayoutToggleLock(void);
 
 /// @brief Maximizes the focused panel's group, or restores it if it is maximized.
 void ECSI_LayoutToggleMaximize(void);

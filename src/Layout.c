@@ -70,6 +70,7 @@ struct ECSI_Node
     // group
     ECSPanel *panels; // stb_ds array
     usz shown;        // index of the panel shown
+    bool locked;      // its panels cannot be moved or closed, and it accepts no dropped panels
 };
 
 /// @brief Where a moved panel lands.
@@ -534,8 +535,13 @@ static void ECSI_LayoutMove(ECSI_Workspace *workspace, ECSPanel panel, const ECS
     bool side = drop->zone >= ECSI_Zone_Left && drop->zone <= ECSI_Zone_Bottom;
     bool edge = drop->zone >= ECSI_Zone_WindowLeft;
 
-    // a panel cannot join its own group again, or split away from a group that holds only itself
-    if (source == NULL || drop->zone == ECSI_Zone_None || (source == target && (drop->zone == ECSI_Zone_Center || (side && arrlenu(source->panels) == 1))))
+    // a panel cannot join its own group again, or split away from a group that holds only itself; locked panels stay
+    if (source == NULL || drop->zone == ECSI_Zone_None || source->locked || (source == target && (drop->zone == ECSI_Zone_Center || (side && arrlenu(source->panels) == 1))))
+    {
+        return;
+    }
+
+    if (target != NULL && target->locked && (drop->zone == ECSI_Zone_Center || drop->zone == ECSI_Zone_Tabs))
     {
         return;
     }
@@ -681,9 +687,10 @@ static ECSI_Drop ECSI_LayoutFindDrop(f32 x, f32 y, SDL_FRect *retRect)
         return (ECSI_Drop){0};
     }
 
+    // a locked group accepts no dropped panels
     if (arrlenu(group->panels) >= 2 && y < group->y + OPENECS_TAB_ROW_HEIGHT)
     {
-        return ECSI_LayoutFindTabGap(group, x, retRect);
+        return group->locked ? (ECSI_Drop){0} : ECSI_LayoutFindTabGap(group, x, retRect);
     }
 
     // edge bands are a quarter of the panel deep at most, so the centre keeps at least half of it
@@ -717,6 +724,12 @@ static ECSI_Drop ECSI_LayoutFindDrop(f32 x, f32 y, SDL_FRect *retRect)
                : zone == ECSI_Zone_Top    ? (SDL_FRect){panel->x, panel->y, panel->width, halfHeight}
                : zone == ECSI_Zone_Bottom ? (SDL_FRect){panel->x, panel->y + halfHeight, panel->width, halfHeight}
                                           : (SDL_FRect){panel->x, panel->y, panel->width, panel->height};
+    if (zone == ECSI_Zone_Center && group->locked)
+    {
+        *retRect = (SDL_FRect){0};
+        return (ECSI_Drop){0};
+    }
+
     return (ECSI_Drop){.zone = zone, .group = group};
 }
 
@@ -837,7 +850,7 @@ static void ECSI_LayoutFindGripGroup(ECSI_Node *group, void *userData)
 {
     ECSI_GripHit *hit = userData;
 
-    if (arrlenu(group->panels) == 1 && ECSI_LayoutContains(hit->x, hit->y, group->x, group->y, group->width, OPENECS_GRIP_ZONE))
+    if (arrlenu(group->panels) == 1 && !group->locked && ECSI_LayoutContains(hit->x, hit->y, group->x, group->y, group->width, OPENECS_GRIP_ZONE))
     {
         hit->group = group;
     }
@@ -1152,6 +1165,12 @@ static SHUResult ECSI_LayoutSaveNode(const ECSI_Workspace *workspace, const ECSI
     SHU_ReturnResult(ECSValue_SetField(retNode, "shown", &field));
     ECSValue_SetInteger(field, (i64)node->shown + 1);
 
+    if (node->locked)
+    {
+        SHU_ReturnResult(ECSValue_SetField(retNode, "locked", &field));
+        ECSValue_SetBool(field, true);
+    }
+
     if (workspace->maximized == node)
     {
         SHU_ReturnResult(ECSValue_SetField(retNode, "maximized", &field));
@@ -1357,6 +1376,14 @@ void ECSI_LayoutGroupShow(ECSI_Node *group, usz index)
     }
 }
 
+void ECSI_LayoutGroupSetLocked(ECSI_Node *group, bool locked)
+{
+    SDL_assert(group != NULL);
+    SDL_assert(group->type == ECSI_NodeType_Group);
+
+    group->locked = locked;
+}
+
 void ECSI_LayoutNodeDestroy(ECSI_Node **node)
 {
     SDL_assert(node != NULL);
@@ -1487,7 +1514,12 @@ bool ECSI_LayoutPointerDown(f32 x, f32 y)
             ECSI_Node *group = LAYOUT.tabs[i].group;
             group->shown = LAYOUT.tabs[i].index;
             ECSI_LayoutSetFocus(group->panels[group->shown]);
-            ECSI_LayoutArmDrag(group->panels[group->shown], x, y);
+            // a locked panel cannot be dragged, but its tab still shows it
+            if (!group->locked)
+            {
+                ECSI_LayoutArmDrag(group->panels[group->shown], x, y);
+            }
+
             return true;
         }
     }
@@ -1620,6 +1652,27 @@ ECSPanel ECSI_LayoutNextTab(void)
     group->shown = (group->shown + 1) % arrlenu(group->panels);
     LAYOUT.frameNeeded = true;
     return group->panels[group->shown];
+}
+
+bool ECSI_LayoutIsLocked(ECSPanel panel)
+{
+    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSI_Node *group = workspace == NULL || panel == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, panel);
+    return group != NULL && group->locked;
+}
+
+void ECSI_LayoutToggleLock(void)
+{
+    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSI_Node *group = workspace == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, workspace->focus);
+
+    if (group != NULL)
+    {
+        group->locked = !group->locked;
+        LAYOUT.gripGroup = NULL;
+        LAYOUT.frameNeeded = true;
+        SDL_Log("The group of '%s' is %s.", workspace->focus->title, group->locked ? "locked" : "unlocked");
+    }
 }
 
 void ECSI_LayoutToggleMaximize(void)

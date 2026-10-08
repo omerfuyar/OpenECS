@@ -29,6 +29,7 @@ static const char *const ECSI_PREFIX_KEYS[][2] = {
     {"Tab", "ecs.next_tab"},
     {"M", "ecs.maximize"},
     {"X", "ecs.close"},
+    {"L", "ecs.lock"},
     {"1", "ecs.workspace_1"},
     {"2", "ecs.workspace_2"},
     {"3", "ecs.workspace_3"},
@@ -523,6 +524,12 @@ static void ECSI_InputClose(void)
 {
     ECSPanel focus = ECSI_LayoutGetFocus();
 
+    if (focus != NULL && ECSI_LayoutIsLocked(focus))
+    {
+        SDL_Log("'%s' is locked; unlock it to close it.", focus->title);
+        return;
+    }
+
     if (focus == NULL || !ECSI_PanelsConfirmClose(&focus, 1))
     {
         return;
@@ -534,6 +541,11 @@ static void ECSI_InputClose(void)
     }
 
     ECSI_LayoutClosePanel(focus);
+}
+
+static void ECSI_InputLock(void)
+{
+    ECSI_LayoutToggleLock();
 }
 
 static void ECSI_InputWorkspace1(void)
@@ -599,6 +611,7 @@ static const struct
     {"ecs.next_tab", ECSI_InputNextTab, "Show the next tab"},
     {"ecs.maximize", ECSI_InputMaximize, "Maximize or restore the group"},
     {"ecs.close", ECSI_InputClose, "Close the panel"},
+    {"ecs.lock", ECSI_InputLock, "Lock or unlock the group"},
     {"ecs.workspace_1", ECSI_InputWorkspace1, "Switch to workspace 1"},
     {"ecs.workspace_2", ECSI_InputWorkspace2, "Switch to workspace 2"},
     {"ecs.workspace_3", ECSI_InputWorkspace3, "Switch to workspace 3"},

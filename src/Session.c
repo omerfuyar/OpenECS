@@ -166,6 +166,8 @@ static SHUResult ECSI_SessionReadNode(ECSI_SessionReader *reader, const ECSValue
         reader->maximized = *retNode;
     }
 
+    ECSI_LayoutGroupSetLocked(*retNode, ECSValue_GetBool(ECSValue_GetField(saved, "locked"), false));
+
     const ECSValue *panels = ECSValue_GetField(saved, "panels");
     usz panelsLength = ECSI_SessionEnter(reader, "panels", 0);
 
