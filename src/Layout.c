@@ -1131,13 +1131,23 @@ static void ECSI_LayoutWantsFrameIn(ECSI_Node *group, void *userData)
     }
 }
 
-static void ECSI_LayoutRenderGroup(ECSI_Node *group, void *userData)
+static void ECSI_LayoutDrawGroup(ECSI_Node *group, void *userData)
 {
     u64 *nowTicks = userData;
 
     if (arrlenu(group->panels) > 0)
     {
-        ECSI_PanelRender(group->panels[group->shown], LAYOUT.renderer, *nowTicks);
+        ECSI_PanelDraw(group->panels[group->shown], LAYOUT.renderer, *nowTicks);
+    }
+}
+
+static void ECSI_LayoutShowGroup(ECSI_Node *group, void *userData)
+{
+    (void)userData;
+
+    if (arrlenu(group->panels) > 0)
+    {
+        ECSI_PanelShow(group->panels[group->shown], LAYOUT.renderer);
     }
 }
 
@@ -1584,11 +1594,14 @@ bool ECSI_LayoutWantsFrame(void)
 void ECSI_LayoutRender(u64 nowTicks)
 {
     ECSI_LayoutUpdate();
+
+    // the interface's commands point to the panels' titles, so panels draw first; their Draw may change a title
+    ECSI_LayoutForEachGroup(ECSI_LayoutDrawGroup, &nowTicks);
     Clay_RenderCommandArray commands = ECSI_LayoutDeclareInterface();
 
     SDL_SetRenderDrawColor(LAYOUT.renderer, OPENECS_COLOR_BACKGROUND);
     SDL_RenderClear(LAYOUT.renderer);
-    ECSI_LayoutForEachGroup(ECSI_LayoutRenderGroup, &nowTicks);
+    ECSI_LayoutForEachGroup(ECSI_LayoutShowGroup, NULL);
     SDL_Clay_RenderClayCommands(&LAYOUT.clayRenderer, &commands);
     SDL_RenderPresent(LAYOUT.renderer);
 

@@ -116,11 +116,16 @@ void ECSI_PanelSetRect(ECSPanel panel, f32 x, f32 y, f32 width, f32 height);
 /// @return true if it draws continuously or asked to be drawn.
 bool ECSI_PanelWantsFrame(ECSPanel panel);
 
-/// @brief Draws a panel's pixels if needed, and puts them on screen at the panel's rectangle.
+/// @brief Draws a panel's pixels into its texture if needed. The panel's Draw may change its title, so this runs before the interface is declared.
 /// @param panel Panel to draw.
 /// @param renderer Renderer of the OS window that shows the panel.
 /// @param nowTicks Current time in nanoseconds.
-void ECSI_PanelRender(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks);
+void ECSI_PanelDraw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks);
+
+/// @brief Puts a panel's texture on screen at the panel's rectangle.
+/// @param panel Panel to show.
+/// @param renderer Renderer of the OS window that shows the panel.
+void ECSI_PanelShow(ECSPanel panel, SDL_Renderer *renderer);
 
 /// @brief Queues an event for a panel's type.
 /// @param panel Panel that receives the event.

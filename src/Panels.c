@@ -266,7 +266,7 @@ bool ECSI_PanelWantsFrame(ECSPanel panel)
     return panel->needsDraw || (panel->fault == NULL && panel->type != NULL && panel->type->desc.continuous);
 }
 
-void ECSI_PanelRender(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
+void ECSI_PanelDraw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
 {
     SDL_assert(panel != NULL);
     SDL_assert(renderer != NULL);
@@ -323,9 +323,18 @@ void ECSI_PanelRender(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         panel->type->desc.Draw(panel->state, &surface, seconds);
         SDL_UpdateTexture(panel->texture, NULL, pixels->pixels, pixels->pitch);
     }
+}
 
-    SDL_FRect rect = {panel->x, panel->y, panel->width, panel->height};
-    SDL_RenderTexture(renderer, panel->texture, NULL, &rect);
+void ECSI_PanelShow(ECSPanel panel, SDL_Renderer *renderer)
+{
+    SDL_assert(panel != NULL);
+    SDL_assert(renderer != NULL);
+
+    if (panel->texture != NULL && panel->fault == NULL)
+    {
+        SDL_FRect rect = {panel->x, panel->y, panel->width, panel->height};
+        SDL_RenderTexture(renderer, panel->texture, NULL, &rect);
+    }
 }
 
 void ECSI_PanelPostEvent(ECSPanel panel, const ECSEvent *event)
