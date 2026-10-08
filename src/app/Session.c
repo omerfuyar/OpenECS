@@ -2,7 +2,7 @@
 
 #include "base/Lua.h"
 #include "base/Values.h"
-#include "interface/Input.h"
+#include "interface/Keys.h"
 #include "interface/Layout.h"
 #include "interface/Panels.h"
 
@@ -220,7 +220,7 @@ static SHUResult ECSI_SessionReadWorkspace(ECSI_SessionReader *reader, const ECS
     SHU_ReturnResult(ECSI_LayoutWorkspaceAdd(ECSValue_GetString(ECSValue_GetTableField(saved, "name"), "workspace"), root, reader->focus, reader->maximized), if (root != NULL) { ECSI_LayoutNodeDestroy(&root); });
 
     // the keys go with the workspace just added, so their positions match
-    return ECSI_InputAddWorkspaceKeys(ECSValue_GetTableField(saved, "keys"));
+    return ECSI_KeysAddWorkspace(ECSValue_GetTableField(saved, "keys"));
 }
 
 #pragma endregion Source Only
@@ -306,7 +306,7 @@ SHUResult ECSI_SessionApply(const char *path, const ECSI_PresetInfo *info)
     SDL_assert(info != NULL);
 
     ECSI_SessionReader reader = {.file = path, .path = "workspaces"};
-    SHU_ReturnResult(ECSI_InputSetToolKeys(ECSValue_GetTableField(info->file, "keys")));
+    SHU_ReturnResult(ECSI_KeysSetTool(ECSValue_GetTableField(info->file, "keys")));
 
     // plugins get their state before panels are created, so panels find their data
     ECSI_PluginsRestoreStates(ECSValue_GetTableField(info->file, "plugin_state"));
@@ -370,7 +370,7 @@ SHUResult ECSI_SessionBuild(const ECSI_PresetInfo *info, ECSValue *retSession)
     // the layout knows nothing of keys, so each workspace's keys are added to it
     for (usz i = 0; !result && i < ECSValue_GetListCount(field); i++)
     {
-        const ECSValue *keys = ECSI_InputGetWorkspaceKeys(i);
+        const ECSValue *keys = ECSI_KeysGetWorkspace(i);
         ECSValue *copy = NULL;
 
         if (keys != NULL)

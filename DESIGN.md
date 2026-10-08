@@ -129,7 +129,9 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 | interface | Panels   | Panel types, panels, and the pixels each panel draws.                                                               |
 |           | Layout   | Workspaces and their layout trees: operations, tidying, sizes, focus, closed panels and saving.                     |
 |           | Window   | OS windows and their renderers, frame pacing, and the core's own interface: tab rows, grips, menus, dragging and hit testing. The only module that calls Clay. |
-|           | Input    | SDL's input events, focus, pointer routing, key dispatch, text input, the clipboard, dialogs.                       |
+|           | Keys     | Key combinations, the core prefix and the keys after it, and every key binding (7.3 to 7.5, 7.8).                  |
+|           | Menus    | The core's bindable functions, and the panel and group menus that offer them (6.8).                                 |
+|           | Input    | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input, the clipboard, dialogs. |
 | app       | Session  | Reading presets and sessions, applying them, writing them.                                                          |
 |           | Bindings | The `ecs` table: the plugin interface for Lua plugins (11.3).                                                       |
 |           | Test     | Runs a test in Debug builds (17.5).                                                                                 |

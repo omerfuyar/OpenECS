@@ -6,7 +6,9 @@
 #include "base/Lua.h"
 #include "base/Sanitizers.h"
 #include "interface/Input.h"
+#include "interface/Keys.h"
 #include "interface/Layout.h"
+#include "interface/Menus.h"
 #include "interface/Panels.h"
 #include "interface/Window.h"
 #include "runtime/Events.h"
@@ -84,7 +86,7 @@ static void ECSI_RemoveRegistrations(ECSPlugin plugin)
     ECSI_SettingsRemovePlugin(plugin);
     ECSI_EventsStopTimersOfPlugin(plugin);
     ECSI_EventsRemovePlugin(plugin);
-    ECSI_InputRemovePlugin(plugin);
+    ECSI_KeysRemovePlugin(plugin);
 }
 
 /// @brief Stops the program if a start-up step failed. The details are already in the log.
@@ -271,6 +273,8 @@ void ECSI_AppStart(const ECSI_Arguments *arguments)
     char *fontPath = NULL;
     ECSI_CheckStart(SDL_asprintf(&fontPath, "%s%s", SDL_GetBasePath(), OPENECS_FONT_FILE) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok, "finding the font");
     ECSI_CheckStart(ECSI_WindowInitialize(APP.preset.appName, fontPath), "opening the window");
+    ECSI_CheckStart(ECSI_KeysInitialize(), "declaring the key settings");
+    ECSI_CheckStart(ECSI_MenusInitialize(), "registering the core's functions");
     ECSI_CheckStart(ECSI_InputInitialize(), "declaring the input settings");
     SDL_free(fontPath);
 
@@ -339,6 +343,8 @@ void ECSI_AppStop(void)
 
     // panels are destroyed before the renderer that made their textures and before their types, handles' objects before their plugins shut down, and plugins before they are unloaded
     ECSI_InputTerminate();
+    ECSI_MenusTerminate();
+    ECSI_KeysTerminate();
     ECSI_LayoutTerminate();
     ECSI_WindowTerminate();
     ECSI_PanelsTerminate();
