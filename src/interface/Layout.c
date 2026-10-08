@@ -1,6 +1,7 @@
 #include "interface/Layout.h"
 
 #include "runtime/Plugins.h"
+#include "runtime/Settings.h"
 
 #include "SDL3/SDL.h"
 #include "SDL3_ttf/SDL_ttf.h"
@@ -140,7 +141,8 @@ static struct
     usz current;
 
     bool frameNeeded;
-    u64 frameNanoseconds; // shortest time between frames, from the display's refresh rate
+    i64 framePercent;     // frame rate as a percentage of the refresh rate, from ecs.vsync; 0 for no vsync and no limit
+    u64 frameNanoseconds; // shortest time between frames, from the display's refresh rate; 0 for no limit
     u64 lastFrameTicks;
     const char *const *prefixLines; // keys after the prefix and what they do, in pairs, or NULL when the prefix is not pressed
     usz prefixLineCount;
@@ -1540,8 +1542,6 @@ static SHUResult ECSI_LayoutOpen(const char *title, const char *fontPath)
         return SHUResult_ErrInternal;
     }
 
-    SDL_SetRenderVSync(LAYOUT.renderer, 1);
-
     LAYOUT.clayRenderer = (Clay_SDL3RendererData){
         .renderer = LAYOUT.renderer,
         .textEngine = TTF_CreateRendererTextEngine(LAYOUT.renderer),
@@ -1571,6 +1571,26 @@ static SHUResult ECSI_LayoutOpen(const char *title, const char *fontPath)
     return SHUResult_Ok;
 }
 
+/// @brief Reads ecs.vsync and sets the renderer's vsync. Also the Changed function of ecs.vsync.
+static void ECSI_LayoutReadVsync(void *data)
+{
+    (void)data;
+
+    i64 percent = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.vsync"), 100), 0, 100);
+    LAYOUT.framePercent = percent;
+    LAYOUT.frameNeeded = true;
+
+    // a whole fraction of the refresh rate, such as 50%, lets the display wait for every second refresh; other rates wait for every refresh and are limited by the core
+    if (percent == 0)
+    {
+        SDL_SetRenderVSync(LAYOUT.renderer, SDL_RENDERER_VSYNC_DISABLED);
+    }
+    else if (100 % percent != 0 || !SDL_SetRenderVSync(LAYOUT.renderer, (int)(100 / percent)))
+    {
+        SDL_SetRenderVSync(LAYOUT.renderer, 1);
+    }
+}
+
 #pragma endregion Source Only
 
 SHUResult ECSI_LayoutInitialize(const char *title, const char *fontPath)
@@ -1579,6 +1599,17 @@ SHUResult ECSI_LayoutInitialize(const char *title, const char *fontPath)
     SDL_assert(fontPath != NULL);
 
     SHU_ReturnResult(ECSI_LayoutOpen(title, fontPath), ECSI_LayoutTerminate(););
+
+    const ECSSettingDesc vsync = {
+        .name = "ecs.vsync",
+        .type = ECSSettingType_Integer,
+        .description = "Frame rate in percent of the display's refresh rate: 100 waits for every refresh, 50 for every second one, 0 turns vsync off",
+        .defaultInteger = 100,
+        .Changed = ECSI_LayoutReadVsync,
+    };
+
+    SHU_ReturnResult(ECSI_SettingsDeclareCore(&vsync), ECSI_LayoutTerminate(););
+    ECSI_LayoutReadVsync(NULL);
 
     LAYOUT.frameNeeded = true;
     return SHUResult_Ok;
@@ -1819,10 +1850,11 @@ i32 ECSI_LayoutGetFrameWait(void)
 
 void ECSI_LayoutRender(u64 nowTicks)
 {
-    // some drivers accept vsync but do not wait for it, so frames are limited a little above the refresh rate; a working vsync still sets the pace
+    // some drivers accept vsync but do not wait for it, so frames are limited a little above the rate ecs.vsync asks for; a working vsync still sets the pace
     const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(LAYOUT.window));
     f32 rate = mode != NULL && mode->refresh_rate > 0.0f ? mode->refresh_rate : OPENECS_FALLBACK_FRAME_RATE;
-    LAYOUT.frameNanoseconds = (u64)((f64)SDL_NS_PER_SECOND / (f64)(rate * OPENECS_FRAME_RATE_MARGIN));
+    f64 limit = (f64)rate * (f64)LAYOUT.framePercent / 100.0 * (f64)OPENECS_FRAME_RATE_MARGIN;
+    LAYOUT.frameNanoseconds = LAYOUT.framePercent == 0 ? 0 : (u64)((f64)SDL_NS_PER_SECOND / limit);
     LAYOUT.lastFrameTicks = nowTicks;
     ECSI_LayoutUpdate();
 

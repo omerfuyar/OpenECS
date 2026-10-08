@@ -172,7 +172,8 @@ One pass of the loop:
 
 The wait uses `SDL_WaitEventTimeout` with the time until the next timer or the next allowed frame, and does not wait while events are queued.
 
-- Continuous drawing is paced by the display's refresh (vsync). Some drivers accept vsync without waiting for it, so the core also limits frames to 1.1 times the display's refresh rate. A working vsync still sets the pace.
+- Continuous drawing is paced by the display's refresh (vsync). The setting `ecs.vsync` is the frame rate in percent of the refresh rate: 100 (the default) waits for every refresh, 50 for every second one, and 0 turns vsync off with no limit. A percentage that divides 100, such as 50, sets SDL's vsync interval; others keep vsync on and the core limits the frames.
+- Some drivers accept vsync without waiting for it, so the core also limits frames to 1.1 times the rate that `ecs.vsync` asks for. A working vsync still sets the pace.
 - A hidden, minimized or covered window is not drawn.
 - Panels draw before the core declares its interface, because a panel's `Draw` may change its title, which the interface shows.
 
