@@ -589,6 +589,12 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     return SHUResult_ErrPrivileges;
 }
 
+char **ECSITest_GetFiles(usz *retCount)
+{
+    *retCount = 0;
+    return NULL;
+}
+
 void ECSITest_Terminate(void)
 {
 }

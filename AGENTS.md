@@ -25,6 +25,8 @@ Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 | `resources/`    | Files the program loads at run time.                                                                                   |
 | `tests/`        | Tests that Debug builds run (DESIGN.md, section 17.5).                                                                 |
 | `shuild.c`      | The build script (see README.md).                                                                                      |
+| `.github/`      | Checks, release workflow and their scripts, rulesets and release descriptions (DESIGN.md, section 19).                 |
+| `LICENSE`       | OpenECS's license, zlib.                                                                                               |
 
 ## Current stage
 
@@ -33,7 +35,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 ## How to work with the owner
 
 1. **Apply good solutions, then inform.** When research gives you a working, well-supported solution, write it into the documents as decided and tell the owner what you decided and why. Do not ask first.
-2. **Ask when it is really unsure,** or when it is a matter of the owner's taste. Then explain the options and trade-offs, recommend one, and raise one decision at a time. Do not assume; the project must not be misunderstood.
+2. **Ask when it is really unsure,** or when it is a matter of the owner's taste. Then explain the options and trade-offs, and recommend one. Ask all open questions together, in one batch at the end of your work; the owner answers them at once. Do not assume; the project must not be misunderstood.
 3. **Research before proposing.** Check the facts in documentation, source code or on the web. Show the evidence in your reply, not in the documents.
 4. **Design first.** Focus on the design of the product, not on implementation, unless asked otherwise.
 5. **Correct the owner** when an idea would cause problems, and say why. Do not follow any idea blindly, including the owner's.
@@ -47,6 +49,8 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 **Always**
 
 - Write text and code for a human reader: simple, short and easy to read. Do not bloat.
+- Keep `include/OpenECS.h` and `include/ecs.lua` in step, with every reference and document (DESIGN.md, section 11.5).
+- Build in Debug and in Release, and run the tests, before pushing (DESIGN.md, section 19.3).
 
 **Ask first**
 
@@ -63,9 +67,10 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 ## Git
 
 - Commit each finished piece of work. Do not leave changes uncommitted.
-- Work on a branch: `feature/<feature>`, `fix/<bug>`, `refactor/<area>` or `docs/<area>`. Name it after the change; never use a generated name.
-- Create the branch from `main` and publish it at the start of the work, then push each commit to it.
-- Keep branches separate. Do not start a branch from another branch that is not merged yet.
+- Branches follow DESIGN.md, section 19.2: start yours from `dev`, and it reaches `dev` through a pull request. Never push to `dev` or `main`.
+- Name the branch after the change: `feature/<feature>`, `fix/<bug>`, `refactor/<area>` or `docs/<area>`; never use a generated name.
+- Publish the branch at the start of the work, then push each commit to it.
+- Put small changes on the branch you work on; do not open a branch for each of them.
 - Commit messages have one line per change, starting with `-`. Details go on lines starting with `--`.
 
 ## Writing documents
@@ -78,6 +83,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Do not invent framings, categories or rules, such as "three rules shape the architecture". Do not make vague claims, such as "an ordinary screen".
 - Keep section and list numbers in order, and update cross-references when they change.
 - No roadmaps, phases or schedules.
+- A release's description is `.github/release-notes/vVERSION.md`, written as DESIGN.md, section 19.5 says.
 - Use short sentences and plain words:
   - Good: "A group with one panel shows no tab row."
   - Bad: "It should be noted that, in cases where a group contains only a single panel, the tab row is not displayed."

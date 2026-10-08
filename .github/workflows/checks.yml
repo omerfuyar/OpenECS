@@ -1,0 +1,97 @@
+# Checks every change to dev and main: a Debug build with the static analyzer, the tests under the sanitizers, a Release build, and the Lua annotations.
+name: Checks
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debug-linux:
+    name: Debug (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install the build tools
+        run: .github/scripts/install-linux.sh
+
+      # shuild builds a dependency only when its library is missing, so the built libraries are kept until a submodule or the build changes;
+      # OpenECS's own files are compiled every time, so the analyzer sees all of them
+      - name: Name the dependencies' versions
+        id: dependencies
+        run: echo "key=$( (git submodule status --recursive; sha256sum shuild.c dependencies/other/*/*) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the built dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/Static/Debug/lib
+            build/Static/Debug/include
+          key: debug-linux-${{ steps.dependencies.outputs.key }}
+
+      - name: Build with the static analyzer
+        run: .github/scripts/build.sh D
+
+      - name: Run the tests with the sanitizers
+        run: .github/scripts/test.sh build/Static/Debug/bin/OpenECS
+
+      - name: Keep the build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-linux-logs
+          path: build/*.log
+
+  release-linux:
+    name: Release (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install the build tools
+        run: .github/scripts/install-linux.sh
+
+      - name: Name the dependencies' versions
+        id: dependencies
+        run: echo "key=$( (git submodule status --recursive; sha256sum shuild.c dependencies/other/*/*) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the built dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/Static/Release/lib
+            build/Static/Release/include
+          key: release-linux-${{ steps.dependencies.outputs.key }}
+
+      # code that only Release builds compile, or link, breaks here instead of at a release
+      - name: Build
+        run: .github/scripts/build.sh R
+
+  lua:
+    name: Lua (LuaLS)
+    runs-on: ubuntu-24.04
+    env:
+      LUALS_VERSION: 3.15.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Lua language server
+        run: |
+          mkdir -p "$RUNNER_TEMP/luals"
+          curl -sSL "https://github.com/LuaLS/lua-language-server/releases/download/$LUALS_VERSION/lua-language-server-$LUALS_VERSION-linux-x64.tar.gz" | tar -xz -C "$RUNNER_TEMP/luals"
+
+      # ecs.lua describes the ecs module; the check finds Lua code that misuses it, and mistakes in ecs.lua itself
+      - name: Check the Lua files
+        run: |
+          "$RUNNER_TEMP/luals/bin/lua-language-server" --check="$GITHUB_WORKSPACE" --checklevel=Warning --logpath="$RUNNER_TEMP/luals-log" | tee luals.log
+          grep -q "no problems found" luals.log

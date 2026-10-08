@@ -14,7 +14,7 @@
 #pragma region Source Only
 
 /// @brief Start of the names of the functions that switch workspaces; the workspace's number follows.
-#define OPENECS_WORKSPACE_FUNCTION "ecs.workspace"
+#define OPENECS_WORKSPACE_FUNCTION "ecs.workspace.switch"
 
 /// @brief Choices of the setting ecs.focus; its value comes from the core's settings file.
 static const char *const OPENECS_FOCUS_CHOICES[] = {"click", "hover", NULL};
@@ -153,7 +153,7 @@ static ECSPanel ECSIInput_PointerPanel(void)
 /// @brief Finds the section of the list of prefix keys that a function is listed in.
 static usz ECSIInput_SectionOf(const char *function)
 {
-    const char *navigation[] = {"ecs.layout.focus", "ecs.layout.move", "ecs.layout.nextTab", OPENECS_WORKSPACE_FUNCTION, "ecs.moveToWorkspace"};
+    const char *navigation[] = {"ecs.layout.focus", "ecs.layout.move", "ecs.layout.nextTab", OPENECS_WORKSPACE_FUNCTION};
 
     for (usz i = 0; i < SDL_arraysize(navigation); i++)
     {

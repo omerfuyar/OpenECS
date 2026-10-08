@@ -214,6 +214,8 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 {
     SDL_assert(arguments != NULL);
 
+    SDL_Log("OpenECS %s, plugin API %d.", OPENECS_VERSION, OPENECS_API_VERSION);
+
     // every path of the program's own files starts here
     ECSIApp_CheckStart(SDL_GetBasePath() == NULL ? SHUResult_ErrNotFound : SHUResult_Ok, "finding the program's folder");
 

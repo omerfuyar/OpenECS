@@ -30,6 +30,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 16. Files and directories
 17. Build and dependencies
 18. Platform notes
+19. Versions and releases
 - Glossary
 
 ---
@@ -354,7 +355,7 @@ After every operation:
 
 - Besides the operations in OVERVIEW 6.3, there are cycling tabs, reopening the last closed panel, and moving a panel to another workspace.
 - The core remembers the last `ecs.reopenLimit` closed panels with their type and saved state. `ecs.layout.reopen` opens the last one again next to a panel that stayed in its group, wherever that panel is now, or else in the focused group, and shows its workspace.
-- `ecs.moveToWorkspace1` to `ecs.moveToWorkspace10` move the focused panel into that workspace's focused group; the current workspace stays shown.
+- `ecs.layout.moveToWorkspace1` to `ecs.layout.moveToWorkspace10` move the focused panel into that workspace's focused group; the current workspace stays shown.
 - `ecs.layout.splitRight` and `ecs.layout.splitDown` open another panel of the focused panel's type beside it.
 - Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)` (also from another workspace), `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles.
 - Workspaces are numbered from 1, in C and in Lua: `ECSWorkspace_Switch(10)` switches to workspace 10.
@@ -442,21 +443,21 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The prefix and the key after it are the only key sequence the core handles.
 - The core's functions after the prefix, in the order the list shows them. Their keys are the value of `ecs.prefixKeys` in the core's settings file (12.1).
 
-  | Function                              | Action                                                                                                   |
-  | ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-  | `ecs.layout.focusLeft` and so on      | Move focus                                                                                               |
-  | `ecs.layout.moveLeft` and so on       | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
-  | `ecs.layout.nextTab`                  | Show the next tab                                                                                        |
-  | `ecs.layout.maximize`                 | Maximize or restore                                                                                      |
-  | `ecs.layout.popOut`                   | Pop out                                                                                                  |
-  | `ecs.layout.close`                    | Close the panel                                                                                          |
-  | `ecs.layout.closeGroup`               | Close the group's panels                                                                                 |
-  | `ecs.layout.lock`                     | Lock or unlock the group                                                                                 |
-  | `ecs.layout.reopen`                   | Reopen the last closed panel                                                                             |
-  | `ecs.panel.restart`                   | Restart the failed panel                                                                                 |
-  | `ecs.session.save`                    | Save the session to a file, which a save dialog asks for (13.4)                                          |
-  | `ecs.session.open`                    | Open a saved session, which an open dialog asks for (13.5)                                               |
-  | `ecs.workspace1` to `ecs.workspace10` | Switch to workspace 1 to 10                                                                              |
+  | Function                                            | Action                                                                                                   |
+  | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+  | `ecs.layout.focusLeft` and so on                    | Move focus                                                                                               |
+  | `ecs.layout.moveLeft` and so on                     | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
+  | `ecs.layout.nextTab`                                | Show the next tab                                                                                        |
+  | `ecs.layout.maximize`                               | Maximize or restore                                                                                      |
+  | `ecs.layout.popOut`                                 | Pop out                                                                                                  |
+  | `ecs.layout.close`                                  | Close the panel                                                                                          |
+  | `ecs.layout.closeGroup`                             | Close the group's panels                                                                                 |
+  | `ecs.layout.lock`                                   | Lock or unlock the group                                                                                 |
+  | `ecs.layout.reopen`                                 | Reopen the last closed panel                                                                             |
+  | `ecs.panel.restart`                                 | Restart the failed panel                                                                                 |
+  | `ecs.session.save`                                  | Save the session to a file, which a save dialog asks for (13.4)                                          |
+  | `ecs.session.open`                                  | Open a saved session, which an open dialog asks for (13.5)                                               |
+  | `ecs.workspace.switch1` to `ecs.workspace.switch10` | Switch to workspace 1 to 10                                                                              |
 
 - Escape after the prefix cancels. It is not a function, so it always works.
 
@@ -737,6 +738,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 - The documentation of each public function in `OpenECS.h` ends with a line that names its Lua counterparts in `include/ecs.lua`, such as `/// @lua ecs.panel.getTitle, panel:getTitle`, or says `none:` and why.
 - The functions of values (10.3) have no `@lua` line, because Lua passes its own values.
 - A function of `ecs.lua` that C does not have says `Lua only:` and why in its documentation, or `Keys can run it.` when it is a core function that C runs by name (7.8).
+- A change that renames or changes anything plugins use changes both files, and every reference to it in code, presets, tests, settings files and documents, in the same commit.
 - The test `tests/parity.lua` checks both files: every public function has its line, every name it gives is in `ecs.lua`, and every function of `ecs.lua` is named or says why not. It also checks that every function the core's settings file binds to a key is in `ecs.lua` and says keys can run it.
 
 ### 11.6 Keeping Lua values
@@ -846,9 +848,10 @@ The core converts only layout data.
 ### 13.6 Command line
 
 ```
-openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [FILE...]
+openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [--version] [FILE...]
 ```
 
+- `--version` prints the version of OpenECS (19.1) and of the plugin API, and exits.
 - `--fresh` starts from the preset instead of the tool's last session.
 - `--test` runs a test (17.5).
 - A session's identity wins over the preset's, so the session is saved again as the last session of its own tool.
@@ -950,7 +953,8 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.4 Dependency versions
 
-Every dependency is a git submodule pinned to a release tag, not to a development commit.
+- Every dependency is a git submodule that follows its development branch. An update moves every submodule to the latest commit of its branch (`git submodule update --remote`), and passes the checks (19.3) like any change.
+- SDL_ttf brings FreeType, HarfBuzz and PlutoSVG as its own submodules, at the commits SDL_ttf names.
 
 ### 17.5 Tests
 
@@ -987,6 +991,60 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 - On Wayland, dragging a panel out of its window still works, because the core keeps receiving pointer events while the button is held (7.2). Only the position of the new window cannot be chosen.
 - Popups are positioned relative to their parent window, which Wayland supports.
 
+## 19. Versions and releases
+
+### 19.1 Versions
+
+- OpenECS uses semantic versioning. Its version is `OPENECS_VERSION` in `OpenECS.h`, and `openecs --version` prints it (13.6).
+- From 1.0.0, a major release breaks something that worked: the plugin interface, the `ecs` module, the names of the core's functions, settings and events, or the files that presets, sessions and settings are read from. A minor release only adds. A patch release only fixes.
+- Before 1.0.0, a minor release may also break those things, and a patch release only fixes.
+- Between releases, `OPENECS_VERSION` is the next release with `-dev`, such as `0.2.0-dev`. A release candidate ends with `-rc.1`, `-rc.2` and so on.
+- Two numbers change on their own: `OPENECS_API_VERSION` when native plugins must be built again (9.5), and the `format` of presets and sessions (13.2) when an older OpenECS cannot read the new files.
+- A release is a tag `vMAJOR.MINOR.PATCH`, such as `v0.1.0`, on `main`.
+
+### 19.2 Branches
+
+- `main` holds the releases. It changes only through a pull request from `dev`, or from a branch that fixes a release.
+- `dev` is the default branch. Every change reaches it through a pull request from a branch that started from `dev`: `feature/<feature>`, `fix/<bug>`, `refactor/<area>` or `docs/<area>`.
+- A fix for a release starts from its tag. It is merged into `main` and released as a patch, then merged into `dev` too.
+- Pull requests are merged with a merge commit, never squashed or rebased, so `main` and `dev` share one history.
+- The rulesets in `.github/rulesets/` hold these rules; they are imported in the repository's settings. `main` and `dev` cannot be deleted or force-pushed, and a pull request into them needs the checks (19.3) to pass and its conversations resolved. Repository admins may skip the checks through a pull request. Only repository admins create, move or delete release tags.
+
+### 19.3 Checks
+
+- `.github/workflows/checks.yml` runs on every push and pull request to `dev` and `main`:
+
+  | Check             | Does                                                                                                                                                                                               |
+  | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `Debug (Linux)`   | Builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs every test (17.5) under the sanitizers; a failed test or a report fails it. |
+  | `Release (Linux)` | Builds in Release, so code that only Release builds compile or link fails before a release.                                                                                                        |
+  | `Lua (LuaLS)`     | Checks every Lua file with LuaLS, so code that misuses the `ecs` module, and mistakes in `ecs.lua`, fail it (9.6).                                                                                 |
+
+- The steps are scripts in `.github/scripts/`, so they run the same way on a contributor's computer.
+- The built dependencies are kept between runs until a submodule or the build changes. OpenECS's own files are compiled every time, so the analyzer sees all of them.
+
+### 19.4 Releases
+
+- `.github/workflows/release.yml` runs when a version tag is pushed. It fails when the tag does not match `OPENECS_VERSION`.
+- For each platform, it makes a Release build and packs it into `openecs-VERSION-PLATFORM.tar.gz`: the program with its plugins, presets and resources, the plugin interface (`OpenECS.h`, `ecs.lua` and `shu.h`), `LICENSE`, and the licenses of the works it includes.
+- It packs the source with every submodule into `openecs-VERSION-source.tar.gz`, because GitHub's own source archives leave the submodules out. `SHA256SUMS` holds the checksums of the archives.
+- It makes a draft release with these files. Its description is `.github/release-notes/vVERSION.md`. A version below 1.0.0, or one with a suffix, is marked as a pre-release.
+- Releases are made for Linux on x86_64. The workflow also lists the other platforms, commented out.
+- Linux builds are made on Ubuntu 24.04, so they need glibc 2.38 or later.
+- The steps of a release:
+  1. On `dev`, set `OPENECS_VERSION` to the release, and write its description.
+  2. Merge `dev` into `main` with a pull request.
+  3. Tag the merge commit `vVERSION` and push the tag.
+  4. Check the draft release, then publish it.
+  5. On `dev`, set `OPENECS_VERSION` to the next version with `-dev`.
+
+### 19.5 Release descriptions
+
+- They use plain words and short sentences, for users and plugin authors.
+- They say what is new, and what people can do with it.
+- They say what breaks after the release: what plugins, presets, settings and sessions must change, and how.
+- They name the small fixes briefly.
+
 ---
 
 ## Glossary
@@ -1021,6 +1079,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 
 **Function pointer.** A value that holds the address of a function, so the function can be called through it.
 
+**glibc.** The C standard library of most Linux systems. A program built against a newer glibc does not start on a system with an older one.
+
 **GPU device.** SDL's object for the graphics card. Textures and other GPU resources belong to a device.
 
 **Handle.** A token that stands for an object owned by someone else, so it can be passed around without exposing its inside.
@@ -1032,6 +1092,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 **LuaLS (Lua language server).** The program behind Lua support in editors such as VS Code. It reads annotations in comments, such as `---@param`, to give completion, documentation and warnings.
 
 **Main thread.** The thread on which the program starts. OS windows, input and all Lua code run there.
+
+**Merge commit.** A commit that joins two branches and keeps the commits of both.
 
 **Metatable (Lua).** A table that defines how a Lua value behaves. For handles, it carries the type name.
 
@@ -1045,9 +1107,13 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 
 **Protected call (Lua).** A way to call Lua code so that an error is caught and returned, instead of jumping out through the caller.
 
+**Pull request.** A request on GitHub to merge one branch into another, where the change is checked and discussed first.
+
 **Registry (Lua).** A table that Lua keeps for C code to store values it needs to keep alive.
 
 **Root.** The top of a layout tree. There is one per OS window.
+
+**Ruleset (GitHub).** A set of rules that GitHub enforces for branches or tags, such as requiring pull requests.
 
 **Run path.** A directory written into a program where it looks for shared libraries. `$ORIGIN` means the program's own directory.
 
@@ -1071,6 +1137,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 
 **Symbol.** A name in a compiled file that other code can look up, such as an exported function.
 
+**Tag (git).** A name for one commit, such as `v0.1.0`.
+
 **Texture.** An image stored on the graphics card.
 
 **Topological order.** An order in which every item comes after the items it depends on.
@@ -1078,6 +1146,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 **Userdata (Lua).** A block of memory managed by Lua's garbage collector that holds data from C. Handles are userdata.
 
 **Vsync.** Waiting for the display's refresh before showing a new frame, so drawing matches the screen's rate.
+
+**Workflow (GitHub Actions).** A file in `.github/workflows/` that tells GitHub which jobs to run, and when.
 
 **X11.** The older display system used on Linux.
 

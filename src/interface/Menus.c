@@ -178,7 +178,7 @@ static void ECSIMenus_BuildPanelMenu(ECSIMenuEntry **entries, ECSPanel panel)
 
         if (number != ECSWorkspace_GetCurrent())
         {
-            SDL_snprintf(function, sizeof(function), "ecs.moveToWorkspace%zu", number);
+            SDL_snprintf(function, sizeof(function), "ecs.layout.moveToWorkspace%zu", number);
             SDL_snprintf(label, sizeof(label), "%zu: %s", number, ECSWorkspace_GetName(number));
             ECSIMenus_AddFunction(&workspaces, function, label, panel);
         }
@@ -411,9 +411,9 @@ ECSIMenus_WorkspaceFunctions(1)
 
 /// @brief The entries of the core function table for a workspace number.
 #define ECSIMenus_WorkspaceEntries(number)                                                                               \
-    {"ecs.workspace" #number, ECSIMenus_Workspace##number, "Switch to workspace " #number},                        \
+    {"ecs.workspace.switch" #number, ECSIMenus_Workspace##number, "Switch to workspace " #number},                        \
     {                                                                                                               \
-        "ecs.moveToWorkspace" #number, ECSIMenus_MoveToWorkspace##number, "Move the panel to workspace " #number \
+        "ecs.layout.moveToWorkspace" #number, ECSIMenus_MoveToWorkspace##number, "Move the panel to workspace " #number \
     }
 
 /// @brief The core's bindable functions: name, function and description.
@@ -490,9 +490,7 @@ bool ECSIMenus_Offers(const char *function, ECSPanel panel)
     }
 
     // the functions that move or close panels; the user cannot do that to a locked group
-    bool moves = SDL_strncmp(function, "ecs.layout.move", SDL_strlen("ecs.layout.move")) == 0 || SDL_strncmp(function, "ecs.moveToWorkspace", SDL_strlen("ecs.moveToWorkspace")) == 0;
-
-    if (SDL_strcmp(function, "ecs.layout.close") == 0 || SDL_strcmp(function, "ecs.layout.closeGroup") == 0 || moves)
+    if (SDL_strcmp(function, "ecs.layout.close") == 0 || SDL_strcmp(function, "ecs.layout.closeGroup") == 0 || SDL_strncmp(function, "ecs.layout.move", SDL_strlen("ecs.layout.move")) == 0)
     {
         return panel != NULL && !ECSILayout_IsLocked(panel);
     }
