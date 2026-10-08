@@ -120,7 +120,7 @@ In order: a module includes only the modules above it (1.5).
 | Services | Function registry, signatures, calls between C and Lua. The only module that calls libffi.                          |
 | Panels   | Panel types, panels, and the pixels each panel draws.                                                               |
 | Layout   | OS windows and their renderers, layout trees, workspaces, hit testing, docking, the core's own interface. The only module that calls Clay. |
-| Input    | SDL's input events, focus, pointer routing, key dispatch, text input.                                               |
+| Input    | SDL's input events, focus, pointer routing, key dispatch, text input, the clipboard.                                |
 | Session  | Reading presets and sessions, applying them, writing them.                                                          |
 | Bindings | The `ecs` table: the plugin interface for Lua plugins (11.3).                                                       |
 
@@ -404,7 +404,12 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | L            | `ecs.lock`                                   | Lock or unlock the group                                                                                |
   | Escape       |                                              | Cancel; it is not a function, so it always works                                                        |
 
-### 7.6 Binding keys
+### 7.6 Clipboard
+
+- `ECSClipboard_SetText` and `ECSClipboard_GetText` move text; `ECSClipboard_SetData` and `ECSClipboard_GetData` move data of a MIME type, such as `image/png`. Lua: `ecs.clipboard.set_text`, `get_text`, `set_data` and `get_data`.
+- The core copies what it puts on the clipboard. What a getter returns stays valid until the next clipboard call.
+
+### 7.7 Binding keys
 
 - Keybindings are settings of type `key`.
 - Plugins have no function for workspace or global bindings.
