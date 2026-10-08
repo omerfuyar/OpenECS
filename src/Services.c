@@ -22,20 +22,30 @@ typedef enum ECSI_ParameterType
     ECSI_ParameterType_Float,
     ECSI_ParameterType_Double,
     ECSI_ParameterType_String,
+    ECSI_ParameterType_Buffer,
+    ECSI_ParameterType_Value,
     ECSI_ParameterType_Count,
 } ECSI_ParameterType;
 
 /// @brief Names of the parameter types in signatures.
-static const char *const ECSI_PARAMETER_TYPE_NAMES[ECSI_ParameterType_Count] = {"void", "bool", "int", "int64", "float", "double", "string"};
+static const char *const ECSI_PARAMETER_TYPE_NAMES[ECSI_ParameterType_Count] = {"void", "bool", "int", "int64", "float", "double", "string", "buffer", "value"};
+
+/// @brief A parameter or result of a signature.
+typedef struct ECSI_Parameter
+{
+    ECSI_ParameterType type;
+    bool out; // an output parameter: a pointer in C, an extra result in Lua
+} ECSI_Parameter;
 
 /// @brief A parsed signature with its libffi call description.
 typedef struct ECSI_Signature
 {
-    ECSI_ParameterType result;
-    ECSI_ParameterType *parameters; // stb_ds array
-    ffi_type **types;               // stb_ds array of the parameters' libffi types
+    ECSI_Parameter result;
+    ECSI_Parameter *parameters; // stb_ds array
+    ffi_type **types;           // stb_ds array of the parameters' libffi types
+    usz outCount;
     ffi_cif cif;
-    char *text; // the signature written the same way every time, such as "int(string, float)"
+    char *text; // the signature written the same way every time, such as "int(string, out float)"
 } ECSI_Signature;
 
 /// @brief A registered function.
@@ -48,11 +58,12 @@ typedef struct ECSI_Function
     ECSFunction pointer;
     int caller;           // registry reference of the Lua function that calls it, made when Lua first asks for it
     int lua;              // registry reference of the Lua function, or LUA_NOREF for a C function
-    int result;           // registry reference of the last string a Lua function returned, which C reads
+    int anchors;          // registry reference of a table that keeps the strings and buffers a Lua function last gave C
+    ECSValue *result;     // the value a Lua function last returned to C, or NULL
     ffi_closure *closure; // the code that C calls for a Lua function, or NULL
 } ECSI_Function;
 
-/// @brief Storage for one argument or result of a call through libffi.
+/// @brief Storage for one argument, output or result of a call through libffi.
 typedef union ECSI_Slot
 {
     ffi_arg integral; // results of integral types smaller than a register come back as one
@@ -62,7 +73,15 @@ typedef union ECSI_Slot
     f32 single;
     f64 number;
     const char *string;
+    SHUSlice buffer;
+    void *pointer; // values and outputs
 } ECSI_Slot;
+
+static_assert(sizeof(usz) == sizeof(u64), "a buffer's size is described to libffi as 64 bits");
+
+/// @brief The libffi description of SHUSlice, which buffers are.
+static ffi_type *ECSI_SLICE_ELEMENTS[] = {&ffi_type_pointer, &ffi_type_uint64, NULL};
+static ffi_type ECSI_SLICE_TYPE = {0, 0, FFI_TYPE_STRUCT, ECSI_SLICE_ELEMENTS};
 
 static struct
 {
@@ -73,9 +92,14 @@ static struct
     } *functions; // stb_ds hash map; each function is allocated on its own, because Lua callers point to it
 } SERVICES = {0};
 
-static ffi_type *ECSI_ServicesFfiType(ECSI_ParameterType type)
+static ffi_type *ECSI_ServicesFfiType(ECSI_Parameter parameter)
 {
-    switch (type)
+    if (parameter.out)
+    {
+        return &ffi_type_pointer;
+    }
+
+    switch (parameter.type)
     {
     case ECSI_ParameterType_Void:
         return &ffi_type_void;
@@ -89,6 +113,8 @@ static ffi_type *ECSI_ServicesFfiType(ECSI_ParameterType type)
         return &ffi_type_float;
     case ECSI_ParameterType_Double:
         return &ffi_type_double;
+    case ECSI_ParameterType_Buffer:
+        return &ECSI_SLICE_TYPE;
     default:
         return &ffi_type_pointer;
     }
@@ -102,31 +128,49 @@ static void ECSI_SignatureFree(ECSI_Signature *signature)
     SDL_zerop(signature);
 }
 
-/// @brief Reads one type name of a signature and moves past it and the spaces after it.
-static bool ECSI_SignatureReadType(const char **text, ECSI_ParameterType *retType)
+static void ECSI_SignatureSkipSpaces(const char **text)
 {
-    const char *start = *text;
-    const char *end = start;
-
-    while (SDL_isalnum((unsigned char)*end))
+    while (SDL_isspace((unsigned char)**text))
     {
-        end++;
+        (*text)++;
+    }
+}
+
+/// @brief Reads one word of a signature and moves past it and the spaces after it.
+/// @return The word's length; 0 if there is none.
+static usz ECSI_SignatureReadWord(const char **text, const char **retWord)
+{
+    *retWord = *text;
+
+    while (SDL_isalnum((unsigned char)**text))
+    {
+        (*text)++;
+    }
+
+    usz length = (usz)(*text - *retWord);
+    ECSI_SignatureSkipSpaces(text);
+    return length;
+}
+
+/// @brief Reads a parameter or result of a signature: a type name, after "out" for an output parameter.
+static bool ECSI_SignatureReadParameter(const char **text, ECSI_Parameter *retParameter)
+{
+    const char *word = NULL;
+    usz length = ECSI_SignatureReadWord(text, &word);
+    retParameter->out = length == 3 && SDL_strncmp(word, "out", 3) == 0;
+
+    if (retParameter->out)
+    {
+        length = ECSI_SignatureReadWord(text, &word);
     }
 
     for (i32 type = 0; type < ECSI_ParameterType_Count; type++)
     {
         const char *name = ECSI_PARAMETER_TYPE_NAMES[type];
 
-        if ((usz)(end - start) == SDL_strlen(name) && SDL_strncmp(start, name, (usz)(end - start)) == 0)
+        if (length == SDL_strlen(name) && SDL_strncmp(word, name, length) == 0)
         {
-            *retType = (ECSI_ParameterType)type;
-            *text = end;
-
-            while (SDL_isspace((unsigned char)**text))
-            {
-                (*text)++;
-            }
-
+            retParameter->type = (ECSI_ParameterType)type;
             return true;
         }
     }
@@ -134,78 +178,78 @@ static bool ECSI_SignatureReadType(const char **text, ECSI_ParameterType *retTyp
     return false;
 }
 
-/// @brief Parses a signature such as "int(string, float)", and prepares its libffi call description.
+/// @brief Writes a parameter as the signature text has it.
+static SHUResult ECSI_SignatureAppend(char **text, const char *separator, ECSI_Parameter parameter)
+{
+    char *next = NULL;
+
+    if (SDL_asprintf(&next, "%s%s%s%s", *text == NULL ? "" : *text, separator, parameter.out ? "out " : "", ECSI_PARAMETER_TYPE_NAMES[parameter.type]) < 0)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    SDL_free(*text);
+    *text = next;
+    return SHUResult_Ok;
+}
+
+/// @brief Parses a signature such as "int(string, out float)", and prepares its libffi call description.
 static SHUResult ECSI_SignatureParse(const char *text, ECSI_Signature *retSignature)
 {
     SDL_zerop(retSignature);
     const char *cursor = text;
+    ECSI_SignatureSkipSpaces(&cursor);
 
-    while (SDL_isspace((unsigned char)*cursor))
-    {
-        cursor++;
-    }
-
-    bool valid = ECSI_SignatureReadType(&cursor, &retSignature->result) && *cursor++ == '(';
-
-    while (SDL_isspace((unsigned char)*cursor))
-    {
-        cursor++;
-    }
+    bool valid = ECSI_SignatureReadParameter(&cursor, &retSignature->result) && !retSignature->result.out && *cursor++ == '(';
+    ECSI_SignatureSkipSpaces(&cursor);
 
     while (valid && *cursor != ')')
     {
-        ECSI_ParameterType type = ECSI_ParameterType_Void;
-        valid = ECSI_SignatureReadType(&cursor, &type) && type != ECSI_ParameterType_Void && (*cursor == ',' || *cursor == ')');
+        ECSI_Parameter parameter = {0};
+        valid = ECSI_SignatureReadParameter(&cursor, &parameter) && parameter.type != ECSI_ParameterType_Void && (*cursor == ',' || *cursor == ')');
         cursor += valid && *cursor == ',' ? 1 : 0;
-
-        while (SDL_isspace((unsigned char)*cursor))
-        {
-            cursor++;
-        }
+        ECSI_SignatureSkipSpaces(&cursor);
 
         if (valid)
         {
-            arrput(retSignature->parameters, type);
-            arrput(retSignature->types, ECSI_ServicesFfiType(type));
+            arrput(retSignature->parameters, parameter);
+            arrput(retSignature->types, ECSI_ServicesFfiType(parameter));
+            retSignature->outCount += parameter.out ? 1 : 0;
         }
     }
 
     valid = valid && *cursor++ == ')';
-
-    while (valid && SDL_isspace((unsigned char)*cursor))
-    {
-        cursor++;
-    }
+    ECSI_SignatureSkipSpaces(&cursor);
 
     if (!valid || *cursor != '\0')
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a signature, such as \"int(string, float)\".", text);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a signature, such as \"int(string, out float)\".", text);
         ECSI_SignatureFree(retSignature);
         return SHUResult_ErrBadData;
     }
 
     // the text is written again, so signatures compare the same however they are spaced
     usz count = arrlenu(retSignature->parameters);
-    char *written = NULL;
-    SDL_asprintf(&written, "%s(", ECSI_PARAMETER_TYPE_NAMES[retSignature->result]);
+    SHUResult result = ECSI_SignatureAppend(&retSignature->text, "", retSignature->result);
 
-    for (usz i = 0; written != NULL && i < count; i++)
+    for (usz i = 0; !result && i <= count; i++)
     {
-        char *next = NULL;
-        SDL_asprintf(&next, "%s%s%s", written, i == 0 ? "" : ", ", ECSI_PARAMETER_TYPE_NAMES[retSignature->parameters[i]]);
-        SDL_free(written);
-        written = next;
+        result = i == count ? ECSI_SignatureAppend(&retSignature->text, ")", (ECSI_Parameter){0}) : ECSI_SignatureAppend(&retSignature->text, i == 0 ? "(" : ", ", retSignature->parameters[i]);
     }
 
-    if (written == NULL || SDL_asprintf(&retSignature->text, "%s)", written) < 0)
+    // the closing parenthesis was written before a "void"; that word is cut off again
+    if (!result && count == 0)
     {
+        SDL_free(retSignature->text);
         retSignature->text = NULL;
-        SDL_free(written);
-        ECSI_SignatureFree(retSignature);
-        return SHUResult_ErrAllocation;
+        result = SDL_asprintf(&retSignature->text, "%s()", ECSI_PARAMETER_TYPE_NAMES[retSignature->result.type]) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok;
+    }
+    else if (!result)
+    {
+        retSignature->text[SDL_strlen(retSignature->text) - SDL_strlen("void")] = '\0';
     }
 
-    SDL_free(written);
+    SHU_ReturnResult(result, ECSI_SignatureFree(retSignature););
 
     if (ffi_prep_cif(&retSignature->cif, FFI_DEFAULT_ABI, (unsigned int)count, ECSI_ServicesFfiType(retSignature->result), retSignature->types) != FFI_OK)
     {
@@ -223,6 +267,7 @@ static void ECSI_FunctionFree(ECSI_Function *function)
         ffi_closure_free(function->closure);
     }
 
+    ECSI_ValueDestroy(&function->result);
     ECSI_SignatureFree(&function->signature);
     SDL_free(function->name);
     SDL_free(function->description);
@@ -265,7 +310,9 @@ static SHUResult ECSI_ServicesFind(ECSPlugin plugin, const char *name, const cha
     return SHUResult_Ok;
 }
 
-/// @brief Reads a Lua argument into a call slot. Raises a Lua error if it has the wrong type.
+#pragma region Lua Calls C
+
+/// @brief Reads a Lua argument into a call slot. Raises a Lua error if it has the wrong type; values are read later, because they allocate.
 static void ECSI_ServicesCheckArgument(lua_State *state, int index, ECSI_ParameterType type, ECSI_Slot *slot)
 {
     switch (type)
@@ -293,43 +340,57 @@ static void ECSI_ServicesCheckArgument(lua_State *state, int index, ECSI_Paramet
         // valid during the call, because the argument stays on the stack
         slot->string = luaL_checkstring(state, index);
         break;
+    case ECSI_ParameterType_Buffer:
+    {
+        // a copy, because the function may write into a buffer and Lua strings must not change
+        usz length = 0;
+        const char *bytes = luaL_checklstring(state, index, &length);
+        void *copy = lua_newuserdatauv(state, length + 1, 0);
+        SDL_memcpy(copy, bytes, length);
+        slot->buffer = cs(copy, length);
+        break;
+    }
     default:
         break;
     }
 }
 
-/// @brief Pushes the result of a call through libffi.
-static int ECSI_ServicesPushResult(lua_State *state, ECSI_ParameterType type, const ECSI_Slot *result)
+/// @brief Pushes a result or output of a C function for Lua. Lua keeps copies of strings, buffers and values.
+static void ECSI_ServicesPushOutput(lua_State *state, ECSI_ParameterType type, const ECSI_Slot *slot, bool result)
 {
     switch (type)
     {
-    case ECSI_ParameterType_Void:
-        return 0;
     case ECSI_ParameterType_Bool:
-        lua_pushboolean(state, (u8)result->integral != 0);
-        return 1;
+        lua_pushboolean(state, (result ? (u8)slot->integral : slot->boolean) != 0);
+        break;
     case ECSI_ParameterType_Int:
-        lua_pushinteger(state, (lua_Integer)(i32)result->integral);
-        return 1;
+        lua_pushinteger(state, (lua_Integer)(result ? (i32)slot->integral : slot->integer));
+        break;
     case ECSI_ParameterType_Int64:
-        lua_pushinteger(state, (lua_Integer)result->integer64);
-        return 1;
+        lua_pushinteger(state, (lua_Integer)slot->integer64);
+        break;
     case ECSI_ParameterType_Float:
-        lua_pushnumber(state, (lua_Number)result->single);
-        return 1;
+        lua_pushnumber(state, (lua_Number)slot->single);
+        break;
     case ECSI_ParameterType_Double:
-        lua_pushnumber(state, (lua_Number)result->number);
-        return 1;
+        lua_pushnumber(state, (lua_Number)slot->number);
+        break;
     case ECSI_ParameterType_String:
-        // Lua keeps a copy
-        lua_pushstring(state, result->string);
-        return 1;
+        lua_pushstring(state, slot->string);
+        break;
+    case ECSI_ParameterType_Buffer:
+        lua_pushlstring(state, slot->buffer.data == NULL ? "" : slot->buffer.data, slot->buffer.data == NULL ? 0 : slot->buffer.size);
+        break;
+    case ECSI_ParameterType_Value:
+        ECSI_LuaPushValue(slot->pointer);
+        break;
     default:
-        return 0;
+        lua_pushnil(state);
+        break;
     }
 }
 
-/// @brief Calls a C function from Lua through libffi. The function is the upvalue.
+/// @brief Calls a C function from Lua through libffi. The function is the upvalue. Output parameters become extra results.
 static int ECSI_ServicesCallC(lua_State *state)
 {
     const ECSI_Function *function = lua_touserdata(state, lua_upvalueindex(1));
@@ -337,19 +398,95 @@ static int ECSI_ServicesCallC(lua_State *state)
     usz count = arrlenu(signature->parameters);
 
     // the storage is a userdata, so it is freed even when an argument raises an error
-    ECSI_Slot *slots = lua_newuserdatauv(state, count * (sizeof(ECSI_Slot) + sizeof(void *)) + 1, 0);
-    void **arguments = (void **)(slots + count);
+    ECSI_Slot *slots = lua_newuserdatauv(state, count * (2 * sizeof(ECSI_Slot) + sizeof(void *) + sizeof(int)) + 1, 0);
+    ECSI_Slot *outputs = slots + count;
+    void **arguments = (void **)(outputs + count);
+    int *indices = (int *)(arguments + count); // where value arguments are on the stack
+    int index = 1;
 
     for (usz i = 0; i < count; i++)
     {
-        ECSI_ServicesCheckArgument(state, (int)i + 1, signature->parameters[i], &slots[i]);
+        ECSI_Parameter parameter = signature->parameters[i];
         arguments[i] = &slots[i];
+        outputs[i] = (ECSI_Slot){0};
+
+        if (parameter.out)
+        {
+            slots[i].pointer = &outputs[i];
+        }
+        else
+        {
+            indices[i] = index;
+            ECSI_ServicesCheckArgument(state, index++, parameter.type, &slots[i]);
+        }
     }
 
-    ECSI_Slot result = {0};
-    ffi_call((ffi_cif *)&signature->cif, FFI_FN(function->pointer), &result, arguments);
-    return ECSI_ServicesPushResult(state, signature->result, &result);
+    // values allocate, so they are made after every check that can raise an error
+    SHUResult result = SHUResult_Ok;
+
+    for (usz i = 0; i < count; i++)
+    {
+        ECSI_Parameter parameter = signature->parameters[i];
+
+        if (parameter.type != ECSI_ParameterType_Value)
+        {
+            continue;
+        }
+
+        ECSValue *value = NULL;
+        result = result ? result : ECSI_ValueCreate(&value);
+        result = result || parameter.out ? result : ECSI_LuaGetValue(indices[i], value);
+        slots[i].pointer = value;
+
+        if (parameter.out)
+        {
+            outputs[i].pointer = value;
+        }
+    }
+
+    ECSI_Slot returned = {0};
+
+    if (!result)
+    {
+        ffi_call((ffi_cif *)&signature->cif, FFI_FN(function->pointer), &returned, arguments);
+    }
+
+    int pushed = 0;
+
+    if (!result && signature->result.type != ECSI_ParameterType_Void)
+    {
+        ECSI_ServicesPushOutput(state, signature->result.type, &returned, true);
+        pushed++;
+    }
+
+    for (usz i = 0; !result && i < count; i++)
+    {
+        if (signature->parameters[i].out)
+        {
+            ECSI_ServicesPushOutput(state, signature->parameters[i].type, &outputs[i], false);
+            pushed++;
+        }
+    }
+
+    for (usz i = 0; i < count; i++)
+    {
+        if (signature->parameters[i].type == ECSI_ParameterType_Value)
+        {
+            ECSI_ValueDestroy((ECSValue **)&slots[i].pointer);
+        }
+    }
+
+    if (result)
+    {
+        return luaL_error(state, "cannot convert a value for '%s' (%s)", function->name, SHUResult_String(result));
+    }
+
+    return pushed;
 }
+
+#pragma endregion Lua Calls C
+
+#pragma region C Calls Lua
 
 /// @brief Pushes an argument that C passed to a Lua function.
 static void ECSI_ServicesPushArgument(lua_State *state, ECSI_ParameterType type, const void *argument)
@@ -374,51 +511,127 @@ static void ECSI_ServicesPushArgument(lua_State *state, ECSI_ParameterType type,
     case ECSI_ParameterType_String:
         lua_pushstring(state, *(const char *const *)argument);
         break;
+    case ECSI_ParameterType_Buffer:
+    {
+        const SHUSlice *buffer = argument;
+        lua_pushlstring(state, buffer->data == NULL ? "" : buffer->data, buffer->data == NULL ? 0 : buffer->size);
+        break;
+    }
+    case ECSI_ParameterType_Value:
+        ECSI_LuaPushValue(*(const ECSValue *const *)argument);
+        break;
     default:
         lua_pushnil(state);
         break;
     }
 }
 
-/// @brief Writes the result of a Lua function, on top of the stack, for its C caller.
-/// @return false if the result has the wrong type.
-static bool ECSI_ServicesReadResult(lua_State *state, ECSI_Function *function, void *result)
+/// @brief Writes a value that a Lua function gave, at an index of the stack, where C reads it: a result or an output.
+/// @param anchors Index of the table that keeps strings and buffers alive until the function returns again.
+/// @return false if the Lua value has the wrong type.
+static bool ECSI_ServicesWriteOutput(lua_State *state, ECSI_Function *function, int index, int anchors, ECSI_ParameterType type, void *target, bool result)
 {
     int isNumber = 0;
 
-    switch (function->signature.result)
+    switch (type)
     {
     case ECSI_ParameterType_Bool:
-        *(ffi_arg *)result = (ffi_arg)lua_toboolean(state, -1);
+        if (result)
+        {
+            *(ffi_arg *)target = (ffi_arg)lua_toboolean(state, index);
+        }
+        else
+        {
+            *(u8 *)target = (u8)(lua_toboolean(state, index) != 0);
+        }
+
         return true;
     case ECSI_ParameterType_Int:
     {
-        lua_Integer integer = lua_tointegerx(state, -1, &isNumber);
-        *(ffi_sarg *)result = (ffi_sarg)(i32)integer;
+        lua_Integer integer = lua_tointegerx(state, index, &isNumber);
+
+        if (result)
+        {
+            *(ffi_sarg *)target = (ffi_sarg)(i32)integer;
+        }
+        else
+        {
+            *(i32 *)target = (i32)integer;
+        }
+
         return isNumber && integer >= SDL_MIN_SINT32 && integer <= SDL_MAX_SINT32;
     }
     case ECSI_ParameterType_Int64:
-        *(i64 *)result = (i64)lua_tointegerx(state, -1, &isNumber);
+        *(i64 *)target = (i64)lua_tointegerx(state, index, &isNumber);
         return isNumber;
     case ECSI_ParameterType_Float:
-        *(f32 *)result = (f32)lua_tonumberx(state, -1, &isNumber);
+        *(f32 *)target = (f32)lua_tonumberx(state, index, &isNumber);
         return isNumber;
     case ECSI_ParameterType_Double:
-        *(f64 *)result = (f64)lua_tonumberx(state, -1, &isNumber);
+        *(f64 *)target = (f64)lua_tonumberx(state, index, &isNumber);
         return isNumber;
     case ECSI_ParameterType_String:
-        // the string stays alive until the function returns again
-        luaL_unref(state, LUA_REGISTRYINDEX, function->result);
-        *(const char **)result = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
-        lua_pushvalue(state, -1);
-        function->result = luaL_ref(state, LUA_REGISTRYINDEX);
-        return lua_type(state, -1) == LUA_TSTRING;
+    case ECSI_ParameterType_Buffer:
+    {
+        bool text = lua_type(state, index) == LUA_TSTRING;
+        usz length = 0;
+        const char *bytes = text ? lua_tolstring(state, index, &length) : NULL;
+
+        // the anchor keeps the string alive; a buffer gets a copy, because C may write into it
+        if (type == ECSI_ParameterType_Buffer && text)
+        {
+            void *copy = lua_newuserdatauv(state, length + 1, 0);
+            SDL_memcpy(copy, bytes, length);
+            bytes = copy;
+        }
+        else
+        {
+            lua_pushvalue(state, index);
+        }
+
+        lua_rawseti(state, anchors, (lua_Integer)lua_rawlen(state, anchors) + 1);
+
+        if (type == ECSI_ParameterType_String)
+        {
+            *(const char **)target = bytes;
+        }
+        else
+        {
+            *(SHUSlice *)target = cs((void *)bytes, length);
+        }
+
+        return text;
+    }
+    case ECSI_ParameterType_Value:
+    {
+        // a result value is kept until the function returns again; an output fills the caller's value
+        ECSValue *value = result ? function->result : target;
+
+        if (result)
+        {
+            *(const ECSValue **)target = value;
+        }
+
+        return value != NULL && ECSI_LuaGetValue(index, value) == SHUResult_Ok;
+    }
     default:
         return true;
     }
 }
 
-/// @brief The handler of a Lua function's closure: C calls it through the closure's code.
+/// @brief Reports that a Lua function gave a value of the wrong type.
+static void ECSI_ServicesReportType(lua_State *state, const ECSI_Function *function, int index)
+{
+    char *message = NULL;
+
+    if (SDL_asprintf(&message, "'%s' gave a %s where its signature %s needs another type.", function->name, luaL_typename(state, index), function->signature.text) >= 0)
+    {
+        ECSI_PluginReportError(function->plugin, message);
+        SDL_free(message);
+    }
+}
+
+/// @brief The handler of a Lua function's closure: C calls it through the closure's code. Output parameters are read from the extra results.
 static void ECSI_ServicesCallLua(ffi_cif *cif, void *result, void **arguments, void *data)
 {
     (void)cif;
@@ -427,34 +640,67 @@ static void ECSI_ServicesCallLua(ffi_cif *cif, void *result, void **arguments, v
     lua_State *state = ECSI_LuaGetState();
     int top = lua_gettop(state);
     usz count = arrlenu(signature->parameters);
-    bool returns = signature->result != ECSI_ParameterType_Void;
+    int resultCount = (signature->result.type != ECSI_ParameterType_Void ? 1 : 0) + (int)signature->outCount;
 
     // a failed call gives C a zero result
     SDL_memset(result, 0, SDL_max(sizeof(ffi_arg), ECSI_ServicesFfiType(signature->result)->size));
+
+    if (signature->result.type == ECSI_ParameterType_Value)
+    {
+        ECSI_ValueDestroy(&function->result);
+
+        if (ECSI_ValueCreate(&function->result))
+        {
+            return;
+        }
+
+        *(const ECSValue **)result = function->result;
+    }
+
+    // a new anchor table replaces the last call's, so what C got from the last call stays valid until now
+    lua_newtable(state);
+    lua_pushvalue(state, -1);
+    lua_rawseti(state, LUA_REGISTRYINDEX, function->anchors);
+    int anchors = lua_gettop(state);
+
     lua_rawgeti(state, LUA_REGISTRYINDEX, function->lua);
+    int pushed = 0;
 
     for (usz i = 0; i < count; i++)
     {
-        ECSI_ServicesPushArgument(state, signature->parameters[i], arguments[i]);
+        if (!signature->parameters[i].out)
+        {
+            ECSI_ServicesPushArgument(state, signature->parameters[i].type, arguments[i]);
+            pushed++;
+        }
     }
 
-    if (ECSI_LuaCall((int)count, returns ? 1 : 0))
+    if (ECSI_LuaCall(pushed, resultCount))
     {
         ECSI_PluginReportError(function->plugin, lua_tostring(state, -1));
+        lua_settop(state, top);
+        return;
     }
-    else if (returns && !ECSI_ServicesReadResult(state, function, result))
-    {
-        char *message = NULL;
 
-        if (SDL_asprintf(&message, "'%s' returned a %s, but its signature is %s.", function->name, luaL_typename(state, -1), signature->text) >= 0)
+    int index = anchors + 1;
+
+    if (signature->result.type != ECSI_ParameterType_Void && !ECSI_ServicesWriteOutput(state, function, index++, anchors, signature->result.type, result, true))
+    {
+        ECSI_ServicesReportType(state, function, index - 1);
+    }
+
+    for (usz i = 0; i < count; i++)
+    {
+        if (signature->parameters[i].out && !ECSI_ServicesWriteOutput(state, function, index++, anchors, signature->parameters[i].type, *(void **)arguments[i], false))
         {
-            ECSI_PluginReportError(function->plugin, message);
-            SDL_free(message);
+            ECSI_ServicesReportType(state, function, index - 1);
         }
     }
 
     lua_settop(state, top);
 }
+
+#pragma endregion C Calls Lua
 
 /// @brief Checks a function's name and makes its record, without its code.
 static SHUResult ECSI_ServicesCreate(ECSPlugin plugin, const char *name, const char *signature, const char *description, ECSI_Function **retFunction)
@@ -482,7 +728,7 @@ static SHUResult ECSI_ServicesCreate(ECSPlugin plugin, const char *name, const c
     function->plugin = plugin;
     function->caller = LUA_NOREF;
     function->lua = LUA_NOREF;
-    function->result = LUA_NOREF;
+    function->anchors = LUA_NOREF;
 
     SHUResult result = function->name == NULL || function->description == NULL ? SHUResult_ErrAllocation : ECSI_SignatureParse(signature, &function->signature);
 
@@ -574,7 +820,10 @@ SHUResult ECSI_ServicesRegisterLua(ECSPlugin plugin, const char *name, const cha
 
     // C calls the closure's code, which calls the Lua function; POSIX lets a data pointer hold code, but ISO C has no cast for it
     SDL_memcpy(&function->pointer, &code, sizeof(code));
-    function->lua = luaL_ref(ECSI_LuaGetState(), LUA_REGISTRYINDEX);
+    lua_State *state = ECSI_LuaGetState();
+    function->lua = luaL_ref(state, LUA_REGISTRYINDEX);
+    lua_newtable(state);
+    function->anchors = luaL_ref(state, LUA_REGISTRYINDEX);
     shput(SERVICES.functions, function->name, function);
     return SHUResult_Ok;
 }

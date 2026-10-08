@@ -227,6 +227,41 @@ static const char *DemoRepeat(const char *text, i32 count)
     return buffer;
 }
 
+/// @brief Splits a number into its whole and fraction parts; registered as demo.split, to show output parameters.
+static void DemoSplit(f64 number, i64 *retWhole, f64 *retFraction)
+{
+    *retWhole = (i64)number;
+    *retFraction = number - (f64)*retWhole;
+}
+
+/// @brief Counts the items and fields of a value; registered as demo.describe, to show values.
+static i32 DemoDescribe(const ECSValue *value, ECSValue *retCopy)
+{
+    ECSValue *field = NULL;
+
+    if (ECSValue_SetField(retCopy, "items", &field) == SHUResult_Ok)
+    {
+        ECSValue_SetInteger(field, (i64)ECSValue_GetCount(value));
+    }
+
+    return (i32)ECSValue_GetType(value);
+}
+
+/// @brief Reverses the bytes of a buffer in place; registered as demo.reverse, to show buffers.
+static SHUSlice DemoReverse(SHUSlice buffer)
+{
+    u8 *bytes = buffer.data;
+
+    for (usz i = 0; i < buffer.size / 2; i++)
+    {
+        u8 byte = bytes[i];
+        bytes[i] = bytes[buffer.size - 1 - i];
+        bytes[buffer.size - 1 - i] = byte;
+    }
+
+    return buffer;
+}
+
 #pragma endregion Service
 
 #pragma endregion Source Only
@@ -279,6 +314,9 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
     SHU_ReturnResult(ECSSetting_Declare(plugin, &blinkSeconds));
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.add", (ECSFunction)DemoAdd, "int(int, int)", "Adds two numbers"));
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.repeat", (ECSFunction)DemoRepeat, "string(string, int)", "Repeats a text"));
+    SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.split", (ECSFunction)DemoSplit, "void(double, out int64, out double)", "Splits a number into its whole and fraction parts"));
+    SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.describe", (ECSFunction)DemoDescribe, "int(value, out value)", "Gives a value's type and counts its items"));
+    SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.reverse", (ECSFunction)DemoReverse, "buffer(buffer)", "Reverses the bytes of a buffer"));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &color));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &gradient));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &checker));

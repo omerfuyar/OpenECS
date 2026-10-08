@@ -70,3 +70,8 @@ ecs.service.register("hello", {
     fn = function(text, count) return text:upper():rep(count, " ") end,
   },
 })
+
+-- output parameters are extra results; values and buffers are copied
+local whole, fraction = ecs.service.get("demo.split")(3.25)
+local type, counted = ecs.service.get("demo.describe")({ 1, 2, 3, name = "x" })
+ecs.log.info(("demo.split: %d %.2f, demo.describe: %d %d, demo.reverse: %s"):format(whole, fraction, type, counted.items, ecs.service.get("demo.reverse")("abc")))
