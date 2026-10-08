@@ -297,7 +297,7 @@ A panel shows data, but it does not have to own it. Data that several panels sha
 
 To make this work:
 
-- **Plugin events.** A plugin can declare its own events, such as `canvas.selection_changed`, and send them. Other plugins subscribe to them.
+- **Plugin events.** A plugin can declare its own events, such as `canvas.selectionChanged`, and send them. Other plugins subscribe to them.
 - **Plugin state.** A plugin, not only a panel, can save state into the session. When a session is loaded, plugin state is restored before panels, so panels find their data.
 
 ### 9.3 Drag and drop of data

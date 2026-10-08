@@ -4,7 +4,7 @@ return {
   version = "0.1.0",
   app = { id = "openecs.test.callbacks", name = "Callbacks" },
   depends = { sketch_c = "0.1", sketch_lua = "0.1", callbacks = "0.1" },
-  plugins_dir = "../plugins",
+  pluginsDir = "../plugins",
   workspaces = {
     { name = "Canvases",
       windows = {

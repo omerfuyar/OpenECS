@@ -98,7 +98,7 @@ static SHUResult ECSISession_ReadPanel(ECSISessionReader *reader, const ECSValue
     }
 
     const ECSValue *state = ECSValue_GetTableField(saved, "state");
-    i64 version = ECSValue_GetInteger(ECSValue_GetTableField(saved, "state_version"), 0);
+    i64 version = ECSValue_GetInteger(ECSValue_GetTableField(saved, "stateVersion"), 0);
     i64 id = ECSValue_GetInteger(ECSValue_GetTableField(saved, "id"), 0);
     ECSPanel panel = NULL;
 
@@ -254,7 +254,7 @@ SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
     const ECSValue *file = retInfo->file;
     const ECSValue *app = ECSValue_GetTableField(file, "app");
     const char *appId = ECSValue_GetString(ECSValue_GetTableField(app, "id"), NULL);
-    const char *pluginsDirectory = ECSValue_GetString(ECSValue_GetTableField(file, "plugins_dir"), NULL);
+    const char *pluginsDirectory = ECSValue_GetString(ECSValue_GetTableField(file, "pluginsDir"), NULL);
 
     retInfo->name = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "name"), "preset"));
     retInfo->appName = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(app, "name"), "OpenECS"));
@@ -309,7 +309,7 @@ SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info)
     SHU_ReturnResult(ECSIKeys_SetTool(ECSValue_GetTableField(info->file, "keys")));
 
     // plugins get their state before panels are created, so panels find their data
-    ECSIPlugins_RestoreStates(ECSValue_GetTableField(info->file, "plugin_state"));
+    ECSIPlugins_RestoreStates(ECSValue_GetTableField(info->file, "pluginState"));
     const ECSValue *workspaces = ECSValue_GetTableField(info->file, "workspaces");
 
     if (ECSValue_GetListCount(workspaces) == 0)
@@ -335,7 +335,7 @@ SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info)
         ECSISession_Leave(&reader, length);
     }
 
-    ECSILayout_WorkspaceSwitch((usz)SDL_max(1, ECSValue_GetInteger(ECSValue_GetTableField(info->file, "current_workspace"), 1)) - 1);
+    ECSILayout_WorkspaceSwitch((usz)SDL_max(1, ECSValue_GetInteger(ECSValue_GetTableField(info->file, "currentWorkspace"), 1)) - 1);
     return SHUResult_Ok;
 }
 
@@ -358,11 +358,11 @@ SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
     // the plugin directory is written resolved, because the session lives in another folder
     if (!result && info->pluginsDirectory != NULL)
     {
-        result = ECSValue_TableSetField(retSession, "plugins_dir", &field);
+        result = ECSValue_TableSetField(retSession, "pluginsDir", &field);
         result = result ? result : ECSValue_SetString(field, info->pluginsDirectory);
     }
 
-    result = result ? result : ECSValue_TableSetField(retSession, "plugin_state", &field);
+    result = result ? result : ECSValue_TableSetField(retSession, "pluginState", &field);
     result = result ? result : ECSIPlugins_SaveStates(field);
     result = result ? result : ECSValue_TableSetField(retSession, "workspaces", &field);
     result = result ? result : ECSILayout_Save(field, &current);
@@ -380,7 +380,7 @@ SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
         }
     }
 
-    result = result ? result : ECSValue_TableSetField(retSession, "current_workspace", &field);
+    result = result ? result : ECSValue_TableSetField(retSession, "currentWorkspace", &field);
 
     if (!result)
     {

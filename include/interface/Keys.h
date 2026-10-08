@@ -23,7 +23,7 @@ typedef struct ECSIKeyBinding
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the text is not a key combination, or SHUResult_ErrAllocation.
 SHUResult ECSIKeys_Parse(const char *text, bool report, u32 *retKey, u32 *retModifiers);
 
-/// @brief Declares the settings ecs.prefix and ecs.prefix_keys, and reports the key texts of the user's files that are not key combinations.
+/// @brief Declares the settings ecs.prefix and ecs.prefixKeys, and reports the key texts of the user's files that are not key combinations.
 /// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrBadData if a name of the core is taken.
 SHUWUR SHUResult ECSIKeys_Initialize(void);
 
@@ -62,7 +62,7 @@ const char *ECSIKeys_Find(u32 key, u32 modifiers, ECSPanel focus);
 /// @return true if it is the prefix.
 bool ECSIKeys_IsPrefix(u32 key, u32 modifiers);
 
-/// @brief Gets the keys after the prefix: the defaults, changed by the setting ecs.prefix_keys.
+/// @brief Gets the keys after the prefix: the defaults, changed by the setting ecs.prefixKeys.
 /// @return stb_ds array of the bindings, valid until the setting changes and the keys are read again.
 const ECSIKeyBinding *ECSIKeys_GetPrefixKeys(void);
 

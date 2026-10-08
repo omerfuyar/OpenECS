@@ -82,7 +82,7 @@ static struct
 } BINDINGS = {0};
 
 /// @brief Names of the event types in Lua, in the order of ECSPanelEventType.
-static const char *const OPENECS_BINDINGS_EVENT_TYPES[] = {"pointer_down", "pointer_up", "pointer_move", "wheel", "key_down", "key_up", "focused", "unfocused", "shown", "hidden", "resized"};
+static const char *const OPENECS_BINDINGS_EVENT_TYPES[] = {"pointerDown", "pointerUp", "pointerMove", "wheel", "keyDown", "keyUp", "focused", "unfocused", "shown", "hidden", "resized"};
 
 /// @brief Names of the setting types in Lua, in the order of ECSSettingType.
 static const char *const OPENECS_BINDINGS_SETTING_TYPES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", NULL};
@@ -441,7 +441,7 @@ static int ECSIBindings_HandleValue(lua_State *state)
 }
 
 static const luaL_Reg OPENECS_BINDINGS_HANDLE[] = {
-    {"register_type", ECSIBindings_HandleRegisterType},
+    {"registerType", ECSIBindings_HandleRegisterType},
     {"new", ECSIBindings_HandleNew},
     {"value", ECSIBindings_HandleValue},
     {NULL, NULL},
@@ -764,7 +764,7 @@ static const luaL_Reg OPENECS_BINDINGS_LAYOUT[] = {
     {"move", ECSIBindings_LayoutMove},
     {"close", ECSIBindings_LayoutClose},
     {"focus", ECSIBindings_LayoutFocus},
-    {"get_focus", ECSIBindings_LayoutGetFocus},
+    {"getFocus", ECSIBindings_LayoutGetFocus},
     {NULL, NULL},
 };
 
@@ -801,8 +801,8 @@ static int ECSIBindings_WorkspaceSwitch(lua_State *state)
 
 static const luaL_Reg OPENECS_BINDINGS_WORKSPACE[] = {
     {"count", ECSIBindings_WorkspaceCount},
-    {"get_current", ECSIBindings_WorkspaceGetCurrent},
-    {"get_name", ECSIBindings_WorkspaceGetName},
+    {"getCurrent", ECSIBindings_WorkspaceGetCurrent},
+    {"getName", ECSIBindings_WorkspaceGetName},
     {"switch", ECSIBindings_WorkspaceSwitch},
     {NULL, NULL},
 };
@@ -847,10 +847,10 @@ static int ECSIBindings_ClipboardGetData(lua_State *state)
 }
 
 static const luaL_Reg OPENECS_BINDINGS_CLIPBOARD[] = {
-    {"set_text", ECSIBindings_ClipboardSetText},
-    {"get_text", ECSIBindings_ClipboardGetText},
-    {"set_data", ECSIBindings_ClipboardSetData},
-    {"get_data", ECSIBindings_ClipboardGetData},
+    {"setText", ECSIBindings_ClipboardSetText},
+    {"getText", ECSIBindings_ClipboardGetText},
+    {"setData", ECSIBindings_ClipboardSetData},
+    {"getData", ECSIBindings_ClipboardGetData},
     {NULL, NULL},
 };
 
@@ -859,7 +859,7 @@ static const luaL_Reg OPENECS_BINDINGS_CLIPBOARD[] = {
 #pragma region Dialogs
 
 /// @brief Names of the dialog types in Lua, in the order of ECSDialogType.
-static const char *const OPENECS_BINDINGS_DIALOG_TYPES[] = {"open_file", "save_file", "open_folder", NULL};
+static const char *const OPENECS_BINDINGS_DIALOG_TYPES[] = {"openFile", "saveFile", "openFolder", NULL};
 
 /// @brief A Lua function waiting for a file dialog's answer.
 typedef struct ECSILuaDialog
@@ -931,7 +931,7 @@ static int ECSIBindings_DialogShow(lua_State *state)
     lua_pop(state, lua_istable(state, -2) ? 1 : 0);
 
     ECSDialogDesc desc = {
-        .type = (ECSDialogType)luaL_checkoption(state, -4, "open_file", OPENECS_BINDINGS_DIALOG_TYPES),
+        .type = (ECSDialogType)luaL_checkoption(state, -4, "openFile", OPENECS_BINDINGS_DIALOG_TYPES),
         .filters = filters,
         .filterCount = arrlenu(filters),
         .location = lua_tostring(state, -3),
@@ -1267,9 +1267,9 @@ static void ECSIBindings_PushEvent(lua_State *state, const ECSPanelEvent *event)
         lua_pushnumber(state, (lua_Number)event->wheel.y);
         lua_setfield(state, -2, "y");
         lua_pushnumber(state, (lua_Number)event->wheel.amountX);
-        lua_setfield(state, -2, "wheel_x");
+        lua_setfield(state, -2, "wheelX");
         lua_pushnumber(state, (lua_Number)event->wheel.amountY);
-        lua_setfield(state, -2, "wheel_y");
+        lua_setfield(state, -2, "wheelY");
         break;
     case ECSPanelEventType_KeyDown:
     case ECSPanelEventType_KeyUp:
@@ -1321,7 +1321,7 @@ static SHUResult ECSIBindings_PanelSaveState(void *data, ECSValue *retState)
     ECSILuaPanel *luaPanel = data;
     lua_State *state = ECSILua_GetState();
 
-    if (!ECSIBindings_PushCallback(state, luaPanel->type, "save_state"))
+    if (!ECSIBindings_PushCallback(state, luaPanel->type, "saveState"))
     {
         return SHUResult_ErrNotFound;
     }
@@ -1386,10 +1386,10 @@ static int ECSIBindings_PanelRegisterType(lua_State *state)
     lua_getfield(state, 1, "name");
     lua_getfield(state, 1, "title");
     lua_getfield(state, 1, "surface");
-    lua_getfield(state, 1, "state_version");
+    lua_getfield(state, 1, "stateVersion");
     lua_getfield(state, 1, "continuous");
-    lua_getfield(state, 1, "min_width");
-    lua_getfield(state, 1, "min_height");
+    lua_getfield(state, 1, "minWidth");
+    lua_getfield(state, 1, "minHeight");
 
     ECSPanelTypeDesc desc = {
         .name = luaL_checkstring(state, -7),
@@ -1403,7 +1403,7 @@ static int ECSIBindings_PanelRegisterType(lua_State *state)
         .Destroy = ECSIBindings_PanelDestroy,
         .Draw = ECSIBindings_HasFunction(state, 1, "draw") ? ECSIBindings_PanelDraw : NULL,
         .Event = ECSIBindings_HasFunction(state, 1, "event") ? ECSIBindings_PanelEvent : NULL,
-        .SaveState = ECSIBindings_HasFunction(state, 1, "save_state") ? ECSIBindings_PanelSaveState : NULL,
+        .SaveState = ECSIBindings_HasFunction(state, 1, "saveState") ? ECSIBindings_PanelSaveState : NULL,
         .Save = ECSIBindings_HasFunction(state, 1, "save") ? ECSIBindings_PanelSave : NULL,
     };
 
@@ -1479,12 +1479,12 @@ static int ECSIBindings_PanelStartTimer(lua_State *state)
 
 static const luaL_Reg OPENECS_BINDINGS_PANEL_METHODS[] = {
     {"redraw", ECSIBindings_PanelRedraw},
-    {"get_title", ECSIBindings_PanelGetTitle},
-    {"set_title", ECSIBindings_PanelSetTitle},
-    {"get_id", ECSIBindings_PanelGetId},
-    {"get_type", ECSIBindings_PanelGetType},
-    {"set_unsaved", ECSIBindings_PanelSetUnsaved},
-    {"start_timer", ECSIBindings_PanelStartTimer},
+    {"getTitle", ECSIBindings_PanelGetTitle},
+    {"setTitle", ECSIBindings_PanelSetTitle},
+    {"getId", ECSIBindings_PanelGetId},
+    {"getType", ECSIBindings_PanelGetType},
+    {"setUnsaved", ECSIBindings_PanelSetUnsaved},
+    {"startTimer", ECSIBindings_PanelStartTimer},
     {NULL, NULL},
 };
 
@@ -1506,13 +1506,13 @@ static int ECSIBindings_PanelAddMenuEntry(lua_State *state)
 }
 
 static const luaL_Reg OPENECS_BINDINGS_PANEL[] = {
-    {"register_type", ECSIBindings_PanelRegisterType},
-    {"add_menu_entry", ECSIBindings_PanelAddMenuEntry},
+    {"registerType", ECSIBindings_PanelRegisterType},
+    {"addMenuEntry", ECSIBindings_PanelAddMenuEntry},
     {"redraw", ECSIBindings_PanelRedraw},
-    {"get_title", ECSIBindings_PanelGetTitle},
-    {"set_title", ECSIBindings_PanelSetTitle},
-    {"set_unsaved", ECSIBindings_PanelSetUnsaved},
-    {"start_timer", ECSIBindings_PanelStartTimer},
+    {"getTitle", ECSIBindings_PanelGetTitle},
+    {"setTitle", ECSIBindings_PanelSetTitle},
+    {"setUnsaved", ECSIBindings_PanelSetUnsaved},
+    {"startTimer", ECSIBindings_PanelStartTimer},
     {NULL, NULL},
 };
 
@@ -1613,9 +1613,9 @@ static int ECSIBindings_SurfaceIndex(lua_State *state)
 }
 
 static const luaL_Reg OPENECS_BINDINGS_SURFACE_METHODS[] = {
-    {"set_pixel", ECSIBindings_SurfaceSetPixel},
-    {"get_pixel", ECSIBindings_SurfaceGetPixel},
-    {"set_row", ECSIBindings_SurfaceSetRow},
+    {"setPixel", ECSIBindings_SurfaceSetPixel},
+    {"getPixel", ECSIBindings_SurfaceGetPixel},
+    {"setRow", ECSIBindings_SurfaceSetRow},
     {NULL, NULL},
 };
 
@@ -1654,10 +1654,10 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     lua_setfield(state, -2, "version");
     lua_pushlightuserdata(state, plugin);
     lua_pushcclosure(state, ECSIBindings_PluginRegisterState, 1);
-    lua_setfield(state, -2, "register_state");
+    lua_setfield(state, -2, "registerState");
     lua_pushlightuserdata(state, plugin);
     lua_pushcclosure(state, ECSIBindings_PluginOnShutdown, 1);
-    lua_setfield(state, -2, "on_shutdown");
+    lua_setfield(state, -2, "onShutdown");
     lua_setfield(state, -2, "plugin");
 }
 

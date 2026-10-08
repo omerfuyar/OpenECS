@@ -633,7 +633,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSDialog_ShowMessage(const char *title, const c
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 /// @brief Declares a named event that a plugin emits. Main thread only.
 /// @param plugin The plugin that emits the event.
-/// @param name Name of the event: the plugin's name, a dot and a local name, such as "canvas.selection_changed".
+/// @param name Name of the event: the plugin's name, a dot and a local name, such as "canvas.selectionChanged".
 /// @param description One line about the event.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the name is taken or does not belong to the plugin, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *description);

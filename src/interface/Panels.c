@@ -174,7 +174,7 @@ void ECSIPanel_Close(ECSPanel *panel)
     SDL_assert(!(*panel)->closed);
 
     ECSIEvents_StopTimersOf(*panel);
-    ECSIPanel_Emit("ecs.panel_closed", *panel);
+    ECSIPanel_Emit("ecs.panelClosed", *panel);
     (*panel)->closed = true;
     arrput(PANELS.closed, *panel);
     *panel = NULL;
@@ -241,7 +241,7 @@ SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retPanel)
 
     if (state != NULL)
     {
-        result = ECSValue_TableSetField(retPanel, "state_version", &field);
+        result = ECSValue_TableSetField(retPanel, "stateVersion", &field);
 
         if (!result)
         {
