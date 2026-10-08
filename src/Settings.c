@@ -284,16 +284,21 @@ static SHUResult ECSI_SettingsReadFile(ECSI_SettingsLayer layer, const char *fol
     SHU_ReturnResult(ECSI_ValueCreate(&SETTINGS.layers[layer]));
     ECSValue_SetTable(SETTINGS.layers[layer]);
 
-    if (!SDL_GetPathInfo(SETTINGS.paths[layer], NULL) || ECSI_LuaDataOpen(SETTINGS.paths[layer]))
+    if (!SDL_GetPathInfo(SETTINGS.paths[layer], NULL))
     {
-        // a missing file is fine; one that cannot be read is already reported
         return SHUResult_Ok;
     }
 
     ECSValue *file = NULL;
-    SHUResult result = ECSI_ValueCreate(&file);
-    result = result ? result : ECSI_LuaDataGetValue(NULL, file);
-    ECSI_LuaDataClose();
+    SHU_ReturnResult(ECSI_ValueCreate(&file));
+    SHUResult result = ECSI_LuaReadData(SETTINGS.paths[layer], file);
+
+    // a file that cannot be read is already reported, and skipped
+    if (result == SHUResult_ErrFile || result == SHUResult_ErrBadData)
+    {
+        ECSI_ValueDestroy(&file);
+        return SHUResult_Ok;
+    }
 
     const ECSValue *tool = ECSValue_GetField(ECSValue_GetField(file, "tools"), appId);
     ECSI_SettingsFileReader reader = {.layer = SETTINGS.layers[layer], .result = result};

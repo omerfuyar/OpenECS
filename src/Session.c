@@ -257,12 +257,8 @@ SHUResult ECSI_SessionReadInfo(const char *path, ECSI_PresetInfo *retInfo)
     SDL_assert(retInfo != NULL);
 
     SDL_zerop(retInfo);
-    SHU_ReturnResult(ECSI_LuaDataOpen(path));
-
-    SHUResult result = ECSI_ValueCreate(&retInfo->file);
-    result = result ? result : ECSI_LuaDataGetValue(NULL, retInfo->file);
-    ECSI_LuaDataClose();
-    SHU_ReturnResult(result);
+    SHU_ReturnResult(ECSI_ValueCreate(&retInfo->file));
+    SHU_ReturnResult(ECSI_LuaReadData(path, retInfo->file));
 
     const ECSValue *file = retInfo->file;
     const ECSValue *app = ECSValue_GetField(file, "app");

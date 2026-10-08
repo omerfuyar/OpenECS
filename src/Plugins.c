@@ -15,16 +15,11 @@ typedef struct ECSI_Plugin
     void (*Shutdown)(ECSPlugin plugin);
 } ECSI_Plugin;
 
-/// @brief What a manifest says, copied before the manifest is closed.
+/// @brief A plugin's manifest.
 typedef struct ECSI_Manifest
 {
-    char *folder;  // the plugin's folder, ending with a separator
-    char *version;
-    char *native;  // file name of the native library, or NULL
-    char **dependencies; // stb_ds array
-    u32 api;
-    bool hasLua;
-    bool incomplete; // a text could not be copied
+    char *folder;   // the plugin's folder, ending with a separator
+    ECSValue *file; // the whole manifest
 } ECSI_Manifest;
 
 static struct
@@ -47,58 +42,15 @@ static ECSI_Plugin *ECSI_PluginFind(const char *name)
 static void ECSI_ManifestFree(ECSI_Manifest *manifest)
 {
     SDL_free(manifest->folder);
-    SDL_free(manifest->version);
-    SDL_free(manifest->native);
-
-    for (usz i = 0; i < arrlenu(manifest->dependencies); i++)
-    {
-        SDL_free(manifest->dependencies[i]);
-    }
-
-    arrfree(manifest->dependencies);
+    ECSI_ValueDestroy(&manifest->file);
     SDL_zerop(manifest);
 }
 
-static void ECSI_ManifestAddDependency(const char *key, const char *value, void *userData)
+static void ECSI_ManifestAddDependency(const char *name, const ECSValue *field, void *userData)
 {
-    (void)value;
-    ECSI_Manifest *manifest = userData;
-    char *dependency = SDL_strdup(key);
-
-    if (dependency == NULL)
-    {
-        manifest->incomplete = true;
-        return;
-    }
-
-    arrput(manifest->dependencies, dependency);
-}
-
-/// @brief Copies what the open manifest says. Its texts are valid only while it is open.
-static void ECSI_ManifestRead(const char *directory, const char *name, ECSI_Manifest *retManifest)
-{
-    const char *native = ECSI_LuaDataGetText("native", NULL);
-
-    if (SDL_asprintf(&retManifest->folder, "%s%s/", directory, name) < 0)
-    {
-        retManifest->incomplete = true;
-    }
-
-    retManifest->version = SDL_strdup(ECSI_LuaDataGetText("version", "0.0.0"));
-    retManifest->native = native == NULL ? NULL : SDL_strdup(native);
-    retManifest->api = (u32)ECSI_LuaDataGetNumber("api", 0);
-    retManifest->hasLua = ECSI_LuaDataHas("lua");
-
-    if (retManifest->version == NULL || (native != NULL && retManifest->native == NULL))
-    {
-        retManifest->incomplete = true;
-    }
-
-    if (ECSI_LuaDataEnterField("depends"))
-    {
-        ECSI_LuaDataForEachText(ECSI_ManifestAddDependency, retManifest);
-        ECSI_LuaDataLeave();
-    }
+    (void)field;
+    const char ***dependencies = userData;
+    arrput(*dependencies, name);
 }
 
 /// @brief Finds a plugin's folder in the plugin directories and reads its manifest.
@@ -121,24 +73,21 @@ static SHUResult ECSI_ManifestFind(const char *name, ECSI_Manifest *retManifest)
             continue;
         }
 
-        SHUResult result = ECSI_LuaDataOpen(path);
+        SHUResult result = ECSI_ValueCreate(&retManifest->file);
+        result = result ? result : ECSI_LuaReadData(path, retManifest->file);
         SDL_free(path);
-        SHU_ReturnResult(result);
+        SHU_ReturnResult(result, ECSI_ManifestFree(retManifest););
 
-        bool nameMatches = SDL_strcmp(ECSI_LuaDataGetText("name", ""), name) == 0;
-        ECSI_ManifestRead(PLUGINS.directories[i], name, retManifest);
-        ECSI_LuaDataClose();
-
-        if (!nameMatches)
+        if (SDL_strcmp(ECSValue_GetString(ECSValue_GetField(retManifest->file, "name"), ""), name) != 0)
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The manifest of plugin '%s' gives another name.", name);
             ECSI_ManifestFree(retManifest);
             return SHUResult_ErrBadData;
         }
 
-        if (retManifest->incomplete)
+        if (SDL_asprintf(&retManifest->folder, "%s%s/", PLUGINS.directories[i], name) < 0)
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The manifest of plugin '%s' cannot be read whole.", name);
+            retManifest->folder = NULL;
             ECSI_ManifestFree(retManifest);
             return SHUResult_ErrAllocation;
         }
@@ -155,29 +104,38 @@ static SHUResult ECSI_PluginLoad(const char *name);
 /// @brief Loads the plugins a manifest depends on, then the plugin itself, and runs its ECSPlugin_Init.
 static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifest)
 {
-    if (manifest->api != OPENECS_API_VERSION)
+    const ECSValue *file = manifest->file;
+    i64 api = ECSValue_GetInteger(ECSValue_GetField(file, "api"), 0);
+    const char *native = ECSValue_GetString(ECSValue_GetField(file, "native"), NULL);
+
+    if (api != OPENECS_API_VERSION)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' was made for plugin API %u; this is version %d.", name, manifest->api, OPENECS_API_VERSION);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' was made for plugin API %" SDL_PRIs64 "; this is version %d.", name, api, OPENECS_API_VERSION);
         return SHUResult_ErrBadData;
     }
 
+    // the names stay alive in the manifest
+    const char **dependencies = NULL;
+    ECSI_ValueForEachField(ECSValue_GetField(file, "depends"), ECSI_ManifestAddDependency, &dependencies);
     arrput(PLUGINS.loading, name);
 
-    for (usz i = 0; i < arrlenu(manifest->dependencies); i++)
+    for (usz i = 0; i < arrlenu(dependencies); i++)
     {
-        SHU_ReturnResult(ECSI_PluginLoad(manifest->dependencies[i]),
+        SHU_ReturnResult(ECSI_PluginLoad(dependencies[i]),
                          (void)arrpop(PLUGINS.loading);
-                         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is skipped because '%s' failed.", name, manifest->dependencies[i]););
+                         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is skipped because '%s' failed.", name, dependencies[i]);
+                         arrfree(dependencies););
     }
 
     (void)arrpop(PLUGINS.loading);
+    arrfree(dependencies);
 
-    if (manifest->hasLua)
+    if (ECSValue_GetField(file, "lua") != NULL)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' has Lua code, which is not supported yet; it is ignored.", name);
     }
 
-    ECSI_Plugin plugin = {.name = SDL_strdup(name), .version = SDL_strdup(manifest->version)};
+    ECSI_Plugin plugin = {.name = SDL_strdup(name), .version = SDL_strdup(ECSValue_GetString(ECSValue_GetField(file, "version"), "0.0.0"))};
     ECSI_Plugin *record = SDL_malloc(sizeof(ECSI_Plugin));
     SHUResult (*Init)(ECSPlugin plugin) = NULL;
 
@@ -189,11 +147,11 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
         return SHUResult_ErrAllocation;
     }
 
-    if (manifest->native != NULL)
+    if (native != NULL)
     {
         char *path = NULL;
 
-        if (SDL_asprintf(&path, "%s%s", manifest->folder, manifest->native) >= 0)
+        if (SDL_asprintf(&path, "%s%s", manifest->folder, native) >= 0)
         {
             plugin.library = SDL_LoadObject(path);
             SDL_free(path);
