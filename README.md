@@ -96,7 +96,9 @@ LINK
     S   Static (Default)
     D   Dynamic
 
-So this command will build the program mode statically linked release mode.
+LINK chooses how Lua, Clay, libffi and stb are linked. SDL and SDL_ttf are always shared libraries, which the build puts next to the executable.
+
+So this command builds the program in Release mode, with those libraries linked statically.
 
 ``` shell
 cd OpenECS/
@@ -112,7 +114,7 @@ Debug builds run the static analyzer while compiling, and the sanitizers while t
 
 ### Running
 
-The build puts the executable, the first-party plugins and presets in `build/<LINK>/<TYPE>/bin/`.
+The build puts the executable, SDL's shared libraries, the first-party plugins and presets in `build/<LINK>/<TYPE>/bin/`.
 
 ``` shell
 ./build/Static/Release/bin/OpenECS
