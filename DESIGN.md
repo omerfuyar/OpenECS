@@ -324,11 +324,15 @@ After every operation:
 ### 6.5 Operations
 
 - Besides the operations in OVERVIEW 6.3, there are cycling tabs and reopening the last closed panel.
-- Illustrative: `ECSLayout_Move(panel, target, ECSZone_Left)` and `ecs.layout.move(panel_id, target_id, "left")`.
+- Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)`, `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles; `ecs.workspace` counts workspaces from 1.
+- Closing a panel from code still asks about unsaved work. Focusing a panel shows its workspace and its tab.
+- Locks (6.4) stop the user, not code.
+- Every change of focus tells the panel that loses it and the panel that gets it (`ECSEventType_Unfocused`, `ECSEventType_Focused`).
 
 ### 6.6 Placement of new panels
 
-- The caller can name a group, a side of a panel (split), or a new OS window.
+- The caller can name a group, a side of a panel (split), or a new OS window: `ECSLayout_Open(plugin, &panel, "text.editor", state, target, ECSZone_Right)`.
+- Without a target, a new panel joins the group of the most recently focused panel of its type, or else the focused group (OVERVIEW 6.5). It opens in the current workspace and gets the focus.
 
 ### 6.7 Drop zones
 
