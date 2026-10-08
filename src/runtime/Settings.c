@@ -303,14 +303,14 @@ static SHUResult ECSI_SettingsReadPlugins(const ECSValue *part)
 {
     const ECSValue *plugins = ECSValue_GetTableField(part, "plugins");
 
-    for (usz i = 0; i < ECSValue_GetTableCount(plugins); i++)
+    for (usz i = 0; i < ECSValue_GetListCount(plugins); i++)
     {
-        const char *name = ECSValue_GetString(ECSValue_GetTableItem(plugins, i), NULL);
+        const char *name = ECSValue_GetString(ECSValue_GetListItem(plugins, i), NULL);
         ECSValue *item = NULL;
 
         if (name != NULL)
         {
-            SHU_ReturnResult(ECSValue_TableAddItem(SETTINGS.plugins, &item));
+            SHU_ReturnResult(ECSValue_ListAddItem(SETTINGS.plugins, &item));
             SHU_ReturnResult(ECSValue_SetString(item, name));
         }
     }
@@ -646,7 +646,7 @@ SHUResult ECSSetting_List(ECSValue *retList)
     for (usz i = 0; i < shlenu(SETTINGS.settings); i++)
     {
         ECSValue *item = NULL;
-        SHU_ReturnResult(ECSValue_TableAddItem(retList, &item));
+        SHU_ReturnResult(ECSValue_ListAddItem(retList, &item));
         SHU_ReturnResult(ECSValue_SetString(item, SETTINGS.settings[i].key));
     }
 
@@ -684,7 +684,7 @@ SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation)
     {
         ECSValue *item = NULL;
         SHU_ReturnResult(choices == NULL ? ECSValue_TableSetField(retExplanation, "choices", &choices) : SHUResult_Ok);
-        SHU_ReturnResult(ECSValue_TableAddItem(choices, &item));
+        SHU_ReturnResult(ECSValue_ListAddItem(choices, &item));
         SHU_ReturnResult(ECSValue_SetString(item, setting->choices[i]));
     }
 

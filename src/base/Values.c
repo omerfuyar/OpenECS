@@ -110,7 +110,7 @@ SHUResult ECSI_ValueCopy(ECSValue *value, const ECSValue *source)
     for (usz i = 0; i < arrlenu(source->items); i++)
     {
         ECSValue *item = NULL;
-        SHU_ReturnResult(ECSValue_TableAddItem(value, &item));
+        SHU_ReturnResult(ECSValue_ListAddItem(value, &item));
         SHU_ReturnResult(ECSI_ValueCopy(item, source->items[i]));
     }
 
@@ -235,14 +235,14 @@ const char *ECSValue_GetString(const ECSValue *value, const char *fallback)
     return ECSValue_GetType(value) == ECSValueType_String ? value->string : fallback;
 }
 
-usz ECSValue_GetTableCount(const ECSValue *table)
+usz ECSValue_GetListCount(const ECSValue *table)
 {
     return ECSValue_GetType(table) == ECSValueType_Table ? arrlenu(table->items) : 0;
 }
 
-const ECSValue *ECSValue_GetTableItem(const ECSValue *table, usz index)
+const ECSValue *ECSValue_GetListItem(const ECSValue *table, usz index)
 {
-    return index < ECSValue_GetTableCount(table) ? table->items[index] : NULL;
+    return index < ECSValue_GetListCount(table) ? table->items[index] : NULL;
 }
 
 const ECSValue *ECSValue_GetTableField(const ECSValue *table, const char *name)
@@ -319,7 +319,7 @@ void ECSValue_SetTable(ECSValue *value)
     value->type = ECSValueType_Table;
 }
 
-SHUResult ECSValue_TableAddItem(ECSValue *table, ECSValue **retItem)
+SHUResult ECSValue_ListAddItem(ECSValue *table, ECSValue **retItem)
 {
     SDL_assert(table != NULL);
     SDL_assert(retItem != NULL);

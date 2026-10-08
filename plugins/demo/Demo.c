@@ -265,7 +265,7 @@ static i32 DemoDescribe(const ECSValue *value, ECSValue *retCopy)
 
     if (ECSValue_TableSetField(retCopy, "items", &field) == SHUResult_Ok)
     {
-        ECSValue_SetInteger(field, (i64)ECSValue_GetTableCount(value));
+        ECSValue_SetInteger(field, (i64)ECSValue_GetListCount(value));
     }
 
     return (i32)ECSValue_GetType(value);

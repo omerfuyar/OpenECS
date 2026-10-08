@@ -336,9 +336,9 @@ static SHUResult ECSI_PluginLoadAll(const ECSValue *plugins, const char *depende
     ECSI_PluginLoader loader = {.dependent = dependent, .result = SHUResult_Ok};
     ECSI_ValueTableForEachField(plugins, ECSI_PluginLoadField, &loader);
 
-    for (usz i = 0; i < ECSValue_GetTableCount(plugins); i++)
+    for (usz i = 0; i < ECSValue_GetListCount(plugins); i++)
     {
-        const char *name = ECSValue_GetString(ECSValue_GetTableItem(plugins, i), NULL);
+        const char *name = ECSValue_GetString(ECSValue_GetListItem(plugins, i), NULL);
 
         if (name != NULL)
         {

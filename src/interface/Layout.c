@@ -1464,7 +1464,7 @@ static SHUResult ECSI_LayoutSaveNode(const ECSI_Workspace *workspace, const ECSI
 
         for (usz i = 0; i < arrlenu(node->children); i++)
         {
-            SHU_ReturnResult(ECSValue_TableAddItem(retNode, &field));
+            SHU_ReturnResult(ECSValue_ListAddItem(retNode, &field));
             SHU_ReturnResult(ECSI_LayoutSaveNode(workspace, node->children[i], field));
         }
 
@@ -1477,7 +1477,7 @@ static SHUResult ECSI_LayoutSaveNode(const ECSI_Workspace *workspace, const ECSI
 
     for (usz i = 0; i < arrlenu(node->panels); i++)
     {
-        SHU_ReturnResult(ECSValue_TableAddItem(panels, &field));
+        SHU_ReturnResult(ECSValue_ListAddItem(panels, &field));
         SHU_ReturnResult(ECSI_PanelSave(node->panels[i], field));
     }
 
@@ -2308,7 +2308,7 @@ SHUResult ECSI_LayoutSave(ECSValue *retWorkspaces, usz *retCurrent)
         ECSValue *saved = NULL;
         ECSValue *field = NULL;
 
-        SHU_ReturnResult(ECSValue_TableAddItem(retWorkspaces, &saved));
+        SHU_ReturnResult(ECSValue_ListAddItem(retWorkspaces, &saved));
         SHU_ReturnResult(ECSValue_TableSetField(saved, "name", &field));
         SHU_ReturnResult(ECSValue_SetString(field, workspace->name));
 
@@ -2323,7 +2323,7 @@ SHUResult ECSI_LayoutSave(ECSValue *retWorkspaces, usz *retCurrent)
 
         if (workspace->tree != NULL)
         {
-            SHU_ReturnResult(ECSValue_TableAddItem(field, &field));
+            SHU_ReturnResult(ECSValue_ListAddItem(field, &field));
             SHU_ReturnResult(ECSI_LayoutSaveNode(workspace, workspace->tree, field));
         }
     }

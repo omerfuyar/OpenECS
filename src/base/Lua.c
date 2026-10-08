@@ -134,7 +134,7 @@ static SHUResult ECSI_LuaToValue(int index, ECSValue *value, u32 depth)
     for (usz i = 1; i <= count; i++)
     {
         ECSValue *item = NULL;
-        SHU_ReturnResult(ECSValue_TableAddItem(value, &item));
+        SHU_ReturnResult(ECSValue_ListAddItem(value, &item));
 
         lua_rawgeti(state, index, (lua_Integer)i);
         SHUResult result = ECSI_LuaToValue(-1, item, depth + 1);
@@ -211,13 +211,13 @@ static void ECSI_LuaPushOrderedValue(const ECSValue *value)
         break;
     }
 
-    usz count = ECSValue_GetTableCount(value);
+    usz count = ECSValue_GetListCount(value);
     lua_createtable(state, 0, 2);
     lua_createtable(state, (int)SDL_min(count, (usz)SDL_MAX_SINT32), 1);
 
     for (usz i = 0; i < count; i++)
     {
-        ECSI_LuaPushOrderedValue(ECSValue_GetTableItem(value, i));
+        ECSI_LuaPushOrderedValue(ECSValue_GetListItem(value, i));
         lua_rawseti(state, -2, (lua_Integer)i + 1);
     }
 
@@ -345,12 +345,12 @@ void ECSI_LuaPushValue(const ECSValue *value)
         }
     }
 
-    usz count = ECSValue_GetTableCount(value);
+    usz count = ECSValue_GetListCount(value);
     lua_createtable(state, (int)SDL_min(count, (usz)SDL_MAX_SINT32), 0);
 
     for (usz i = 0; i < count; i++)
     {
-        ECSI_LuaPushValue(ECSValue_GetTableItem(value, i));
+        ECSI_LuaPushValue(ECSValue_GetListItem(value, i));
         lua_rawseti(state, -2, (lua_Integer)i + 1);
     }
 
