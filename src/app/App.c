@@ -132,9 +132,24 @@ static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
         }
     }
 
+    // reports name the file that asks for a plugin
+    bool lastSession = APP.sessionPath != NULL && APP.lastSession != NULL && SDL_strcmp(APP.sessionPath, APP.lastSession) == 0;
+    char *neededBy = NULL;
+    char *userNeededBy = NULL;
+
+    if (SDL_asprintf(&neededBy, "%s '%s'", lastSession ? "the tool's last session" : APP.sessionPath != NULL ? "the session" : "the preset", APP.sessionPath != NULL ? APP.sessionPath : APP.presetPath) < 0)
+    {
+        neededBy = NULL;
+    }
+
+    if (SDL_asprintf(&userNeededBy, "the user's settings '%s'", ECSI_SettingsGetUserPath() != NULL ? ECSI_SettingsGetUserPath() : "") < 0)
+    {
+        userNeededBy = NULL;
+    }
+
     // the preset's plugins first, then the extra plugins that the user's settings name
-    SHUResult result = ECSI_PluginsLoad(directories, directoryCount, ECSValue_GetTableField(preset->file, "depends"));
-    SHUResult extraResult = ECSI_PluginsLoad(directories, directoryCount, ECSI_SettingsGetPlugins());
+    SHUResult result = ECSI_PluginsLoad(directories, directoryCount, ECSValue_GetTableField(preset->file, "depends"), neededBy != NULL ? neededBy : "the preset");
+    SHUResult extraResult = ECSI_PluginsLoad(directories, directoryCount, ECSI_SettingsGetPlugins(), userNeededBy != NULL ? userNeededBy : "the user's settings");
 
     if (result || extraResult)
     {
@@ -142,10 +157,13 @@ static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
     }
 
     // a last session keeps the plugins it was saved with, even when the preset has changed since
-    if (result && APP.sessionPath != NULL)
+    if (result && lastSession)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The plugins are named by the session '%s'. Start with --fresh to use the preset instead.", APP.sessionPath);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The last session keeps the plugins it was saved with. Start with --fresh to use the preset '%s' instead.", APP.presetPath);
     }
+
+    SDL_free(neededBy);
+    SDL_free(userNeededBy);
 
     SDL_free(userData);
     SDL_free(userPlugins);

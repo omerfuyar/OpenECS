@@ -7,6 +7,9 @@
 
 #pragma region Source Only
 
+/// @brief Longest text that names what needs a plugin, in reports.
+#define OPENECS_PLUGINS_REPORT_SIZE 1024
+
 typedef struct ECSI_Plugin
 {
     char *name;
@@ -45,6 +48,7 @@ static struct
     } *plugins; // stb_ds hash map in load order, because nothing is deleted from it; handles point to the plugins
     const char *const *directories;
     usz directoryCount;
+    const char *neededBy; // what names the plugins being loaded, for reports
     const char **loading; // stb_ds array of the plugins being loaded, to find dependency cycles
     struct
     {
@@ -133,6 +137,32 @@ static bool ECSI_PluginVersionMatches(const char *version, const char *minimum)
     return have[0] == need[0] && (have[1] > need[1] || (have[1] == need[1] && have[2] >= need[2]));
 }
 
+/// @brief Names what needs the plugin being looked for: the plugin whose dependencies are loading, or what names the plugins.
+static void ECSI_PluginNeededBy(char *buffer, usz size)
+{
+    if (arrlenu(PLUGINS.loading) > 0)
+    {
+        SDL_snprintf(buffer, size, "plugin '%s'", arrlast(PLUGINS.loading));
+    }
+    else
+    {
+        SDL_strlcpy(buffer, PLUGINS.neededBy, size);
+    }
+}
+
+/// @brief Reports a plugin that no plugin directory holds: what needs it, and every folder that was looked in.
+static void ECSI_ManifestReportMissing(const char *name)
+{
+    char neededBy[OPENECS_PLUGINS_REPORT_SIZE];
+    ECSI_PluginNeededBy(neededBy, sizeof(neededBy));
+    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not found. It is needed by %s.", name, neededBy);
+
+    for (usz i = 0; i < PLUGINS.directoryCount; i++)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "  Looked for '%s%s/manifest.lua'.", PLUGINS.directories[i], name);
+    }
+}
+
 /// @brief Finds a plugin's folder in the plugin directories and reads its manifest.
 static SHUResult ECSI_ManifestFind(const char *name, ECSI_Manifest *retManifest)
 {
@@ -175,7 +205,7 @@ static SHUResult ECSI_ManifestFind(const char *name, ECSI_Manifest *retManifest)
         return SHUResult_Ok;
     }
 
-    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not found in any plugin directory.", name);
+    ECSI_ManifestReportMissing(name);
     return SHUResult_ErrNotFound;
 }
 
@@ -280,7 +310,7 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
         }
     }
 
-    SDL_Log("Plugin '%s' %s loaded.", record->name, record->version);
+    SDL_Log("Plugin '%s' %s loaded from '%s'.", record->name, record->version, manifest->folder);
     return SHUResult_Ok;
 }
 
@@ -318,7 +348,9 @@ static SHUResult ECSI_PluginLoad(const char *name, const char *minimum)
     // the version is checked before the plugin's code runs
     if (minimum != NULL && !ECSI_PluginVersionMatches(version, minimum))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' has version %s, but version %s or a later one with the same major number is needed.", name, version, minimum);
+        char neededBy[OPENECS_PLUGINS_REPORT_SIZE];
+        ECSI_PluginNeededBy(neededBy, sizeof(neededBy));
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' has version %s, but %s needs version %s or a later one with the same major number.", name, version, neededBy, minimum);
         ECSI_ManifestFree(&manifest);
         return SHUResult_ErrBadData;
     }
@@ -378,15 +410,18 @@ static SHUResult ECSI_PluginLoadAll(const ECSValue *plugins, const char *depende
 
 #pragma endregion Source Only
 
-SHUResult ECSI_PluginsLoad(const char *const *directories, usz directoryCount, const ECSValue *plugins)
+SHUResult ECSI_PluginsLoad(const char *const *directories, usz directoryCount, const ECSValue *plugins, const char *neededBy)
 {
     SDL_assert(directories != NULL);
+    SDL_assert(neededBy != NULL);
 
     PLUGINS.directories = directories;
     PLUGINS.directoryCount = directoryCount;
+    PLUGINS.neededBy = neededBy;
     SHUResult result = ECSI_PluginLoadAll(plugins, NULL);
     PLUGINS.directories = NULL;
     PLUGINS.directoryCount = 0;
+    PLUGINS.neededBy = NULL;
     return result;
 }
 

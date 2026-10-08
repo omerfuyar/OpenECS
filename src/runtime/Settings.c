@@ -549,6 +549,11 @@ const ECSValue *ECSI_SettingsGetPlugins(void)
     return SETTINGS.plugins;
 }
 
+const char *ECSI_SettingsGetUserPath(void)
+{
+    return SETTINGS.paths[ECSI_SettingsLayer_User];
+}
+
 SHUResult ECSSetting_Declare(ECSPlugin plugin, const ECSSettingDesc *desc)
 {
     SDL_assert(plugin != NULL);
