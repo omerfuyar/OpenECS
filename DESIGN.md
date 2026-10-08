@@ -82,8 +82,10 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 - Headers are in `include/`, source files in `src/`.
 - `include/OpenECS.h` is the one header that plugins include. It holds every public type and function, with documentation. The build copies only this header to the build's `include/` folder, and plugins are built against that copy, so they never see the core's headers.
-- Each module (2.1) is a pair of files: `include/<Module>.h` with the module's declarations and their documentation, and `src/<Module>.c` with the definitions. `src/main.c` holds start-up, the main loop and shutdown.
-- A module includes only the modules listed before it in 2.1, so modules never depend on each other in a cycle.
+- Each module (2.1) is a pair of files in its group's folder: `include/<group>/<Module>.h` with the module's declarations and their documentation, and `src/<group>/<Module>.c` with the definitions. Includes name the folder: `#include "base/Values.h"`.
+- `src/main.c` only reads the command line and runs the App module.
+- A module includes only the modules listed before it in 2.1, so modules never depend on each other in a cycle. So a group includes only its own folder and the groups before it.
+- A source file includes its own header first, then the core's other headers sorted by path, then the dependencies' headers.
 - Headers hold declarations only: types, function declarations and macros. Function and variable definitions, including `static inline` functions, are in source files.
 - Headers start with `#pragma once` and group their contents with `#pragma region`. A source file keeps its internal elements in a `Source Only` region.
 - Functions used by only one source file are `static`.
@@ -108,21 +110,23 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 ### 2.1 Modules
 
-In order: a module includes only the modules above it (1.5).
+In order: a module includes only the modules above it (1.5). The modules are in four groups, each in its own folder.
 
-| Module   | Job                                                                                                                 |
-| -------- | ------------------------------------------------------------------------------------------------------------------- |
-| Values   | Generic values (10.3).                                                                                              |
-| Lua      | The Lua state. Reads data files (11.2) and runs all Lua code in protected calls.                                    |
-| Plugins  | Finding, ordering and loading plugins. Logging for plugins.                                                         |
-| Settings | Declarations, layers, explanations.                                                                                 |
-| Events   | Core and plugin events, the event queue, timers.                                                                    |
-| Services | Function registry, signatures, calls between C and Lua. The only module that calls libffi.                          |
-| Panels   | Panel types, panels, and the pixels each panel draws.                                                               |
-| Layout   | OS windows and their renderers, layout trees, workspaces, hit testing, docking, the core's own interface. The only module that calls Clay. |
-| Input    | SDL's input events, focus, pointer routing, key dispatch, text input, the clipboard, dialogs.                       |
-| Session  | Reading presets and sessions, applying them, writing them.                                                          |
-| Bindings | The `ecs` table: the plugin interface for Lua plugins (11.3).                                                       |
+| Group     | Module   | Job                                                                                                                 |
+| --------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
+| base      | Log      | Where SDL's log goes, and how its lines look (14.4).                                                                |
+|           | Values   | Generic values (10.3).                                                                                              |
+|           | Lua      | The Lua state. Reads data files (11.2) and runs all Lua code in protected calls.                                    |
+| runtime   | Plugins  | Finding, ordering and loading plugins. Logging for plugins.                                                         |
+|           | Settings | Declarations, layers, explanations.                                                                                 |
+|           | Events   | Core and plugin events, the event queue, timers, worker threads.                                                    |
+|           | Services | Function registry, signatures, calls between C and Lua. The only module that calls libffi.                          |
+| interface | Panels   | Panel types, panels, and the pixels each panel draws.                                                               |
+|           | Layout   | OS windows and their renderers, layout trees, workspaces, hit testing, docking, the core's own interface. The only module that calls Clay. |
+|           | Input    | SDL's input events, focus, pointer routing, key dispatch, text input, the clipboard, dialogs.                       |
+| app       | Session  | Reading presets and sessions, applying them, writing them.                                                          |
+|           | Bindings | The `ecs` table: the plugin interface for Lua plugins (11.3).                                                       |
+|           | App      | Start-up, the main loop and shutdown (2.3, 3.1, 2.4).                                                               |
 
 ### 2.2 The boundary
 
