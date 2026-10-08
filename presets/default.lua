@@ -11,7 +11,7 @@ return {
           { size = 220, panels = { { type = "demo.color" } } },
           { share = 1, split = "vertical",
             { share = 2, panels = { { type = "demo.gradient" }, { type = "demo.checker" } } },
-            { share = 1, panels = { { type = "demo.color" }, { type = "demo.missing" } } },
+            { share = 1, panels = { { type = "demo.blink" }, { type = "demo.color" }, { type = "demo.missing" } } },
           },
         },
       },

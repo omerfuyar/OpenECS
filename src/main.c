@@ -1,3 +1,4 @@
+#include "Events.h"
 #include "Input.h"
 #include "Layout.h"
 #include "Lua.h"
@@ -132,14 +133,14 @@ int main(int argc, char **argv)
     ECSI_LoadPlugins(&preset);
     ECSI_CheckStart(ECSI_SessionApply(presetPath), "building the layout");
 
-    // event-driven loop: it waits for events, unless a frame is needed
+    // event-driven loop: it waits for input or the next timer, unless a frame is needed
     bool running = true;
 
     while (running)
     {
         SDL_Event event;
 
-        if (SDL_WaitEventTimeout(&event, ECSI_LayoutWantsFrame() ? 0 : -1))
+        if (SDL_WaitEventTimeout(&event, ECSI_LayoutWantsFrame() ? 0 : ECSI_EventsGetTimerWait()))
         {
             do
             {
@@ -147,7 +148,14 @@ int main(int argc, char **argv)
             } while (running && SDL_PollEvent(&event));
         }
 
-        if (running && ECSI_LayoutWantsFrame())
+        if (!running)
+        {
+            break;
+        }
+
+        ECSI_EventsRunTimers();
+
+        if (ECSI_LayoutWantsFrame())
         {
             ECSI_LayoutRender(SDL_GetTicksNS());
         }
@@ -156,6 +164,7 @@ int main(int argc, char **argv)
     // panels are destroyed before their types, and their types before their plugins are unloaded
     ECSI_LayoutTerminate();
     ECSI_PanelsTerminate();
+    ECSI_EventsTerminate();
     ECSI_PluginsUnload();
     ECSI_SessionFreeInfo(&preset);
     SDL_free(presetPath);

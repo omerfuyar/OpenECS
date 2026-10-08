@@ -1,5 +1,6 @@
 #include "Panels.h"
 
+#include "Events.h"
 #include "Plugins.h"
 
 #include "SDL3/SDL.h"
@@ -113,6 +114,7 @@ void ECSI_PanelDestroy(ECSPanel *panel)
     SDL_assert(panel != NULL && *panel != NULL);
 
     ECSPanel target = *panel;
+    ECSI_EventsStopTimersOf(target);
 
     if (target->type != NULL)
     {
@@ -278,6 +280,14 @@ SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc)
     shput(PANELS.types, name, type);
 
     return SHUResult_Ok;
+}
+
+SHUResult ECSPanel_StartTimer(ECSPanel panel, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
+{
+    SDL_assert(panel != NULL);
+    SDL_assert(panel->type != NULL); // placeholders run no code
+
+    return ECSI_EventsStartTimer(panel->type->plugin, panel, retTimer, seconds, repeat, function, data);
 }
 
 void ECSPanel_Redraw(ECSPanel panel)

@@ -1,4 +1,4 @@
-// Example panels for trying out the layout: a colour that changes on click, an animated gradient and a checkerboard.
+// Example panels for trying out the layout: a colour that changes on click, an animated gradient, a checkerboard and a colour that blinks on a timer.
 
 #include "OpenECS.h"
 
@@ -19,6 +19,8 @@ typedef struct DemoPanel
     f32 pointerY;
     i32 width;
     i32 height;
+    ECSTimer timer;
+    u32 ticks;
 } DemoPanel;
 
 static u32 *DemoRow(ECSSurface *surface, i32 y)
@@ -148,6 +150,48 @@ static void DemoCheckerDraw(void *state, ECSSurface *surface, f64 seconds)
 
 #pragma endregion Checker
 
+#pragma region Blink
+
+static void DemoBlinkTick(void *data)
+{
+    DemoPanel *demo = data;
+    demo->ticks++;
+    demo->color = (demo->color + 1) % (sizeof(DEMO_COLORS) / sizeof(*DEMO_COLORS));
+
+    char title[64];
+    snprintf(title, sizeof(title), "Blink %u", demo->ticks);
+    ECSPanel_SetTitle(demo->panel, title);
+    ECSPanel_Redraw(demo->panel);
+}
+
+static SHUResult DemoBlinkCreate(ECSPanel panel, const ECSValue *savedState, u32 version, void **retState)
+{
+    SHU_ReturnResult(DemoCreate(panel, savedState, version, retState));
+
+    // the timer belongs to the panel, so it stops when the panel closes
+    DemoPanel *demo = *retState;
+    SHU_ReturnResult(ECSPanel_StartTimer(panel, &demo->timer, 0.5, true, DemoBlinkTick, demo), DemoDestroy(demo););
+    return SHUResult_Ok;
+}
+
+static void DemoBlinkDraw(void *state, ECSSurface *surface, f64 seconds)
+{
+    (void)seconds;
+    DemoPanel *demo = state;
+
+    for (i32 y = 0; y < surface->height; y++)
+    {
+        u32 *row = DemoRow(surface, y);
+
+        for (i32 x = 0; x < surface->width; x++)
+        {
+            row[x] = DEMO_COLORS[demo->color];
+        }
+    }
+}
+
+#pragma endregion Blink
+
 #pragma endregion Source Only
 
 SHUResult ECSPlugin_Init(ECSPlugin plugin)
@@ -178,10 +222,19 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
         .Draw = DemoCheckerDraw,
     };
 
+    ECSPanelTypeDesc blink = {
+        .name = "demo.blink",
+        .title = "Blink",
+        .Create = DemoBlinkCreate,
+        .Destroy = DemoDestroy,
+        .Draw = DemoBlinkDraw,
+    };
+
     SHU_ReturnResult(ECSPanelType_Register(plugin, &color));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &gradient));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &checker));
+    SHU_ReturnResult(ECSPanelType_Register(plugin, &blink));
 
-    ECS_Log(plugin, ECSLogLevel_Info, "Registered 3 panel types.");
+    ECS_Log(plugin, ECSLogLevel_Info, "Registered 4 panel types.");
     return SHUResult_Ok;
 }
