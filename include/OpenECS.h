@@ -53,6 +53,10 @@ typedef struct ECSI_Value ECSValue;
 /// @param value What the event carries; nil if it carries nothing. Valid only during the call.
 typedef void (*ECSEventFunction)(void *data, const char *name, const ECSValue *value);
 
+/// @brief Destroys the object of a handle when Lua no longer uses the handle.
+/// @param object The object.
+typedef void (*ECSHandleDestroyFunction)(void *object);
+
 /// @brief Type of a value.
 typedef enum ECSValueType
 {
@@ -160,6 +164,40 @@ typedef struct ECSPanelEvent
     };
 } ECSPanelEvent;
 
+/// @brief Creates a panel's state. Required.
+/// @param panel The new panel.
+/// @param savedState The state the session saved, or NULL for a new panel.
+/// @param version The version the state was saved with.
+/// @param retState The panel's state, which the other functions of the type get.
+/// @return SHUResult_Ok, or an error; the panel then shows the error.
+typedef SHUResult (*ECSPanelCreateFunction)(ECSPanel panel, const ECSValue *savedState, u32 version, void **retState);
+
+/// @brief Destroys a panel's state. Required.
+/// @param state The panel's state.
+typedef void (*ECSPanelDestroyFunction)(void *state);
+
+/// @brief Draws a panel into its surface.
+/// @param state The panel's state.
+/// @param surface The surface, valid only during the call.
+/// @param seconds Time since the panel was last drawn.
+typedef void (*ECSPanelDrawFunction)(void *state, ECSSurface *surface, f64 seconds);
+
+/// @brief Tells a panel about an event.
+/// @param state The panel's state.
+/// @param event The event, valid only during the call.
+typedef void (*ECSPanelEventFunction)(void *state, const ECSPanelEvent *event);
+
+/// @brief Saves a panel's state into the session.
+/// @param state The panel's state.
+/// @param retState The value to fill; it starts as nil.
+/// @return SHUResult_Ok, or an error.
+typedef SHUResult (*ECSPanelSaveStateFunction)(void *state, ECSValue *retState);
+
+/// @brief Saves a panel's unsaved work.
+/// @param state The panel's state.
+/// @return SHUResult_Ok, or an error, which cancels closing the panel.
+typedef SHUResult (*ECSPanelSaveFunction)(void *state);
+
 /// @brief Describes a panel type. Passed to ECSPanelType_Register.
 typedef struct ECSPanelTypeDesc
 {
@@ -172,14 +210,14 @@ typedef struct ECSPanelTypeDesc
     f32 minHeight;          // in layout units, 0 for none
 
     // required
-    SHUResult (*Create)(ECSPanel panel, const ECSValue *savedState, u32 version, void **retState);
-    void (*Destroy)(void *state);
+    ECSPanelCreateFunction Create;
+    ECSPanelDestroyFunction Destroy;
 
     // optional, NULL if unused
-    void (*Draw)(void *state, ECSSurface *surface, f64 seconds);
-    void (*Event)(void *state, const ECSPanelEvent *event);
-    SHUResult (*SaveState)(void *state, ECSValue *retState);
-    SHUResult (*Save)(void *state); // saves unsaved work
+    ECSPanelDrawFunction Draw;
+    ECSPanelEventFunction Event;
+    ECSPanelSaveStateFunction SaveState;
+    ECSPanelSaveFunction Save;
 } ECSPanelTypeDesc;
 
 /// @brief Type of a setting's value.
@@ -195,6 +233,10 @@ typedef enum ECSSettingType
     ECSSettingType_Table,
 } ECSSettingType;
 
+/// @brief Tells a setting's owner that the value in effect changed. It runs after the queued events, outside other callbacks.
+/// @param data The data given with the setting.
+typedef void (*ECSSettingChangedFunction)(void *data);
+
 /// @brief Describes a setting. Passed to ECSSetting_Declare.
 typedef struct ECSSettingDesc
 {
@@ -209,19 +251,30 @@ typedef struct ECSSettingDesc
     const char *const *choices; // choice settings: the allowed strings, ending with NULL
 
     // optional, NULL if unused
-    void (*Changed)(void *data); // called after the value in effect changes, outside other callbacks
-    void *data;                  // passed to Changed
+    ECSSettingChangedFunction Changed;
+    void *data; // passed to Changed
 } ECSSettingDesc;
+
+/// @brief Saves a plugin's own state when the session is saved.
+/// @param data The data given with the state.
+/// @param retState The value to fill; it starts as nil.
+/// @return SHUResult_Ok, or an error.
+typedef SHUResult (*ECSPluginStateSaveFunction)(void *data, ECSValue *retState);
+
+/// @brief Restores a plugin's own state when a session that holds it is applied, before panels are created.
+/// @param data The data given with the state.
+/// @param state The saved state.
+/// @param version The version the state was saved with.
+/// @return SHUResult_Ok, or an error.
+typedef SHUResult (*ECSPluginStateRestoreFunction)(void *data, const ECSValue *state, u32 version);
 
 /// @brief Describes how a plugin saves its own state into the session, apart from its panels' state. Passed to ECSPlugin_RegisterState.
 typedef struct ECSPluginStateDesc
 {
     u32 version; // version of the state the plugin saves now; Restore gets the version the state was saved with
 
-    // called when the session is saved; fill retState, which starts as nil
-    SHUResult (*Save)(void *data, ECSValue *retState);
-    // called when a session that holds the plugin's state is applied, before panels are created
-    SHUResult (*Restore)(void *data, const ECSValue *state, u32 version);
+    ECSPluginStateSaveFunction Save;
+    ECSPluginStateRestoreFunction Restore;
     void *data; // passed to the functions
 } ECSPluginStateDesc;
 
@@ -240,6 +293,12 @@ typedef struct ECSDialogFilter
     const char *pattern; // extensions without dots, separated by semicolons, such as "png;jpg"; "*" for every file
 } ECSDialogFilter;
 
+/// @brief Gets the user's choice in a file dialog, on the main thread.
+/// @param data The data given with the dialog.
+/// @param files The chosen paths, valid during the call, or NULL if the user cancelled or the dialog failed.
+/// @param count Number of paths.
+typedef void (*ECSDialogDoneFunction)(void *data, const char *const *files, usz count);
+
 /// @brief Describes a file dialog. Passed to ECSDialog_Show.
 typedef struct ECSDialogDesc
 {
@@ -249,8 +308,7 @@ typedef struct ECSDialogDesc
     const char *location; // the folder or file to start in, or NULL
     bool many;            // open dialogs: the user may choose more than one
 
-    /// @brief Called on the main thread with the user's choice: the paths, valid during the call, and their count. files is NULL if the user cancelled or the dialog failed.
-    void (*Done)(void *data, const char *const *files, usz count);
+    ECSDialogDoneFunction Done;
     void *data; // passed to Done
 } ECSDialogDesc;
 
@@ -467,7 +525,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Explain(const char *name, ECSValue *r
 /// @param name Name of the type. It must start with the plugin's name and a dot, such as "audio.sound".
 /// @param Destroy Called with the object when Lua no longer uses its handle, or NULL. A provider that keeps using the object counts references.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the name is invalid or taken, or SHUResult_ErrAllocation.
-OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, void (*Destroy)(void *object));
+OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, ECSHandleDestroyFunction Destroy);
 
 /// @brief Binds a key to a function for one of the plugin's panel types: the key works while a panel of that type has focus. Main thread only.
 /// @param plugin The plugin. It owns the panel type and the setting.

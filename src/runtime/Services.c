@@ -34,13 +34,16 @@ static const char *const ECSI_PARAMETER_TYPE_NAMES[ECSI_ParameterType_Count] = {
 /// @brief Prefix of the names of handle types' metatables.
 #define OPENECS_HANDLE_METATABLE "ecs.handle:"
 
+/// @brief A bound function that takes the focused panel: void(handle<ecs.panel>).
+typedef void (*ECSI_PanelFunction)(ECSPanel panel);
+
 /// @brief A registered type of handles.
 typedef struct ECSI_HandleType
 {
     char *name;
     char *metatable;  // name of its metatable in the registry
     ECSPlugin plugin; // NULL for the core
-    void (*Destroy)(void *object);
+    ECSHandleDestroyFunction Destroy;
 } ECSI_HandleType;
 
 /// @brief A Lua handle: the userdata that stands for an object.
@@ -590,7 +593,7 @@ static void ECSI_ServicesDestroyLuaObject(void *object)
     SDL_free(luaObject);
 }
 
-static SHUResult ECSI_ServicesRegisterHandleType(ECSPlugin plugin, const char *name, void (*Destroy)(void *object))
+static SHUResult ECSI_ServicesRegisterHandleType(ECSPlugin plugin, const char *name, ECSHandleDestroyFunction Destroy)
 {
     if (ECSI_ServicesFindHandleType(name) != NULL)
     {
@@ -1191,13 +1194,13 @@ SHUResult ECSI_ServicesCallBound(const char *name, ECSPanel focus)
     // a C function and a Lua function's closure are called the same way
     if (SDL_strcmp(function->signature.text, "void()") == 0)
     {
-        ((void (*)(void))function->pointer)();
+        function->pointer();
         return SHUResult_Ok;
     }
 
     if (SDL_strcmp(function->signature.text, "void(handle<ecs.panel>)") == 0)
     {
-        ((void (*)(ECSPanel))function->pointer)(focus);
+        ((ECSI_PanelFunction)function->pointer)(focus);
         return SHUResult_Ok;
     }
 
@@ -1275,7 +1278,7 @@ void ECSI_ServicesPushLuaHandleValue(ECSPlugin plugin, const char *name, int ind
     lua_rawgeti(state, LUA_REGISTRYINDEX, object->value);
 }
 
-SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, void (*Destroy)(void *object))
+SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, ECSHandleDestroyFunction Destroy)
 {
     SDL_assert(plugin != NULL);
     SDL_assert(name != NULL);

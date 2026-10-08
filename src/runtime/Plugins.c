@@ -10,12 +10,18 @@
 /// @brief Longest text that names what needs a plugin, in reports.
 #define OPENECS_PLUGINS_REPORT_SIZE 1024
 
+/// @brief A native plugin's ECSPlugin_Init.
+typedef SHUResult (*ECSI_PluginInitFunction)(ECSPlugin plugin);
+
+/// @brief A native plugin's ECSPlugin_Shutdown.
+typedef void (*ECSI_PluginShutdownFunction)(ECSPlugin plugin);
+
 typedef struct ECSI_Plugin
 {
     char *name;
     char *version;
     SDL_SharedObject *library;          // NULL if the plugin has no native code
-    void (*Shutdown)(ECSPlugin plugin); // todo make all function pointers a typedef
+    ECSI_PluginShutdownFunction Shutdown;
     bool failed;                        // its ECSPlugin_Init failed; plugins that depend on it are skipped
     char **dependencies;                // stb_ds array of the names its manifest depends on
     ECSPluginStateDesc state;           // Save is NULL if the plugin saves no state of its own
@@ -231,7 +237,7 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
 
     ECSI_Plugin plugin = {.name = SDL_strdup(name), .version = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "version"), "0.0.0"))};
     ECSI_Plugin *record = SDL_malloc(sizeof(ECSI_Plugin));
-    SHUResult (*Init)(ECSPlugin plugin) = NULL;
+    ECSI_PluginInitFunction Init = NULL;
 
     ECSI_ValueTableForEachField(ECSValue_GetTableField(file, "depends"), ECSI_PluginAddDependency, &plugin);
 
@@ -260,8 +266,8 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
             return SHUResult_ErrFile;
         }
 
-        Init = (SHUResult (*)(ECSPlugin))SDL_LoadFunction(plugin.library, "ECSPlugin_Init");
-        plugin.Shutdown = (void (*)(ECSPlugin))SDL_LoadFunction(plugin.library, "ECSPlugin_Shutdown");
+        Init = (ECSI_PluginInitFunction)SDL_LoadFunction(plugin.library, "ECSPlugin_Init");
+        plugin.Shutdown = (ECSI_PluginShutdownFunction)SDL_LoadFunction(plugin.library, "ECSPlugin_Shutdown");
 
         if (Init == NULL)
         {

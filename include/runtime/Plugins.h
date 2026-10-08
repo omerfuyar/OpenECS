@@ -6,15 +6,21 @@
 
 #pragma region Declarations
 
+/// @brief Runs a plugin's Lua code.
+/// @param plugin The plugin.
+/// @param path Path of its Lua file.
+/// @return SHUResult_Ok, or an error to mark the plugin failed.
+typedef SHUResult (*ECSI_PluginStartLuaFunction)(ECSPlugin plugin, const char *path);
+
+/// @brief Removes everything a failed plugin registered: panel types, settings, functions and timers.
+/// @param plugin The plugin.
+typedef void (*ECSI_PluginRemoveFunction)(ECSPlugin plugin);
+
 /// @brief Functions of later modules that loading plugins needs. The App module provides them, because modules include only the modules before them.
 typedef struct ECSI_PluginHooks
 {
-    /// @brief Runs a plugin's Lua code.
-    /// @return SHUResult_Ok, or an error to mark the plugin failed.
-    SHUResult (*StartLua)(ECSPlugin plugin, const char *path);
-
-    /// @brief Removes everything a failed plugin registered: panel types, settings, functions and timers.
-    void (*RemoveRegistrations)(ECSPlugin plugin);
+    ECSI_PluginStartLuaFunction StartLua;
+    ECSI_PluginRemoveFunction RemoveRegistrations;
 } ECSI_PluginHooks;
 
 /// @brief Sets the functions that loading plugins needs. Call it before ECSI_PluginsLoad.

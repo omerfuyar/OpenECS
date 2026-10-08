@@ -149,7 +149,7 @@ static struct
 typedef struct ECSI_Dialog
 {
     ECSPlugin plugin;
-    void (*Done)(void *data, const char *const *files, usz count);
+    ECSDialogDoneFunction Done;
     void *data;
     SDL_DialogFileFilter *filters; // stb_ds array
     char **texts;                  // stb_ds array of the copied texts: filter names and patterns, and the location
@@ -1227,11 +1227,11 @@ ECSI_WorkspaceFunctions(1)
         "ecs.move_to_workspace_" #number, ECSI_InputMoveToWorkspace##number, "Move the panel to workspace " #number \
     }
 
-    /// @brief The core's bindable functions: name, function and description.
-    static const struct
+/// @brief The core's bindable functions: name, function and description.
+static const struct
 {
     const char *name;
-    void (*Function)(void);
+    ECSFunction Function;
     const char *description;
 } ECSI_CORE_FUNCTIONS[] = {
     {"ecs.focus_left", ECSI_InputFocusLeft, "Focus the panel on the left"},
@@ -1453,7 +1453,7 @@ SHUResult ECSI_InputInitialize(void)
 
     for (usz i = 0; i < SDL_arraysize(ECSI_CORE_FUNCTIONS); i++)
     {
-        SHU_ReturnResult(ECSI_ServicesRegisterCore(ECSI_CORE_FUNCTIONS[i].name, (ECSFunction)ECSI_CORE_FUNCTIONS[i].Function, "void()", ECSI_CORE_FUNCTIONS[i].description));
+        SHU_ReturnResult(ECSI_ServicesRegisterCore(ECSI_CORE_FUNCTIONS[i].name, ECSI_CORE_FUNCTIONS[i].Function, "void()", ECSI_CORE_FUNCTIONS[i].description));
     }
 
     INPUT.prefixDirty = true;
