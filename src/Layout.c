@@ -22,6 +22,14 @@
 /// @brief Size of a grip.
 #define OPENECS_GRIP_WIDTH 48.0f
 #define OPENECS_GRIP_HEIGHT 6.0f
+/// @brief Distance the pointer moves from a press on a tab or grip before the panel is dragged.
+#define OPENECS_DRAG_THRESHOLD 6.0f
+/// @brief Distance from an edge of the OS window within which a dragged panel docks along that edge.
+#define OPENECS_DOCK_EDGE 16.0f
+/// @brief Deepest edge band of a panel in which a dragged panel splits it.
+#define OPENECS_SPLIT_DEPTH 80.0f
+/// @brief Width of the mark between tabs where a dragged panel is inserted.
+#define OPENECS_TAB_GAP_WIDTH 3.0f
 /// @brief Smallest size a divider drag leaves to a child.
 #define OPENECS_MIN_CHILD_SIZE 32.0f
 
@@ -35,6 +43,7 @@
 #define OPENECS_COLOR_ACCENT ((Clay_Color){76, 139, 245, 255})
 #define OPENECS_COLOR_PLACEHOLDER ((Clay_Color){44, 30, 34, 255})
 #define OPENECS_COLOR_OVERLAY ((Clay_Color){28, 30, 34, 245})
+#define OPENECS_COLOR_DROP ((Clay_Color){76, 139, 245, 70})
 
 /// @brief Type of a layout node.
 typedef enum ECSI_NodeType
@@ -62,6 +71,30 @@ struct ECSI_Node
     ECSPanel *panels; // stb_ds array
     usz shown;        // index of the panel shown
 };
+
+/// @brief Where a moved panel lands.
+typedef enum ECSI_Zone
+{
+    ECSI_Zone_None = 0,
+    ECSI_Zone_Center, // group with the target
+    ECSI_Zone_Tabs,   // insert between the target's tabs
+    ECSI_Zone_Left,   // split the target toward a side
+    ECSI_Zone_Right,
+    ECSI_Zone_Top,
+    ECSI_Zone_Bottom,
+    ECSI_Zone_WindowLeft, // dock along a whole edge of the OS window
+    ECSI_Zone_WindowRight,
+    ECSI_Zone_WindowTop,
+    ECSI_Zone_WindowBottom,
+} ECSI_Zone;
+
+/// @brief A place to drop a panel.
+typedef struct ECSI_Drop
+{
+    ECSI_Zone zone;
+    ECSI_Node *group; // the target group; NULL for the window's edges
+    usz index;        // tabs: the gap between tabs, starting at 0
+} ECSI_Drop;
 
 /// @brief A named arrangement of panels.
 typedef struct ECSI_Workspace
@@ -103,6 +136,13 @@ static struct
     ECSI_Node *gripGroup;   // lone group whose grip is shown, or NULL
     ECSI_Node *dragSplit;   // split whose divider is dragged, or NULL
     usz dragDivider;        // the dragged divider follows this child
+
+    ECSPanel dragPanel;     // panel pressed on its tab or grip, or NULL; it is dragged once the pointer moves far enough
+    bool dragging;
+    f32 dragStartX;
+    f32 dragStartY;
+    ECSI_Drop drop;         // where the dragged panel lands now
+    SDL_FRect dropRect;     // the highlight of the drop place
 } LAYOUT = {0};
 
 /// @brief Width of the key column in the list of prefix keys.
@@ -450,8 +490,255 @@ static void ECSI_LayoutTidy(ECSI_Workspace *workspace)
 
     LAYOUT.gripGroup = NULL;
     LAYOUT.dragSplit = NULL;
+    LAYOUT.dragPanel = NULL;
+    LAYOUT.dragging = false;
     LAYOUT.frameNeeded = true;
 }
+
+#pragma region Moving
+
+/// @brief Puts a node in another node's place in the tree. The other node keeps its children and sizes.
+static void ECSI_LayoutReplaceNode(ECSI_Workspace *workspace, ECSI_Node *old, ECSI_Node *node)
+{
+    ECSI_Node *parent = old->parent;
+    node->parent = parent;
+    node->fixedSize = old->fixedSize;
+    node->share = old->share;
+
+    if (parent == NULL)
+    {
+        workspace->tree = node;
+        return;
+    }
+
+    for (usz i = 0; i < arrlenu(parent->children); i++)
+    {
+        if (parent->children[i] == old)
+        {
+            parent->children[i] = node;
+        }
+    }
+}
+
+/// @brief Wraps a node in a new split with a new node beside it. The split takes the node's place.
+/// @param first true to put the new node first: left or top.
+static void ECSI_LayoutWrap(ECSI_Workspace *workspace, ECSI_Node *split, ECSI_Node *node, ECSI_Node *added, bool first, f32 nodeShare, f32 addedShare)
+{
+    ECSI_LayoutReplaceNode(workspace, node, split);
+    node->fixedSize = 0.0f;
+    node->share = nodeShare;
+    added->fixedSize = 0.0f;
+    added->share = addedShare;
+    node->parent = split;
+    added->parent = split;
+    arrput(split->children, first ? added : node);
+    arrput(split->children, first ? node : added);
+}
+
+/// @brief Moves a panel to a drop place, then tidies the tree. The panel gets the focus.
+static void ECSI_LayoutMove(ECSI_Workspace *workspace, ECSPanel panel, const ECSI_Drop *drop)
+{
+    ECSI_Node *source = ECSI_LayoutFindGroup(workspace->tree, panel);
+    ECSI_Node *target = drop->group;
+    bool side = drop->zone >= ECSI_Zone_Left && drop->zone <= ECSI_Zone_Bottom;
+    bool edge = drop->zone >= ECSI_Zone_WindowLeft;
+
+    // a panel cannot join its own group again, or split away from a group that holds only itself
+    if (source == NULL || drop->zone == ECSI_Zone_None || (source == target && (drop->zone == ECSI_Zone_Center || (side && arrlenu(source->panels) == 1))))
+    {
+        return;
+    }
+
+    // the new nodes are made first, so a failed allocation changes nothing
+    ECSI_Node *group = NULL;
+    ECSI_Node *split = NULL;
+
+    if (side || edge)
+    {
+        bool vertical = drop->zone == ECSI_Zone_Top || drop->zone == ECSI_Zone_Bottom || drop->zone == ECSI_Zone_WindowTop || drop->zone == ECSI_Zone_WindowBottom;
+
+        if (ECSI_LayoutGroupCreate(&group) || ECSI_LayoutSplitCreate(&split, vertical))
+        {
+            SDL_free(group);
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Out of memory while moving a panel.");
+            return;
+        }
+    }
+
+    usz index = 0;
+
+    while (source->panels[index] != panel)
+    {
+        index++;
+    }
+
+    arrdel(source->panels, index);
+    source->shown = arrlenu(source->panels) == 0 ? 0 : SDL_min(source->shown, arrlenu(source->panels) - 1);
+    bool first = drop->zone == ECSI_Zone_Left || drop->zone == ECSI_Zone_Top || drop->zone == ECSI_Zone_WindowLeft || drop->zone == ECSI_Zone_WindowTop;
+
+    if (drop->zone == ECSI_Zone_Center || drop->zone == ECSI_Zone_Tabs)
+    {
+        // the gap was counted with the panel still in its own group
+        usz gap = drop->zone == ECSI_Zone_Center ? arrlenu(target->panels) : drop->index;
+        gap = source == target && index < gap ? gap - 1 : gap;
+        gap = SDL_min(gap, arrlenu(target->panels));
+        // arrins of stb_ds does not compile cleanly with sign warnings, so the gap is opened by hand
+        arrput(target->panels, panel);
+        SDL_memmove(&target->panels[gap + 1], &target->panels[gap], (arrlenu(target->panels) - 1 - gap) * sizeof(ECSPanel));
+        target->panels[gap] = panel;
+        target->shown = gap;
+    }
+    else if (side)
+    {
+        // the target and the panel share the target's place
+        arrput(group->panels, panel);
+        ECSI_LayoutWrap(workspace, split, target, group, first, 1.0f, 1.0f);
+    }
+    else
+    {
+        // the panel docks along the whole edge, with a quarter of the window
+        arrput(group->panels, panel);
+        ECSI_LayoutWrap(workspace, split, workspace->tree, group, first, 3.0f, 1.0f);
+    }
+
+    workspace->maximized = NULL;
+    workspace->focus = panel;
+    ECSI_LayoutTidy(workspace);
+}
+
+typedef struct ECSI_GroupHit
+{
+    f32 x;
+    f32 y;
+    ECSI_Node *group;
+} ECSI_GroupHit;
+
+static void ECSI_LayoutFindGroupAt(ECSI_Node *group, void *userData)
+{
+    ECSI_GroupHit *hit = userData;
+
+    if (ECSI_LayoutContains(hit->x, hit->y, group->x, group->y, group->width, group->height))
+    {
+        hit->group = group;
+    }
+}
+
+/// @brief Finds the gap between a group's tabs nearest to a point, from the tabs drawn in the last frame.
+static ECSI_Drop ECSI_LayoutFindTabGap(ECSI_Node *group, f32 x, SDL_FRect *retRect)
+{
+    ECSI_Drop drop = {.zone = ECSI_Zone_Tabs, .group = group, .index = 0};
+    f32 gapX = group->x;
+    Clay_SetCurrentContext(LAYOUT.clay);
+
+    for (usz i = 0; i < arrlenu(LAYOUT.tabs); i++)
+    {
+        Clay_ElementData tab = Clay_GetElementData(CLAY_IDI("Tab", (u32)i));
+
+        if (LAYOUT.tabs[i].group != group || !tab.found)
+        {
+            continue;
+        }
+
+        if (x > tab.boundingBox.x + tab.boundingBox.width / 2.0f)
+        {
+            drop.index = LAYOUT.tabs[i].index + 1;
+            gapX = tab.boundingBox.x + tab.boundingBox.width;
+        }
+        else if (LAYOUT.tabs[i].index == drop.index)
+        {
+            gapX = tab.boundingBox.x;
+        }
+    }
+
+    *retRect = (SDL_FRect){gapX - OPENECS_TAB_GAP_WIDTH / 2.0f, group->y, OPENECS_TAB_GAP_WIDTH, OPENECS_TAB_ROW_HEIGHT};
+    return drop;
+}
+
+/// @brief Finds where a panel dragged to a point lands, and the rectangle to highlight. The checks follow DESIGN 6.7.
+static ECSI_Drop ECSI_LayoutFindDrop(f32 x, f32 y, SDL_FRect *retRect)
+{
+    f32 width = LAYOUT.width;
+    f32 height = LAYOUT.height;
+    *retRect = (SDL_FRect){0};
+
+    // outside the window, the panel would pop out; pop-out windows are not implemented yet
+    if (!ECSI_LayoutContains(x, y, 0.0f, 0.0f, width, height))
+    {
+        return (ECSI_Drop){0};
+    }
+
+    if (x < OPENECS_DOCK_EDGE || x >= width - OPENECS_DOCK_EDGE || y < OPENECS_DOCK_EDGE || y >= height - OPENECS_DOCK_EDGE)
+    {
+        ECSI_Zone zone = x < OPENECS_DOCK_EDGE            ? ECSI_Zone_WindowLeft
+                         : x >= width - OPENECS_DOCK_EDGE ? ECSI_Zone_WindowRight
+                         : y < OPENECS_DOCK_EDGE          ? ECSI_Zone_WindowTop
+                                                          : ECSI_Zone_WindowBottom;
+
+        *retRect = zone == ECSI_Zone_WindowLeft    ? (SDL_FRect){0.0f, 0.0f, width / 4.0f, height}
+                   : zone == ECSI_Zone_WindowRight ? (SDL_FRect){width * 0.75f, 0.0f, width / 4.0f, height}
+                   : zone == ECSI_Zone_WindowTop   ? (SDL_FRect){0.0f, 0.0f, width, height / 4.0f}
+                                                   : (SDL_FRect){0.0f, height * 0.75f, width, height / 4.0f};
+        return (ECSI_Drop){.zone = zone};
+    }
+
+    ECSI_GroupHit hit = {x, y, NULL};
+    ECSI_LayoutForEachGroup(ECSI_LayoutFindGroupAt, &hit);
+    ECSI_Node *group = hit.group;
+
+    if (group == NULL || arrlenu(group->panels) == 0)
+    {
+        return (ECSI_Drop){0};
+    }
+
+    if (arrlenu(group->panels) >= 2 && y < group->y + OPENECS_TAB_ROW_HEIGHT)
+    {
+        return ECSI_LayoutFindTabGap(group, x, retRect);
+    }
+
+    // edge bands are a quarter of the panel deep at most, so the centre keeps at least half of it
+    ECSPanel panel = group->panels[group->shown];
+    f32 bandX = SDL_min(panel->width / 4.0f, OPENECS_SPLIT_DEPTH);
+    f32 bandY = SDL_min(panel->height / 4.0f, OPENECS_SPLIT_DEPTH);
+    const f32 distances[] = {
+        (x - panel->x) / bandX,
+        (panel->x + panel->width - x) / bandX,
+        (y - panel->y) / bandY,
+        (panel->y + panel->height - y) / bandY,
+    };
+
+    // the nearest band wins; distances are relative to the band, so 1 is its inner edge
+    ECSI_Zone zone = ECSI_Zone_Center;
+    f32 nearest = 1.0f;
+
+    for (usz i = 0; i < SDL_arraysize(distances); i++)
+    {
+        if (distances[i] < nearest)
+        {
+            nearest = distances[i];
+            zone = (ECSI_Zone)(ECSI_Zone_Left + (i32)i);
+        }
+    }
+
+    f32 halfWidth = panel->width / 2.0f;
+    f32 halfHeight = panel->height / 2.0f;
+    *retRect = zone == ECSI_Zone_Left     ? (SDL_FRect){panel->x, panel->y, halfWidth, panel->height}
+               : zone == ECSI_Zone_Right  ? (SDL_FRect){panel->x + halfWidth, panel->y, halfWidth, panel->height}
+               : zone == ECSI_Zone_Top    ? (SDL_FRect){panel->x, panel->y, panel->width, halfHeight}
+               : zone == ECSI_Zone_Bottom ? (SDL_FRect){panel->x, panel->y + halfHeight, panel->width, halfHeight}
+                                          : (SDL_FRect){panel->x, panel->y, panel->width, panel->height};
+    return (ECSI_Drop){.zone = zone, .group = group};
+}
+
+/// @brief Remembers a press on a panel's tab or grip; the panel is dragged once the pointer moves far enough.
+static void ECSI_LayoutArmDrag(ECSPanel panel, f32 x, f32 y)
+{
+    LAYOUT.dragPanel = panel;
+    LAYOUT.dragging = false;
+    LAYOUT.dragStartX = x;
+    LAYOUT.dragStartY = y;
+}
+
+#pragma endregion Moving
 
 #pragma region Dividers
 
@@ -668,6 +955,18 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
                 .backgroundColor = OPENECS_COLOR_TEXT_DIM,
                 .cornerRadius = CLAY_CORNER_RADIUS(3),
                 .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + (group->width - OPENECS_GRIP_WIDTH) / 2.0f, group->y + 3.0f}, .zIndex = 2},
+            }) {}
+        }
+
+        if (LAYOUT.dragging && LAYOUT.drop.zone != ECSI_Zone_None)
+        {
+            SDL_FRect rect = LAYOUT.dropRect;
+
+            CLAY_AUTO_ID({
+                .layout = {.sizing = {CLAY_SIZING_FIXED(rect.w), CLAY_SIZING_FIXED(rect.h)}},
+                .backgroundColor = OPENECS_COLOR_DROP,
+                .border = {.color = OPENECS_COLOR_ACCENT, .width = {2, 2, 2, 2, 0}},
+                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = 4, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
             }) {}
         }
 
@@ -1112,6 +1411,8 @@ void ECSI_LayoutWorkspaceSwitch(usz index)
     LAYOUT.current = index;
     LAYOUT.gripGroup = NULL;
     LAYOUT.dragSplit = NULL;
+    LAYOUT.dragPanel = NULL;
+    LAYOUT.dragging = false;
     LAYOUT.frameNeeded = true;
 }
 
@@ -1178,12 +1479,18 @@ bool ECSI_LayoutPointerDown(f32 x, f32 y)
             ECSI_Node *group = LAYOUT.tabs[i].group;
             group->shown = LAYOUT.tabs[i].index;
             ECSI_LayoutSetFocus(group->panels[group->shown]);
+            ECSI_LayoutArmDrag(group->panels[group->shown], x, y);
             return true;
         }
     }
 
-    // the grip will move the panel when docking by dragging is implemented
-    return LAYOUT.gripGroup != NULL && y < LAYOUT.gripGroup->y + OPENECS_GRIP_ZONE;
+    if (LAYOUT.gripGroup != NULL && y < LAYOUT.gripGroup->y + OPENECS_GRIP_ZONE)
+    {
+        ECSI_LayoutArmDrag(LAYOUT.gripGroup->panels[0], x, y);
+        return true;
+    }
+
+    return false;
 }
 
 bool ECSI_LayoutPointerMove(f32 x, f32 y)
@@ -1191,6 +1498,19 @@ bool ECSI_LayoutPointerMove(f32 x, f32 y)
     if (LAYOUT.dragSplit != NULL)
     {
         ECSI_LayoutDragDivider(x, y);
+        return true;
+    }
+
+    if (LAYOUT.dragPanel != NULL)
+    {
+        LAYOUT.dragging = LAYOUT.dragging || SDL_fabsf(x - LAYOUT.dragStartX) + SDL_fabsf(y - LAYOUT.dragStartY) >= OPENECS_DRAG_THRESHOLD;
+
+        if (LAYOUT.dragging)
+        {
+            LAYOUT.drop = ECSI_LayoutFindDrop(x, y, &LAYOUT.dropRect);
+            LAYOUT.frameNeeded = true;
+        }
+
         return true;
     }
 
@@ -1208,7 +1528,25 @@ bool ECSI_LayoutPointerMove(f32 x, f32 y)
 
 void ECSI_LayoutPointerUp(void)
 {
+    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+
+    if (LAYOUT.dragging && workspace != NULL)
+    {
+        ECSI_LayoutMove(workspace, LAYOUT.dragPanel, &LAYOUT.drop);
+    }
+
+    ECSI_LayoutCancelDrag();
     LAYOUT.dragSplit = NULL;
+}
+
+bool ECSI_LayoutCancelDrag(void)
+{
+    bool dragging = LAYOUT.dragging;
+    LAYOUT.dragPanel = NULL;
+    LAYOUT.dragging = false;
+    LAYOUT.drop = (ECSI_Drop){0};
+    LAYOUT.frameNeeded = LAYOUT.frameNeeded || dragging;
+    return dragging;
 }
 
 ECSPanel ECSI_LayoutGetFocus(void)

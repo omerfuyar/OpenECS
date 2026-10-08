@@ -85,20 +85,24 @@ void ECSI_LayoutRender(u64 nowTicks);
 /// @return The panel, or NULL.
 ECSPanel ECSI_LayoutPanelAt(f32 x, f32 y);
 
-/// @brief Handles a pointer press on the core's interface: dividers, tabs and grips.
+/// @brief Handles a pointer press on the core's interface: dividers, tabs and grips. A press on a tab or grip can start dragging its panel.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
 /// @return true if the core's interface used the press.
 bool ECSI_LayoutPointerDown(f32 x, f32 y);
 
-/// @brief Handles pointer movement: dragging a divider, and showing grips.
+/// @brief Handles pointer movement: dragging a divider or a panel, and showing grips.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
-/// @return true if a divider is being dragged.
+/// @return true if a divider or a panel is being dragged.
 bool ECSI_LayoutPointerMove(f32 x, f32 y);
 
-/// @brief Handles a pointer release.
+/// @brief Handles a pointer release: a dragged panel lands where the pointer is.
 void ECSI_LayoutPointerUp(void);
+
+/// @brief Stops dragging a panel without moving it.
+/// @return true if a panel was being dragged.
+bool ECSI_LayoutCancelDrag(void);
 
 /// @brief Gets the focused panel of the current workspace.
 /// @return The panel, or NULL if the workspace has no panels.

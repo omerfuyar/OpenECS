@@ -414,6 +414,11 @@ bool ECSI_InputHandle(const SDL_Event *event)
             break;
         }
 
+        if (key->key == SDLK_ESCAPE && ECSI_LayoutCancelDrag())
+        {
+            break;
+        }
+
         // the prefix is read when a key is pressed, so a changed prefix always wins
         ECSI_InputReadPrefix();
 
