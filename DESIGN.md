@@ -171,7 +171,7 @@ The wait uses `SDL_WaitEventTimeout` with the time until the next timer, and doe
 ### 3.2 Timers
 
 - Plugins ask for timers: once or repeating, with an interval. Timers run on the main thread, in step 3 of the loop.
-- `ECSTimer_Start(plugin, &timer, 0.1, true, function, data)` writes a new timer into `timer`; `ECSTimer_Stop(&timer)` stops it. Lua: `ecs.timer.start(0.1, true, fn)`.
+- `ECSTimer_Start(plugin, &timer, 0.1, true, function, data)` writes a new timer into `timer`; `ECSTimer_Stop(&timer)` stops it. Lua: `ecs.timer.start(0.1, true, fn)` returns a handle, and `handle:stop()` stops it.
 - `ECSPanel_StartTimer(panel, &timer, ...)` starts a timer that belongs to a panel. It stops when the panel closes, and its handle is invalid then.
 - A one-shot timer ends after its function returns, and its handle is invalid then. A repeating timer that falls behind skips the calls it missed.
 
@@ -488,8 +488,9 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 
 ### 9.6 Lua plugins
 
-- All Lua plugins share one Lua state. Each plugin's code runs in its own environment, which contains the `ecs` table.
-- The core knows which plugin made an `ecs` call from the environment it came from.
+- All Lua plugins share one Lua state. Each plugin's code runs in its own environment, which contains the `ecs` table and reads other globals from the shared global table.
+- Each plugin gets its own `ecs` table, whose functions carry the plugin. So the core knows which plugin made an `ecs` call.
+- The manifest's `lua` file runs once, in a protected call, after the native `ECSPlugin_Init`. An error fails the plugin.
 
 ### 9.7 Lifecycle
 
@@ -611,13 +612,22 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 | `ecs.session`                 | save and load                       |
 | `ecs.plugin`                  | information about plugins           |
 | `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs               |
-| `ecs.log`                     | logging                             |
+| `ecs.log`                     | `debug`, `info`, `warn` and `error` |
 
-### 11.4 Parity
+- `ecs.plugin` holds the plugin's `name` and `version`.
+
+### 11.4 Panels in Lua
+
+- A Lua panel type is a table (4.1). The core registers C callbacks that call its Lua functions in protected calls.
+- Panels are handles with methods: `panel:redraw()`, `panel:get_title()`, `panel:set_title(text)` and `panel:start_timer(seconds, repeat, fn)`. A handle of a destroyed panel raises an error when it is used.
+- `draw(state, surface, seconds)` gets a surface with `width`, `height` and `scale`, and the methods `set_pixel(x, y, color)`, `get_pixel(x, y)` and `set_row(y, bytes, x)`. Colours are ARGB integers; `set_row` takes the row's pixels as a string in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
+- `event(state, event)` gets a table: `type` (such as `"pointer_down"`), `x`, `y`, `button`, `wheel_x`, `wheel_y`, `key` (SDL's key name), and the booleans `shift`, `ctrl`, `alt` and `super`.
+
+### 11.5 Parity
 
 A list of every public C function with its Lua counterpart is kept and checked by the build or the tests.
 
-### 11.5 Keeping Lua values
+### 11.6 Keeping Lua values
 
 Lua functions and values that C code keeps are stored in Lua's registry and referenced by a number. They are released when their owner goes away.
 
