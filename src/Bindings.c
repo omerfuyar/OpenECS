@@ -74,6 +74,13 @@ static ECSPlugin ECSI_BindingsPlugin(lua_State *state)
     return lua_touserdata(state, lua_upvalueindex(1));
 }
 
+/// @brief Reads a panel handle. Raises a Lua error if it is not one, or its panel is gone.
+static ECSPanel ECSI_BindingsCheckPanel(lua_State *state, int index)
+{
+    (void)state;
+    return ECSI_ServicesCheckHandle(index, OPENECS_LUA_PANEL);
+}
+
 #pragma region Log
 
 static int ECSI_BindingsLog(lua_State *state, ECSLogLevel level)
@@ -383,6 +390,127 @@ static const luaL_Reg ECSI_BINDINGS_TIMER_METHODS[] = {
 
 #pragma endregion Timers
 
+#pragma region Layout
+
+/// @brief Names of the zones in Lua, in the order of ECSZone.
+static const char *const ECSI_BINDINGS_ZONES[] = {"default", "center", "left", "right", "top", "bottom", NULL};
+
+/// @brief Reads an optional panel handle.
+static ECSPanel ECSI_BindingsOptPanel(lua_State *state, int index)
+{
+    return lua_isnoneornil(state, index) ? NULL : ECSI_BindingsCheckPanel(state, index);
+}
+
+static int ECSI_BindingsLayoutOpen(lua_State *state)
+{
+    const char *type = luaL_checkstring(state, 1);
+    ECSPanel target = ECSI_BindingsOptPanel(state, 3);
+    ECSZone zone = (ECSZone)luaL_checkoption(state, 4, "default", ECSI_BINDINGS_ZONES);
+    ECSValue *saved = NULL;
+    ECSPanel panel = NULL;
+
+    SHUResult result = ECSValue_Create(&saved);
+    result = result ? result : ECSI_LuaGetValue(2, saved);
+    result = result ? result : ECSLayout_Open(ECSI_BindingsPlugin(state), &panel, type, ECSValue_GetType(saved) == ECSValueType_Nil ? NULL : saved, target, zone);
+    ECSValue_Destroy(&saved);
+
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "panel '%s' is not opened (%s)", type, SHUResult_String(result));
+        return 2;
+    }
+
+    ECSI_ServicesPushHandle(OPENECS_LUA_PANEL, panel);
+    return 1;
+}
+
+static int ECSI_BindingsLayoutMove(lua_State *state)
+{
+    ECSPanel panel = ECSI_BindingsCheckPanel(state, 1);
+    ECSPanel target = ECSI_BindingsCheckPanel(state, 2);
+    ECSZone zone = (ECSZone)luaL_checkoption(state, 3, "center", ECSI_BINDINGS_ZONES);
+
+    if (ECSLayout_Move(panel, target, zone))
+    {
+        lua_pushnil(state);
+        lua_pushliteral(state, "the panels are not in one workspace");
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
+static int ECSI_BindingsLayoutClose(lua_State *state)
+{
+    lua_pushboolean(state, ECSLayout_Close(ECSI_BindingsCheckPanel(state, 1)));
+    return 1;
+}
+
+static int ECSI_BindingsLayoutFocus(lua_State *state)
+{
+    ECSLayout_Focus(ECSI_BindingsCheckPanel(state, 1));
+    return 0;
+}
+
+static int ECSI_BindingsLayoutGetFocus(lua_State *state)
+{
+    (void)state;
+    ECSI_ServicesPushHandle(OPENECS_LUA_PANEL, ECSLayout_GetFocus());
+    return 1;
+}
+
+static const luaL_Reg ECSI_BINDINGS_LAYOUT[] = {
+    {"open", ECSI_BindingsLayoutOpen},
+    {"move", ECSI_BindingsLayoutMove},
+    {"close", ECSI_BindingsLayoutClose},
+    {"focus", ECSI_BindingsLayoutFocus},
+    {"get_focus", ECSI_BindingsLayoutGetFocus},
+    {NULL, NULL},
+};
+
+static int ECSI_BindingsWorkspaceCount(lua_State *state)
+{
+    lua_pushinteger(state, (lua_Integer)ECSWorkspace_GetCount());
+    return 1;
+}
+
+static int ECSI_BindingsWorkspaceGetCurrent(lua_State *state)
+{
+    lua_pushinteger(state, (lua_Integer)ECSWorkspace_GetCurrent() + 1);
+    return 1;
+}
+
+static int ECSI_BindingsWorkspaceGetName(lua_State *state)
+{
+    lua_Integer index = luaL_checkinteger(state, 1);
+    lua_pushstring(state, index >= 1 ? ECSWorkspace_GetName((usz)index - 1) : NULL);
+    return 1;
+}
+
+static int ECSI_BindingsWorkspaceSwitch(lua_State *state)
+{
+    lua_Integer index = luaL_checkinteger(state, 1);
+
+    if (index >= 1)
+    {
+        ECSWorkspace_Switch((usz)index - 1);
+    }
+
+    return 0;
+}
+
+static const luaL_Reg ECSI_BINDINGS_WORKSPACE[] = {
+    {"count", ECSI_BindingsWorkspaceCount},
+    {"get_current", ECSI_BindingsWorkspaceGetCurrent},
+    {"get_name", ECSI_BindingsWorkspaceGetName},
+    {"switch", ECSI_BindingsWorkspaceSwitch},
+    {NULL, NULL},
+};
+
+#pragma endregion Layout
+
 #pragma region Input
 
 static int ECSI_BindingsInputBind(lua_State *state)
@@ -481,12 +609,6 @@ static const luaL_Reg ECSI_BINDINGS_SERVICE[] = {
 #pragma endregion Services
 
 #pragma region Panels
-
-static ECSPanel ECSI_BindingsCheckPanel(lua_State *state, int index)
-{
-    (void)state;
-    return ECSI_ServicesCheckHandle(index, OPENECS_LUA_PANEL);
-}
 
 static ECSSurface *ECSI_BindingsCheckSurface(lua_State *state, int index)
 {
@@ -969,6 +1091,8 @@ static void ECSI_BindingsPushEcs(lua_State *state, ECSPlugin plugin)
     ECSI_BindingsAddTable(state, plugin, "panel", ECSI_BINDINGS_PANEL);
     ECSI_BindingsAddTable(state, plugin, "service", ECSI_BINDINGS_SERVICE);
     ECSI_BindingsAddTable(state, plugin, "input", ECSI_BINDINGS_INPUT);
+    ECSI_BindingsAddTable(state, plugin, "layout", ECSI_BINDINGS_LAYOUT);
+    ECSI_BindingsAddTable(state, plugin, "workspace", ECSI_BINDINGS_WORKSPACE);
 
     lua_newtable(state);
     lua_pushstring(state, ECSI_PluginGetName(plugin));

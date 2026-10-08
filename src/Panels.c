@@ -441,6 +441,14 @@ bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count)
     return true;
 }
 
+u32 ECSI_PanelsGetStateVersion(const char *typeName)
+{
+    SDL_assert(typeName != NULL);
+
+    ECSI_PanelType *type = ECSI_PanelTypeFind(typeName);
+    return type == NULL ? 0 : type->desc.stateVersion;
+}
+
 void ECSI_PanelFault(ECSPanel panel, const char *message)
 {
     SDL_assert(panel != NULL);

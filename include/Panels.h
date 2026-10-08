@@ -37,6 +37,7 @@ struct ECSI_Panel
     SDL_Surface *pixels;  // what the panel drew, kept between draws
     SDL_Texture *texture; // the pixels on the GPU, made by the renderer of the OS window that shows the panel
     u64 lastDrawTicks;
+    u64 focusTicks; // when the panel last got focus, for placing new panels of its type; 0 if never
     bool closed; // out of the layout, waiting for ECSI_PanelsDestroyClosed; it gets no more events
     char *fault; // the error of a callback, or NULL; a faulted panel shows it and its type is not called again, except Destroy
 };
@@ -57,6 +58,11 @@ bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count);
 /// @brief Removes every panel type a plugin registered. Call it before panels of those types exist.
 /// @param plugin The plugin.
 void ECSI_PanelsRemovePlugin(ECSPlugin plugin);
+
+/// @brief Gets the state version of a panel type, for a panel that code opens with a saved state.
+/// @param typeName Name of the panel type.
+/// @return The version, or 0 if the type is missing.
+u32 ECSI_PanelsGetStateVersion(const char *typeName);
 
 /// @brief Makes a panel faulted: it shows the error instead of its pixels, and its type is not called again, except Destroy. A panel keeps its first fault.
 /// @param panel The panel.

@@ -99,3 +99,12 @@ ecs.service.register("hello", {
 })
 ecs.settings.declare({ name = "hello.next_color_key", type = "key", default = "N", description = "Key for the next colour of a stripes panel" })
 ecs.input.bind("hello.stripes", "hello.next_color_key", "hello.next_color")
+
+-- code opens panels too: a key opens another stripes panel beside the focused panel
+ecs.service.register("hello", {
+  open_stripes = {
+    sig = "void()",
+    doc = "Opens a stripes panel beside the focused panel",
+    fn = function() ecs.layout.open("hello.stripes", { color = 3 }, ecs.layout.get_focus(), "right") end,
+  },
+})

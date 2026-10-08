@@ -69,6 +69,17 @@ typedef struct ECSSurface
     i32 pitch;       // pixels type: bytes per row
 } ECSSurface;
 
+/// @brief Where a panel goes, next to a target panel.
+typedef enum ECSZone
+{
+    ECSZone_Default = 0, // where new panels go by default; for a move, the same as ECSZone_Center
+    ECSZone_Center,      // the target's group
+    ECSZone_Left,        // a split beside the target's group
+    ECSZone_Right,
+    ECSZone_Top,
+    ECSZone_Bottom,
+} ECSZone;
+
 /// @brief Modifier keys held during an event, as bits.
 typedef enum ECSModifier
 {
@@ -354,6 +365,53 @@ OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const c
 /// @param function Name of the function the key runs. It takes no arguments, or the focused panel: void() or void(handle<ecs.panel>).
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the panel type or the setting is not the plugin's, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *setting, const char *function);
+
+/// @brief Opens a panel in the current workspace and focuses it. Any plugin may open any panel type. Main thread only.
+/// @param plugin The plugin that opens the panel.
+/// @param retPanel The new panel. A missing type gives a placeholder.
+/// @param type Name of the panel type.
+/// @param state Saved state to create the panel from, in the type's current version, or NULL for a new panel. The core copies it.
+/// @param target A panel of the current workspace to open next to, or NULL. With NULL, the panel joins the group of the most recently focused panel of its type, or else the focused group.
+/// @param zone Where next to the target: its group or a side of it.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if the target is not in the current workspace, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type, const ECSValue *state, ECSPanel target, ECSZone zone);
+
+/// @brief Moves a panel into a target's group, or beside it. Both must be in the same workspace. Main thread only.
+/// @param panel Panel to move.
+/// @param target The target panel.
+/// @param zone Where next to the target.
+/// @return SHUResult_Ok, or SHUResult_ErrNotFound if the panels are not in one workspace.
+OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone);
+
+/// @brief Closes a panel. If it has unsaved work, the user is asked first and may cancel. Main thread only.
+/// @param panel Panel to close. Its handle is invalid after the panel closes.
+/// @return true if the panel closed.
+OPENECS_EXPORT bool ECSLayout_Close(ECSPanel panel);
+
+/// @brief Focuses a panel. If it is in another workspace, that workspace is shown; if it is behind another tab, its tab is shown. Main thread only.
+/// @param panel Panel to focus.
+OPENECS_EXPORT void ECSLayout_Focus(ECSPanel panel);
+
+/// @brief Gets the focused panel of the current workspace. Main thread only.
+/// @return The panel, or NULL if the workspace has none.
+OPENECS_EXPORT ECSPanel ECSLayout_GetFocus(void);
+
+/// @brief Counts the workspaces. Main thread only.
+/// @return Number of workspaces.
+OPENECS_EXPORT usz ECSWorkspace_GetCount(void);
+
+/// @brief Gets the current workspace. Main thread only.
+/// @return Its position, starting at 0.
+OPENECS_EXPORT usz ECSWorkspace_GetCurrent(void);
+
+/// @brief Gets a workspace's name. Main thread only.
+/// @param index Position of the workspace, starting at 0.
+/// @return The name, or NULL if there is no such workspace. Valid until the workspace goes away.
+OPENECS_EXPORT const char *ECSWorkspace_GetName(usz index);
+
+/// @brief Switches to a workspace. Main thread only.
+/// @param index Position of the workspace, starting at 0. Ignored if there is no such workspace.
+OPENECS_EXPORT void ECSWorkspace_Switch(usz index);
 
 /// @brief Starts a timer that calls a function on the main thread, once or repeatedly. Main thread only.
 /// @param plugin The plugin that owns the timer.

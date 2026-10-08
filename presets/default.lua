@@ -5,7 +5,7 @@ return {
   app = { id = "openecs.default", name = "OpenECS" },
   depends = { demo = "0.1", hello = "0.1" },
   settings = { ["demo.blink_seconds"] = 0.75 },
-  keys = { ["Ctrl+N"] = "demo.hello" },
+  keys = { ["Ctrl+N"] = "demo.hello", ["Ctrl+Shift+N"] = "hello.open_stripes" },
   workspaces = {
     { name = "main",
       windows = {

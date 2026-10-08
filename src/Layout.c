@@ -1,5 +1,7 @@
 #include "Layout.h"
 
+#include "Plugins.h"
+
 #include "SDL3/SDL.h"
 #include "SDL3_ttf/SDL_ttf.h"
 #include "clay/clay.h"
@@ -387,6 +389,11 @@ static void ECSI_LayoutChangeFocus(ECSI_Workspace *workspace, ECSPanel panel)
     workspace->focus = panel;
     LAYOUT.frameNeeded = true;
 
+    if (panel != NULL)
+    {
+        panel->focusTicks = SDL_GetTicksNS();
+    }
+
     if (workspace != ECSI_LayoutCurrent())
     {
         return;
@@ -579,7 +586,8 @@ static void ECSI_LayoutWrap(ECSI_Workspace *workspace, ECSI_Node *split, ECSI_No
 }
 
 /// @brief Moves a panel to a drop place, then tidies the tree. The panel gets the focus.
-static void ECSI_LayoutMove(ECSI_Workspace *workspace, ECSPanel panel, const ECSI_Drop *drop)
+/// @param user true when the user moves the panel; locks stop the user but not code.
+static void ECSI_LayoutMove(ECSI_Workspace *workspace, ECSPanel panel, const ECSI_Drop *drop, bool user)
 {
     ECSI_Node *source = ECSI_LayoutFindGroup(workspace->tree, panel);
     ECSI_Node *target = drop->group;
@@ -587,12 +595,12 @@ static void ECSI_LayoutMove(ECSI_Workspace *workspace, ECSPanel panel, const ECS
     bool edge = drop->zone >= ECSI_Zone_WindowLeft;
 
     // a panel cannot join its own group again, or split away from a group that holds only itself; locked panels stay
-    if (source == NULL || drop->zone == ECSI_Zone_None || source->locked || (source == target && (drop->zone == ECSI_Zone_Center || (side && arrlenu(source->panels) == 1))))
+    if (source == NULL || drop->zone == ECSI_Zone_None || (user && source->locked) || (source == target && (drop->zone == ECSI_Zone_Center || (side && arrlenu(source->panels) == 1))))
     {
         return;
     }
 
-    if (target != NULL && target->locked && (drop->zone == ECSI_Zone_Center || drop->zone == ECSI_Zone_Tabs))
+    if (user && target != NULL && target->locked && (drop->zone == ECSI_Zone_Center || drop->zone == ECSI_Zone_Tabs))
     {
         return;
     }
@@ -791,6 +799,49 @@ static void ECSI_LayoutArmDrag(ECSPanel panel, f32 x, f32 y)
     LAYOUT.dragging = false;
     LAYOUT.dragStartX = x;
     LAYOUT.dragStartY = y;
+}
+
+/// @brief Converts a public zone to a drop zone.
+static ECSI_Zone ECSI_LayoutZone(ECSZone zone)
+{
+    switch (zone)
+    {
+    case ECSZone_Left:
+        return ECSI_Zone_Left;
+    case ECSZone_Right:
+        return ECSI_Zone_Right;
+    case ECSZone_Top:
+        return ECSI_Zone_Top;
+    case ECSZone_Bottom:
+        return ECSI_Zone_Bottom;
+    default:
+        return ECSI_Zone_Center;
+    }
+}
+
+typedef struct ECSI_RecentSearch
+{
+    const char *typeName;
+    ECSPanel best;
+} ECSI_RecentSearch;
+
+/// @brief Finds the most recently focused panel of a type in a tree.
+static void ECSI_LayoutFindRecent(const ECSI_Node *node, ECSI_RecentSearch *search)
+{
+    for (usz i = 0; i < arrlenu(node->panels); i++)
+    {
+        ECSPanel panel = node->panels[i];
+
+        if (panel->focusTicks > 0 && SDL_strcmp(panel->typeName, search->typeName) == 0 && (search->best == NULL || panel->focusTicks > search->best->focusTicks))
+        {
+            search->best = panel;
+        }
+    }
+
+    for (usz i = 0; i < arrlenu(node->children); i++)
+    {
+        ECSI_LayoutFindRecent(node->children[i], search);
+    }
 }
 
 #pragma endregion Moving
@@ -1639,7 +1690,7 @@ void ECSI_LayoutPointerUp(void)
 
     if (LAYOUT.dragging && workspace != NULL)
     {
-        ECSI_LayoutMove(workspace, LAYOUT.dragPanel, &LAYOUT.drop);
+        ECSI_LayoutMove(workspace, LAYOUT.dragPanel, &LAYOUT.drop, true);
     }
 
     ECSI_LayoutCancelDrag();
@@ -1709,7 +1760,7 @@ void ECSI_LayoutMoveFocus(i32 dx, i32 dy)
         drop = (ECSI_Drop){.zone = ECSI_Zone_Center, .group = ECSI_LayoutFindGroup(workspace->tree, neighbour)};
     }
 
-    ECSI_LayoutMove(workspace, workspace->focus, &drop);
+    ECSI_LayoutMove(workspace, workspace->focus, &drop, true);
 }
 
 ECSPanel ECSI_LayoutNextTab(void)
@@ -1878,4 +1929,147 @@ SHUResult ECSI_LayoutSave(ECSValue *retWorkspaces, usz *retCurrent)
     }
 
     return SHUResult_Ok;
+}
+
+SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type, const ECSValue *state, ECSPanel target, ECSZone zone)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(retPanel != NULL);
+    SDL_assert(type != NULL);
+
+    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSI_Node *group = NULL;
+
+    if (workspace == NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' opens a panel, but there is no workspace.", ECSI_PluginGetName(plugin));
+        return SHUResult_ErrNotFound;
+    }
+
+    if (target != NULL)
+    {
+        group = ECSI_LayoutFindGroup(workspace->tree, target);
+
+        if (group == NULL)
+        {
+            return SHUResult_ErrNotFound;
+        }
+    }
+    else if (workspace->tree != NULL)
+    {
+        // the group of the most recently focused panel of the type, else the focused group, else the first
+        ECSI_RecentSearch search = {.typeName = type, .best = NULL};
+        ECSI_LayoutFindRecent(workspace->tree, &search);
+        group = ECSI_LayoutFindGroup(workspace->tree, search.best != NULL ? search.best : workspace->focus);
+        group = group != NULL ? group : ECSI_LayoutFindGroup(workspace->tree, ECSI_LayoutFirstPanel(workspace->tree));
+    }
+
+    ECSPanel panel = NULL;
+    SHU_ReturnResult(ECSI_PanelCreate(&panel, type, state, state == NULL ? 0 : ECSI_PanelsGetStateVersion(type)));
+
+    if (group == NULL)
+    {
+        // an empty workspace gets a group for the panel
+        SHU_ReturnResult(ECSI_LayoutGroupCreate(&group), ECSI_PanelDestroy(&panel););
+        workspace->tree = group;
+    }
+
+    // the panel joins the group, then a side zone moves it beside the group
+    arrput(group->panels, panel);
+    group->shown = arrlenu(group->panels) - 1;
+    ECSI_Drop drop = {.zone = ECSI_LayoutZone(zone), .group = group};
+
+    if (drop.zone != ECSI_Zone_Center)
+    {
+        ECSI_LayoutMove(workspace, panel, &drop, false);
+    }
+
+    ECSI_LayoutChangeFocus(workspace, panel);
+    LAYOUT.frameNeeded = true;
+    *retPanel = panel;
+    return SHUResult_Ok;
+}
+
+SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone)
+{
+    SDL_assert(panel != NULL);
+    SDL_assert(target != NULL);
+
+    ECSI_Workspace *workspace = NULL;
+    ECSI_Workspace *targetWorkspace = NULL;
+    ECSI_Node *source = NULL;
+    ECSI_Node *group = NULL;
+
+    if (!ECSI_LayoutLocate(panel, &workspace, &source) || !ECSI_LayoutLocate(target, &targetWorkspace, &group) || workspace != targetWorkspace)
+    {
+        return SHUResult_ErrNotFound;
+    }
+
+    ECSI_Drop drop = {.zone = ECSI_LayoutZone(zone), .group = group};
+    ECSI_LayoutMove(workspace, panel, &drop, false);
+    return SHUResult_Ok;
+}
+
+bool ECSLayout_Close(ECSPanel panel)
+{
+    SDL_assert(panel != NULL);
+
+    if (!ECSI_LayoutHasPanel(panel) || !ECSI_PanelsConfirmClose(&panel, 1))
+    {
+        return false;
+    }
+
+    ECSI_LayoutClosePanel(panel);
+    return true;
+}
+
+void ECSLayout_Focus(ECSPanel panel)
+{
+    SDL_assert(panel != NULL);
+
+    ECSI_Workspace *workspace = NULL;
+    ECSI_Node *group = NULL;
+
+    if (!ECSI_LayoutLocate(panel, &workspace, &group))
+    {
+        return;
+    }
+
+    // the workspace and the tab are shown first, so the panel is focused where the user sees it
+    ECSI_LayoutWorkspaceSwitch((usz)(workspace - LAYOUT.workspaces));
+
+    for (usz i = 0; i < arrlenu(group->panels); i++)
+    {
+        if (group->panels[i] == panel)
+        {
+            ECSI_LayoutGroupShow(group, i);
+        }
+    }
+
+    ECSI_LayoutChangeFocus(workspace, panel);
+}
+
+ECSPanel ECSLayout_GetFocus(void)
+{
+    return ECSI_LayoutGetFocus();
+}
+
+usz ECSWorkspace_GetCount(void)
+{
+    return arrlenu(LAYOUT.workspaces);
+}
+
+usz ECSWorkspace_GetCurrent(void)
+{
+    return LAYOUT.current;
+}
+
+const char *ECSWorkspace_GetName(usz index)
+{
+    return index < arrlenu(LAYOUT.workspaces) ? LAYOUT.workspaces[index].name : NULL;
+}
+
+void ECSWorkspace_Switch(usz index)
+{
+    ECSI_LayoutWorkspaceSwitch(index);
 }
