@@ -238,6 +238,7 @@ typedef struct ECSPanelTypeDesc
 
 - A panel sets its flag with `ECSPanel_SetUnsaved`, and a Lua panel with `panel:set_unsaved(true)`. Its tab shows a mark. Save calls the type's `Save`; if that fails, the close is cancelled.
 - The question is a message dialog (`SDL_ShowMessageBox`) with Save, Discard and Cancel. When several panels have unsaved work, one dialog lists them all.
+- When the dialog cannot be shown, quitting discards the work, so quitting always finishes. Closing panels is cancelled and keeps the work.
 
 ### 4.6 Popups, pointer and text input
 

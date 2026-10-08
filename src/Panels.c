@@ -353,7 +353,7 @@ void ECSI_PanelsRemovePlugin(ECSPlugin plugin)
     }
 }
 
-bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count)
+bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count, bool quitting)
 {
     SDL_assert(panels != NULL || count == 0);
 
@@ -405,11 +405,11 @@ bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count)
 
     int answer = ECSI_ANSWER_CANCEL;
 
-    // without a dialog the user cannot answer; closing goes on, so the program can still quit
+    // without a dialog the user cannot answer; quitting discards the work so it always finishes, closing panels keeps it
     if (!SDL_ShowMessageBox(&data, &answer))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask about unsaved work (%s); it is discarded. %s", SDL_GetError(), data.message);
-        answer = ECSI_ANSWER_DISCARD;
+        answer = quitting ? ECSI_ANSWER_DISCARD : ECSI_ANSWER_CANCEL;
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask about unsaved work (%s); it is %s. %s", SDL_GetError(), quitting ? "discarded" : "kept", data.message);
     }
 
     SDL_free(message);

@@ -2019,7 +2019,7 @@ bool ECSLayout_Close(ECSPanel panel)
 {
     SDL_assert(panel != NULL);
 
-    if (!ECSI_LayoutHasPanel(panel) || !ECSI_PanelsConfirmClose(&panel, 1))
+    if (!ECSI_LayoutHasPanel(panel) || !ECSI_PanelsConfirmClose(&panel, 1, false))
     {
         return false;
     }

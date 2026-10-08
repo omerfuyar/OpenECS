@@ -52,8 +52,9 @@ SHUWUR SHUResult ECSI_PanelTypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc
 /// @brief Asks the user about the unsaved work of panels that are about to close: Save, Discard or Cancel. One dialog lists them all.
 /// @param panels The panels that close. Those without unsaved work are skipped.
 /// @param count Number of panels.
+/// @param quitting true when the program quits. If the dialog cannot be shown, quitting discards the work, so it always finishes; closing panels is cancelled.
 /// @return true if the panels may close: none had unsaved work, the user discarded it, or every save worked.
-bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count);
+bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count, bool quitting);
 
 /// @brief Removes every panel type a plugin registered. Call it before panels of those types exist.
 /// @param plugin The plugin.

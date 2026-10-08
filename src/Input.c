@@ -548,7 +548,7 @@ static void ECSI_InputClose(void)
         return;
     }
 
-    if (focus == NULL || !ECSI_PanelsConfirmClose(&focus, 1))
+    if (focus == NULL || !ECSI_PanelsConfirmClose(&focus, 1, false))
     {
         return;
     }
@@ -855,7 +855,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
     {
         // the user may cancel quitting to keep unsaved work
         ECSPanel *panels = ECSI_LayoutGetPanels();
-        bool quit = ECSI_PanelsConfirmClose(panels, arrlenu(panels));
+        bool quit = ECSI_PanelsConfirmClose(panels, arrlenu(panels), true);
         arrfree(panels);
         return !quit;
     }
