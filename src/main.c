@@ -20,6 +20,59 @@
 
 /// @brief A tool's last session, in its folder in the state folder.
 #define OPENECS_LAST_SESSION_FILE "session.lua"
+/// @brief The log file, in the state folder. Each start writes it anew.
+#define OPENECS_LOG_FILE "openecs.log"
+
+static struct
+{
+    SDL_IOStream *file; // NULL until the state folder is known
+} LOG = {0};
+
+/// @brief Names of the log levels, as log lines show them.
+static const char *const ECSI_LOG_LEVELS[SDL_LOG_PRIORITY_COUNT] = {
+    [SDL_LOG_PRIORITY_TRACE] = "trace",
+    [SDL_LOG_PRIORITY_VERBOSE] = "verbose",
+    [SDL_LOG_PRIORITY_DEBUG] = "debug",
+    [SDL_LOG_PRIORITY_INFO] = "info",
+    [SDL_LOG_PRIORITY_WARN] = "warning",
+    [SDL_LOG_PRIORITY_ERROR] = "error",
+    [SDL_LOG_PRIORITY_CRITICAL] = "critical",
+};
+
+/// @brief Writes a log line with the time, the level, the plugin and the message, to standard error and the log file. SDL calls it under its log lock, so any thread may log.
+static void ECSI_LogOutput(void *userData, int category, SDL_LogPriority priority, const char *message)
+{
+    (void)userData;
+    (void)category;
+
+    SDL_Time now = 0;
+    SDL_DateTime time = {0};
+
+    if (SDL_GetCurrentTime(&now))
+    {
+        SDL_TimeToDateTime(now, &time, true);
+    }
+
+    // messages from ECS_Log start with the plugin's name in brackets; the core's own messages get "ecs"
+    const char *level = priority > SDL_LOG_PRIORITY_INVALID && priority < SDL_LOG_PRIORITY_COUNT ? ECSI_LOG_LEVELS[priority] : "?";
+    char *line = NULL;
+    int length = SDL_asprintf(&line, "%02d:%02d:%02d.%03d %-8s %s%s\n", time.hour, time.minute, time.second, time.nanosecond / 1000000, level, message[0] == '[' ? "" : "[ecs] ", message);
+
+    if (length < 0)
+    {
+        return;
+    }
+
+    fputs(line, stderr);
+
+    if (LOG.file != NULL)
+    {
+        SDL_WriteIO(LOG.file, line, (usz)length);
+        SDL_FlushIO(LOG.file);
+    }
+
+    SDL_free(line);
+}
 
 /// @brief What the command line asks for.
 typedef struct ECSI_Arguments
@@ -158,6 +211,7 @@ static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
 
 int main(int argc, char **argv)
 {
+    SDL_SetLogOutputFunction(ECSI_LogOutput, NULL);
     ECSI_Arguments arguments = ECSI_ReadArguments(argc, argv);
 
     // every path of the program's own files starts here
@@ -175,6 +229,14 @@ int main(int argc, char **argv)
     char *configFolder = ECSI_XdgFolder("XDG_CONFIG_HOME", ".config");
     char *stateFolder = ECSI_XdgFolder("XDG_STATE_HOME", ".local/state");
     char *lastSession = ECSI_LastSessionPath(stateFolder, preset.appId);
+    char *logPath = NULL;
+
+    // the lines logged so far went to standard error only
+    if (stateFolder != NULL && SDL_CreateDirectory(stateFolder) && SDL_asprintf(&logPath, "%s%s", stateFolder, OPENECS_LOG_FILE) >= 0)
+    {
+        LOG.file = SDL_IOFromFile(logPath, "w");
+        SDL_free(logPath);
+    }
     char *sessionPath = NULL;
 
     if (arguments.session != NULL)
@@ -268,6 +330,12 @@ int main(int argc, char **argv)
     SDL_free(configFolder);
     SDL_free(stateFolder);
     SDL_Quit();
+
+    if (LOG.file != NULL)
+    {
+        SDL_CloseIO(LOG.file);
+        LOG.file = NULL;
+    }
     ECSI_LuaTerminate();
 
     return 0;

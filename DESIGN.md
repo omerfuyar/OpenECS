@@ -760,8 +760,8 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [FILE...]
 
 - Levels: error, warning, info and debug.
 - All logging goes through SDL's log, including SDL's own messages. The core calls it directly; plugins call `ECS_Log`, which adds the plugin's name.
-- Each line holds the time, the level, the plugin and the message.
-- Lines go to standard error and to the log file (16).
+- Each line holds the time, the level, the plugin and the message: `12:30:05.123 warning  [canvas] message`. The core's own lines name `ecs`.
+- Lines go to standard error and to the log file (16). Each start writes the log file anew.
 
 ## 15. Memory and ownership
 
