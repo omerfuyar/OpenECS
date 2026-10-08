@@ -349,57 +349,108 @@ static ECSPanel ECSI_LayoutFirstPanel(ECSI_Node *node)
     return NULL;
 }
 
-/// @brief Removes a node from its workspace tree and frees it, then replaces a split left with one child by that child.
-static void ECSI_LayoutRemoveNode(ECSI_Workspace *workspace, ECSI_Node *node)
+/// @brief Frees one node, without its children or panels.
+static void ECSI_LayoutFreeNode(ECSI_Node *node)
 {
-    ECSI_Node *parent = node->parent;
     arrfree(node->children);
     arrfree(node->panels);
     SDL_free(node);
+}
 
-    if (parent == NULL)
+/// @brief Tidies a subtree after an operation: frees empty groups and splits, merges a split into a parent split of the same direction, and replaces a split that has one child by that child.
+/// @return The node that takes the subtree's place, or NULL if nothing is left.
+static ECSI_Node *ECSI_LayoutTidyNode(ECSI_Workspace *workspace, ECSI_Node *node)
+{
+    if (node->type == ECSI_NodeType_Group)
     {
-        workspace->tree = NULL;
-        return;
-    }
-
-    usz index = 0;
-
-    while (parent->children[index] != node)
-    {
-        index++;
-    }
-
-    arrdel(parent->children, index);
-
-    if (arrlenu(parent->children) != 1)
-    {
-        return;
-    }
-
-    ECSI_Node *only = parent->children[0];
-    ECSI_Node *grandparent = parent->parent;
-    only->fixedSize = parent->fixedSize;
-    only->share = parent->share;
-    only->parent = grandparent;
-
-    if (grandparent == NULL)
-    {
-        workspace->tree = only;
-    }
-    else
-    {
-        for (usz i = 0; i < arrlenu(grandparent->children); i++)
+        if (arrlenu(node->panels) > 0)
         {
-            if (grandparent->children[i] == parent)
-            {
-                grandparent->children[i] = only;
-            }
+            return node;
         }
+
+        if (workspace->maximized == node)
+        {
+            workspace->maximized = NULL;
+        }
+
+        ECSI_LayoutFreeNode(node);
+        return NULL;
     }
 
-    arrfree(parent->children);
-    SDL_free(parent);
+    ECSI_Node **children = NULL;
+
+    for (usz i = 0; i < arrlenu(node->children); i++)
+    {
+        ECSI_Node *child = ECSI_LayoutTidyNode(workspace, node->children[i]);
+
+        if (child == NULL)
+        {
+            continue;
+        }
+
+        // a child split of the same direction gives its children its place; a fixed-size one keeps them, so their shares keep their meaning
+        if (child->type == ECSI_NodeType_Split && child->vertical == node->vertical && child->fixedSize <= 0.0f)
+        {
+            f32 shareSum = 0.0f;
+
+            for (usz j = 0; j < arrlenu(child->children); j++)
+            {
+                shareSum += child->children[j]->fixedSize > 0.0f ? 0.0f : child->children[j]->share;
+            }
+
+            for (usz j = 0; j < arrlenu(child->children); j++)
+            {
+                ECSI_Node *grandchild = child->children[j];
+                grandchild->share = grandchild->fixedSize > 0.0f || shareSum <= 0.0f ? grandchild->share : grandchild->share * child->share / shareSum;
+                grandchild->parent = node;
+                arrput(children, grandchild);
+            }
+
+            ECSI_LayoutFreeNode(child);
+            continue;
+        }
+
+        child->parent = node;
+        arrput(children, child);
+    }
+
+    arrfree(node->children);
+    node->children = children;
+
+    if (arrlenu(children) > 1)
+    {
+        return node;
+    }
+
+    ECSI_Node *only = arrlenu(children) == 1 ? children[0] : NULL;
+
+    if (only != NULL)
+    {
+        only->fixedSize = node->fixedSize;
+        only->share = node->share;
+        only->parent = node->parent;
+    }
+
+    ECSI_LayoutFreeNode(node);
+    return only;
+}
+
+/// @brief Tidies a workspace's tree after an operation. Nodes may be freed, so the core's interface forgets the nodes it pointed to.
+static void ECSI_LayoutTidy(ECSI_Workspace *workspace)
+{
+    if (workspace->tree != NULL)
+    {
+        workspace->tree = ECSI_LayoutTidyNode(workspace, workspace->tree);
+    }
+
+    if (workspace->tree != NULL)
+    {
+        workspace->tree->parent = NULL;
+    }
+
+    LAYOUT.gripGroup = NULL;
+    LAYOUT.dragSplit = NULL;
+    LAYOUT.frameNeeded = true;
 }
 
 #pragma region Dividers
@@ -1240,29 +1291,21 @@ void ECSI_LayoutClosePanel(ECSPanel panel)
     arrdel(group->panels, index);
     ECSI_PanelClose(&panel);
 
-    if (arrlenu(group->panels) == 0)
-    {
-        if (workspace->maximized == group)
-        {
-            workspace->maximized = NULL;
-        }
+    // tidying frees an empty group, so its focus is found before and after
+    bool emptied = arrlenu(group->panels) == 0;
 
-        if (LAYOUT.gripGroup == group)
-        {
-            LAYOUT.gripGroup = NULL;
-        }
-
-        ECSI_LayoutRemoveNode(workspace, group);
-        workspace->focus = ECSI_LayoutFirstPanel(workspace->tree);
-    }
-    else
+    if (!emptied)
     {
-        group->shown = group->shown >= arrlenu(group->panels) ? arrlenu(group->panels) - 1 : group->shown;
+        group->shown = SDL_min(group->shown, arrlenu(group->panels) - 1);
         workspace->focus = group->panels[group->shown];
     }
 
-    LAYOUT.dragSplit = NULL;
-    LAYOUT.frameNeeded = true;
+    ECSI_LayoutTidy(workspace);
+
+    if (emptied)
+    {
+        workspace->focus = ECSI_LayoutFirstPanel(workspace->tree);
+    }
 }
 
 void ECSI_LayoutShowPrefixKeys(bool show)
