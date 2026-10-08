@@ -140,6 +140,13 @@ static void SDLCALL ECSI_EventsRunMainTask(void *data)
     SDL_free(task);
 }
 
+/// @brief Runs a task that the main thread queued for itself, after the current callback.
+static void ECSI_EventsDeliverMainTask(void *target, const ECSEvent *event)
+{
+    (void)event;
+    ECSI_EventsRunMainTask(target);
+}
+
 static int SDLCALL ECSI_EventsWorker(void *unused)
 {
     (void)unused;
@@ -438,6 +445,14 @@ SHUResult ECS_RunOnMainThread(ECSTaskFunction function, void *data)
     }
 
     *task = (ECSI_MainTask){.Function = function, .data = data};
+
+    // SDL would run it at once on the main thread, inside the caller's callback; the event queue runs it after
+    if (SDL_IsMainThread())
+    {
+        ECSEvent event = {0};
+        ECSI_EventsPost(ECSI_EventsDeliverMainTask, task, &event);
+        return SHUResult_Ok;
+    }
 
     if (!SDL_RunOnMainThread(ECSI_EventsRunMainTask, task, false))
     {
