@@ -393,7 +393,7 @@ static void Shuild_OpenECS(void)
     // the executable exports only the plugin interface: the OPENECS_EXPORT functions, whose names start with ECS
     SHU_CompilerAddFlags(" -fvisibility=hidden '-Wl,--export-dynamic-symbol=ECS*'");
 
-    // the sanitizers find their settings in src/Sanitizers.c by name
+    // the sanitizers find their settings in src/base/Sanitizers.c by name
     if (BUILD_TYPE == BuildType_Debug)
     {
         SHU_CompilerAddFlags(" '-Wl,--export-dynamic-symbol=__*san_default_*'");

@@ -115,6 +115,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 | Group     | Module   | Job                                                                                                                 |
 | --------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
 | base      | Log      | Where SDL's log goes, and how its lines look (14.4).                                                                |
+|           | Sanitizers | The sanitizers' settings in Debug builds (17.3).                                                                  |
 |           | Values   | Generic values (10.3).                                                                                              |
 |           | Lua      | The Lua state. Reads data files (11.2) and runs all Lua code in protected calls.                                    |
 | runtime   | Plugins  | Finding, ordering and loading plugins. Logging for plugins.                                                         |
@@ -880,8 +881,9 @@ OpenECS follows the XDG Base Directory specification:
 
 - Warnings: `-Wall -Wextra -Wpedantic -Wconversion -Wshadow`.
 - Debug builds of the core and of plugins add the static analyzer (`-fanalyzer`) and the address, leak and undefined-behaviour sanitizers (`-fsanitize=address,undefined`). Dependencies get neither.
-- `src/Sanitizers.c` sets the sanitizers' options and hides leaks inside the system libraries that SDL loads: graphics drivers, display servers, input methods and D-Bus. It is compiled only in Debug builds.
-- Debug builds check for leaks at shutdown, after OpenECS has freed its memory and before `SDL_Quit` unloads those libraries, so their leaks can be matched by library name.
+- The Sanitizers module sets the sanitizers' options and hides leaks inside the system libraries that SDL loads: graphics drivers, display servers, input methods and D-Bus. In other builds its functions do nothing.
+- Debug builds keep every library loaded until the program exits, so a leak inside one is matched by its name. Graphics drivers are otherwise unloaded when their device is destroyed, and their leaks would show an unknown module.
+- Debug builds check for leaks at shutdown, after OpenECS has freed its memory and before `SDL_Quit`.
 - Release builds set `SDL_ASSERT_LEVEL` to 0, so they have no assertions. Debug builds set it to 2.
 
 ### 17.4 Dependency versions
