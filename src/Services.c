@@ -942,8 +942,14 @@ void ECSI_ServicesPushHandle(const char *type, void *object)
         return;
     }
 
+    // the type is gone when its plugin was removed; a handle cannot be made without it
     ECSI_HandleType *handleType = ECSI_ServicesFindHandleType(type);
-    SDL_assert(handleType != NULL);
+
+    if (handleType == NULL)
+    {
+        lua_pushnil(state);
+        return;
+    }
 
     lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.handles);
 
@@ -968,7 +974,12 @@ void *ECSI_ServicesCheckHandle(int index, const char *type)
 
     lua_State *state = ECSI_LuaGetState();
     ECSI_HandleType *handleType = ECSI_ServicesFindHandleType(type);
-    SDL_assert(handleType != NULL);
+
+    if (handleType == NULL)
+    {
+        luaL_error(state, "handle type '%s' is gone; its plugin was removed", type);
+        return NULL;
+    }
 
     ECSI_Handle *handle = luaL_checkudata(state, index, handleType->metatable);
 
@@ -1001,7 +1012,12 @@ void ECSI_ServicesForgetHandle(void *object)
 void ECSI_ServicesPushHandleMetatable(const char *type)
 {
     ECSI_HandleType *handleType = ECSI_ServicesFindHandleType(type);
-    SDL_assert(handleType != NULL);
+
+    if (handleType == NULL)
+    {
+        lua_pushnil(ECSI_LuaGetState());
+        return;
+    }
 
     luaL_getmetatable(ECSI_LuaGetState(), handleType->metatable);
 }

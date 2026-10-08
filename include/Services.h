@@ -15,10 +15,10 @@ void ECSI_ServicesTerminate(void);
 
 /// @brief Pushes the Lua handle of an object: the one Lua already has, or a new one.
 /// @param type Name of the object's handle type.
-/// @param object The object, or NULL for nil.
+/// @param object The object, or NULL for nil. Nil is pushed too if the type is gone, because its plugin was removed.
 void ECSI_ServicesPushHandle(const char *type, void *object);
 
-/// @brief Reads a Lua handle of a type. Raises a Lua error if the value is not a handle of that type, or its object is gone.
+/// @brief Reads a Lua handle of a type. Raises a Lua error if the value is not a handle of that type, or its object or type is gone.
 /// @param index Index of the handle on the Lua stack.
 /// @param type Name of the handle type.
 /// @return The object.
@@ -29,7 +29,7 @@ void *ECSI_ServicesCheckHandle(int index, const char *type);
 void ECSI_ServicesForgetHandle(void *object);
 
 /// @brief Pushes the metatable of a handle type, so the Bindings module can give its handles methods.
-/// @param type Name of the handle type.
+/// @param type Name of the handle type. Nil is pushed if the type is gone.
 void ECSI_ServicesPushHandleMetatable(const char *type);
 
 /// @brief Removes every function a plugin registered.

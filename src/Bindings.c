@@ -1207,7 +1207,12 @@ static int ECSI_BindingsSurfaceGetPixel(lua_State *state)
 {
     ECSSurface *surface = ECSI_BindingsCheckSurface(state, 1);
     u32 *pixel = ECSI_BindingsPixel(surface, luaL_checkinteger(state, 2), luaL_checkinteger(state, 3));
-    luaL_argcheck(state, pixel != NULL, 2, "the position is outside the surface");
+
+    if (pixel == NULL)
+    {
+        return luaL_argerror(state, 2, "the position is outside the surface");
+    }
+
     lua_pushinteger(state, (lua_Integer)*pixel);
     return 1;
 }
@@ -1229,9 +1234,11 @@ static int ECSI_BindingsSurfaceSetRow(lua_State *state)
     lua_Integer skip = x < 0 ? -x : 0;
     lua_Integer count = SDL_min((lua_Integer)(length / 4) - skip, (lua_Integer)surface->width - (x + skip));
 
-    if (count > 0)
+    u32 *first = ECSI_BindingsPixel(surface, x + skip, y);
+
+    if (count > 0 && first != NULL)
     {
-        SDL_memcpy(ECSI_BindingsPixel(surface, x + skip, y), bytes + skip * 4, (usz)count * 4);
+        SDL_memcpy(first, bytes + skip * 4, (usz)count * 4);
     }
 
     return 0;
