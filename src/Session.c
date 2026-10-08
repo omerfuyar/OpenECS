@@ -5,6 +5,7 @@
 #include "Panels.h"
 
 #include "SDL3/SDL.h"
+#include "stb/stbSDL3.h"
 
 #pragma region Source Only
 
@@ -12,18 +13,11 @@ static void ECSI_SessionAddPlugin(const char *key, const char *value, void *user
 {
     (void)value;
     ECSI_PresetInfo *info = userData;
-
-    if (info->pluginCount == OPENECS_MAX_PLUGINS)
-    {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The preset names too many plugins; '%s' is skipped.", key);
-        return;
-    }
-
     char *plugin = SDL_strdup(key);
 
     if (plugin != NULL)
     {
-        info->plugins[info->pluginCount++] = plugin;
+        arrput(info->plugins, plugin);
     }
 }
 
@@ -207,11 +201,12 @@ void ECSI_SessionFreeInfo(ECSI_PresetInfo *info)
     SDL_free(info->appName);
     SDL_free(info->pluginsDirectory);
 
-    for (usz i = 0; i < info->pluginCount; i++)
+    for (usz i = 0; i < arrlenu(info->plugins); i++)
     {
         SDL_free(info->plugins[i]);
     }
 
+    arrfree(info->plugins);
     SDL_zerop(info);
 }
 

@@ -3,11 +3,9 @@
 #include "Lua.h"
 
 #include "SDL3/SDL.h"
+#include "stb/stbSDL3.h"
 
 #pragma region Source Only
-
-/// @brief Most dependencies of one plugin.
-#define OPENECS_MAX_DEPENDENCIES 32
 
 typedef struct ECSI_Plugin
 {
@@ -23,8 +21,7 @@ typedef struct ECSI_Manifest
     char *folder;  // the plugin's folder, ending with a separator
     char *version;
     char *native;  // file name of the native library, or NULL
-    char *dependencies[OPENECS_MAX_DEPENDENCIES];
-    usz dependencyCount;
+    char **dependencies; // stb_ds array
     u32 api;
     bool hasLua;
     bool incomplete; // a text could not be copied
@@ -32,25 +29,19 @@ typedef struct ECSI_Manifest
 
 static struct
 {
-    ECSI_Plugin plugins[OPENECS_MAX_PLUGINS];
-    usz count;
+    struct
+    {
+        char *key; // the plugin's own copy of its name
+        ECSI_Plugin *value;
+    } *plugins; // stb_ds hash map in load order, because nothing is deleted from it; handles point to the plugins
     const char *const *directories;
     usz directoryCount;
-    const char *loading[OPENECS_MAX_PLUGINS]; // plugins being loaded, to find dependency cycles
-    usz loadingCount;
+    const char **loading; // stb_ds array of the plugins being loaded, to find dependency cycles
 } PLUGINS = {0};
 
 static ECSI_Plugin *ECSI_PluginFind(const char *name)
 {
-    for (usz i = 0; i < PLUGINS.count; i++)
-    {
-        if (SDL_strcmp(PLUGINS.plugins[i].name, name) == 0)
-        {
-            return &PLUGINS.plugins[i];
-        }
-    }
-
-    return NULL;
+    return shget(PLUGINS.plugins, name);
 }
 
 static void ECSI_ManifestFree(ECSI_Manifest *manifest)
@@ -59,11 +50,12 @@ static void ECSI_ManifestFree(ECSI_Manifest *manifest)
     SDL_free(manifest->version);
     SDL_free(manifest->native);
 
-    for (usz i = 0; i < manifest->dependencyCount; i++)
+    for (usz i = 0; i < arrlenu(manifest->dependencies); i++)
     {
         SDL_free(manifest->dependencies[i]);
     }
 
+    arrfree(manifest->dependencies);
     SDL_zerop(manifest);
 }
 
@@ -71,13 +63,6 @@ static void ECSI_ManifestAddDependency(const char *key, const char *value, void 
 {
     (void)value;
     ECSI_Manifest *manifest = userData;
-
-    if (manifest->dependencyCount == OPENECS_MAX_DEPENDENCIES)
-    {
-        manifest->incomplete = true;
-        return;
-    }
-
     char *dependency = SDL_strdup(key);
 
     if (dependency == NULL)
@@ -86,7 +71,7 @@ static void ECSI_ManifestAddDependency(const char *key, const char *value, void 
         return;
     }
 
-    manifest->dependencies[manifest->dependencyCount++] = dependency;
+    arrput(manifest->dependencies, dependency);
 }
 
 /// @brief Copies what the open manifest says. Its texts are valid only while it is open.
@@ -176,16 +161,16 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
         return SHUResult_ErrBadData;
     }
 
-    PLUGINS.loading[PLUGINS.loadingCount++] = name;
+    arrput(PLUGINS.loading, name);
 
-    for (usz i = 0; i < manifest->dependencyCount; i++)
+    for (usz i = 0; i < arrlenu(manifest->dependencies); i++)
     {
         SHU_ReturnResult(ECSI_PluginLoad(manifest->dependencies[i]),
-                         PLUGINS.loadingCount--;
+                         (void)arrpop(PLUGINS.loading);
                          SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is skipped because '%s' failed.", name, manifest->dependencies[i]););
     }
 
-    PLUGINS.loadingCount--;
+    (void)arrpop(PLUGINS.loading);
 
     if (manifest->hasLua)
     {
@@ -193,10 +178,12 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
     }
 
     ECSI_Plugin plugin = {.name = SDL_strdup(name), .version = SDL_strdup(manifest->version)};
+    ECSI_Plugin *record = SDL_malloc(sizeof(ECSI_Plugin));
     SHUResult (*Init)(ECSPlugin plugin) = NULL;
 
-    if (plugin.name == NULL || plugin.version == NULL)
+    if (plugin.name == NULL || plugin.version == NULL || record == NULL)
     {
+        SDL_free(record);
         SDL_free(plugin.name);
         SDL_free(plugin.version);
         return SHUResult_ErrAllocation;
@@ -215,6 +202,7 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
         if (plugin.library == NULL)
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot load the library of plugin '%s': %s", name, SDL_GetError());
+            SDL_free(record);
             SDL_free(plugin.name);
             SDL_free(plugin.version);
             return SHUResult_ErrFile;
@@ -227,6 +215,7 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' does not export ECSPlugin_Init.", name);
             SDL_UnloadObject(plugin.library);
+            SDL_free(record);
             SDL_free(plugin.name);
             SDL_free(plugin.version);
             return SHUResult_ErrBadData;
@@ -234,8 +223,8 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
     }
 
     // the plugin is recorded before its Init runs, so the core knows it while it registers things
-    ECSI_Plugin *record = &PLUGINS.plugins[PLUGINS.count++];
     *record = plugin;
+    shput(PLUGINS.plugins, record->name, record);
 
     SHUResult result = Init == NULL ? SHUResult_Ok : Init(record);
 
@@ -259,18 +248,13 @@ static SHUResult ECSI_PluginLoad(const char *name)
         return SHUResult_Ok;
     }
 
-    for (usz i = 0; i < PLUGINS.loadingCount; i++)
+    for (usz i = 0; i < arrlenu(PLUGINS.loading); i++)
     {
         if (SDL_strcmp(PLUGINS.loading[i], name) == 0)
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' depends on itself through its dependencies.", name);
             return SHUResult_ErrBadData;
         }
-    }
-
-    if (PLUGINS.count == OPENECS_MAX_PLUGINS || PLUGINS.loadingCount == OPENECS_MAX_PLUGINS)
-    {
-        return SHUResult_ErrOverflow;
     }
 
     ECSI_Manifest manifest;
@@ -310,9 +294,9 @@ SHUResult ECSI_PluginsLoad(const char *const *directories, usz directoryCount, c
 
 void ECSI_PluginsUnload(void)
 {
-    for (usz i = PLUGINS.count; i > 0; i--)
+    for (usz i = shlenu(PLUGINS.plugins); i > 0; i--)
     {
-        ECSI_Plugin *plugin = &PLUGINS.plugins[i - 1];
+        ECSI_Plugin *plugin = PLUGINS.plugins[i - 1].value;
 
         if (plugin->Shutdown != NULL)
         {
@@ -326,8 +310,11 @@ void ECSI_PluginsUnload(void)
 
         SDL_free(plugin->name);
         SDL_free(plugin->version);
+        SDL_free(plugin);
     }
 
+    shfree(PLUGINS.plugins);
+    arrfree(PLUGINS.loading);
     SDL_zero(PLUGINS);
 }
 

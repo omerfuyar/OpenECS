@@ -13,8 +13,7 @@ typedef struct ECSI_PresetInfo
     char *appId;
     char *appName;
     char *pluginsDirectory; // NULL if the preset names none; ends with a separator
-    char *plugins[OPENECS_MAX_PLUGINS];
-    usz pluginCount;
+    char **plugins; // stb_ds array
 } ECSI_PresetInfo;
 
 /// @brief Finds a preset's file.

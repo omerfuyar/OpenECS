@@ -6,9 +6,6 @@
 
 #pragma region Declarations
 
-/// @brief Most plugins that can be loaded.
-#define OPENECS_MAX_PLUGINS 64
-
 /// @brief Loads plugins, after the plugins they depend on, and runs their ECSPlugin_Init.
 /// @param directories Directories that hold plugin folders, searched in order. Each ends with a separator.
 /// @param directoryCount Number of directories.

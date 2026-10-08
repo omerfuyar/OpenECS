@@ -6,6 +6,7 @@
 #include "Session.h"
 
 #include "SDL3/SDL.h"
+#include "stb/stbSDL3.h"
 
 /// @brief Preset used when the command line names none.
 #define OPENECS_DEFAULT_PRESET "default"
@@ -89,14 +90,7 @@ static void ECSI_LoadPlugins(const ECSI_PresetInfo *preset)
         }
     }
 
-    const char *plugins[OPENECS_MAX_PLUGINS];
-
-    for (usz i = 0; i < preset->pluginCount; i++)
-    {
-        plugins[i] = preset->plugins[i];
-    }
-
-    if (ECSI_PluginsLoad(directories, directoryCount, plugins, preset->pluginCount))
+    if (ECSI_PluginsLoad(directories, directoryCount, (const char *const *)preset->plugins, arrlenu(preset->plugins)))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Some plugins failed to load; their panels are shown as placeholders.");
     }
