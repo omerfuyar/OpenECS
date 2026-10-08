@@ -325,6 +325,22 @@ const char *ECSI_PluginGetName(ECSPlugin plugin)
     return plugin->name;
 }
 
+bool ECSI_PluginOwnsName(ECSPlugin plugin, const char *name)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(name != NULL);
+
+    usz prefixLength = SDL_strlen(plugin->name);
+
+    if (SDL_strncmp(name, plugin->name, prefixLength) != 0 || name[prefixLength] != '.' || name[prefixLength + 1] == '\0')
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' must start with '%s.', the name of the plugin that registers it.", name, plugin->name);
+        return false;
+    }
+
+    return true;
+}
+
 void ECS_Log(ECSPlugin plugin, ECSLogLevel level, const char *format, ...)
 {
     SDL_assert(plugin != NULL);

@@ -281,11 +281,8 @@ SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc)
         return SHUResult_ErrBadData;
     }
 
-    usz prefixLength = SDL_strlen(pluginName);
-
-    if (SDL_strncmp(desc->name, pluginName, prefixLength) != 0 || desc->name[prefixLength] != '.')
+    if (!ECSI_PluginOwnsName(plugin, desc->name))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' must start with '%s.'.", desc->name, pluginName);
         return SHUResult_ErrBadData;
     }
 

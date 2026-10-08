@@ -22,4 +22,10 @@ void ECSI_PluginsUnload(void);
 /// @return The name its manifest gives.
 const char *ECSI_PluginGetName(ECSPlugin plugin);
 
+/// @brief Checks that a name that a plugin registers starts with the plugin's name and a dot, and reports it if not.
+/// @param plugin The plugin.
+/// @param name The name, such as "canvas.view".
+/// @return true if the name belongs to the plugin.
+bool ECSI_PluginOwnsName(ECSPlugin plugin, const char *name);
+
 #pragma endregion Declarations
