@@ -21,6 +21,8 @@ return {
     ["L"] = "ecs.lock",
     ["T"] = "ecs.reopen",
     ["R"] = "ecs.restart",
+    ["S"] = "ecs.saveSession",
+    ["O"] = "ecs.openSession",
     ["1"] = "ecs.workspace1",
     ["2"] = "ecs.workspace2",
     ["3"] = "ecs.workspace3",

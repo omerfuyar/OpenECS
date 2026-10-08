@@ -34,6 +34,7 @@ static struct
     f32 pointerX;                 // the pointer's last position
     f32 pointerY;
     SDL_MouseButtonFlags buttons; // the buttons held
+    char **files;                 // stb_ds array of the paths that the test's files field names
 } TEST = {0};
 
 /// @brief test.match: compares by contents and names the path of the first difference.
@@ -449,6 +450,25 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 
     lua_pop(state, 1);
 
+    // files are paths relative to the test file too, opened as if the command line named them
+    lua_getfield(state, -2, "files");
+
+    for (lua_Integer i = 1; lua_istable(state, -1) && lua_rawgeti(state, -1, i) == LUA_TSTRING; i++)
+    {
+        const char *name = lua_tostring(state, -1);
+        char *copy = NULL;
+
+        if (SDL_asprintf(&copy, "%.*s%s", slash != NULL && name[0] != '/' ? (int)(slash - path + 1) : 0, path, name) >= 0)
+        {
+            arrput(TEST.files, copy);
+        }
+
+        lua_pop(state, 1);
+    }
+
+    // the loop leaves the first value that is not a file on the stack, above the table
+    lua_pop(state, lua_istable(state, -2) ? 2 : 1);
+
     // the run function and the test table wait on the coroutine's stack until its first resume
     TEST.thread = lua_newthread(state);
     TEST.threadReference = luaL_ref(state, LUA_REGISTRYINDEX);
@@ -472,9 +492,24 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     return SHUResult_Ok;
 }
 
+char **ECSITest_GetFiles(usz *retCount)
+{
+    SDL_assert(retCount != NULL);
+
+    *retCount = arrlenu(TEST.files);
+    return TEST.files;
+}
+
 void ECSITest_Terminate(void)
 {
     ECSITest_Finish();
+
+    for (usz i = 0; i < arrlenu(TEST.files); i++)
+    {
+        SDL_free(TEST.files[i]);
+    }
+
+    arrfree(TEST.files);
     SDL_zero(TEST);
 }
 

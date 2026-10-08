@@ -87,4 +87,9 @@ bool ECSIPlugin_DependsOn(ECSPlugin plugin, ECSPlugin other);
 /// @return true if the name belongs to the plugin.
 bool ECSIPlugin_OwnsName(ECSPlugin plugin, const char *name);
 
+/// @brief Checks whether the owner of a name runs: the text before the name's first dot is "ecs", the core, or a plugin that loaded and did not fail.
+/// @param name The name, such as "canvas.grid".
+/// @return true if the owner runs, so the name can be checked against what it registered.
+bool ECSIPlugins_OwnerRuns(const char *name);
+
 #pragma endregion Declarations

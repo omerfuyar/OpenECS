@@ -13,6 +13,11 @@
 /// @return SHUResult_Ok, SHUResult_ErrFile if the file cannot be read, SHUResult_ErrBadData if it fails or returns no test, SHUResult_ErrAllocation, or SHUResult_ErrPrivileges in builds other than Debug.
 SHUWUR SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **retPreset);
 
+/// @brief Gets the files that the test's files field names, which the program opens as if the command line named them.
+/// @param retCount The number of files.
+/// @return The paths. Valid until ECSITest_Terminate.
+char **ECSITest_GetFiles(usz *retCount);
+
 /// @brief Frees the test.
 void ECSITest_Terminate(void);
 

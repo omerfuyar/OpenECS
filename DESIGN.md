@@ -99,7 +99,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 ### 1.6 Style
 
-- Documentation comments use `///` with `@brief`, `@param`, `@return` and `@note`, on every public declaration. Each `@return` names the `SHUResult` values the function can return.
+- Documentation comments use `///` with `@brief`, `@param`, `@return` and `@note`, on every public declaration. Each `@return` names the `SHUResult` values the function can return. A public function's comment ends with `@lua` (11.5).
 - Allman braces and four spaces for indentation.
 - An unused parameter is marked `(void)name;`.
 - Plain comments are short and lowercase; `// todo` marks unfinished work and `//!` marks something important.
@@ -148,7 +148,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 
 ### 2.3 Start-up
 
-1. Read the command line (13.5) and find the preset or session.
+1. Read the command line (13.6) and find the preset or session.
 2. Start Lua. Read the preset's identity, plugins and settings as data (11.2).
 3. Give SDL the tool's identity (name, icon, app id) with `SDL_SetAppMetadata`. This happens before any OS window exists, because SDL needs the identity before it starts.
 4. Start SDL, and open the main OS window and its renderer.
@@ -156,7 +156,9 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 6. Load each plugin in order and call its `Init`. Plugins register what they provide.
 7. Build the settings layers (OVERVIEW 10.4).
 8. Restore plugin state, then build the layout and panels, from this tool's last session or from the preset (OVERVIEW 10.2).
-9. Enter the main loop.
+9. Report the settings and keys whose names nothing registered (7.8, 12.1).
+10. Pass the files of the command line to the `open` function (13.6).
+11. Enter the main loop.
 
 ### 2.4 Shutdown
 
@@ -452,6 +454,8 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | `ecs.lock`                            | Lock or unlock the group                                                                                 |
   | `ecs.reopen`                          | Reopen the last closed panel                                                                             |
   | `ecs.restart`                         | Restart the failed panel                                                                                 |
+  | `ecs.saveSession`                     | Save the session to a file, which a save dialog asks for                                                 |
+  | `ecs.openSession`                     | Open a saved session (13.5), which an open dialog asks for                                               |
   | `ecs.workspace1` to `ecs.workspace10` | Switch to workspace 1 to 10                                                                              |
 
 - Escape after the prefix cancels. It is not a function, so it always works.
@@ -472,6 +476,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Plugins have no function for workspace or global bindings.
 - `ECSKey_Bind(plugin, panelType, settingName, functionName)`, and in Lua `ecs.input.bind(panelType, settingName, functionName)`: the plugin's key setting holds the key, and the key runs a registered function (10). The binding counts in the layer that sets the key setting (OVERVIEW 7.3).
 - Presets bind keys with `keys` tables for the whole tool and for each workspace (13.2); the user's files with `keys` tables for every tool and for one tool (12.3). The tables map key combinations to function names.
+- Once the session is built, a key of these tables or of `ecs.prefixKeys` that runs a function its owner does not have is reported, if the owner runs (12.1).
 - A function bound by name takes no arguments, or one argument: the focused panel. Its signature is `void()` or `void(handle<ecs.panel>)`.
 - The core registers its own bindable actions as functions under `ecs`, for example `ecs.focusLeft` and `ecs.maximize`. So settings name them like any plugin function.
 
@@ -711,7 +716,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 | `ecs.timer`                   | timers                              |
 | `ecs.service`                 | register and look up functions      |
 | `ecs.settings`                | declare, get, set, list and explain |
-| `ecs.session`                 | save and load                       |
+| `ecs.session`                 | saving and opening sessions         |
 | `ecs.plugin`                  | information about plugins           |
 | `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs               |
 | `ecs.log`                     | `debug`, `info`, `warn` and `error` |
@@ -721,13 +726,16 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 ### 11.4 Panels in Lua
 
 - A Lua panel type is a table (4.1). The core registers C callbacks that call its Lua functions in protected calls.
-- Panels are handles with methods: `panel:redraw()`, `panel:getId()`, `panel:getType()`, `panel:getTitle()`, `panel:setTitle(text)` and `panel:startTimer(seconds, repeat, fn)`. A handle of a destroyed panel raises an error when it is used.
+- Panels are handles with methods: `panel:redraw()`, `panel:getId()`, `panel:getType()`, `panel:getTitle()`, `panel:setTitle(text)`, `panel:setUnsaved(unsaved)` and `panel:startTimer(seconds, repeat, fn)`. Each is also a function of `ecs.panel` that takes the panel first, such as `ecs.panel.getTitle(panel)`. A handle of a destroyed panel raises an error when it is used.
 - `draw(state, surface, seconds)` gets a surface with `width`, `height` and `scale`, and the methods `setPixel(x, y, color)`, `getPixel(x, y)` and `setRow(y, bytes, x)`. Colours are ARGB integers; `setRow` takes the row's pixels as a string in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
 - `event(state, event)` gets a table: `type` (such as `"pointerDown"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheelX` and `wheelY` for the wheel, `key` (SDL's key name) for keys, and `width` and `height` for `shown` and `resized`.
 
 ### 11.5 Parity
 
-A list of every public C function with its Lua counterpart is kept and checked by the build or the tests.
+- The documentation of each public function in `OpenECS.h` ends with a line that names its Lua counterparts in `include/ecs.lua`, such as `/// @lua ecs.panel.getTitle, panel:getTitle`, or says `none:` and why.
+- The functions of values (10.3) have no `@lua` line, because Lua passes its own values.
+- A function of `ecs.lua` that C does not have says `Lua only:` and why in its documentation.
+- The test `tests/parity.lua` checks both files: every public function has its line, every name it gives is in `ecs.lua`, and every function of `ecs.lua` is named or says it is Lua only.
 
 ### 11.6 Keeping Lua values
 
@@ -743,6 +751,7 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 - The core's settings file is `resources/settings.lua` next to the executable, in the format of the user's file (12.3). It is the core layer, and the only place that gives the core's settings their defaults. OpenECS does not start if the file cannot be read, or if it gives a core setting no value of its type. Its `ecs.prefix` must be a key combination, because a prefix that cannot be read falls back to it.
 - `ECSSetting_Get(name)` returns the value in effect as a value (10.3). It comes from the highest layer that sets the setting with a value of its type; otherwise it is the default. A value of another type is reported with its file and skipped.
 - The core reads a key combination when it uses it. A key text that cannot be read is reported, and the default is used.
+- A name's owner is the text before its first dot: `ecs` for the core, or a plugin. Once the plugins are loaded, a setting in a file that is not declared is reported with its file if its owner runs: the core, or a plugin that loaded and did not fail. So a misspelt name is noticed. The setting is kept (OVERVIEW 12).
 
 ### 12.2 Interface
 
@@ -822,8 +831,17 @@ The core converts only layout data.
 - Named fields are read and written in the order of their names, so the same session always writes the same file.
 - A session is written from the file it came from, with the current workspaces. So fields that the core does not use are kept.
 - A file is written to a temporary file, then renamed over the old one, so it is never left half-written.
+- `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. `ecs.saveSession` asks for the file with a save dialog that starts in the folder of saved sessions (16). Quitting still saves the tool's last session.
 
-### 13.5 Command line
+### 13.5 Opening a session
+
+- `ECSSession_Open(path)`, and in Lua `ecs.session.open(path)`, open a session in place of the current one. `ecs.openSession` asks for the file with an open dialog that starts in the folder of saved sessions (16).
+- A file without a list of workspaces is reported, and nothing changes.
+- The core asks about unsaved work (4.5). When the dialog cannot be shown, the work is kept and the session is not opened.
+- When the current pass of the main loop ends, OpenECS shuts down from step 2 of 2.4, so the tool's last session is saved. Then the program replaces itself with `openecs --session FILE`. So the session's identity, plugins and settings apply as at a start.
+- A test cannot open a session (17.5).
+
+### 13.6 Command line
 
 ```
 openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [FILE...]
@@ -832,7 +850,7 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [FILE...]
 - `--fresh` starts from the preset instead of the tool's last session.
 - `--test` runs a test (17.5).
 - A session's identity wins over the preset's, so the session is saved again as the last session of its own tool.
-- Files are passed to the function that the preset names in `open`.
+- Files are passed to the function that the preset or session names in `open`. Its signature is `void(string)`. It is called once for each file, in order, once the session is built (2.3). Without an `open` function, the files are reported and not opened.
 - A tool's `.desktop` file runs, for example, `openecs --preset paint %F`.
 
 ## 14. Errors and logging
@@ -935,7 +953,7 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 ### 17.5 Tests
 
 - A test is a Lua file in `tests/`. Debug builds run it with `openecs --test FILE`; other builds refuse the option.
-- The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `default` if left out), and `run`, a function that gets the `test` table.
+- The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `default` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.6), and `run`, a function that gets the `test` table.
 - Tests keep their presets and test plugins in `tests/presets/` and `tests/plugins/`, so a change to a first-party preset does not change a test.
 - A test starts from its preset alone. It reads none of the user's settings, plugins or sessions, and writes no session and no log file. SDL's offscreen video driver and software renderer are the defaults, so a test needs no display; the variables `SDL_VIDEO_DRIVER` and `SDL_RENDER_DRIVER` choose others, for example to watch a test.
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).

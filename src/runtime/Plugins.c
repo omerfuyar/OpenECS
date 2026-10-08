@@ -654,6 +654,31 @@ bool ECSIPlugin_DependsOn(ECSPlugin plugin, ECSPlugin other)
     return plugin == other;
 }
 
+bool ECSIPlugins_OwnerRuns(const char *name)
+{
+    SDL_assert(name != NULL);
+
+    const char *dot = SDL_strchr(name, '.');
+
+    if (dot == NULL)
+    {
+        return false;
+    }
+
+    usz length = (usz)(dot - name);
+
+    if (length == 3 && SDL_strncmp(name, "ecs", 3) == 0)
+    {
+        return true;
+    }
+
+    // the plugins are keyed by whole names, so the owner's name is copied
+    char *owner = SDL_strndup(name, length);
+    ECSIPlugin *plugin = owner == NULL || PLUGINS.plugins == NULL ? NULL : ECSIPlugin_Find(owner);
+    SDL_free(owner);
+    return plugin != NULL && !plugin->failed;
+}
+
 bool ECSIPlugin_OwnsName(ECSPlugin plugin, const char *name)
 {
     SDL_assert(plugin != NULL);

@@ -10,6 +10,7 @@ local function each(plugin)
   local eachCanvas = assert(ecs.service.get(plugin .. ".eachCanvas", SIGNATURE))
   local seen = {}
   local count = eachCanvas(function(panel, strokes)
+    assert(ecs.panel.getType(panel) == panel:getType() and ecs.panel.getId(panel) == panel:getId())
     seen[#seen + 1] = { type = panel:getType(), strokes = strokes }
   end)
   return { count = count, seen = seen, without = eachCanvas(nil) }

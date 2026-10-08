@@ -28,6 +28,8 @@
 #define OPENECS_LAST_SESSION_FILE "session.lua"
 /// @brief The log file, in the state folder. Each start writes it anew.
 #define OPENECS_LOG_FILE "openecs.log"
+/// @brief Where the user's saved sessions go by default, in the data folder.
+#define OPENECS_SESSIONS_FOLDER "sessions/"
 
 static struct
 {
@@ -184,6 +186,23 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
 }
 
 /// @brief Gives the shorter of two waits in milliseconds, where -1 means no wait.
+/// @brief Passes files to the function that the preset or session names in open, one call for each file.
+static void ECSIApp_OpenFiles(char **files, usz count)
+{
+    const char *open = ECSValue_GetString(ECSValue_GetTableField(APP.preset.file, "open"), NULL);
+
+    if (count > 0 && open == NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The preset names no function to open files with, so %zu files are not opened.", count);
+        return;
+    }
+
+    for (usz i = 0; i < count; i++)
+    {
+        ECSIServices_CallOpen(open, files[i]);
+    }
+}
+
 static i32 ECSIApp_ShorterWait(i32 a, i32 b)
 {
     return a < 0 || (b >= 0 && b < a) ? b : a;
@@ -279,11 +298,32 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_CheckStart(ECSIMenus_Initialize(), "registering the core's functions");
     ECSIApp_CheckStart(ECSIInput_Initialize(), "declaring the input settings");
 
+    // a test has no data folder, so the dialog of ecs.saveSession starts where the system chooses
+    char *dataFolder = APP.test ? NULL : ECSIApp_XdgFolder("XDG_DATA_HOME", ".local/share");
+    char *sessionsFolder = NULL;
+
+    if (dataFolder != NULL && SDL_asprintf(&sessionsFolder, "%s%s", dataFolder, OPENECS_SESSIONS_FOLDER) < 0)
+    {
+        sessionsFolder = NULL;
+    }
+
+    ECSIApp_CheckStart(ECSISession_Initialize(sessionsFolder, !APP.test), "registering the session functions");
+    SDL_free(dataFolder);
+    SDL_free(sessionsFolder);
+
     ECSIBindings_Initialize();
     ECSIPluginHooks hooks = {.StartLua = ECSIBindings_StartPlugin, .RemoveRegistrations = ECSIApp_RemoveRegistrations};
     ECSIPlugins_SetHooks(&hooks);
     ECSIApp_LoadPlugins(&APP.preset);
     ECSIApp_CheckStart(ECSISession_Apply(sourcePath, &APP.preset), "building the layout");
+
+    // misspelt names change nothing, so they are reported once everything is registered
+    ECSISettings_ReportUndeclared();
+    ECSIKeys_ReportUnknownFunctions();
+
+    usz fileCount = arguments->fileCount;
+    char **files = APP.test ? ECSITest_GetFiles(&fileCount) : arguments->files;
+    ECSIApp_OpenFiles(files, fileCount);
 
     // drivers, plugins and system libraries are loaded now
     ECSISanitizers_KeepLibraries();
@@ -326,18 +366,19 @@ int ECSIApp_Run(void)
             ECSIWindow_Render(SDL_GetTicksNS());
         }
 
-        running = ECSITest_Step();
+        // a session opened in this pass replaces the program once it stops
+        running = ECSITest_Step() && ECSISession_GetNext() == NULL;
     }
 
     return ECSITest_GetStatus();
 }
 
-void ECSIApp_Stop(void)
+char *ECSIApp_Stop(void)
 {
     ECSISanitizers_KeepLibraries();
     ECSITest_Terminate();
 
-    if (APP.lastSession != NULL && ECSISession_Save(APP.lastSession, &APP.preset) == SHUResult_Ok)
+    if (APP.lastSession != NULL && ECSSession_Save(APP.lastSession) == SHUResult_Ok)
     {
         SDL_Log("Session saved to '%s'.", APP.lastSession);
     }
@@ -357,6 +398,8 @@ void ECSIApp_Stop(void)
     ECSIPlugins_Unload();
     ECSISettings_Terminate();
     ECSIBindings_Terminate();
+    char *next = ECSISession_GetNext() == NULL ? NULL : SDL_strdup(ECSISession_GetNext());
+    ECSISession_Terminate();
     ECSISession_FreeInfo(&APP.preset);
     SDL_free(APP.presetPath);
     SDL_free(APP.sessionPath);
@@ -370,4 +413,5 @@ void ECSIApp_Stop(void)
 
     SDL_Quit();
     ECSILog_Terminate();
+    return next;
 }

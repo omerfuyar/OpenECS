@@ -927,6 +927,53 @@ static void SketchPaste(ECSPanel panel)
     }
 }
 
+/// @brief Opens a canvas with the strokes of a file in the text format of copy; the function a preset opens files with.
+static void SketchOpen(const char *path)
+{
+    FILE *file = fopen(path, "rb");
+    char *text = NULL;
+    long size = -1;
+
+    if (file != NULL && fseek(file, 0, SEEK_END) == 0 && (size = ftell(file)) >= 0 && fseek(file, 0, SEEK_SET) == 0)
+    {
+        text = malloc((size_t)size + 1);
+        size = text != NULL ? (long)fread(text, 1, (size_t)size, file) : -1;
+    }
+
+    // strtol reads the strokes, so the text ends with a zero
+    if (size >= 0)
+    {
+        text[size] = '\0';
+    }
+
+    if (file != NULL)
+    {
+        fclose(file);
+    }
+
+    ECSPanel panel = NULL;
+
+    if (text == NULL || size < 0 || ECSLayout_Open(SKETCH.plugin, &panel, SKETCH_NAME("canvas"), NULL, NULL, ECSZone_Default))
+    {
+        ECS_Log(SKETCH.plugin, ECSLogLevel_Warning, "Cannot open '%s'.", path);
+        free(text);
+        return;
+    }
+
+    SketchCanvas *canvas = SketchFindCanvas(panel);
+    usz added = canvas != NULL ? SketchStrokesFromText(canvas, (SHUSliceView){.data = text, .size = (usz)size}) : 0;
+    free(text);
+
+    if (canvas == NULL)
+    {
+        return;
+    }
+
+    ECS_Log(SKETCH.plugin, ECSLogLevel_Info, "Opened %zu strokes from '%s'.", added, path);
+    SketchCanvasTitle(canvas);
+    ECSPanel_Redraw(panel);
+}
+
 static void SketchOpenBeside(ECSPanel panel)
 {
     ECSPanel opened = NULL;
@@ -1254,6 +1301,7 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
         {SKETCH_NAME("export"), (ECSFunction)SketchExport, "void(handle<ecs.panel>)", "Export the canvas as an image"},
         {SKETCH_NAME("copy"), (ECSFunction)SketchCopy, "void(handle<ecs.panel>)", "Copy the canvas's strokes"},
         {SKETCH_NAME("paste"), (ECSFunction)SketchPaste, "void(handle<ecs.panel>)", "Paste strokes"},
+        {SKETCH_NAME("open"), (ECSFunction)SketchOpen, "void(string)", "Open a canvas with the strokes of a file"},
         {SKETCH_NAME("openBeside"), (ECSFunction)SketchOpenBeside, "void(handle<ecs.panel>)", "Open a canvas beside this one"},
         {SKETCH_NAME("gather"), (ECSFunction)SketchGather, "void(handle<ecs.panel>)", "Gather every canvas into this group"},
         {SKETCH_NAME("closeOthers"), (ECSFunction)SketchCloseOthers, "int(handle<ecs.panel>)", "Close the other canvases"},

@@ -1,6 +1,6 @@
 #pragma once
 
-// Session: reading presets and sessions, and building the workspaces they describe.
+// Session: reading presets and sessions, building the workspaces they describe, and saving sessions.
 
 #include "base/Values.h"
 #include "runtime/Plugins.h"
@@ -45,10 +45,17 @@ SHUWUR SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info)
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession);
 
-/// @brief Writes a session: the file it came from, with the current workspaces, panels and their saved state.
-/// @param path Path of the session file.
-/// @param info What the preset or session that started this tool said.
-/// @return SHUResult_Ok, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSISession_Save(const char *path, const ECSIPresetInfo *info);
+/// @brief Registers the core's functions ecs.saveSession and ecs.openSession, which save and open a session in a file the user chooses.
+/// @param folder The folder where their dialogs start, ending with a separator, or NULL to let the system choose. It is created when a dialog opens.
+/// @param canOpen false during a test, which starts from its preset alone and cannot restart; ECSSession_Open then refuses.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSISession_Initialize(const char *folder, bool canOpen);
+
+/// @brief Gets the session that ECSSession_Open chose, which OpenECS starts again from once it stops.
+/// @return The session's path, or NULL. Valid until ECSISession_Terminate.
+const char *ECSISession_GetNext(void);
+
+/// @brief Frees what the Session module holds.
+void ECSISession_Terminate(void);
 
 #pragma endregion Declarations

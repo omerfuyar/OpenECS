@@ -421,6 +421,17 @@ static ECSISetting *ECSISettings_Find(const char *name)
     return SETTINGS.settings == NULL ? NULL : shget(SETTINGS.settings, name);
 }
 
+/// @brief Reports a field of a layer that is not a declared setting; the data is the layer's file.
+static void ECSISettings_ReportField(const char *name, const ECSValue *field, void *userData)
+{
+    (void)field;
+
+    if (ECSISettings_Find(name) == NULL && ECSIPlugins_OwnerRuns(name))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' in '%s' is not a declared setting; it is kept.", name, (const char *)userData);
+    }
+}
+
 #pragma endregion Source Only
 
 SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder)
@@ -581,6 +592,14 @@ void ECSISettings_DeliverChanges(void)
     }
 
     arrfree(SETTINGS.changed);
+}
+
+void ECSISettings_ReportUndeclared(void)
+{
+    for (usz i = 0; i < ECSISettingsLayer_Count; i++)
+    {
+        ECSIValue_TableForEachField(SETTINGS.layers[i], ECSISettings_ReportField, SETTINGS.paths[i]);
+    }
 }
 
 const ECSValue *ECSISettings_GetPlugins(void)

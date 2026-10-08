@@ -138,18 +138,19 @@ function Panel:startTimer(seconds, repeat_, fn) end
 ---@field scale number Pixels per layout unit.
 local Surface = {}
 
----Sets a pixel. Pixels outside the surface are clipped.
+---Sets a pixel. Pixels outside the surface are clipped. Lua only: C writes the surface's pixels directly.
 ---@param x integer
 ---@param y integer
 ---@param color integer ARGB, such as 0xFFFF0000.
 function Surface:setPixel(x, y, color) end
 
+---Lua only: C reads the surface's pixels directly.
 ---@param x integer
 ---@param y integer
 ---@return integer color ARGB.
 function Surface:getPixel(x, y) end
 
----Copies a row of pixels, clipped to the surface.
+---Copies a row of pixels, clipped to the surface. Lua only: C writes the surface's pixels directly.
 ---@param y integer
 ---@param bytes string ARGB pixels, 4 bytes each in native byte order.
 ---@param x? integer The first pixel's column; 0 if missing.
@@ -213,6 +214,14 @@ function ecs.panel.getTitle(panel) end
 ---@param panel ecs.Panel
 ---@param text string
 function ecs.panel.setTitle(panel, text) end
+
+---@param panel ecs.Panel
+---@return integer id The panel's id, which stays the same across sessions.
+function ecs.panel.getId(panel) end
+
+---@param panel ecs.Panel
+---@return string type The name of the panel's type.
+function ecs.panel.getType(panel) end
 
 ---@param panel ecs.Panel
 ---@param unsaved boolean
@@ -281,6 +290,23 @@ function ecs.workspace.getName(number) end
 ---@param number integer From 1.
 function ecs.workspace.switch(number) end
 
+-- Session
+
+---@class ecs.session
+ecs.session = {}
+
+---Writes the session to a file: the plugins' state, the workspaces and the panels with their saved state. Quitting still saves the tool's last session.
+---@param path string Missing folders are created.
+---@return true|nil ok
+---@return string? message Why the session is not saved.
+function ecs.session.save(path) end
+
+---Opens a session in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
+---@param path string
+---@return true|nil ok
+---@return string? message Why the session is not opened: the file is not a session, the user keeps the unsaved work, or a test runs.
+function ecs.session.open(path) end
+
 -- Input
 
 ---@class ecs.input
@@ -333,13 +359,13 @@ ecs.handle = {}
 ---@param name string
 function ecs.handle.registerType(name) end
 
----Makes a handle that stands for a Lua value.
+---Makes a handle that stands for a Lua value. Lua only: in C, a handle is the object's pointer.
 ---@param name string A handle type of the plugin.
 ---@param value any
 ---@return ecs.Handle
 function ecs.handle.new(name, value) end
 
----Gives back the value of a handle of the plugin's type.
+---Gives back the value of a handle of the plugin's type. Lua only: in C, a handle is the object's pointer.
 ---@param handle ecs.Handle
 ---@param name string
 ---@return any value

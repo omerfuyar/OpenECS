@@ -68,6 +68,12 @@ SHUWUR SHUResult ECSIServices_RegisterCore(const char *name, ECSFunction functio
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, or SHUResult_ErrBadData if its signature is neither void() nor void(handle<ecs.panel>). Errors are reported.
 SHUResult ECSIServices_CallBound(const char *name, ECSPanel focus);
 
+/// @brief Calls the function that a preset names in open, with the path of a file. It reports a function that is missing or has another signature.
+/// @param name Name of the function. Its signature must be void(string).
+/// @param path The file's path.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, or SHUResult_ErrBadData if its signature is another.
+SHUResult ECSIServices_CallOpen(const char *name, const char *path);
+
 /// @brief Gets a function's one-line description.
 /// @param name Name of the function.
 /// @return The description, or NULL if no function has the name. Valid while the function is registered.

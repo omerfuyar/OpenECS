@@ -4,8 +4,9 @@ return {
   version = "0.1.0",
   app = { id = "openecs.test.sketch", name = "Sketch" },
   depends = { sketch_c = "0.1", sketch_lua = "0.1" },
-  settings = { ["sketch_c.brush_color"] = "red", ["sketch_lua.brush_color"] = "green" },
-  keys = { ["Ctrl+Tab"] = "sketch_c.next_workspace" },
+  settings = { ["sketch_c.brushColor"] = "red", ["sketch_lua.brushColor"] = "green" },
+  open = "sketch_c.open",
+  keys = { ["Ctrl+Tab"] = "sketch_c.nextWorkspace" },
   workspaces = {
     { name = "C",
       windows = {
@@ -16,7 +17,7 @@ return {
       },
     },
     { name = "Lua",
-      keys = { ["Ctrl+Tab"] = "sketch_lua.next_workspace" },
+      keys = { ["Ctrl+Tab"] = "sketch_lua.nextWorkspace" },
       windows = {
         { split = "horizontal",
           { share = 3, panels = { { type = "sketch_lua.canvas" } } },

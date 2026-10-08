@@ -95,6 +95,8 @@ static SHUResult ECSILua_ToValue(int index, ECSValue *value, u32 depth)
 
     switch (lua_type(state, index))
     {
+    // a missing argument is nil, so optional values may be left out
+    case LUA_TNONE:
     case LUA_TNIL:
         ECSValue_SetNil(value);
         return SHUResult_Ok;

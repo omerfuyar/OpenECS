@@ -20,4 +20,10 @@ void ECSIInput_Terminate(void);
 /// @return false if the program should quit.
 bool ECSIInput_Handle(const SDL_Event *event);
 
+/// @brief Shows a file dialog for a plugin or for the core, as ECSDialog_Show does.
+/// @param plugin The plugin that asks, or NULL for the core.
+/// @param desc Description of the dialog.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSIInput_ShowDialog(ECSPlugin plugin, const ECSDialogDesc *desc);
+
 #pragma endregion Declarations

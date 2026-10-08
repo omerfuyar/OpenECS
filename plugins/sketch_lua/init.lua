@@ -491,6 +491,29 @@ function services.paste(panel)
   end
 end
 
+-- opens a canvas with the strokes of a file in the text format of copy; the function a preset opens files with
+function services.open(path)
+  local file = io.open(path, "rb")
+  local text = file and file:read("a")
+
+  if file then
+    file:close()
+  end
+
+  local panel = text and ecs.layout.open(name("canvas"))
+  local canvas = panel and findCanvas(panel)
+
+  if not canvas then
+    ecs.log.warn(("Cannot open '%s'."):format(path))
+    return
+  end
+
+  local added = strokesFromText(canvas, text)
+  ecs.log.info(("Opened %d strokes from '%s'."):format(added, path))
+  canvasTitle(canvas)
+  canvas.panel:redraw()
+end
+
 function services.openBeside(panel)
   local opened = ecs.layout.open(name("canvas"), nil, panel, "right")
 
@@ -597,6 +620,7 @@ assert(ecs.service.register(NAME, {
   export = { sig = "void(handle<ecs.panel>)", doc = "Export the canvas as an image", fn = services.export },
   copy = { sig = "void(handle<ecs.panel>)", doc = "Copy the canvas's strokes", fn = services.copy },
   paste = { sig = "void(handle<ecs.panel>)", doc = "Paste strokes", fn = services.paste },
+  open = { sig = "void(string)", doc = "Open a canvas with the strokes of a file", fn = services.open },
   openBeside = { sig = "void(handle<ecs.panel>)", doc = "Open a canvas beside this one", fn = services.openBeside },
   gather = { sig = "void(handle<ecs.panel>)", doc = "Gather every canvas into this group", fn = services.gather },
   closeOthers = { sig = "int(handle<ecs.panel>)", doc = "Close the other canvases", fn = services.closeOthers },
