@@ -116,6 +116,19 @@ ECSPanel ECSI_LayoutPointerUp(void);
 /// @return The panel, or NULL.
 ECSPanel ECSI_LayoutTabAt(f32 x, f32 y);
 
+/// @brief Finds the group whose tab row is at a point, on a tab or not.
+/// @param x Horizontal position in layout units.
+/// @param y Vertical position in layout units.
+/// @return The group's shown panel, or NULL.
+ECSPanel ECSI_LayoutTabRowAt(f32 x, f32 y);
+
+/// @brief Scrolls the tab row at a point, if there is one.
+/// @param x Horizontal position in layout units.
+/// @param y Vertical position in layout units.
+/// @param steps Wheel steps; positive scrolls toward the last tab.
+/// @return true if a tab row was scrolled.
+bool ECSI_LayoutScrollTabs(f32 x, f32 y, f32 steps);
+
 /// @brief Stops dragging a panel without moving it.
 /// @return true if a panel was being dragged.
 bool ECSI_LayoutCancelDrag(void);

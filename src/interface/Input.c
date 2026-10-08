@@ -1118,8 +1118,9 @@ bool ECSI_InputHandle(const SDL_Event *event)
             ECSI_InputSetPrefix(false);
         }
 
-        // on a tab or grip, the middle button closes the panel and the right button opens its menu
+        // on a tab or grip, the middle button closes the panel and the right button opens its menu; on the rest of a tab row, the right button opens the shown panel's menu
         ECSPanel tab = button->button == SDL_BUTTON_LEFT ? NULL : ECSI_LayoutTabAt(button->x, button->y);
+        tab = tab == NULL && button->button == SDL_BUTTON_RIGHT ? ECSI_LayoutTabRowAt(button->x, button->y) : tab;
 
         if (tab != NULL)
         {
@@ -1204,6 +1205,15 @@ bool ECSI_InputHandle(const SDL_Event *event)
     case SDL_EVENT_MOUSE_WHEEL:
     {
         const SDL_MouseWheelEvent *wheel = &event->wheel;
+
+        // over a tab row, the wheel scrolls the tabs; down and right go toward the last tab
+        f32 direction = wheel->direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
+
+        if (ECSI_LayoutScrollTabs(wheel->mouse_x, wheel->mouse_y, (wheel->x - wheel->y) * direction))
+        {
+            break;
+        }
+
         ECSPanel panel = ECSI_LayoutPanelAt(wheel->mouse_x, wheel->mouse_y);
 
         if (panel != NULL)

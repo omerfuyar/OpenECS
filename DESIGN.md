@@ -370,10 +370,11 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 6.8 Panel menu
 
 - The core draws a panel's menu itself, inside the OS window, with Clay. It is kept inside the OS window.
-- A right click on a tab or grip, or a click on a grip, opens it. The panel gets the focus.
+- A right click on a tab or grip, or a click on a grip, opens it. A right click on the rest of a tab row opens the menu of the group's shown panel. The panel gets the focus.
 - Its entries are core functions that act on the focused panel: close, maximize, lock and move. Each entry shows the keys that run its function after the prefix (7.5).
 - The arrow keys choose an entry and Enter runs it. Escape or a press outside the menu closes it. While it is open, pointer and key events go to the menu only.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
+- The wheel over a tab row scrolls it, 40 layout units a step; down and right go toward the last tab. When a group shows another panel, its tab scrolls into view.
 
 ### 6.9 Clay
 

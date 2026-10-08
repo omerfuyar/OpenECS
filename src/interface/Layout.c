@@ -35,6 +35,8 @@
 #define OPENECS_DOCK_EDGE 16.0f
 /// @brief Deepest edge band of a panel in which a dragged panel splits it.
 #define OPENECS_SPLIT_DEPTH 80.0f
+/// @brief How far one step of the wheel scrolls a tab row.
+#define OPENECS_TAB_SCROLL_STEP 40.0f
 /// @brief Width of the mark between tabs where a dragged panel is inserted.
 #define OPENECS_TAB_GAP_WIDTH 3.0f
 /// @brief Smallest size a divider drag leaves to a child.
@@ -82,6 +84,9 @@ struct ECSI_Node
     ECSPanel *panels; // stb_ds array
     usz shown;        // index of the panel shown
     bool locked;      // its panels cannot be moved or closed, and it accepts no dropped panels
+    f32 tabScroll;    // how far the tab row is scrolled, in layout units
+    f32 tabsWidth;    // width of all its tabs together, measured in the last frame
+    ECSPanel scrolledTo; // the shown panel whose tab was last scrolled into view
 };
 
 /// @brief Where a moved panel lands.
@@ -822,6 +827,15 @@ static void ECSI_LayoutFindGroupAt(ECSI_Node *group, void *userData)
     }
 }
 
+/// @brief Finds the group whose tab row is at a point.
+static ECSI_Node *ECSI_LayoutTabRowGroupAt(f32 x, f32 y)
+{
+    ECSI_GroupHit hit = {x, y, NULL};
+    ECSI_LayoutForEachGroup(ECSI_LayoutFindGroupAt, &hit);
+    ECSI_Node *group = hit.group;
+    return group != NULL && arrlenu(group->panels) >= 2 && y < group->y + OPENECS_TAB_ROW_HEIGHT ? group : NULL;
+}
+
 /// @brief Finds the gap between a group's tabs nearest to a point, from the tabs drawn in the last frame.
 static ECSI_Drop ECSI_LayoutFindTabGap(ECSI_Node *group, f32 x, SDL_FRect *retRect)
 {
@@ -1175,7 +1189,7 @@ static void ECSI_LayoutDeclareGroup(ECSI_Node *group, void *userData)
                 .layoutDirection = CLAY_LEFT_TO_RIGHT,
             },
             .backgroundColor = OPENECS_COLOR_TAB_ROW,
-            .clip = {.horizontal = true},
+            .clip = {.horizontal = true, .childOffset = {-group->tabScroll, 0.0f}},
             .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x, group->y}},
         })
         {
@@ -1242,6 +1256,47 @@ static void ECSI_LayoutDeclareGroup(ECSI_Node *group, void *userData)
             {
                 CLAY_TEXT(ECSI_LayoutClayText(panel->fault), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
             }
+        }
+    }
+}
+
+/// @brief Measures each tab row from the tabs Clay just laid out, keeps its scroll inside it, and scrolls a newly shown tab into view.
+static void ECSI_LayoutFitTabs(void)
+{
+    Clay_SetCurrentContext(LAYOUT.clay);
+
+    for (usz i = 0; i < arrlenu(LAYOUT.tabs);)
+    {
+        // the tabs of one group are next to each other in the list
+        ECSI_Node *group = LAYOUT.tabs[i].group;
+        f32 left = 0.0f;
+        f32 right = 0.0f;
+        Clay_BoundingBox shown = {0};
+
+        for (; i < arrlenu(LAYOUT.tabs) && LAYOUT.tabs[i].group == group; i++)
+        {
+            Clay_ElementData tab = Clay_GetElementData(CLAY_IDI("Tab", (u32)i));
+            left = LAYOUT.tabs[i].index == 0 ? tab.boundingBox.x : left;
+            right = tab.boundingBox.x + tab.boundingBox.width;
+            shown = LAYOUT.tabs[i].index == group->shown ? tab.boundingBox : shown;
+        }
+
+        group->tabsWidth = right - left;
+        f32 scroll = group->tabScroll;
+
+        if (group->scrolledTo != group->panels[group->shown])
+        {
+            group->scrolledTo = group->panels[group->shown];
+            scroll += shown.x < group->x ? shown.x - group->x : 0.0f;
+            scroll += shown.x + shown.width > group->x + group->width ? shown.x + shown.width - group->x - group->width : 0.0f;
+        }
+
+        scroll = SDL_clamp(scroll, 0.0f, SDL_max(0.0f, group->tabsWidth - group->width));
+
+        if (scroll != group->tabScroll)
+        {
+            group->tabScroll = scroll;
+            LAYOUT.frameNeeded = true;
         }
     }
 }
@@ -1923,6 +1978,7 @@ void ECSI_LayoutRender(u64 nowTicks)
     // the interface's commands point to the panels' titles, so panels draw first; their Draw may change a title
     ECSI_LayoutForEachGroup(ECSI_LayoutDrawGroup, &nowTicks);
     Clay_RenderCommandArray commands = ECSI_LayoutDeclareInterface();
+    ECSI_LayoutFitTabs();
 
     SDL_SetRenderDrawColor(LAYOUT.renderer, OPENECS_COLOR_BACKGROUND);
     SDL_RenderClear(LAYOUT.renderer);
@@ -1987,11 +2043,9 @@ bool ECSI_LayoutPointerDown(f32 x, f32 y)
     }
 
     // the empty part of a tab row drags the whole group
-    ECSI_GroupHit hit = {x, y, NULL};
-    ECSI_LayoutForEachGroup(ECSI_LayoutFindGroupAt, &hit);
-    ECSI_Node *group = hit.group;
+    ECSI_Node *group = ECSI_LayoutTabRowGroupAt(x, y);
 
-    if (group != NULL && arrlenu(group->panels) >= 2 && y < group->y + OPENECS_TAB_ROW_HEIGHT)
+    if (group != NULL)
     {
         ECSI_LayoutSetFocus(group->panels[group->shown]);
 
@@ -2139,6 +2193,26 @@ ECSPanel ECSI_LayoutTabAt(f32 x, f32 y)
     }
 
     return NULL;
+}
+
+ECSPanel ECSI_LayoutTabRowAt(f32 x, f32 y)
+{
+    ECSI_Node *group = ECSI_LayoutTabRowGroupAt(x, y);
+    return group == NULL ? NULL : group->panels[group->shown];
+}
+
+bool ECSI_LayoutScrollTabs(f32 x, f32 y, f32 steps)
+{
+    ECSI_Node *group = ECSI_LayoutTabRowGroupAt(x, y);
+
+    if (group == NULL)
+    {
+        return false;
+    }
+
+    group->tabScroll = SDL_clamp(group->tabScroll + steps * OPENECS_TAB_SCROLL_STEP, 0.0f, SDL_max(0.0f, group->tabsWidth - group->width));
+    LAYOUT.frameNeeded = true;
+    return true;
 }
 
 void ECSI_LayoutShowMenu(f32 x, f32 y, const char *const *lines, usz count, usz selected)
