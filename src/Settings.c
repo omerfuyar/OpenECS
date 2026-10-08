@@ -371,6 +371,23 @@ SHUResult ECSI_SettingsDeclareCore(const ECSSettingDesc *desc)
     return ECSI_SettingsDeclare(NULL, desc, NULL);
 }
 
+void ECSI_SettingsRemovePlugin(ECSPlugin plugin)
+{
+    SDL_assert(plugin != NULL);
+
+    // backwards, because shdel moves the last setting into the hole
+    for (usz i = shlenu(SETTINGS.settings); i > 0; i--)
+    {
+        ECSI_Setting *setting = SETTINGS.settings[i - 1].value;
+
+        if (setting->owner == plugin)
+        {
+            (void)shdel(SETTINGS.settings, setting->name);
+            ECSI_SettingFree(setting);
+        }
+    }
+}
+
 const ECSValue *ECSI_SettingsGetPlugins(void)
 {
     return SETTINGS.plugins;

@@ -46,7 +46,7 @@ static struct
         char *key; // "plugin: message"
         u64 value; // how often it happened
     } *errors; // stb_ds hash map with copied keys
-    ECSI_PluginLuaStarter StartLua;
+    ECSI_PluginHooks hooks;
 } PLUGINS = {0};
 
 static ECSI_Plugin *ECSI_PluginFind(const char *name)
@@ -230,6 +230,7 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
         // a plugin whose Init fails cleans up before it returns, so it gets no Shutdown
         record->Shutdown = NULL;
         record->failed = true;
+        PLUGINS.hooks.RemoveRegistrations(record);
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' failed to start (%s).", name, SHUResult_String(result));
         return result;
     }
@@ -240,12 +241,13 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
     if (lua != NULL)
     {
         char *path = NULL;
-        result = SDL_asprintf(&path, "%s%s", manifest->folder, lua) < 0 ? SHUResult_ErrAllocation : PLUGINS.StartLua(record, path);
+        result = SDL_asprintf(&path, "%s%s", manifest->folder, lua) < 0 ? SHUResult_ErrAllocation : PLUGINS.hooks.StartLua(record, path);
         SDL_free(path);
 
         if (result)
         {
             record->failed = true;
+            PLUGINS.hooks.RemoveRegistrations(record);
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' failed to start its Lua code (%s).", name, SHUResult_String(result));
             return result;
         }
@@ -395,11 +397,11 @@ void ECSI_PluginsUnload(void)
     SDL_zero(PLUGINS);
 }
 
-void ECSI_PluginsSetLuaStarter(ECSI_PluginLuaStarter starter)
+void ECSI_PluginsSetHooks(const ECSI_PluginHooks *hooks)
 {
-    SDL_assert(starter != NULL);
+    SDL_assert(hooks != NULL && hooks->StartLua != NULL && hooks->RemoveRegistrations != NULL);
 
-    PLUGINS.StartLua = starter;
+    PLUGINS.hooks = *hooks;
 }
 
 const char *ECSI_PluginGetVersion(ECSPlugin plugin)

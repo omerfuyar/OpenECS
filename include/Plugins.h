@@ -6,15 +6,20 @@
 
 #pragma region Declarations
 
-/// @brief Runs a plugin's Lua code. The Bindings module provides it, because it comes after this module.
-/// @param plugin The plugin.
-/// @param path Path of the plugin's Lua file.
-/// @return SHUResult_Ok, or an error to mark the plugin failed.
-typedef SHUResult (*ECSI_PluginLuaStarter)(ECSPlugin plugin, const char *path);
+/// @brief Functions of later modules that loading plugins needs. main.c provides them, because modules include only the modules before them.
+typedef struct ECSI_PluginHooks
+{
+    /// @brief Runs a plugin's Lua code.
+    /// @return SHUResult_Ok, or an error to mark the plugin failed.
+    SHUResult (*StartLua)(ECSPlugin plugin, const char *path);
 
-/// @brief Sets the function that runs plugins' Lua code. Call it before ECSI_PluginsLoad.
-/// @param starter The function.
-void ECSI_PluginsSetLuaStarter(ECSI_PluginLuaStarter starter);
+    /// @brief Removes everything a failed plugin registered: panel types, settings, functions and timers.
+    void (*RemoveRegistrations)(ECSPlugin plugin);
+} ECSI_PluginHooks;
+
+/// @brief Sets the functions that loading plugins needs. Call it before ECSI_PluginsLoad.
+/// @param hooks The functions. The core copies them.
+void ECSI_PluginsSetHooks(const ECSI_PluginHooks *hooks);
 
 /// @brief Loads plugins, after the plugins they depend on, and runs their ECSPlugin_Init.
 /// @param directories Directories that hold plugin folders, searched in order. Each ends with a separator.

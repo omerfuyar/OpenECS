@@ -34,6 +34,10 @@ SHUWUR SHUResult ECSI_EventsStartTimer(ECSPlugin plugin, const void *owner, ECST
 /// @param owner The owner given to ECSI_EventsStartTimer.
 void ECSI_EventsStopTimersOf(const void *owner);
 
+/// @brief Stops every timer of a plugin. Their handles become invalid.
+/// @param plugin The plugin.
+void ECSI_EventsStopTimersOfPlugin(ECSPlugin plugin);
+
 /// @brief Gets how long the main loop may wait for input, for SDL_WaitEventTimeout.
 /// @return 0 if events are queued; otherwise the time until the next timer is due, in milliseconds rounded up, or -1 if no timer runs.
 i32 ECSI_EventsGetWait(void);

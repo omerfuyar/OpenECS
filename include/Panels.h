@@ -47,6 +47,10 @@ struct ECSI_Panel
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_PanelTypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc, void *typeData);
 
+/// @brief Removes every panel type a plugin registered. Call it before panels of those types exist.
+/// @param plugin The plugin.
+void ECSI_PanelsRemovePlugin(ECSPlugin plugin);
+
 /// @brief Makes a panel faulted: it shows the error instead of its pixels, and its type is not called again, except Destroy. A panel keeps its first fault.
 /// @param panel The panel.
 /// @param message The error. The core copies it.

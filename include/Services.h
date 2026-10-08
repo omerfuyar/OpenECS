@@ -9,6 +9,10 @@
 /// @brief Frees every registered function.
 void ECSI_ServicesTerminate(void);
 
+/// @brief Removes every function a plugin registered.
+/// @param plugin The plugin.
+void ECSI_ServicesRemovePlugin(ECSPlugin plugin);
+
 /// @brief Registers a Lua function of a plugin's service. C gets it as a function pointer: a libffi closure that converts the arguments, calls the Lua function in a protected call, and converts the result.
 /// @param plugin The plugin that provides the function.
 /// @param name Name of the function.

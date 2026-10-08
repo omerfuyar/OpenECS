@@ -20,6 +20,13 @@ static struct
     u32 nextPanelId;
 } PANELS = {0};
 
+static void ECSI_PanelTypeFree(ECSI_PanelType *type)
+{
+    SDL_free(type->name);
+    SDL_free(type->title);
+    SDL_free(type);
+}
+
 static ECSI_PanelType *ECSI_PanelTypeFind(const char *name)
 {
     return shget(PANELS.types, name);
@@ -67,10 +74,7 @@ void ECSI_PanelsTerminate(void)
 
     for (usz i = 0; i < shlenu(PANELS.types); i++)
     {
-        ECSI_PanelType *type = PANELS.types[i].value;
-        SDL_free(type->name);
-        SDL_free(type->title);
-        SDL_free(type);
+        ECSI_PanelTypeFree(PANELS.types[i].value);
     }
 
     shfree(PANELS.types);
@@ -330,6 +334,23 @@ void ECSI_PanelPostEvent(ECSPanel panel, const ECSEvent *event)
     SDL_assert(event != NULL);
 
     ECSI_EventsPost(ECSI_PanelDeliverEvent, panel, event);
+}
+
+void ECSI_PanelsRemovePlugin(ECSPlugin plugin)
+{
+    SDL_assert(plugin != NULL);
+
+    // backwards, because shdel moves the last type into the hole
+    for (usz i = shlenu(PANELS.types); i > 0; i--)
+    {
+        ECSI_PanelType *type = PANELS.types[i - 1].value;
+
+        if (type->plugin == plugin)
+        {
+            (void)shdel(PANELS.types, type->name);
+            ECSI_PanelTypeFree(type);
+        }
+    }
 }
 
 void ECSI_PanelFault(ECSPanel panel, const char *message)

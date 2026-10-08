@@ -41,6 +41,10 @@ SHUWUR SHUResult ECSI_SettingsDeclareCore(const ECSSettingDesc *desc);
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description or the default is invalid or the name is taken, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_SettingsDeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *desc, const ECSValue *defaultValue);
 
+/// @brief Removes every setting a plugin declared. The values in the layers are kept.
+/// @param plugin The plugin.
+void ECSI_SettingsRemovePlugin(ECSPlugin plugin);
+
 /// @brief Gets the plugins that the user's files name for every tool and for this tool.
 /// @return A list of plugin names, for ECSI_PluginsLoad. Valid until ECSI_SettingsTerminate.
 const ECSValue *ECSI_SettingsGetPlugins(void);

@@ -155,6 +155,21 @@ void ECSI_EventsStopTimersOf(const void *owner)
     ECSI_EventsFreeStoppedTimers();
 }
 
+void ECSI_EventsStopTimersOfPlugin(ECSPlugin plugin)
+{
+    SDL_assert(plugin != NULL);
+
+    for (usz i = 0; i < arrlenu(EVENTS.timers); i++)
+    {
+        if (EVENTS.timers[i]->plugin == plugin)
+        {
+            EVENTS.timers[i]->stopped = true;
+        }
+    }
+
+    ECSI_EventsFreeStoppedTimers();
+}
+
 i32 ECSI_EventsGetWait(void)
 {
     if (arrlenu(EVENTS.queue) > 0)

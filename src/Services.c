@@ -757,6 +757,23 @@ void ECSI_ServicesTerminate(void)
     SDL_zero(SERVICES);
 }
 
+void ECSI_ServicesRemovePlugin(ECSPlugin plugin)
+{
+    SDL_assert(plugin != NULL);
+
+    // backwards, because shdel moves the last function into the hole
+    for (usz i = shlenu(SERVICES.functions); i > 0; i--)
+    {
+        ECSI_Function *function = SERVICES.functions[i - 1].value;
+
+        if (function->plugin == plugin)
+        {
+            (void)shdel(SERVICES.functions, function->name);
+            ECSI_FunctionFree(function);
+        }
+    }
+}
+
 SHUResult ECSI_ServicesPushFunction(ECSPlugin plugin, const char *name, const char *signature)
 {
     SDL_assert(plugin != NULL);

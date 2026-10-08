@@ -147,6 +147,15 @@ static char *ECSI_LastSessionPath(const char *stateFolder, const char *appId)
     return path;
 }
 
+/// @brief Removes everything a failed plugin registered, for the Plugins module.
+static void ECSI_RemoveRegistrations(ECSPlugin plugin)
+{
+    ECSI_PanelsRemovePlugin(plugin);
+    ECSI_ServicesRemovePlugin(plugin);
+    ECSI_SettingsRemovePlugin(plugin);
+    ECSI_EventsStopTimersOfPlugin(plugin);
+}
+
 /// @brief Stops the program if a start-up step failed. The details are already in the log.
 static void ECSI_CheckStart(SHUResult result, const char *step)
 {
@@ -276,7 +285,8 @@ int main(int argc, char **argv)
     SDL_free(fontPath);
 
     ECSI_BindingsInitialize();
-    ECSI_PluginsSetLuaStarter(ECSI_BindingsStartPlugin);
+    ECSI_PluginHooks hooks = {.StartLua = ECSI_BindingsStartPlugin, .RemoveRegistrations = ECSI_RemoveRegistrations};
+    ECSI_PluginsSetHooks(&hooks);
     ECSI_LoadPlugins(&preset);
     ECSI_CheckStart(ECSI_SessionApply(sourcePath, &preset), "building the layout");
 
