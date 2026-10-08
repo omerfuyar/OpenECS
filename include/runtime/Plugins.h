@@ -6,7 +6,7 @@
 
 #pragma region Declarations
 
-/// @brief Functions of later modules that loading plugins needs. main.c provides them, because modules include only the modules before them.
+/// @brief Functions of later modules that loading plugins needs. The App module provides them, because modules include only the modules before them.
 typedef struct ECSI_PluginHooks
 {
     /// @brief Runs a plugin's Lua code.
@@ -30,6 +30,19 @@ SHUWUR SHUResult ECSI_PluginsLoad(const char *const *directories, usz directoryC
 
 /// @brief Runs every plugin's ECSPlugin_Shutdown, in reverse load order, and closes their libraries.
 void ECSI_PluginsUnload(void);
+
+/// @brief Registers a plugin's state like ECSPlugin_RegisterState, with a function that releases its data when the plugin goes away. The Bindings module uses it for Lua.
+/// @param release Function called with the description's data when the plugin fails or is unloaded, or NULL.
+SHUWUR SHUResult ECSI_PluginRegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc, ECSTimerFunction release);
+
+/// @brief Restores the state of every plugin that registered one, from a session's plugin_state table. A plugin whose state is missing keeps its own. Errors are reported.
+/// @param states The plugin_state table: for each plugin's name, a table with its state and state_version. NULL restores nothing.
+void ECSI_PluginsRestoreStates(const ECSValue *states);
+
+/// @brief Saves the state of every plugin that registered one into a plugin_state table. Entries of other plugins are kept.
+/// @param states The table to fill; a value that is not a table becomes one.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation. A plugin whose Save fails is reported and skipped.
+SHUWUR SHUResult ECSI_PluginsSaveStates(ECSValue *states);
 
 /// @brief Gets a plugin's name.
 /// @param plugin The plugin.

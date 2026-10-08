@@ -58,6 +58,14 @@ typedef struct ECSI_LuaTimer
     int handle;   // registry reference of the handle, so it lives while the timer runs
 } ECSI_LuaTimer;
 
+/// @brief A Lua plugin's own state: the functions that save and restore it.
+typedef struct ECSI_LuaPluginState
+{
+    ECSPlugin plugin;
+    int save;    // registry reference of the save function
+    int restore; // registry reference of the restore function
+} ECSI_LuaPluginState;
+
 /// @brief A subscription made from Lua.
 typedef struct ECSI_LuaSubscription
 {
@@ -400,6 +408,87 @@ static const luaL_Reg ECSI_BINDINGS_TIMER_METHODS[] = {
 };
 
 #pragma endregion Timers
+
+#pragma region Plugin state
+
+static SHUResult ECSI_BindingsStateSave(void *data, ECSValue *retState)
+{
+    ECSI_LuaPluginState *luaState = data;
+    lua_State *state = ECSI_LuaGetState();
+    lua_rawgeti(state, LUA_REGISTRYINDEX, luaState->save);
+
+    if (ECSI_LuaCall(0, 1))
+    {
+        ECSI_PluginReportError(luaState->plugin, lua_tostring(state, -1));
+        lua_pop(state, 1);
+        return SHUResult_ErrBadData;
+    }
+
+    SHUResult result = ECSI_LuaGetValue(-1, retState);
+    lua_pop(state, 1);
+    return result;
+}
+
+static SHUResult ECSI_BindingsStateRestore(void *data, const ECSValue *saved, u32 version)
+{
+    ECSI_LuaPluginState *luaState = data;
+    lua_State *state = ECSI_LuaGetState();
+    lua_rawgeti(state, LUA_REGISTRYINDEX, luaState->restore);
+    ECSI_LuaPushValue(saved);
+    lua_pushinteger(state, version);
+
+    if (ECSI_LuaCall(2, 0))
+    {
+        ECSI_PluginReportError(luaState->plugin, lua_tostring(state, -1));
+        lua_pop(state, 1);
+        return SHUResult_ErrBadData;
+    }
+
+    return SHUResult_Ok;
+}
+
+static void ECSI_BindingsStateRelease(void *data)
+{
+    ECSI_LuaPluginState *luaState = data;
+    lua_State *state = ECSI_LuaGetState();
+    luaL_unref(state, LUA_REGISTRYINDEX, luaState->save);
+    luaL_unref(state, LUA_REGISTRYINDEX, luaState->restore);
+    SDL_free(luaState);
+}
+
+static int ECSI_BindingsPluginRegisterState(lua_State *state)
+{
+    luaL_checktype(state, 1, LUA_TTABLE);
+    lua_getfield(state, 1, "version");
+    lua_Integer version = luaL_optinteger(state, -1, 0);
+    lua_getfield(state, 1, "save");
+    lua_getfield(state, 1, "restore");
+    luaL_argcheck(state, lua_isfunction(state, -2) && lua_isfunction(state, -1), 1, "save and restore must be functions");
+    luaL_argcheck(state, version >= 0 && version <= SDL_MAX_UINT32, 1, "version must fit in 32 bits");
+
+    ECSI_LuaPluginState *luaState = SDL_malloc(sizeof(ECSI_LuaPluginState));
+
+    if (luaState == NULL)
+    {
+        return luaL_error(state, "out of memory");
+    }
+
+    luaState->plugin = ECSI_BindingsPlugin(state);
+    luaState->restore = luaL_ref(state, LUA_REGISTRYINDEX);
+    luaState->save = luaL_ref(state, LUA_REGISTRYINDEX);
+
+    ECSPluginStateDesc desc = {.version = (u32)version, .Save = ECSI_BindingsStateSave, .Restore = ECSI_BindingsStateRestore, .data = luaState};
+
+    if (ECSI_PluginRegisterState(luaState->plugin, &desc, ECSI_BindingsStateRelease))
+    {
+        ECSI_BindingsStateRelease(luaState);
+        return luaL_error(state, "the plugin's state is registered already");
+    }
+
+    return 0;
+}
+
+#pragma endregion Plugin state
 
 #pragma region Events
 
@@ -1477,6 +1566,9 @@ static void ECSI_BindingsPushEcs(lua_State *state, ECSPlugin plugin)
     lua_setfield(state, -2, "name");
     lua_pushstring(state, ECSI_PluginGetVersion(plugin));
     lua_setfield(state, -2, "version");
+    lua_pushlightuserdata(state, plugin);
+    lua_pushcclosure(state, ECSI_BindingsPluginRegisterState, 1);
+    lua_setfield(state, -2, "register_state");
     lua_setfield(state, -2, "plugin");
 }
 

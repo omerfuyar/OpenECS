@@ -213,6 +213,18 @@ typedef struct ECSSettingDesc
     void *data;                  // passed to Changed
 } ECSSettingDesc;
 
+/// @brief Describes how a plugin saves its own state into the session, apart from its panels' state. Passed to ECSPlugin_RegisterState.
+typedef struct ECSPluginStateDesc
+{
+    u32 version; // version of the state the plugin saves now; Restore gets the version the state was saved with
+
+    // called when the session is saved; fill retState, which starts as nil
+    SHUResult (*Save)(void *data, ECSValue *retState);
+    // called when a session that holds the plugin's state is applied, before panels are created
+    SHUResult (*Restore)(void *data, const ECSValue *state, u32 version);
+    void *data; // passed to the functions
+} ECSPluginStateDesc;
+
 /// @brief Type of a file dialog.
 typedef enum ECSDialogType
 {
@@ -273,6 +285,12 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 /// @param level Level of the message.
 /// @param format printf-style format.
 /// @param ... Format arguments.
+/// @brief Registers how a plugin saves and restores its own state in sessions. Call it from ECSPlugin_Init. Main thread only.
+/// @param plugin The plugin.
+/// @param desc Description of the state. The core copies it.
+/// @return SHUResult_Ok, or SHUResult_ErrBadData if the description lacks Save or Restore, or the plugin registered its state already.
+OPENECS_EXPORT SHUWUR SHUResult ECSPlugin_RegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc);
+
 OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel level, const char *format, ...);
 
 /// @brief Runs a function on a worker thread, then another function on the main thread. Thread-safe.

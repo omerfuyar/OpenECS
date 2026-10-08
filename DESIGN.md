@@ -681,7 +681,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 | `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs               |
 | `ecs.log`                     | `debug`, `info`, `warn` and `error` |
 
-- `ecs.plugin` holds the plugin's `name` and `version`.
+- `ecs.plugin` holds the plugin's `name` and `version`, and `register_state` (13.2).
 
 ### 11.4 Panels in Lua
 
@@ -764,7 +764,8 @@ return {
 - A layout node is a split (`split` plus its children) or a group (`panels`, and optionally `shown` and `locked`). A split's child has a fixed `size` in layout units or a `share`.
 - A workspace can have its own `keys`.
 - A panel's saved state is its `state` field, and the state's version is `state_version`.
-- Sessions also store each panel's `id`, each workspace's `focus` (a panel id), each group's `shown` panel and `maximized` mark, the `current_workspace`, and `plugin_state`, the state of each plugin.
+- Sessions also store each panel's `id`, each workspace's `focus` (a panel id), each group's `shown` panel and `maximized` mark, the `current_workspace`, and `plugin_state`: for each plugin's name, its `state` and `state_version`.
+- A plugin saves state of its own, apart from its panels', with `ECSPlugin_RegisterState(plugin, &desc)`: a version and `Save` and `Restore` functions. Lua: `ecs.plugin.register_state({ version = 1, save = fn, restore = fn })`. The state of a plugin that is not loaded stays in the session.
 - The app id matches the name of the tool's `.desktop` file.
 
 ### 13.3 Applying a session

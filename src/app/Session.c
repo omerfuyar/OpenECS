@@ -305,6 +305,9 @@ SHUResult ECSI_SessionApply(const char *path, const ECSI_PresetInfo *info)
 
     ECSI_SessionReader reader = {.file = path, .path = "workspaces"};
     SHU_ReturnResult(ECSI_InputSetToolKeys(ECSValue_GetTableField(info->file, "keys")));
+
+    // plugins get their state before panels are created, so panels find their data
+    ECSI_PluginsRestoreStates(ECSValue_GetTableField(info->file, "plugin_state"));
     const ECSValue *workspaces = ECSValue_GetTableField(info->file, "workspaces");
 
     if (ECSValue_GetListCount(workspaces) == 0)
@@ -359,6 +362,8 @@ SHUResult ECSI_SessionSave(const char *path, const ECSI_PresetInfo *info)
         result = result ? result : ECSValue_SetString(field, info->pluginsDirectory);
     }
 
+    result = result ? result : ECSValue_TableSetField(session, "plugin_state", &field);
+    result = result ? result : ECSI_PluginsSaveStates(field);
     result = result ? result : ECSValue_TableSetField(session, "workspaces", &field);
     result = result ? result : ECSI_LayoutSave(field, &current);
 

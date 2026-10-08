@@ -7,7 +7,6 @@ What is not decided yet, and work that is waiting. When an item is settled, writ
 - **ui plugin.** Should a first-party ui plugin offer drawing and user-interface elements to other plugins? (OVERVIEW 3.3, DESIGN 5.4)
 - **Other first-party plugins.** Which other plugins ship with OpenECS? (OVERVIEW 3.3)
 - **Domain plugins.** Should plugins for specific domains, such as glTF models, audio or networking, live in their own repositories instead of being first-party? (OVERVIEW 3.3)
-- **Plugin state.** Should the core save plugin state into the session, or should plugins save their own data? (OVERVIEW 9.2, DESIGN 13.2, 13.3)
 - **Build system.** The repository builds with shuild. Decide whether it stays, then add build and test commands to README.md.
 
 ## Tasks

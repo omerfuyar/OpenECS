@@ -9,11 +9,24 @@ ecs.settings.declare({
   default = 2,
 })
 
+-- the plugin's own state: how many greetings it has logged in every session so far
+local total = 0
+
+ecs.plugin.register_state({
+  version = 1,
+  save = function() return { total = total } end,
+  restore = function(state, version)
+    total = state and state.total or 0
+    ecs.log.info("Restored " .. total .. " greetings from the session.")
+  end,
+})
+
 -- a repeating timer that stops itself after a few calls
 local count = 0
 local timer
 timer = ecs.timer.start(0.5, true, function()
   count = count + 1
+  total = total + 1
   ecs.log.info("Greeting " .. count .. ".")
 
   if count >= ecs.settings.get("hello.greetings") then
