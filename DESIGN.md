@@ -618,7 +618,7 @@ ecs.service.register("audio", {
 | `buffer`          | a `SHUSlice`, passed by value                      |
 | `handle<name>`    | a typed handle (10.6)                              |
 | `value`           | a generic value (10.3): a `const ECSValue *` in C  |
-| `fn<signature>`   | a function to call back                            |
+| `fn<signature>`   | a function to call back (10.4)                     |
 | `out <type>`      | an output parameter; in Lua, an extra return value |
 
 - Structures are passed as handles or buffers, never by value.
@@ -641,7 +641,9 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - **C calls C:** the caller gets the raw function pointer and calls it at full speed.
 - **C calls Lua:** the caller also gets a typed C function pointer: a libffi closure that converts the arguments, calls the Lua function in a protected call, and converts the result.
 - **Lua calls Lua:** a plain Lua call, because all plugins share one Lua state.
-- Callbacks (`fn<...>` parameters) work the same way in both directions.
+- Callbacks (`fn<...>` parameters) work the same way in both directions. In C, a callback is a function pointer of its signature; in Lua, a function. `nil` in Lua is `NULL` in C.
+- A callback is valid only during the call that gives it. C must not keep it; a Lua function that keeps one gets an error when it calls it later.
+- A callback is a parameter only, never `out` or a result, and its own signature has no callbacks.
 - Strings, buffers and values that a Lua function gives to C stay valid until that function returns again.
 - When a Lua function called from C raises an error or gives a value of the wrong type, the error is reported (14.2) and C gets zeros.
 

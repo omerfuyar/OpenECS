@@ -528,6 +528,21 @@ function services.next_workspace()
   ecs.log.info(("Workspace %d, '%s'."):format(next, ecs.workspace.get_name(next)))
 end
 
+-- calls a function with every open canvas and its number of strokes; the function is valid only during the call
+function services.each_canvas(fn)
+  local count = 0
+
+  for panel, canvas in pairs(canvases) do
+    if fn then
+      fn(panel, #canvas.strokes)
+    end
+
+    count = count + 1
+  end
+
+  return count
+end
+
 -- gives the number of strokes drawn in every session, and a table of numbers about the plugin
 function services.stats()
   local own = 0
@@ -585,6 +600,7 @@ assert(ecs.service.register(NAME, {
   close_others = { sig = "int(handle<ecs.panel>)", doc = "Close the other canvases", fn = services.close_others },
   next_workspace = { sig = "void()", doc = "Switch to the next workspace", fn = services.next_workspace },
   stats = { sig = "int(out value)", doc = "Counts strokes, canvases and saves", fn = services.stats },
+  each_canvas = { sig = "int(fn<void(handle<ecs.panel>, int)>)", doc = "Calls a function with every canvas and its number of strokes", fn = services.each_canvas },
   pixels = { sig = "buffer(handle<ecs.panel>)", doc = "Gives a canvas as a PPM image", fn = services.pixels },
   brush = { sig = "handle<sketch_lua.brush>(int, string)", doc = "Makes a brush of a size and a colour", fn = services.brush },
   use_brush = { sig = "void(handle<sketch_lua.brush>, handle<ecs.panel>)", doc = "Makes a canvas draw with a brush", fn = services.use_brush },
@@ -627,10 +643,14 @@ ecs.plugin.register_state({
   end,
 })
 
--- logs the numbers of sketch_lua.stats now and then; a plugin timer
+-- logs the numbers of sketch_lua.stats now and then, and each canvas through sketch_lua.each_canvas; a plugin timer
+local each_canvas = assert(ecs.service.get(name("each_canvas"), "int(fn<void(handle<ecs.panel>, int)>)"))
 local stats_timer = ecs.timer.start(60, true, function()
   local strokes, numbers = services.stats()
   ecs.log.debug(("%d strokes in all, %d canvases open."):format(strokes, numbers.canvases))
+  each_canvas(function(panel, count)
+    ecs.log.debug(("%s has %d strokes."):format(panel:get_title(), count))
+  end)
 end)
 
 ecs.plugin.on_shutdown(function()

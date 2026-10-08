@@ -84,6 +84,12 @@ typedef struct SketchExportJob
     bool written;
 } SketchExportJob;
 
+/// @brief A callback of sketch_c.each_canvas: a canvas and its number of strokes.
+typedef void (*SketchCanvasFunction)(ECSPanel panel, i32 strokes);
+
+/// @brief The type of sketch_c.each_canvas, as callers look it up: int(fn<void(handle<ecs.panel>, int)>).
+typedef i32 (*SketchEachCanvasFunction)(SketchCanvasFunction function);
+
 static struct
 {
     ECSPlugin plugin;
@@ -95,6 +101,7 @@ static struct
     i64 saves;        // canvases saved in every session; the plugin's own state
     u8 *pixels;       // the buffer sketch_c.pixels returned last; valid until its next call
     ECSTimer statsTimer;
+    SketchEachCanvasFunction eachCanvas; // sketch_c.each_canvas, through its lookup
 } SKETCH = {0};
 
 #pragma region Strokes
@@ -964,6 +971,18 @@ static void SketchNextWorkspace(void)
     ECS_Log(SKETCH.plugin, ECSLogLevel_Info, "Workspace %zu, '%s'.", next, ECSWorkspace_GetName(next));
 }
 
+/// @brief Calls a function with every open canvas and its number of strokes. The function is valid only during the call.
+/// @return The number of open canvases.
+static i32 SketchEachCanvas(SketchCanvasFunction function)
+{
+    for (usz i = 0; function != NULL && i < SKETCH.canvasCount; i++)
+    {
+        function(SKETCH.canvases[i]->panel, (i32)SKETCH.canvases[i]->strokeCount);
+    }
+
+    return (i32)SKETCH.canvasCount;
+}
+
 /// @brief Gives the number of strokes drawn in every session, and fills a table of numbers about the plugin.
 static i32 SketchStats(ECSValue *retStats)
 {
@@ -1127,7 +1146,13 @@ static void SketchOnEvent(void *data, const char *name, const ECSValue *value)
     }
 }
 
-/// @brief Logs the numbers of sketch_c.stats now and then; a plugin timer.
+/// @brief Logs a canvas's number of strokes; a callback of sketch_c.each_canvas.
+static void SketchLogCanvas(ECSPanel panel, i32 strokes)
+{
+    ECS_Log(SKETCH.plugin, ECSLogLevel_Debug, "%s has %d strokes.", ECSPanel_GetTitle(panel), strokes);
+}
+
+/// @brief Logs the numbers of sketch_c.stats now and then, and each canvas through sketch_c.each_canvas; a plugin timer.
 static void SketchLogStats(void *data)
 {
     (void)data;
@@ -1140,6 +1165,7 @@ static void SketchLogStats(void *data)
     }
 
     ECSValue_Destroy(&stats);
+    SKETCH.eachCanvas(SketchLogCanvas);
 }
 
 static SHUResult SketchSaveState(void *data, ECSValue *retState)
@@ -1232,6 +1258,7 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
         {SKETCH_NAME("close_others"), (ECSFunction)SketchCloseOthers, "int(handle<ecs.panel>)", "Close the other canvases"},
         {SKETCH_NAME("next_workspace"), (ECSFunction)SketchNextWorkspace, "void()", "Switch to the next workspace"},
         {SKETCH_NAME("stats"), (ECSFunction)SketchStats, "int(out value)", "Counts strokes, canvases and saves"},
+        {SKETCH_NAME("each_canvas"), (ECSFunction)SketchEachCanvas, "int(fn<void(handle<ecs.panel>, int)>)", "Calls a function with every canvas and its number of strokes"},
         {SKETCH_NAME("pixels"), (ECSFunction)SketchPixels, "buffer(handle<ecs.panel>)", "Gives a canvas as a PPM image"},
         {SKETCH_NAME("brush"), (ECSFunction)SketchNewBrush, "handle<sketch_c.brush>(int, string)", "Makes a brush of a size and a colour"},
         {SKETCH_NAME("use_brush"), (ECSFunction)SketchUseBrush, "void(handle<sketch_c.brush>, handle<ecs.panel>)", "Makes a canvas draw with a brush"},
@@ -1277,6 +1304,7 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
     ECSValue *numbers = NULL;
     ECSValue *explanation = NULL;
     SHU_ReturnResult(ECSService_GetFunction(plugin, (ECSFunction *)&stats, SKETCH_NAME("stats"), "int(out value)"));
+    SHU_ReturnResult(ECSService_GetFunction(plugin, (ECSFunction *)&SKETCH.eachCanvas, SKETCH_NAME("each_canvas"), "int(fn<void(handle<ecs.panel>, int)>)"));
     SHU_ReturnResult(ECSValue_Create(&numbers));
     SHU_ReturnResult(ECSValue_Create(&explanation), ECSValue_Destroy(&numbers););
 
