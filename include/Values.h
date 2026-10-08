@@ -9,15 +9,6 @@
 /// @brief Function called for each named field of a table, by ECSI_ValueForEachField.
 typedef void (*ECSI_ValueFieldFunction)(const char *name, const ECSValue *field, void *userData);
 
-/// @brief Creates a nil value.
-/// @param retValue The new value. Destroy it with ECSI_ValueDestroy.
-/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSI_ValueCreate(ECSValue **retValue);
-
-/// @brief Destroys a value, with everything it holds, and sets the handle to NULL.
-/// @param value Value to destroy, or a handle to NULL.
-void ECSI_ValueDestroy(ECSValue **value);
-
 /// @brief Makes a value a deep copy of another.
 /// @param value The value to set.
 /// @param source The value to copy, or NULL for nil. Must not be inside the value.

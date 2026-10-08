@@ -134,12 +134,12 @@ static int ECSI_BindingsSettingsDeclare(lua_State *state)
     desc.choices = choices;
 
     ECSValue *defaultValue = NULL;
-    SHUResult result = ECSI_ValueCreate(&defaultValue);
+    SHUResult result = ECSValue_Create(&defaultValue);
     result = result ? result : ECSI_LuaGetValue(-1, defaultValue);
     bool hasDefault = ECSValue_GetType(defaultValue) != ECSValueType_Nil;
     result = result ? result : ECSI_SettingsDeclarePlugin(ECSI_BindingsPlugin(state), &desc, hasDefault ? defaultValue : NULL);
 
-    ECSI_ValueDestroy(&defaultValue);
+    ECSValue_Destroy(&defaultValue);
     arrfree(choices);
 
     // an invalid declaration is reported and returned; the plugin continues

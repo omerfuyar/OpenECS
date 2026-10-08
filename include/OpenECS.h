@@ -37,7 +37,7 @@ typedef void (*ECSFunction)(void);
 /// @param data The data given when the timer started.
 typedef void (*ECSTimerFunction)(void *data);
 
-/// @brief A generic value: nil, a boolean, an integer, a number, a string, or a table that holds a list and named fields. Saved state uses values. The core owns every value.
+/// @brief A generic value: nil, a boolean, an integer, a number, a string, or a table that holds a list and named fields. Saved state, settings and services use values.
 typedef struct ECSI_Value ECSValue;
 
 /// @brief Type of a value.
@@ -193,6 +193,15 @@ OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel l
 /// @param desc Description of the panel type. Its name must start with the plugin's name and a dot.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc);
+
+/// @brief Creates a nil value, for a plugin that passes a value to the core or to a service. Main thread only.
+/// @param retValue The new value. Destroy it with ECSValue_Destroy.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSValue_Create(ECSValue **retValue);
+
+/// @brief Destroys a value that ECSValue_Create made, with everything it holds, and sets the handle to NULL. Main thread only.
+/// @param value Value to destroy, or a handle to NULL.
+OPENECS_EXPORT void ECSValue_Destroy(ECSValue **value);
 
 /// @brief Gets the type of a value.
 /// @param value The value, or NULL.

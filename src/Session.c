@@ -241,7 +241,7 @@ SHUResult ECSI_SessionReadInfo(const char *path, ECSI_PresetInfo *retInfo)
     SDL_assert(retInfo != NULL);
 
     SDL_zerop(retInfo);
-    SHU_ReturnResult(ECSI_ValueCreate(&retInfo->file));
+    SHU_ReturnResult(ECSValue_Create(&retInfo->file));
     SHU_ReturnResult(ECSI_LuaReadData(path, retInfo->file));
 
     const ECSValue *file = retInfo->file;
@@ -289,7 +289,7 @@ void ECSI_SessionFreeInfo(ECSI_PresetInfo *info)
     SDL_free(info->appId);
     SDL_free(info->appName);
     SDL_free(info->pluginsDirectory);
-    ECSI_ValueDestroy(&info->file);
+    ECSValue_Destroy(&info->file);
     SDL_zerop(info);
 }
 
@@ -337,7 +337,7 @@ SHUResult ECSI_SessionSave(const char *path, const ECSI_PresetInfo *info)
     ECSValue *session = NULL;
     ECSValue *field = NULL;
     usz current = 0;
-    SHU_ReturnResult(ECSI_ValueCreate(&session));
+    SHU_ReturnResult(ECSValue_Create(&session));
     SHUResult result = ECSI_ValueCopy(session, info->file);
     result = result ? result : ECSValue_SetField(session, "format", &field);
 
@@ -363,6 +363,6 @@ SHUResult ECSI_SessionSave(const char *path, const ECSI_PresetInfo *info)
         result = ECSI_LuaWriteData(path, session);
     }
 
-    ECSI_ValueDestroy(&session);
+    ECSValue_Destroy(&session);
     return result;
 }

@@ -133,7 +133,7 @@ static void ECSI_SettingFree(ECSI_Setting *setting)
     }
 
     arrfree(setting->choices);
-    ECSI_ValueDestroy(&setting->defaultValue);
+    ECSValue_Destroy(&setting->defaultValue);
     SDL_free(setting->name);
     SDL_free(setting->description);
     SDL_free(setting);
@@ -142,7 +142,7 @@ static void ECSI_SettingFree(ECSI_Setting *setting)
 /// @brief Sets a new setting's default from its description.
 static SHUResult ECSI_SettingSetDefault(ECSI_Setting *setting, const ECSSettingDesc *desc)
 {
-    SHU_ReturnResult(ECSI_ValueCreate(&setting->defaultValue));
+    SHU_ReturnResult(ECSValue_Create(&setting->defaultValue));
 
     switch (desc->type)
     {
@@ -287,7 +287,7 @@ static SHUResult ECSI_SettingsReadFile(ECSI_SettingsLayer layer, const char *fol
         return SHUResult_ErrAllocation;
     }
 
-    SHU_ReturnResult(ECSI_ValueCreate(&SETTINGS.layers[layer]));
+    SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[layer]));
     ECSValue_SetTable(SETTINGS.layers[layer]);
 
     if (!SDL_GetPathInfo(SETTINGS.paths[layer], NULL))
@@ -296,13 +296,13 @@ static SHUResult ECSI_SettingsReadFile(ECSI_SettingsLayer layer, const char *fol
     }
 
     ECSValue *file = NULL;
-    SHU_ReturnResult(ECSI_ValueCreate(&file));
+    SHU_ReturnResult(ECSValue_Create(&file));
     SHUResult result = ECSI_LuaReadData(SETTINGS.paths[layer], file);
 
     // a file that cannot be read is already reported, and skipped
     if (result == SHUResult_ErrFile || result == SHUResult_ErrBadData)
     {
-        ECSI_ValueDestroy(&file);
+        ECSValue_Destroy(&file);
         return SHUResult_Ok;
     }
 
@@ -313,7 +313,7 @@ static SHUResult ECSI_SettingsReadFile(ECSI_SettingsLayer layer, const char *fol
 
     result = reader.result ? reader.result : ECSI_SettingsReadPlugins(file);
     result = result ? result : ECSI_SettingsReadPlugins(tool);
-    ECSI_ValueDestroy(&file);
+    ECSValue_Destroy(&file);
     return result;
 }
 
@@ -324,7 +324,7 @@ SHUResult ECSI_SettingsInitialize(const ECSValue *presetSettings, const char *pr
     SDL_assert(presetPath != NULL);
     SDL_assert(appId != NULL);
 
-    SHU_ReturnResult(ECSI_ValueCreate(&SETTINGS.layers[ECSI_SettingsLayer_Preset]));
+    SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[ECSI_SettingsLayer_Preset]));
     SHU_ReturnResult(ECSI_ValueCopy(SETTINGS.layers[ECSI_SettingsLayer_Preset], presetSettings));
     SETTINGS.paths[ECSI_SettingsLayer_Preset] = SDL_strdup(presetPath);
 
@@ -333,7 +333,7 @@ SHUResult ECSI_SettingsInitialize(const ECSValue *presetSettings, const char *pr
         return SHUResult_ErrAllocation;
     }
 
-    SHU_ReturnResult(ECSI_ValueCreate(&SETTINGS.plugins));
+    SHU_ReturnResult(ECSValue_Create(&SETTINGS.plugins));
     ECSValue_SetTable(SETTINGS.plugins);
 
     if (configFolder == NULL)
@@ -354,12 +354,12 @@ void ECSI_SettingsTerminate(void)
 
     for (usz i = 0; i < ECSI_SettingsLayer_Count; i++)
     {
-        ECSI_ValueDestroy(&SETTINGS.layers[i]);
+        ECSValue_Destroy(&SETTINGS.layers[i]);
         SDL_free(SETTINGS.paths[i]);
     }
 
     shfree(SETTINGS.settings);
-    ECSI_ValueDestroy(&SETTINGS.plugins);
+    ECSValue_Destroy(&SETTINGS.plugins);
     SDL_zero(SETTINGS);
 }
 

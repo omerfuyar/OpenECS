@@ -97,7 +97,7 @@ SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName, const ECSVa
     panel->typeName = SDL_strdup(typeName);
     panel->title = SDL_strdup(type == NULL ? typeName : type->title);
 
-    if (panel->typeName == NULL || panel->title == NULL || (savedState != NULL && ECSI_ValueCreate(&panel->savedState)))
+    if (panel->typeName == NULL || panel->title == NULL || (savedState != NULL && ECSValue_Create(&panel->savedState)))
     {
         ECSI_PanelDestroy(&panel);
         return SHUResult_ErrAllocation;
@@ -153,7 +153,7 @@ void ECSI_PanelDestroy(ECSPanel *panel)
     }
 
     SDL_DestroySurface(target->pixels);
-    ECSI_ValueDestroy(&target->savedState);
+    ECSValue_Destroy(&target->savedState);
     SDL_free(target->fault);
     SDL_free(target->typeName);
     SDL_free(target->title);
@@ -212,7 +212,7 @@ SHUResult ECSI_PanelSave(ECSPanel panel, ECSValue *retPanel)
 
     if (panel->fault == NULL && panel->type != NULL && panel->type->desc.SaveState != NULL)
     {
-        SHU_ReturnResult(ECSI_ValueCreate(&saved));
+        SHU_ReturnResult(ECSValue_Create(&saved));
 
         if (panel->type->desc.SaveState(panel->state, saved))
         {
@@ -240,7 +240,7 @@ SHUResult ECSI_PanelSave(ECSPanel panel, ECSValue *retPanel)
         result = result ? result : ECSI_ValueCopy(field, state);
     }
 
-    ECSI_ValueDestroy(&saved);
+    ECSValue_Destroy(&saved);
     return result;
 }
 

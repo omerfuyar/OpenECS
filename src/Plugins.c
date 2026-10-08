@@ -82,7 +82,7 @@ static void ECSI_PluginAddDependency(const char *name, const ECSValue *field, vo
 static void ECSI_ManifestFree(ECSI_Manifest *manifest)
 {
     SDL_free(manifest->folder);
-    ECSI_ValueDestroy(&manifest->file);
+    ECSValue_Destroy(&manifest->file);
     SDL_zerop(manifest);
 }
 
@@ -128,7 +128,7 @@ static SHUResult ECSI_ManifestFind(const char *name, ECSI_Manifest *retManifest)
             continue;
         }
 
-        SHUResult result = ECSI_ValueCreate(&retManifest->file);
+        SHUResult result = ECSValue_Create(&retManifest->file);
         result = result ? result : ECSI_LuaReadData(path, retManifest->file);
         SDL_free(path);
         SHU_ReturnResult(result, ECSI_ManifestFree(retManifest););

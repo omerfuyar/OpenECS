@@ -36,12 +36,12 @@ static void ECSI_ValueClear(ECSValue *value)
 
     for (usz i = 0; i < arrlenu(value->items); i++)
     {
-        ECSI_ValueDestroy(&value->items[i]);
+        ECSValue_Destroy(&value->items[i]);
     }
 
     for (usz i = 0; i < shlenu(value->fields); i++)
     {
-        ECSI_ValueDestroy(&value->fields[i].value);
+        ECSValue_Destroy(&value->fields[i].value);
     }
 
     arrfree(value->items);
@@ -60,7 +60,7 @@ static void ECSI_ValueMakeTable(ECSValue *value)
 
 #pragma endregion Source Only
 
-SHUResult ECSI_ValueCreate(ECSValue **retValue)
+SHUResult ECSValue_Create(ECSValue **retValue)
 {
     SDL_assert(retValue != NULL);
 
@@ -68,7 +68,7 @@ SHUResult ECSI_ValueCreate(ECSValue **retValue)
     return *retValue == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
 }
 
-void ECSI_ValueDestroy(ECSValue **value)
+void ECSValue_Destroy(ECSValue **value)
 {
     SDL_assert(value != NULL);
 
@@ -276,7 +276,7 @@ SHUResult ECSValue_AddItem(ECSValue *table, ECSValue **retItem)
     SDL_assert(retItem != NULL);
 
     ECSI_ValueMakeTable(table);
-    SHU_ReturnResult(ECSI_ValueCreate(retItem));
+    SHU_ReturnResult(ECSValue_Create(retItem));
     arrput(table->items, *retItem);
     return SHUResult_Ok;
 }
@@ -303,7 +303,7 @@ SHUResult ECSValue_SetField(ECSValue *table, const char *name, ECSValue **retFie
         return SHUResult_Ok;
     }
 
-    SHU_ReturnResult(ECSI_ValueCreate(&field));
+    SHU_ReturnResult(ECSValue_Create(&field));
     shput(table->fields, name, field);
     *retField = field;
     return SHUResult_Ok;

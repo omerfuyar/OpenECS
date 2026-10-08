@@ -267,7 +267,7 @@ static void ECSI_FunctionFree(ECSI_Function *function)
         ffi_closure_free(function->closure);
     }
 
-    ECSI_ValueDestroy(&function->result);
+    ECSValue_Destroy(&function->result);
     ECSI_SignatureFree(&function->signature);
     SDL_free(function->name);
     SDL_free(function->description);
@@ -434,7 +434,7 @@ static int ECSI_ServicesCallC(lua_State *state)
         }
 
         ECSValue *value = NULL;
-        result = result ? result : ECSI_ValueCreate(&value);
+        result = result ? result : ECSValue_Create(&value);
         result = result || parameter.out ? result : ECSI_LuaGetValue(indices[i], value);
         slots[i].pointer = value;
 
@@ -472,7 +472,7 @@ static int ECSI_ServicesCallC(lua_State *state)
     {
         if (signature->parameters[i].type == ECSI_ParameterType_Value)
         {
-            ECSI_ValueDestroy((ECSValue **)&slots[i].pointer);
+            ECSValue_Destroy((ECSValue **)&slots[i].pointer);
         }
     }
 
@@ -647,9 +647,9 @@ static void ECSI_ServicesCallLua(ffi_cif *cif, void *result, void **arguments, v
 
     if (signature->result.type == ECSI_ParameterType_Value)
     {
-        ECSI_ValueDestroy(&function->result);
+        ECSValue_Destroy(&function->result);
 
-        if (ECSI_ValueCreate(&function->result))
+        if (ECSValue_Create(&function->result))
         {
             return;
         }
