@@ -41,12 +41,7 @@ static SHUResult ECSI_SessionReadNode(ECSI_Node **retNode)
 
             if (!result)
             {
-                result = ECSI_LayoutSplitAdd(*retNode, child, (f32)ECSI_LuaDataGetNumber("size", 0.0), (f32)ECSI_LuaDataGetNumber("share", 1.0));
-
-                if (result)
-                {
-                    ECSI_LayoutNodeDestroy(&child);
-                }
+                ECSI_LayoutSplitAdd(*retNode, child, (f32)ECSI_LuaDataGetNumber("size", 0.0), (f32)ECSI_LuaDataGetNumber("share", 1.0));
             }
 
             ECSI_LuaDataLeave();
@@ -75,12 +70,7 @@ static SHUResult ECSI_SessionReadNode(ECSI_Node **retNode)
 
         if (!result)
         {
-            result = ECSI_LayoutGroupAdd(*retNode, panel);
-
-            if (result)
-            {
-                ECSI_PanelDestroy(&panel);
-            }
+            ECSI_LayoutGroupAdd(*retNode, panel);
         }
 
         ECSI_LuaDataLeave();

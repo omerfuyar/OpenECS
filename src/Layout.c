@@ -4,15 +4,10 @@
 #include "SDL3_ttf/SDL_ttf.h"
 #include "clay/clay.h"
 #include "clay/claySDL3.h"
+#include "stb/stbSDL3.h"
 
 #pragma region Source Only
 
-/// @brief Most children of a split.
-#define OPENECS_MAX_SPLIT_CHILDREN 16
-/// @brief Most panels in a group.
-#define OPENECS_MAX_GROUP_PANELS 32
-/// @brief Most workspaces.
-#define OPENECS_MAX_WORKSPACES 9
 /// @brief Size of the OS window when it opens, in layout units.
 #define OPENECS_WINDOW_WIDTH 1280
 #define OPENECS_WINDOW_HEIGHT 800
@@ -29,8 +24,6 @@
 #define OPENECS_GRIP_HEIGHT 6.0f
 /// @brief Smallest size a divider drag leaves to a child.
 #define OPENECS_MIN_CHILD_SIZE 32.0f
-/// @brief Most tabs that can be clicked in one frame.
-#define OPENECS_MAX_TABS 256
 
 /// @brief Background colour; it shows through the gaps between panels.
 #define OPENECS_COLOR_BACKGROUND 0x18, 0x19, 0x1C, 0xFF
@@ -63,13 +56,11 @@ struct ECSI_Node
 
     // split
     bool vertical; // children are stacked from top to bottom
-    ECSI_Node *children[OPENECS_MAX_SPLIT_CHILDREN];
-    u32 childCount;
+    ECSI_Node **children; // stb_ds array
 
     // group
-    ECSPanel panels[OPENECS_MAX_GROUP_PANELS];
-    u32 panelCount;
-    u32 shown; // index of the panel shown
+    ECSPanel *panels; // stb_ds array
+    usz shown;        // index of the panel shown
 };
 
 /// @brief A named arrangement of panels.
@@ -85,7 +76,7 @@ typedef struct ECSI_Workspace
 typedef struct ECSI_TabRef
 {
     ECSI_Node *group;
-    u32 index;
+    usz index;
 } ECSI_TabRef;
 
 /// @brief Function called for each visible group.
@@ -102,18 +93,16 @@ static struct
     f32 width;
     f32 height;
 
-    ECSI_Workspace workspaces[OPENECS_MAX_WORKSPACES];
-    u32 workspaceCount;
-    u32 current;
+    ECSI_Workspace *workspaces; // stb_ds array
+    usz current;
 
     bool frameNeeded;
     bool showPrefixKeys;
-    ECSI_TabRef tabs[OPENECS_MAX_TABS];
-    u32 tabCount;
+    ECSI_TabRef *tabs; // stb_ds array
 
     ECSI_Node *gripGroup;   // lone group whose grip is shown, or NULL
     ECSI_Node *dragSplit;   // split whose divider is dragged, or NULL
-    u32 dragDivider;        // the dragged divider follows this child
+    usz dragDivider;        // the dragged divider follows this child
 } LAYOUT = {0};
 
 /// @brief Width of the key column in the list of prefix keys.
@@ -131,7 +120,7 @@ static const char *const ECSI_PREFIX_KEY_LINES[][2] = {
 
 static ECSI_Workspace *ECSI_LayoutCurrent(void)
 {
-    return LAYOUT.workspaceCount == 0 ? NULL : &LAYOUT.workspaces[LAYOUT.current];
+    return arrlenu(LAYOUT.workspaces) == 0 ? NULL : &LAYOUT.workspaces[LAYOUT.current];
 }
 
 static Clay_String ECSI_LayoutClayText(const char *text)
@@ -185,9 +174,9 @@ static void ECSI_LayoutPlace(ECSI_Node *node, f32 x, f32 y, f32 width, f32 heigh
 
     if (node->type == ECSI_NodeType_Group)
     {
-        f32 top = node->panelCount >= 2 ? OPENECS_TAB_ROW_HEIGHT : 0.0f;
+        f32 top = arrlenu(node->panels) >= 2 ? OPENECS_TAB_ROW_HEIGHT : 0.0f;
 
-        if (node->panelCount > 0)
+        if (arrlenu(node->panels) > 0)
         {
             ECSI_PanelSetRect(node->panels[node->shown], x, y + top, width, SDL_max(0.0f, height - top));
         }
@@ -196,11 +185,11 @@ static void ECSI_LayoutPlace(ECSI_Node *node, f32 x, f32 y, f32 width, f32 heigh
     }
 
     f32 total = node->vertical ? height : width;
-    f32 available = total - OPENECS_DIVIDER_SIZE * (f32)(node->childCount - 1);
+    f32 available = total - OPENECS_DIVIDER_SIZE * (f32)(arrlenu(node->children) - 1);
     f32 fixedSum = 0.0f;
     f32 shareSum = 0.0f;
 
-    for (u32 i = 0; i < node->childCount; i++)
+    for (usz i = 0; i < arrlenu(node->children); i++)
     {
         if (node->children[i]->fixedSize > 0.0f)
         {
@@ -217,13 +206,13 @@ static void ECSI_LayoutPlace(ECSI_Node *node, f32 x, f32 y, f32 width, f32 heigh
     f32 end = start + total;
     f32 position = start;
 
-    for (u32 i = 0; i < node->childCount; i++)
+    for (usz i = 0; i < arrlenu(node->children); i++)
     {
         ECSI_Node *child = node->children[i];
         f32 size = child->fixedSize > 0.0f ? child->fixedSize : (shareSum > 0.0f ? remaining * child->share / shareSum : 0.0f);
 
         // the last child takes what is left, so rounding leaves no gap
-        size = i + 1 == node->childCount ? end - position : SDL_min(size, end - position);
+        size = i + 1 == arrlenu(node->children) ? end - position : SDL_min(size, end - position);
         size = SDL_max(0.0f, size);
 
         if (node->vertical)
@@ -253,7 +242,7 @@ static void ECSI_LayoutForEachGroupIn(ECSI_Node *node, ECSI_GroupFunction functi
         return;
     }
 
-    for (u32 i = 0; i < node->childCount; i++)
+    for (usz i = 0; i < arrlenu(node->children); i++)
     {
         ECSI_LayoutForEachGroupIn(node->children[i], function, userData);
     }
@@ -310,7 +299,7 @@ static ECSI_Node *ECSI_LayoutFindGroup(ECSI_Node *node, ECSPanel panel)
 
     if (node->type == ECSI_NodeType_Group)
     {
-        for (u32 i = 0; i < node->panelCount; i++)
+        for (usz i = 0; i < arrlenu(node->panels); i++)
         {
             if (node->panels[i] == panel)
             {
@@ -321,7 +310,7 @@ static ECSI_Node *ECSI_LayoutFindGroup(ECSI_Node *node, ECSPanel panel)
         return NULL;
     }
 
-    for (u32 i = 0; i < node->childCount; i++)
+    for (usz i = 0; i < arrlenu(node->children); i++)
     {
         ECSI_Node *group = ECSI_LayoutFindGroup(node->children[i], panel);
 
@@ -344,10 +333,10 @@ static ECSPanel ECSI_LayoutFirstPanel(ECSI_Node *node)
 
     if (node->type == ECSI_NodeType_Group)
     {
-        return node->panelCount > 0 ? node->panels[node->shown] : NULL;
+        return arrlenu(node->panels) > 0 ? node->panels[node->shown] : NULL;
     }
 
-    for (u32 i = 0; i < node->childCount; i++)
+    for (usz i = 0; i < arrlenu(node->children); i++)
     {
         ECSPanel panel = ECSI_LayoutFirstPanel(node->children[i]);
 
@@ -364,6 +353,8 @@ static ECSPanel ECSI_LayoutFirstPanel(ECSI_Node *node)
 static void ECSI_LayoutRemoveNode(ECSI_Workspace *workspace, ECSI_Node *node)
 {
     ECSI_Node *parent = node->parent;
+    arrfree(node->children);
+    arrfree(node->panels);
     SDL_free(node);
 
     if (parent == NULL)
@@ -372,17 +363,16 @@ static void ECSI_LayoutRemoveNode(ECSI_Workspace *workspace, ECSI_Node *node)
         return;
     }
 
-    u32 index = 0;
+    usz index = 0;
 
     while (parent->children[index] != node)
     {
         index++;
     }
 
-    SDL_memmove(&parent->children[index], &parent->children[index + 1], (parent->childCount - index - 1) * sizeof(ECSI_Node *));
-    parent->childCount--;
+    arrdel(parent->children, index);
 
-    if (parent->childCount != 1)
+    if (arrlenu(parent->children) != 1)
     {
         return;
     }
@@ -399,7 +389,7 @@ static void ECSI_LayoutRemoveNode(ECSI_Workspace *workspace, ECSI_Node *node)
     }
     else
     {
-        for (u32 i = 0; i < grandparent->childCount; i++)
+        for (usz i = 0; i < arrlenu(grandparent->children); i++)
         {
             if (grandparent->children[i] == parent)
             {
@@ -408,6 +398,7 @@ static void ECSI_LayoutRemoveNode(ECSI_Workspace *workspace, ECSI_Node *node)
         }
     }
 
+    arrfree(parent->children);
     SDL_free(parent);
 }
 
@@ -418,7 +409,7 @@ typedef struct ECSI_DividerHit
     f32 x;
     f32 y;
     ECSI_Node *split;
-    u32 divider;
+    usz divider;
 } ECSI_DividerHit;
 
 /// @brief Finds the divider under a point.
@@ -429,7 +420,7 @@ static void ECSI_LayoutFindDivider(ECSI_Node *node, ECSI_DividerHit *hit)
         return;
     }
 
-    for (u32 i = 0; i + 1 < node->childCount; i++)
+    for (usz i = 0; i + 1 < arrlenu(node->children); i++)
     {
         ECSI_Node *child = node->children[i];
         bool over = node->vertical
@@ -444,7 +435,7 @@ static void ECSI_LayoutFindDivider(ECSI_Node *node, ECSI_DividerHit *hit)
         }
     }
 
-    for (u32 i = 0; i < node->childCount; i++)
+    for (usz i = 0; i < arrlenu(node->children); i++)
     {
         ECSI_LayoutFindDivider(node->children[i], hit);
     }
@@ -471,7 +462,7 @@ static void ECSI_LayoutDragDivider(f32 x, f32 y)
     f32 secondSize = room - firstSize;
 
     // shares are relative, so every shared child gets its current size as its share
-    for (u32 i = 0; i < split->childCount; i++)
+    for (usz i = 0; i < arrlenu(split->children); i++)
     {
         ECSI_Node *child = split->children[i];
 
@@ -517,7 +508,7 @@ static void ECSI_LayoutFindGripGroup(ECSI_Node *group, void *userData)
 {
     ECSI_GripHit *hit = userData;
 
-    if (group->panelCount == 1 && ECSI_LayoutContains(hit->x, hit->y, group->x, group->y, group->width, OPENECS_GRIP_ZONE))
+    if (arrlenu(group->panels) == 1 && ECSI_LayoutContains(hit->x, hit->y, group->x, group->y, group->width, OPENECS_GRIP_ZONE))
     {
         hit->group = group;
     }
@@ -528,12 +519,12 @@ static void ECSI_LayoutDeclareGroup(ECSI_Node *group, void *userData)
 {
     (void)userData;
 
-    if (group->panelCount == 0)
+    if (arrlenu(group->panels) == 0)
     {
         return;
     }
 
-    if (group->panelCount >= 2)
+    if (arrlenu(group->panels) >= 2)
     {
         CLAY_AUTO_ID({
             .layout = {
@@ -546,11 +537,9 @@ static void ECSI_LayoutDeclareGroup(ECSI_Node *group, void *userData)
             .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x, group->y}},
         })
         {
-            for (u32 i = 0; i < group->panelCount && LAYOUT.tabCount < OPENECS_MAX_TABS; i++)
+            for (usz i = 0; i < arrlenu(group->panels); i++)
             {
-                LAYOUT.tabs[LAYOUT.tabCount] = (ECSI_TabRef){group, i};
-
-                CLAY(CLAY_IDI("Tab", LAYOUT.tabCount), {
+                CLAY(CLAY_IDI("Tab", (u32)arrlenu(LAYOUT.tabs)), {
                     .layout = {
                         .sizing = {CLAY_SIZING_FIT(0), CLAY_SIZING_GROW(0)},
                         .padding = {12, 12, 0, 0},
@@ -567,7 +556,7 @@ static void ECSI_LayoutDeclareGroup(ECSI_Node *group, void *userData)
                               }));
                 }
 
-                LAYOUT.tabCount++;
+                arrput(LAYOUT.tabs, ((ECSI_TabRef){group, i}));
             }
         }
     }
@@ -601,7 +590,7 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
     Clay_SetLayoutDimensions((Clay_Dimensions){LAYOUT.width, LAYOUT.height});
     Clay_BeginLayout();
 
-    LAYOUT.tabCount = 0;
+    arrfree(LAYOUT.tabs);
     ECSI_Workspace *workspace = ECSI_LayoutCurrent();
 
     CLAY(CLAY_ID("Root"), {.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0)}}})
@@ -668,7 +657,7 @@ static void ECSI_LayoutWantsFrameIn(ECSI_Node *group, void *userData)
 {
     bool *wants = userData;
 
-    if (group->panelCount > 0 && ECSI_PanelWantsFrame(group->panels[group->shown]))
+    if (arrlenu(group->panels) > 0 && ECSI_PanelWantsFrame(group->panels[group->shown]))
     {
         *wants = true;
     }
@@ -678,7 +667,7 @@ static void ECSI_LayoutRenderGroup(ECSI_Node *group, void *userData)
 {
     u64 *nowTicks = userData;
 
-    if (group->panelCount > 0)
+    if (arrlenu(group->panels) > 0)
     {
         ECSI_PanelRender(group->panels[group->shown], LAYOUT.renderer, *nowTicks);
     }
@@ -699,7 +688,7 @@ static void ECSI_LayoutFindPanel(ECSI_Node *group, void *userData)
 {
     ECSI_PanelHit *hit = userData;
 
-    if (group->panelCount == 0)
+    if (arrlenu(group->panels) == 0)
     {
         return;
     }
@@ -726,7 +715,7 @@ static void ECSI_LayoutFindNeighbourIn(ECSI_Node *group, void *userData)
 {
     ECSI_NeighbourSearch *search = userData;
 
-    if (group->panelCount == 0)
+    if (arrlenu(group->panels) == 0)
     {
         return;
     }
@@ -853,7 +842,7 @@ SHUResult ECSI_LayoutInitialize(const char *title, const char *fontPath)
 
 void ECSI_LayoutTerminate(void)
 {
-    for (u32 i = 0; i < LAYOUT.workspaceCount; i++)
+    for (usz i = 0; i < arrlenu(LAYOUT.workspaces); i++)
     {
         if (LAYOUT.workspaces[i].tree != NULL)
         {
@@ -862,6 +851,9 @@ void ECSI_LayoutTerminate(void)
 
         SDL_free(LAYOUT.workspaces[i].name);
     }
+
+    arrfree(LAYOUT.workspaces);
+    arrfree(LAYOUT.tabs);
 
     SDL_free(LAYOUT.clayMemory);
 
@@ -926,37 +918,25 @@ SHUResult ECSI_LayoutGroupCreate(ECSI_Node **retNode)
     return SHUResult_Ok;
 }
 
-SHUResult ECSI_LayoutSplitAdd(ECSI_Node *split, ECSI_Node *child, f32 fixedSize, f32 share)
+void ECSI_LayoutSplitAdd(ECSI_Node *split, ECSI_Node *child, f32 fixedSize, f32 share)
 {
     SDL_assert(split != NULL);
     SDL_assert(child != NULL);
     SDL_assert(split->type == ECSI_NodeType_Split);
 
-    if (split->childCount == OPENECS_MAX_SPLIT_CHILDREN)
-    {
-        return SHUResult_ErrOverflow;
-    }
-
     child->parent = split;
     child->fixedSize = SDL_max(0.0f, fixedSize);
     child->share = share > 0.0f ? share : 1.0f;
-    split->children[split->childCount++] = child;
-    return SHUResult_Ok;
+    arrput(split->children, child);
 }
 
-SHUResult ECSI_LayoutGroupAdd(ECSI_Node *group, ECSPanel panel)
+void ECSI_LayoutGroupAdd(ECSI_Node *group, ECSPanel panel)
 {
     SDL_assert(group != NULL);
     SDL_assert(panel != NULL);
     SDL_assert(group->type == ECSI_NodeType_Group);
 
-    if (group->panelCount == OPENECS_MAX_GROUP_PANELS)
-    {
-        return SHUResult_ErrOverflow;
-    }
-
-    group->panels[group->panelCount++] = panel;
-    return SHUResult_Ok;
+    arrput(group->panels, panel);
 }
 
 void ECSI_LayoutNodeDestroy(ECSI_Node **node)
@@ -966,16 +946,18 @@ void ECSI_LayoutNodeDestroy(ECSI_Node **node)
 
     ECSI_Node *target = *node;
 
-    for (u32 i = 0; i < target->childCount; i++)
+    for (usz i = 0; i < arrlenu(target->children); i++)
     {
         ECSI_LayoutNodeDestroy(&target->children[i]);
     }
 
-    for (u32 i = 0; i < target->panelCount; i++)
+    for (usz i = 0; i < arrlenu(target->panels); i++)
     {
         ECSI_PanelDestroy(&target->panels[i]);
     }
 
+    arrfree(target->children);
+    arrfree(target->panels);
     SDL_free(target);
     *node = NULL;
 }
@@ -984,11 +966,6 @@ SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree)
 {
     SDL_assert(name != NULL);
 
-    if (LAYOUT.workspaceCount == OPENECS_MAX_WORKSPACES)
-    {
-        return SHUResult_ErrOverflow;
-    }
-
     char *copy = SDL_strdup(name);
 
     if (copy == NULL)
@@ -996,12 +973,14 @@ SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree)
         return SHUResult_ErrAllocation;
     }
 
-    LAYOUT.workspaces[LAYOUT.workspaceCount++] = (ECSI_Workspace){
+    ECSI_Workspace workspace = {
         .name = copy,
         .tree = tree,
         .maximized = NULL,
         .focus = ECSI_LayoutFirstPanel(tree),
     };
+
+    arrput(LAYOUT.workspaces, workspace);
 
     LAYOUT.frameNeeded = true;
     return SHUResult_Ok;
@@ -1009,7 +988,7 @@ SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree)
 
 void ECSI_LayoutWorkspaceSwitch(u32 index)
 {
-    if (index >= LAYOUT.workspaceCount || index == LAYOUT.current)
+    if (index >= arrlenu(LAYOUT.workspaces) || index == LAYOUT.current)
     {
         return;
     }
@@ -1074,9 +1053,9 @@ bool ECSI_LayoutPointerDown(f32 x, f32 y)
 
     Clay_SetCurrentContext(LAYOUT.clay);
 
-    for (u32 i = 0; i < LAYOUT.tabCount; i++)
+    for (usz i = 0; i < arrlenu(LAYOUT.tabs); i++)
     {
-        Clay_ElementData tab = Clay_GetElementData(CLAY_IDI("Tab", i));
+        Clay_ElementData tab = Clay_GetElementData(CLAY_IDI("Tab", (u32)i));
 
         if (tab.found && ECSI_LayoutContains(x, y, tab.boundingBox.x, tab.boundingBox.y, tab.boundingBox.width, tab.boundingBox.height))
         {
@@ -1151,12 +1130,12 @@ ECSPanel ECSI_LayoutNextTab(void)
     ECSI_Workspace *workspace = ECSI_LayoutCurrent();
     ECSI_Node *group = workspace == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, workspace->focus);
 
-    if (group == NULL || group->panelCount < 2)
+    if (group == NULL || arrlenu(group->panels) < 2)
     {
         return NULL;
     }
 
-    group->shown = (group->shown + 1) % group->panelCount;
+    group->shown = (group->shown + 1) % arrlenu(group->panels);
     LAYOUT.frameNeeded = true;
     return group->panels[group->shown];
 }
@@ -1186,18 +1165,17 @@ void ECSI_LayoutClosePanel(ECSPanel panel)
         return;
     }
 
-    u32 index = 0;
+    usz index = 0;
 
     while (group->panels[index] != panel)
     {
         index++;
     }
 
-    SDL_memmove(&group->panels[index], &group->panels[index + 1], (group->panelCount - index - 1) * sizeof(ECSPanel));
-    group->panelCount--;
+    arrdel(group->panels, index);
     ECSI_PanelDestroy(&panel);
 
-    if (group->panelCount == 0)
+    if (arrlenu(group->panels) == 0)
     {
         if (workspace->maximized == group)
         {
@@ -1214,7 +1192,7 @@ void ECSI_LayoutClosePanel(ECSPanel panel)
     }
     else
     {
-        group->shown = group->shown >= group->panelCount ? group->panelCount - 1 : group->shown;
+        group->shown = group->shown >= arrlenu(group->panels) ? arrlenu(group->panels) - 1 : group->shown;
         workspace->focus = group->panels[group->shown];
     }
 

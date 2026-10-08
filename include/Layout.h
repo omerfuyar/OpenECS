@@ -34,14 +34,12 @@ SHUWUR SHUResult ECSI_LayoutGroupCreate(ECSI_Node **retNode);
 /// @param child Child to add. The split owns it from now on.
 /// @param fixedSize Size in layout units, or 0 to use a share of the remaining space.
 /// @param share Share of the remaining space, used when fixedSize is 0.
-/// @return SHUResult_Ok, or SHUResult_ErrOverflow if the split is full.
-SHUWUR SHUResult ECSI_LayoutSplitAdd(ECSI_Node *split, ECSI_Node *child, f32 fixedSize, f32 share);
+void ECSI_LayoutSplitAdd(ECSI_Node *split, ECSI_Node *child, f32 fixedSize, f32 share);
 
 /// @brief Adds a panel to a group.
 /// @param group The group.
 /// @param panel Panel to add. The group owns it from now on.
-/// @return SHUResult_Ok, or SHUResult_ErrOverflow if the group is full.
-SHUWUR SHUResult ECSI_LayoutGroupAdd(ECSI_Node *group, ECSPanel panel);
+void ECSI_LayoutGroupAdd(ECSI_Node *group, ECSPanel panel);
 
 /// @brief Destroys a node, its children and their panels, and sets the handle to NULL.
 /// @param node Node to destroy. Must not be part of a workspace.
@@ -50,7 +48,7 @@ void ECSI_LayoutNodeDestroy(ECSI_Node **node);
 /// @brief Adds a workspace.
 /// @param name Name of the workspace.
 /// @param tree Layout tree of the main OS window. The workspace owns it from now on.
-/// @return SHUResult_Ok, or SHUResult_ErrOverflow if there is no room for more workspaces.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree);
 
 /// @brief Switches to a workspace.
