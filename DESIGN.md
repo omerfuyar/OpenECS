@@ -101,7 +101,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 - Before writing a function, check that no dependency already has it.
 - The core calls SDL directly, without wrappers, for memory, text, files and paths, shared libraries, logging and assertions: `SDL_malloc`, `SDL_strdup`, `SDL_asprintf`, `SDL_GetPrefPath`, `SDL_LoadObject`, `SDL_Log`, `SDL_assert`.
-- Dynamic arrays and hash maps come from `stb_ds.h`, set to use SDL's allocator.
+- Dynamic arrays and hash maps come from `stb_ds.h`. The core includes it through the glue header `stb/stbSDL3.h`, which sets it to use SDL's allocator and assertions. The core has no fixed limits on counts, such as the number of plugins or panels.
 - Each job has one implementation, used everywhere. For example, all logging goes through SDL's log, and all memory comes from SDL's allocator.
 
 ## 2. Program structure

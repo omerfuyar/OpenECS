@@ -14,7 +14,6 @@ What is not decided yet, and work that is waiting. When an item is settled, writ
 ## Tasks
 
 - **Implement the rest of DESIGN.md.** Not done yet: GPU surfaces, pop-out windows, docking by dragging, timers, events for plugins, services and libffi, Lua plugins and the `ecs` table, settings, saving sessions, popups, drag and drop of data, the unsaved-work question, removing a failed plugin's registrations, log lines with the time and the log file, and the first-party ui, settings and launcher plugins.
-- **Use stb_ds in the core** (DESIGN 1.7). Replace the fixed-size arrays (the `OPENECS_MAX_*` limits) with stb_ds arrays and hash maps, and link the stb library into the executable. `dependencies/other/stb/stb.c` should define `STBDS_REALLOC` and `STBDS_FREE` as `SDL_realloc` and `SDL_free`, so the core keeps one allocator.
 - **Link SDL as shared libraries.** DESIGN 17.2 ships SDL3 and SDL3_ttf as shared libraries next to the executable; the default build links them statically.
 - **Rendering prototype.** The main window draws with a 2D GPU renderer. Still to confirm: one GPU device for several OS windows, a panel's GPU texture shown in any window, and an offscreen renderer drawing into that texture (DESIGN 5.3, 5.4).
 - **libffi closure prototype.** Expose a Lua function as a typed C function pointer (DESIGN 10.4).
