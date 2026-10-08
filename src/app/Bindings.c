@@ -1,9 +1,9 @@
 #include "app/Bindings.h"
 
-#include "runtime/Events.h"
-#include "interface/Input.h"
 #include "base/Lua.h"
+#include "interface/Input.h"
 #include "interface/Panels.h"
+#include "runtime/Events.h"
 #include "runtime/Services.h"
 #include "runtime/Settings.h"
 
