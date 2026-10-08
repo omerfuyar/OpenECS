@@ -480,11 +480,11 @@ OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelT
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if the target is not in the current workspace, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type, const ECSValue *state, ECSPanel target, ECSZone zone);
 
-/// @brief Moves a panel into a target's group, or beside it. Both must be in the same workspace. Main thread only.
+/// @brief Moves a panel into a target's group, or beside it, also from another workspace. Main thread only.
 /// @param panel Panel to move.
 /// @param target The target panel.
 /// @param zone Where next to the target.
-/// @return SHUResult_Ok, or SHUResult_ErrNotFound if the panels are not in one workspace.
+/// @return SHUResult_Ok, or SHUResult_ErrNotFound if a panel is not in the layout.
 OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone);
 
 /// @brief Closes a panel. If it has unsaved work, the user is asked first and may cancel. Main thread only.

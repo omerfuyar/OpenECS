@@ -17,6 +17,9 @@ typedef struct ECSI_Plugin
     char **dependencies; // stb_ds array of the names its manifest depends on
     ECSPluginStateDesc state; // Save is NULL if the plugin saves no state of its own
     ECSTimerFunction stateRelease;
+    ECSTaskFunction LuaShutdown; // the Lua code's shutdown, or NULL
+    ECSTaskFunction luaShutdownRelease;
+    void *luaShutdownData;
 } ECSI_Plugin;
 
 /// @brief State while the plugins of a table are loaded.
@@ -66,6 +69,14 @@ static void ECSI_PluginForgetState(ECSI_Plugin *plugin)
 
     plugin->state = (ECSPluginStateDesc){0};
     plugin->stateRelease = NULL;
+
+    if (plugin->luaShutdownRelease != NULL)
+    {
+        plugin->luaShutdownRelease(plugin->luaShutdownData);
+    }
+
+    plugin->LuaShutdown = NULL;
+    plugin->luaShutdownRelease = NULL;
 }
 
 static void ECSI_PluginFree(ECSI_Plugin *plugin)
@@ -379,6 +390,28 @@ SHUResult ECSI_PluginsLoad(const char *const *directories, usz directoryCount, c
     return result;
 }
 
+void ECSI_PluginsShutdown(void)
+{
+    for (usz i = shlenu(PLUGINS.plugins); i > 0; i--)
+    {
+        ECSI_Plugin *plugin = PLUGINS.plugins[i - 1].value;
+
+        // the Lua code started after the native code, so it shuts down first
+        if (plugin->LuaShutdown != NULL)
+        {
+            plugin->LuaShutdown(plugin->luaShutdownData);
+        }
+
+        if (plugin->Shutdown != NULL)
+        {
+            plugin->Shutdown(plugin);
+        }
+
+        plugin->LuaShutdown = NULL;
+        plugin->Shutdown = NULL;
+    }
+}
+
 void ECSI_PluginsUnload(void)
 {
     for (usz i = 0; i < shlenu(PLUGINS.errors); i++)
@@ -392,11 +425,6 @@ void ECSI_PluginsUnload(void)
     for (usz i = shlenu(PLUGINS.plugins); i > 0; i--)
     {
         ECSI_Plugin *plugin = PLUGINS.plugins[i - 1].value;
-
-        if (plugin->Shutdown != NULL)
-        {
-            plugin->Shutdown(plugin);
-        }
 
         ECSI_PluginForgetState(plugin);
 
@@ -450,6 +478,20 @@ SHUResult ECSI_PluginRegisterState(ECSPlugin plugin, const ECSPluginStateDesc *d
     plugin->state = *desc;
     plugin->stateRelease = release;
     return SHUResult_Ok;
+}
+
+void ECSI_PluginSetLuaShutdown(ECSPlugin plugin, ECSTaskFunction function, ECSTaskFunction release, void *data)
+{
+    SDL_assert(plugin != NULL);
+
+    if (plugin->luaShutdownRelease != NULL)
+    {
+        plugin->luaShutdownRelease(plugin->luaShutdownData);
+    }
+
+    plugin->LuaShutdown = function;
+    plugin->luaShutdownRelease = release;
+    plugin->luaShutdownData = data;
 }
 
 SHUResult ECSPlugin_RegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc)

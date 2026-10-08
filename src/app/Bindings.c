@@ -409,6 +409,43 @@ static const luaL_Reg ECSI_BINDINGS_TIMER_METHODS[] = {
 
 #pragma endregion Timers
 
+#pragma region Handles
+
+static int ECSI_BindingsHandleRegisterType(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+
+    if (ECSI_ServicesRegisterLuaHandleType(ECSI_BindingsPlugin(state), name))
+    {
+        return luaL_error(state, "handle type '%s' cannot be registered", name);
+    }
+
+    return 0;
+}
+
+static int ECSI_BindingsHandleNew(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+    luaL_checkany(state, 2);
+    ECSI_ServicesPushLuaHandle(ECSI_BindingsPlugin(state), name, 2);
+    return 1;
+}
+
+static int ECSI_BindingsHandleValue(lua_State *state)
+{
+    ECSI_ServicesPushLuaHandleValue(ECSI_BindingsPlugin(state), luaL_checkstring(state, 2), 1);
+    return 1;
+}
+
+static const luaL_Reg ECSI_BINDINGS_HANDLE[] = {
+    {"register_type", ECSI_BindingsHandleRegisterType},
+    {"new", ECSI_BindingsHandleNew},
+    {"value", ECSI_BindingsHandleValue},
+    {NULL, NULL},
+};
+
+#pragma endregion Handles
+
 #pragma region Plugin state
 
 static SHUResult ECSI_BindingsStateSave(void *data, ECSValue *retState)
@@ -454,6 +491,33 @@ static void ECSI_BindingsStateRelease(void *data)
     luaL_unref(state, LUA_REGISTRYINDEX, luaState->save);
     luaL_unref(state, LUA_REGISTRYINDEX, luaState->restore);
     SDL_free(luaState);
+}
+
+/// @brief Calls a Lua plugin's shutdown function; the data is its registry reference.
+static void ECSI_BindingsShutdownCall(void *data)
+{
+    lua_State *state = ECSI_LuaGetState();
+    lua_rawgeti(state, LUA_REGISTRYINDEX, (int)(intptr_t)data);
+
+    if (ECSI_LuaCall(0, 0))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A Lua plugin failed to shut down: %s", lua_tostring(state, -1));
+        lua_pop(state, 1);
+    }
+}
+
+static void ECSI_BindingsShutdownRelease(void *data)
+{
+    luaL_unref(ECSI_LuaGetState(), LUA_REGISTRYINDEX, (int)(intptr_t)data);
+}
+
+static int ECSI_BindingsPluginOnShutdown(lua_State *state)
+{
+    luaL_checktype(state, 1, LUA_TFUNCTION);
+    lua_pushvalue(state, 1);
+    int function = luaL_ref(state, LUA_REGISTRYINDEX);
+    ECSI_PluginSetLuaShutdown(ECSI_BindingsPlugin(state), ECSI_BindingsShutdownCall, ECSI_BindingsShutdownRelease, (void *)(intptr_t)function);
+    return 0;
 }
 
 static int ECSI_BindingsPluginRegisterState(lua_State *state)
@@ -1560,6 +1624,7 @@ static void ECSI_BindingsPushEcs(lua_State *state, ECSPlugin plugin)
     ECSI_BindingsAddTable(state, plugin, "clipboard", ECSI_BINDINGS_CLIPBOARD);
     ECSI_BindingsAddTable(state, plugin, "dialog", ECSI_BINDINGS_DIALOG);
     ECSI_BindingsAddTable(state, plugin, "event", ECSI_BINDINGS_EVENT);
+    ECSI_BindingsAddTable(state, plugin, "handle", ECSI_BINDINGS_HANDLE);
 
     lua_newtable(state);
     lua_pushstring(state, ECSI_PluginGetName(plugin));
@@ -1569,6 +1634,9 @@ static void ECSI_BindingsPushEcs(lua_State *state, ECSPlugin plugin)
     lua_pushlightuserdata(state, plugin);
     lua_pushcclosure(state, ECSI_BindingsPluginRegisterState, 1);
     lua_setfield(state, -2, "register_state");
+    lua_pushlightuserdata(state, plugin);
+    lua_pushcclosure(state, ECSI_BindingsPluginOnShutdown, 1);
+    lua_setfield(state, -2, "on_shutdown");
     lua_setfield(state, -2, "plugin");
 }
 

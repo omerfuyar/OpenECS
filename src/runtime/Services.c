@@ -50,6 +50,12 @@ typedef struct ECSI_Handle
     ECSI_HandleType *type;
 } ECSI_Handle;
 
+/// @brief The object of a handle whose type a Lua plugin provides: the Lua value it stands for.
+typedef struct ECSI_LuaObject
+{
+    int value; // registry reference
+} ECSI_LuaObject;
+
 /// @brief A parameter or result of a signature.
 typedef struct ECSI_Parameter
 {
@@ -576,6 +582,14 @@ static int ECSI_ServicesHandleText(lua_State *state)
     return 1;
 }
 
+/// @brief Destroys the object of a handle whose type a Lua plugin provides; the Lua value it kept may then be collected.
+static void ECSI_ServicesDestroyLuaObject(void *object)
+{
+    ECSI_LuaObject *luaObject = object;
+    luaL_unref(ECSI_LuaGetState(), LUA_REGISTRYINDEX, luaObject->value);
+    SDL_free(luaObject);
+}
+
 static SHUResult ECSI_ServicesRegisterHandleType(ECSPlugin plugin, const char *name, void (*Destroy)(void *object))
 {
     if (ECSI_ServicesFindHandleType(name) != NULL)
@@ -1024,6 +1038,9 @@ void ECSI_ServicesPushHandleMetatable(const char *type)
 
 void ECSI_ServicesTerminate(void)
 {
+    // handles that wait for their finalizer are no longer in the weak table, so a full collection runs those finalizers now, while the types and their plugins' code exist
+    lua_gc(ECSI_LuaGetState(), LUA_GCCOLLECT);
+
     // objects are destroyed while their plugins' code is still loaded
     ECSI_ServicesForgetHandles(NULL, true);
 
@@ -1056,7 +1073,8 @@ void ECSI_ServicesRemovePlugin(ECSPlugin plugin)
 
         if (type->plugin == plugin)
         {
-            ECSI_ServicesForgetHandles(type, false);
+            // the core made the objects of a Lua plugin's types, so it can still destroy them
+            ECSI_ServicesForgetHandles(type, type->Destroy == ECSI_ServicesDestroyLuaObject);
             type->Destroy = NULL;
         }
     }
@@ -1193,6 +1211,68 @@ const char *ECSI_ServicesGetDescription(const char *name)
 
     ECSI_Function *function = SERVICES.functions == NULL ? NULL : shget(SERVICES.functions, name);
     return function == NULL ? NULL : function->description;
+}
+
+SHUResult ECSI_ServicesRegisterLuaHandleType(ECSPlugin plugin, const char *name)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(name != NULL);
+
+    return ECSI_PluginOwnsName(plugin, name) ? ECSI_ServicesRegisterHandleType(plugin, name, ECSI_ServicesDestroyLuaObject) : SHUResult_ErrBadData;
+}
+
+/// @brief Finds a handle type that a Lua plugin provides, and raises a Lua error if it is not the plugin's.
+static ECSI_HandleType *ECSI_ServicesCheckLuaHandleType(lua_State *state, ECSPlugin plugin, const char *name)
+{
+    ECSI_HandleType *type = ECSI_ServicesFindHandleType(name);
+
+    if (type == NULL || type->plugin != plugin || type->Destroy != ECSI_ServicesDestroyLuaObject)
+    {
+        luaL_error(state, "handle type '%s' is not one that this plugin registered in Lua", name);
+    }
+
+    return type;
+}
+
+void ECSI_ServicesPushLuaHandle(ECSPlugin plugin, const char *name, int index)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(name != NULL);
+
+    lua_State *state = ECSI_LuaGetState();
+    index = lua_absindex(state, index);
+    ECSI_ServicesCheckLuaHandleType(state, plugin, name);
+
+    ECSI_LuaObject *object = SDL_malloc(sizeof(ECSI_LuaObject));
+
+    if (object == NULL)
+    {
+        luaL_error(state, "out of memory");
+        return;
+    }
+
+    lua_pushvalue(state, index);
+    object->value = luaL_ref(state, LUA_REGISTRYINDEX);
+    ECSI_ServicesPushHandle(name, object);
+}
+
+void ECSI_ServicesPushLuaHandleValue(ECSPlugin plugin, const char *name, int index)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(name != NULL);
+
+    lua_State *state = ECSI_LuaGetState();
+    ECSI_ServicesCheckLuaHandleType(state, plugin, name);
+    ECSI_LuaObject *object = ECSI_ServicesCheckHandle(index, name);
+
+    // the check raises a Lua error instead of giving NULL
+    if (object == NULL)
+    {
+        lua_pushnil(state);
+        return;
+    }
+
+    lua_rawgeti(state, LUA_REGISTRYINDEX, object->value);
 }
 
 SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, void (*Destroy)(void *object))

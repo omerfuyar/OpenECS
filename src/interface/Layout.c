@@ -2571,13 +2571,47 @@ SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone)
     ECSI_Node *source = NULL;
     ECSI_Node *group = NULL;
 
-    if (!ECSI_LayoutLocate(panel, &workspace, &source) || !ECSI_LayoutLocate(target, &targetWorkspace, &group) || workspace != targetWorkspace)
+    if (!ECSI_LayoutLocate(panel, &workspace, &source) || !ECSI_LayoutLocate(target, &targetWorkspace, &group))
     {
         return SHUResult_ErrNotFound;
     }
 
     ECSI_Drop drop = {.zone = ECSI_LayoutZone(zone), .group = group};
-    ECSI_LayoutMove(workspace, panel, &drop, false);
+
+    if (workspace == targetWorkspace)
+    {
+        ECSI_LayoutMove(workspace, panel, &drop, false);
+        return SHUResult_Ok;
+    }
+
+    // to another workspace: the panel leaves its group, and its workspace focuses another panel; tidying forgets a maximized group that empties
+    usz index = 0;
+
+    while (source->panels[index] != panel)
+    {
+        index++;
+    }
+
+    arrdel(source->panels, index);
+    source->shown = arrlenu(source->panels) == 0 ? 0 : SDL_min(source->shown, arrlenu(source->panels) - 1);
+    ECSI_LayoutTidy(workspace);
+
+    if (workspace->focus == panel)
+    {
+        ECSI_LayoutChangeFocus(workspace, ECSI_LayoutFirstPanel(workspace->tree));
+    }
+
+    // then it joins the target's group, and a side zone moves it beside the group, as when a panel opens
+    arrput(group->panels, panel);
+    group->shown = arrlenu(group->panels) - 1;
+
+    if (drop.zone != ECSI_Zone_Center)
+    {
+        ECSI_LayoutMove(targetWorkspace, panel, &drop, false);
+    }
+
+    ECSI_LayoutChangeFocus(targetWorkspace, panel);
+    ECSI_LayoutTidy(targetWorkspace);
     return SHUResult_Ok;
 }
 

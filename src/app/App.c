@@ -273,12 +273,15 @@ void ECSI_AppStop(void)
         SDL_Log("Session saved to '%s'.", APP.lastSession);
     }
 
-    // panels are destroyed before their types, and their types before their plugins are unloaded
+    // panels are destroyed before their types, handles' objects before their plugins shut down, and plugins before they are unloaded
     ECSI_InputTerminate();
     ECSI_LayoutTerminate();
     ECSI_PanelsTerminate();
-    ECSI_EventsTerminate();
     ECSI_ServicesTerminate();
+
+    // plugins shut down while timers and events still work, and their code is unloaded once no worker runs it
+    ECSI_PluginsShutdown();
+    ECSI_EventsTerminate();
     ECSI_PluginsUnload();
     ECSI_SettingsTerminate();
     ECSI_BindingsTerminate();

@@ -28,12 +28,21 @@ void ECSI_PluginsSetHooks(const ECSI_PluginHooks *hooks);
 /// @return SHUResult_Ok if every plugin loaded; otherwise the last error. Failing plugins are reported and skipped.
 SHUWUR SHUResult ECSI_PluginsLoad(const char *const *directories, usz directoryCount, const ECSValue *plugins);
 
-/// @brief Runs every plugin's ECSPlugin_Shutdown, in reverse load order, and closes their libraries.
+/// @brief Shuts every plugin down, in reverse load order: its Lua code's shutdown, then its ECSPlugin_Shutdown. Timers and events still work then.
+void ECSI_PluginsShutdown(void);
+
+/// @brief Frees every plugin and closes their libraries. Call it after ECSI_PluginsShutdown, when no worker thread runs their code.
 void ECSI_PluginsUnload(void);
 
 /// @brief Registers a plugin's state like ECSPlugin_RegisterState, with a function that releases its data when the plugin goes away. The Bindings module uses it for Lua.
 /// @param release Function called with the description's data when the plugin fails or is unloaded, or NULL.
 SHUWUR SHUResult ECSI_PluginRegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc, ECSTimerFunction release);
+
+/// @brief Sets the function that shuts down a plugin's Lua code, called before its native ECSPlugin_Shutdown. A function set before is released.
+/// @param function The function, or NULL for none.
+/// @param release Function called with the data when the plugin fails or is unloaded, or NULL.
+/// @param data Passed to the functions.
+void ECSI_PluginSetLuaShutdown(ECSPlugin plugin, ECSTaskFunction function, ECSTaskFunction release, void *data);
 
 /// @brief Restores the state of every plugin that registered one, from a session's plugin_state table. A plugin whose state is missing keeps its own. Errors are reported.
 /// @param states The plugin_state table: for each plugin's name, a table with its state and state_version. NULL restores nothing.

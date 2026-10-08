@@ -90,6 +90,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 - Headers start with `#pragma once` and group their contents with `#pragma region`. A source file keeps its internal elements in a `Source Only` region.
 - Functions used by only one source file are `static`.
 - First-party plugins are in `plugins/<name>/`, and first-party presets in `presets/`.
+- `sketch_c` and `sketch_lua` are example plugins with the same canvases, clock, settings, services, keys, events and state, one native and one in Lua. They use every part of the plugin interface, and draw the same strokes into the same pixels.
 
 ### 1.6 Style
 
@@ -152,8 +153,10 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 
 1. Ask about unsaved work (4.5). The user may cancel.
 2. Save the session for the next start (13.4).
-3. Destroy the panels. Call each plugin's `Shutdown` in reverse load order.
-4. Stop SDL and Lua.
+3. Destroy the panels, then the objects of handles (10.6).
+4. Shut plugins down in reverse load order: a plugin's Lua shutdown (`ecs.plugin.on_shutdown`), then its `ECSPlugin_Shutdown`. Timers and events still work then.
+5. Stop the worker threads and free the timers, then unload the plugins' libraries.
+6. Stop SDL and Lua.
 
 ## 3. Main loop, timers and threads
 
@@ -338,7 +341,7 @@ After every operation:
 ### 6.5 Operations
 
 - Besides the operations in OVERVIEW 6.3, there are cycling tabs and reopening the last closed panel.
-- Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)`, `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles.
+- Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)` (also from another workspace), `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles.
 - Workspaces are numbered from 1, in C and in Lua: `ECSWorkspace_Switch(10)` switches to workspace 10.
 - Closing a panel from code still asks about unsaved work. Focusing a panel shows its workspace and its tab.
 - Locks (6.4) stop the user, not code.
@@ -637,6 +640,8 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - In Lua, a handle is a userdata whose metatable names its type. A handle of the wrong type is rejected with a clear error. When Lua no longer uses a handle, its garbage collector calls the destructor.
 - The same object always has the same Lua handle. A provider that still uses an object after giving it to Lua counts references, and its destructor drops one.
 - The core's own handle type is `ecs.panel`: Lua's panel handles (11.4).
+- A Lua plugin provides a handle type too: `ecs.handle.register_type(name)`, `ecs.handle.new(name, value)` for a handle that stands for a Lua value, and `ecs.handle.value(handle, name)`, which gives the value back to the plugin that owns the type. Users see such a handle like any other. The core keeps the value until the handle is collected.
+- Handles that wait for their finalizer at exit are collected before the handle types are freed.
 - When a provider goes away, its handles become invalid and their users are told. A failed plugin's handles become invalid without their destructor. On exit, the objects of handles that Lua still holds are destroyed before plugins shut down.
 
 ### 10.7 Buffers
@@ -673,6 +678,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 | `ecs.workspace`               | workspaces                          |
 | `ecs.input`                   | key bindings and focus              |
 | `ecs.event`                   | declare, emit and subscribe         |
+| `ecs.handle`                  | handle types of Lua plugins (10.6)  |
 | `ecs.timer`                   | timers                              |
 | `ecs.service`                 | register and look up functions      |
 | `ecs.settings`                | declare, get, set, list and explain |
@@ -681,7 +687,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 | `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs               |
 | `ecs.log`                     | `debug`, `info`, `warn` and `error` |
 
-- `ecs.plugin` holds the plugin's `name` and `version`, and `register_state` (13.2).
+- `ecs.plugin` holds the plugin's `name` and `version`, `register_state` (13.2), and `on_shutdown(fn)`, the Lua counterpart of `ECSPlugin_Shutdown` (2.4).
 
 ### 11.4 Panels in Lua
 
