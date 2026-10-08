@@ -682,7 +682,7 @@ return {
 - A layout node is a split (`split` plus its children) or a group (`panels`, and optionally `shown` and `locked`). A split's child has a fixed `size` in layout units or a `share`.
 - A workspace can have its own `keys`.
 - A panel's saved state is its `state` field, and the state's version is `state_version`.
-- Sessions also store panel ids, the focused panel, the maximized group, and `plugin_state`, the state of each plugin.
+- Sessions also store each panel's `id`, each workspace's `focus` (a panel id), each group's `shown` panel and `maximized` mark, the `current_workspace`, and `plugin_state`, the state of each plugin.
 - The app id matches the name of the tool's `.desktop` file.
 
 ### 13.3 Applying a session
@@ -698,7 +698,9 @@ The core converts only layout data.
 ### 13.4 Saving
 
 - Only data is written: numbers, strings, booleans and tables. Functions and reference cycles are an error.
-- The writer is a short Lua function embedded in the executable. It uses `string.format("%q", x)`, so strings and numbers read back exactly.
+- The writer is a short Lua function embedded in the executable. It uses `string.format("%q", x)`, so strings read back exactly. Numbers are written in the shortest form that reads back exactly.
+- Named fields are read and written in the order of their names, so the same session always writes the same file.
+- A session is written from the file it came from, with the current workspaces. So fields that the core does not use are kept.
 - A file is written to a temporary file, then renamed over the old one, so it is never left half-written.
 
 ### 13.5 Command line
@@ -708,6 +710,7 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [FILE...]
 ```
 
 - `--fresh` starts from the preset instead of the tool's last session.
+- A session's identity wins over the preset's, so the session is saved again as the last session of its own tool.
 - Files are passed to the function that the preset names in `open`.
 - A tool's `.desktop` file runs, for example, `openecs --preset paint %F`.
 
