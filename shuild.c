@@ -306,18 +306,18 @@ static void Shuild_clay(void)
 
     SHU_ModuleAddSourceFile("../other/clay/clay.c");
 
-    // todo move copy after compile, fix system
     SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%sinclude/clay/", OUTPUT_DIRECTORY.data);
-    SHU_UtilCreateDirectory(tempStr.data);
-    CopyFile("dependencies/clay/clay.h", tempStr.data);
-    CopyFile("dependencies/other/clay/claySDL3.h", tempStr.data);
-
     SHUI_SFormat(&tempStr, "../../%sinclude/", OUTPUT_DIRECTORY.data);
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+
+    // clay.c includes the headers from the submodule, so they are copied for the core after it compiles
+    SHUI_SFormat(&tempStr, "%sinclude/clay/", OUTPUT_DIRECTORY.data);
+    SHU_UtilCreateDirectory(tempStr.data);
+    CopyFile("dependencies/clay/clay.h", tempStr.data);
+    CopyFile("dependencies/other/clay/claySDL3.h", tempStr.data);
 }
 
 static void Shuild_stb(void)

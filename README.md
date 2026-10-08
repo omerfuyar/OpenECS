@@ -102,7 +102,7 @@ gcc shuild.c -o shuild.ignore -O3
 ./shuild.ignore R S
 ```
 
-Dependencies are built the first time only. To build one again, delete its library from `build/<LINK>/<TYPE>/lib/`.
+Dependencies are built the first time only. To build one again, delete its library from `build/<LINK>/<TYPE>/lib/` and the `.shu/` folder; shuild does not make a library again while its compiled files are unchanged.
 
 Shuild compiles again only the files that changed. After changing compiler flags in `shuild.c`, delete `.shu/` to compile everything again.
 
