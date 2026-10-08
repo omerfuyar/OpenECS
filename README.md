@@ -1,8 +1,8 @@
 # OpenECS
 
-OpenECS (Editor Composition System) is a cross platform editor program written in C that provide an editor featuring windows (like tabs, docking, tiling, popping out, maximizing, workspaces etc.), native and scripted (with lua) plugin support, keybindings, session serialization, OS and built in systems (like drag and drop, file explorer, copy-paste, notifications, dialogs, undo-redo etc.), look and feel (like themes, animations etc.).
- 
-OpenECS itself does not provide any domain specific behaviour. User application register the behaviour (what is shown and done) inside a window. OpenECS an executable and not a library. User creates plugins to define a behaviour. That makes the same executable to be able to transform into a text editor, a paint program, a game engine frontend or even a game itself.
+OpenECS (Editor Composition System) is the empty shell of an editor-style application, written in C. It provides panels that can be split, grouped into tabs, docked, maximized and moved into their own windows, and workspaces that hold them. It also provides plugins in C and Lua, keybindings, settings, saving and restoring sessions, and operating-system features such as the clipboard, drag and drop and dialogs. It runs on Linux.
+
+OpenECS does nothing specific to any job. Plugins decide what each panel shows and does, and a preset names the plugins and the arrangement of a tool. So the same executable becomes a text editor, a paint program or the front end of a game engine. OpenECS is an executable, not a library.
 
 ## Documents
 
@@ -76,6 +76,8 @@ sudo pacman -S alsa-lib cmake hidapi ibus jack libdecor libthai fribidi libgl li
 ```
 
 ### Building
+
+The code is C23, so it needs a C23 compiler such as gcc 14 or later. The dependencies also need cmake, ninja, autoconf, automake and libtool.
 
 Shuild builds the program:
 
