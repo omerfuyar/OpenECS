@@ -28,6 +28,9 @@ static const u32 SKETCH_COLORS[] = {0xFFECEFF4, 0xFFBF616A, 0xFFA3BE8C, 0xFF5E81
 #define SKETCH_MIN_SIZE 1
 #define SKETCH_MAX_SIZE 64
 
+/// @brief The type of sketch_c.stats, as callers look it up: int(out value).
+typedef i32 (*SketchStatsFunction)(ECSValue *retStats);
+
 /// @brief A brush that services hand out as a handle<sketch_c.brush>. Lua's handle and each canvas that uses it hold a reference.
 typedef struct SketchBrush
 {
@@ -1270,7 +1273,7 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
     SHU_ReturnResult(ECSTimer_Start(plugin, &SKETCH.statsTimer, 60.0, true, SketchLogStats, NULL));
 
     // a service is called through its lookup like any other plugin would call it
-    i32 (*stats)(ECSValue *) = NULL;
+    SketchStatsFunction stats = NULL;
     ECSValue *numbers = NULL;
     ECSValue *explanation = NULL;
     SHU_ReturnResult(ECSService_GetFunction(plugin, (ECSFunction *)&stats, SKETCH_NAME("stats"), "int(out value)"));

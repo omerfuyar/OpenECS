@@ -54,6 +54,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 | Constant and attribute macro            | `OPENECS_` + UPPER_SNAKE | `OPENECS_API_VERSION`, `OPENECS_EXPORT`                 |
 | Struct field, parameter, local variable | camelCase                | `stateVersion`, `minWidth`                              |
 | Function pointer field                  | PascalCase               | `Create`, `Draw`, `SaveState`                           |
+| Function pointer type                   | `ECS` + PascalCase + `Function` | `ECSTimerFunction`, `ECSPanelDrawFunction`       |
 | Output parameter                        | `ret` + name             | `retPanel`, `retTimer`                                  |
 | File                                    | PascalCase               | `OpenECS.h`, `Layout.c`                                 |
 | File-level state                        | one `static` struct, UPPER_CASE| `LAYOUT`, `RENDERER`                                    |
@@ -67,6 +68,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 - The core uses `shu.h` for its basic types (`i32`, `u32`, `f32`, `usz` and so on), for `SHUSlice` and `SHUSliceView`, for `SHUResult` and `SHUWUR`, and for `SHU_ReturnResult`.
 - The plugin header includes `shu.h`, so plugins use the same types.
 - Memory is passed as a `SHUSlice` or `SHUSliceView`, not as a separate pointer and size.
+- Every function pointer type has a typedef, which fields, parameters and casts use.
 - An object that plugins hold is an opaque handle: `typedef struct ECSI_Panel *ECSPanel;`. Its fields stay internal.
 - A function that creates an object returns `SHUResult` and writes the new handle to an output parameter, which comes first after the plugin: `SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, ...)`. Its `Destroy` or `Stop` takes a pointer to the handle and sets it to `NULL`.
 - Other functions take the object they act on first. Functions that act for a plugin take the plugin first.
@@ -216,14 +218,14 @@ typedef struct ECSPanelTypeDesc
     f32 minHeight;
 
     // required
-    SHUResult (*Create)(ECSPanel panel, const ECSValue *savedState, u32 version, void **retState);
-    void (*Destroy)(void *state);
+    ECSPanelCreateFunction Create;       // SHUResult (ECSPanel panel, const ECSValue *savedState, u32 version, void **retState)
+    ECSPanelDestroyFunction Destroy;     // void (void *state)
 
     // optional, NULL if unused
-    void (*Draw)(void *state, ECSSurface *surface, f64 seconds);
-    void (*Event)(void *state, const ECSPanelEvent *event);
-    SHUResult (*SaveState)(void *state, ECSValue *retState);
-    SHUResult (*Save)(void *state); // saves unsaved work
+    ECSPanelDrawFunction Draw;           // void (void *state, ECSSurface *surface, f64 seconds)
+    ECSPanelEventFunction Event;         // void (void *state, const ECSPanelEvent *event)
+    ECSPanelSaveStateFunction SaveState; // SHUResult (void *state, ECSValue *retState)
+    ECSPanelSaveFunction Save;           // SHUResult (void *state): saves unsaved work
 } ECSPanelTypeDesc;
 ```
 

@@ -35,7 +35,7 @@ typedef struct ECSI_Setting
     char **choices;        // stb_ds array; choice settings only
     const ECSValue *value; // the value in effect: the default, or a value of a layer
     ECSI_SettingsLayer layer;
-    void (*Changed)(void *data);
+    ECSSettingChangedFunction Changed;
     void *data;
 } ECSI_Setting;
 

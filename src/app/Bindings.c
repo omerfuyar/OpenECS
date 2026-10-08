@@ -260,8 +260,11 @@ static int ECSI_BindingsSettingsSet(lua_State *state)
     return 1;
 }
 
+/// @brief A settings function that fills a value: ECSSetting_Explain, or the list of settings.
+typedef SHUResult (*ECSI_BindingsFillFunction)(const char *name, ECSValue *retValue);
+
 /// @brief Pushes a value that a settings function fills, or nil and a message.
-static int ECSI_BindingsSettingsPush(lua_State *state, SHUResult (*fill)(const char *name, ECSValue *retValue), const char *name)
+static int ECSI_BindingsSettingsPush(lua_State *state, ECSI_BindingsFillFunction fill, const char *name)
 {
     ECSValue *value = NULL;
     SHUResult result = ECSValue_Create(&value);
