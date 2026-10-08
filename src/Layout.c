@@ -146,11 +146,12 @@ static struct
 } LAYOUT = {0};
 
 /// @brief Width of the key column in the list of prefix keys.
-#define OPENECS_PREFIX_KEY_COLUMN 64.0f
+#define OPENECS_PREFIX_KEY_COLUMN 104.0f
 
 /// @brief The keys shown after the core prefix, as key and action. Mirrors the default of the setting ecs.prefix_keys.
 static const char *const ECSI_PREFIX_KEY_LINES[][2] = {
     {"Arrows", "move focus"},
+    {"Shift+Arrows", "move the panel"},
     {"Tab", "next tab"},
     {"1 to 9", "switch workspace"},
     {"M", "maximize or restore"},
@@ -1577,6 +1578,26 @@ ECSPanel ECSI_LayoutFindNeighbour(i32 dx, i32 dy)
 
     ECSI_LayoutForEachGroup(ECSI_LayoutFindNeighbourIn, &search);
     return search.best;
+}
+
+void ECSI_LayoutMoveFocus(i32 dx, i32 dy)
+{
+    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
+    ECSPanel neighbour = ECSI_LayoutFindNeighbour(dx, dy);
+
+    if (workspace == NULL || workspace->focus == NULL)
+    {
+        return;
+    }
+
+    ECSI_Drop drop = {.zone = dx < 0 ? ECSI_Zone_WindowLeft : dx > 0 ? ECSI_Zone_WindowRight : dy < 0 ? ECSI_Zone_WindowTop : ECSI_Zone_WindowBottom};
+
+    if (neighbour != NULL)
+    {
+        drop = (ECSI_Drop){.zone = ECSI_Zone_Center, .group = ECSI_LayoutFindGroup(workspace->tree, neighbour)};
+    }
+
+    ECSI_LayoutMove(workspace, workspace->focus, &drop);
 }
 
 ECSPanel ECSI_LayoutNextTab(void)

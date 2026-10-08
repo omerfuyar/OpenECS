@@ -118,6 +118,11 @@ void ECSI_LayoutSetFocus(ECSPanel panel);
 /// @return The panel, or NULL if there is none in that direction.
 ECSPanel ECSI_LayoutFindNeighbour(i32 dx, i32 dy);
 
+/// @brief Moves the focused panel into the group of the nearest panel in a direction, or docks it along that edge of the OS window if there is none.
+/// @param dx -1 for left, 1 for right, 0 otherwise.
+/// @param dy -1 for up, 1 for down, 0 otherwise.
+void ECSI_LayoutMoveFocus(i32 dx, i32 dy);
+
 /// @brief Shows the next tab of the focused panel's group.
 /// @return The panel shown now, or NULL.
 ECSPanel ECSI_LayoutNextTab(void);

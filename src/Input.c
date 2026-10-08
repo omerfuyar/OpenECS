@@ -15,6 +15,10 @@ typedef enum ECSI_CoreAction
     ECSI_CoreAction_FocusRight,
     ECSI_CoreAction_FocusUp,
     ECSI_CoreAction_FocusDown,
+    ECSI_CoreAction_MoveLeft,
+    ECSI_CoreAction_MoveRight,
+    ECSI_CoreAction_MoveUp,
+    ECSI_CoreAction_MoveDown,
     ECSI_CoreAction_NextTab,
     ECSI_CoreAction_Maximize,
     ECSI_CoreAction_Close,
@@ -28,6 +32,10 @@ static const char *const ECSI_PREFIX_KEYS[ECSI_CoreAction_Count] = {
     [ECSI_CoreAction_FocusRight] = "Right",
     [ECSI_CoreAction_FocusUp] = "Up",
     [ECSI_CoreAction_FocusDown] = "Down",
+    [ECSI_CoreAction_MoveLeft] = "Shift+Left",
+    [ECSI_CoreAction_MoveRight] = "Shift+Right",
+    [ECSI_CoreAction_MoveUp] = "Shift+Up",
+    [ECSI_CoreAction_MoveDown] = "Shift+Down",
     [ECSI_CoreAction_NextTab] = "Tab",
     [ECSI_CoreAction_Maximize] = "M",
     [ECSI_CoreAction_Close] = "X",
@@ -47,6 +55,7 @@ static struct
     u32 prefixModifiers;
     bool prefixActive;
     u32 actionKeys[ECSI_CoreAction_Count];
+    u32 actionModifiers[ECSI_CoreAction_Count];
     ECSPanel pointerPanel; // panel that got the press; it gets pointer events until the release
 } INPUT = {0};
 
@@ -204,8 +213,14 @@ static void ECSI_InputSetPrefix(bool active)
     ECSI_LayoutShowPrefixKeys(active);
 }
 
+/// @brief Checks the modifiers of a key press against a binding's. AltGr is never part of a binding.
+static bool ECSI_InputModifiersMatch(u32 modifiers, u32 expected)
+{
+    return (modifiers & ECSModifier_AltGr) == 0 && modifiers == expected;
+}
+
 /// @brief Runs the core action chosen by the key pressed after the core prefix.
-static void ECSI_InputRunAction(SDL_Keycode key)
+static void ECSI_InputRunAction(SDL_Keycode key, u32 modifiers)
 {
     ECSI_InputSetPrefix(false);
 
@@ -219,7 +234,7 @@ static void ECSI_InputRunAction(SDL_Keycode key)
 
     for (u32 i = 0; i < ECSI_CoreAction_Count; i++)
     {
-        if (INPUT.actionKeys[i] == key)
+        if (INPUT.actionKeys[i] == key && ECSI_InputModifiersMatch(modifiers, INPUT.actionModifiers[i]))
         {
             action = (ECSI_CoreAction)i;
         }
@@ -241,6 +256,18 @@ static void ECSI_InputRunAction(SDL_Keycode key)
     case ECSI_CoreAction_FocusDown:
         ECSI_InputFocus(ECSI_LayoutFindNeighbour(0, 1));
         break;
+    case ECSI_CoreAction_MoveLeft:
+        ECSI_LayoutMoveFocus(-1, 0);
+        break;
+    case ECSI_CoreAction_MoveRight:
+        ECSI_LayoutMoveFocus(1, 0);
+        break;
+    case ECSI_CoreAction_MoveUp:
+        ECSI_LayoutMoveFocus(0, -1);
+        break;
+    case ECSI_CoreAction_MoveDown:
+        ECSI_LayoutMoveFocus(0, 1);
+        break;
     case ECSI_CoreAction_NextTab:
         ECSI_InputFocus(ECSI_LayoutNextTab());
         break;
@@ -258,12 +285,6 @@ static void ECSI_InputRunAction(SDL_Keycode key)
     default:
         break;
     }
-}
-
-/// @brief Checks the modifiers of a key press against a binding's. AltGr is never part of a binding.
-static bool ECSI_InputModifiersMatch(u32 modifiers, u32 expected)
-{
-    return (modifiers & ECSModifier_AltGr) == 0 && modifiers == expected;
 }
 
 #pragma endregion Source Only
@@ -290,8 +311,7 @@ SHUResult ECSI_InputInitialize(void)
 
     for (u32 i = 0; i < ECSI_CoreAction_Count; i++)
     {
-        u32 modifiers = 0;
-        SHU_ReturnResult(ECSI_InputParseKey(ECSI_PREFIX_KEYS[i], &INPUT.actionKeys[i], &modifiers));
+        SHU_ReturnResult(ECSI_InputParseKey(ECSI_PREFIX_KEYS[i], &INPUT.actionKeys[i], &INPUT.actionModifiers[i]));
     }
 
     return SHUResult_Ok;
@@ -408,7 +428,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
 
             if (!modifierKey && !key->repeat)
             {
-                ECSI_InputRunAction(key->key);
+                ECSI_InputRunAction(key->key, ECSI_InputModifiers(key->mod));
             }
 
             break;
