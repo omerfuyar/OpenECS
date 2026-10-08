@@ -230,7 +230,10 @@ SHUResult ECSI_SessionFindPreset(char **retPath, const char *nameOrPath)
     SDL_assert(retPath != NULL);
     SDL_assert(nameOrPath != NULL);
 
-    if (SDL_strchr(nameOrPath, '/') != NULL)
+    // a name has no folder and no extension
+    usz length = SDL_strlen(nameOrPath);
+
+    if (SDL_strchr(nameOrPath, '/') != NULL || (length > 4 && SDL_strcmp(nameOrPath + length - 4, ".lua") == 0))
     {
         *retPath = SDL_strdup(nameOrPath);
         return *retPath == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;

@@ -97,7 +97,13 @@ static void ECSI_CheckStart(SHUResult result, const char *step)
     char *message = NULL;
     SDL_asprintf(&message, "Start-up failed while %s (%s). See the log for details.", step, SHUResult_String(result));
     SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, "%s", message == NULL ? step : message);
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "OpenECS", message == NULL ? step : message, NULL);
+
+    // a test runs without a display, so its failure goes to the log only
+    if (!APP.test)
+    {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "OpenECS", message == NULL ? step : message, NULL);
+    }
+
     SDL_free(message);
 
     SDL_Quit();

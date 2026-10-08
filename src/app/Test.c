@@ -435,7 +435,9 @@ SHUResult ECSI_TestLoad(const char *path, const ECSI_PresetInfo *info, char **re
     // a preset path is relative to the test file
     const char *preset = lua_getfield(state, -2, "preset") == LUA_TSTRING ? lua_tostring(state, -1) : OPENECS_TEST_PRESET;
     const char *slash = SDL_strrchr(path, '/');
-    int folderLength = slash != NULL && preset[0] != '/' && SDL_strchr(preset, '/') != NULL ? (int)(slash - path + 1) : 0;
+    usz length = SDL_strlen(preset);
+    bool file = SDL_strchr(preset, '/') != NULL || (length > 4 && SDL_strcmp(preset + length - 4, ".lua") == 0);
+    int folderLength = slash != NULL && file && preset[0] != '/' ? (int)(slash - path + 1) : 0;
 
     if (SDL_asprintf(retPreset, "%.*s%s", folderLength, path, preset) < 0)
     {

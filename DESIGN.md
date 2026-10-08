@@ -939,7 +939,7 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
 - A Lua error fails the test and logs it with its stack trace. When `run` returns, the program quits without asking about unsaved work.
-- The exit status is 0 when the test passes and 1 when it fails.
+- The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
 
 ## 18. Platform notes
 
