@@ -558,6 +558,159 @@ static const luaL_Reg ECSI_BINDINGS_CLIPBOARD[] = {
 
 #pragma endregion Clipboard
 
+#pragma region Dialogs
+
+/// @brief Names of the dialog types in Lua, in the order of ECSDialogType.
+static const char *const ECSI_BINDINGS_DIALOG_TYPES[] = {"open_file", "save_file", "open_folder", NULL};
+
+/// @brief A Lua function waiting for a file dialog's answer.
+typedef struct ECSI_LuaDialog
+{
+    ECSPlugin plugin;
+    int function; // registry reference
+} ECSI_LuaDialog;
+
+static void ECSI_BindingsDialogDone(void *data, const char *const *files, usz count)
+{
+    ECSI_LuaDialog *dialog = data;
+    lua_State *state = ECSI_LuaGetState();
+
+    lua_rawgeti(state, LUA_REGISTRYINDEX, dialog->function);
+
+    if (files == NULL)
+    {
+        lua_pushnil(state);
+    }
+    else
+    {
+        lua_createtable(state, (int)count, 0);
+
+        for (usz i = 0; i < count; i++)
+        {
+            lua_pushstring(state, files[i]);
+            lua_rawseti(state, -2, (lua_Integer)i + 1);
+        }
+    }
+
+    if (ECSI_LuaCall(1, 0))
+    {
+        ECSI_PluginReportError(dialog->plugin, lua_tostring(state, -1));
+        lua_pop(state, 1);
+    }
+
+    luaL_unref(state, LUA_REGISTRYINDEX, dialog->function);
+    SDL_free(dialog);
+}
+
+/// @brief ecs.dialog.show({ type, filters = { { name, pattern } }, location, many }, function(files) end)
+static int ECSI_BindingsDialogShow(lua_State *state)
+{
+    luaL_checktype(state, 1, LUA_TTABLE);
+    luaL_checktype(state, 2, LUA_TFUNCTION);
+
+    // the texts stay alive in the table while the dialog is described, and the core copies them
+    lua_getfield(state, 1, "type");
+    lua_getfield(state, 1, "location");
+    lua_getfield(state, 1, "many");
+    lua_getfield(state, 1, "filters");
+
+    ECSDialogFilter *filters = NULL;
+
+    for (lua_Integer i = 1; lua_istable(state, -1) && lua_rawgeti(state, -1, i) == LUA_TTABLE; i++)
+    {
+        lua_getfield(state, -1, "name");
+        lua_getfield(state, -2, "pattern");
+        ECSDialogFilter filter = {lua_tostring(state, -2), lua_tostring(state, -1)};
+        lua_pop(state, 3);
+
+        if (filter.name != NULL && filter.pattern != NULL)
+        {
+            arrput(filters, filter);
+        }
+    }
+
+    // the loop leaves the first value that is not a filter on the stack
+    lua_pop(state, lua_istable(state, -2) ? 1 : 0);
+
+    ECSDialogDesc desc = {
+        .type = (ECSDialogType)luaL_checkoption(state, -4, "open_file", ECSI_BINDINGS_DIALOG_TYPES),
+        .filters = filters,
+        .filterCount = arrlenu(filters),
+        .location = lua_tostring(state, -3),
+        .many = lua_toboolean(state, -2),
+        .Done = ECSI_BindingsDialogDone,
+    };
+
+    ECSI_LuaDialog *dialog = SDL_malloc(sizeof(ECSI_LuaDialog));
+
+    if (dialog == NULL)
+    {
+        arrfree(filters);
+        return luaL_error(state, "out of memory");
+    }
+
+    lua_pushvalue(state, 2);
+    dialog->function = luaL_ref(state, LUA_REGISTRYINDEX);
+    dialog->plugin = ECSI_BindingsPlugin(state);
+    desc.data = dialog;
+
+    SHUResult result = ECSDialog_Show(dialog->plugin, &desc);
+    arrfree(filters);
+
+    if (result)
+    {
+        luaL_unref(state, LUA_REGISTRYINDEX, dialog->function);
+        SDL_free(dialog);
+        lua_pushnil(state);
+        lua_pushfstring(state, "the dialog is not shown (%s)", SHUResult_String(result));
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
+/// @brief ecs.dialog.message(title, text, { buttons }) gives the position of the pressed button, from 1, or nil.
+static int ECSI_BindingsDialogMessage(lua_State *state)
+{
+    const char *title = luaL_checkstring(state, 1);
+    const char *text = luaL_checkstring(state, 2);
+    const char **buttons = NULL;
+
+    // the button texts stay alive in the table on the stack
+    for (lua_Integer i = 1; lua_istable(state, 3) && lua_rawgeti(state, 3, i) == LUA_TSTRING; i++)
+    {
+        arrput(buttons, lua_tostring(state, -1));
+        lua_pop(state, 1);
+    }
+
+    if (arrlenu(buttons) == 0)
+    {
+        arrput(buttons, "OK");
+    }
+
+    usz button = 0;
+    SHUResult result = ECSDialog_ShowMessage(title, text, buttons, arrlenu(buttons), &button);
+    arrfree(buttons);
+
+    if (result)
+    {
+        lua_pushnil(state);
+        return 1;
+    }
+
+    lua_pushinteger(state, (lua_Integer)button + 1);
+    return 1;
+}
+
+static const luaL_Reg ECSI_BINDINGS_DIALOG[] = {
+    {"show", ECSI_BindingsDialogShow},
+    {"message", ECSI_BindingsDialogMessage},
+    {NULL, NULL},
+};
+
+#pragma endregion Dialogs
+
 #pragma region Input
 
 static int ECSI_BindingsInputBind(lua_State *state)
@@ -1141,6 +1294,7 @@ static void ECSI_BindingsPushEcs(lua_State *state, ECSPlugin plugin)
     ECSI_BindingsAddTable(state, plugin, "layout", ECSI_BINDINGS_LAYOUT);
     ECSI_BindingsAddTable(state, plugin, "workspace", ECSI_BINDINGS_WORKSPACE);
     ECSI_BindingsAddTable(state, plugin, "clipboard", ECSI_BINDINGS_CLIPBOARD);
+    ECSI_BindingsAddTable(state, plugin, "dialog", ECSI_BINDINGS_DIALOG);
 
     lua_newtable(state);
     lua_pushstring(state, ECSI_PluginGetName(plugin));

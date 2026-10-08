@@ -174,6 +174,35 @@ typedef struct ECSSettingDesc
     void *data;                  // passed to Changed
 } ECSSettingDesc;
 
+/// @brief Type of a file dialog.
+typedef enum ECSDialogType
+{
+    ECSDialogType_OpenFile = 0,
+    ECSDialogType_SaveFile,
+    ECSDialogType_OpenFolder,
+} ECSDialogType;
+
+/// @brief A filter of a file dialog.
+typedef struct ECSDialogFilter
+{
+    const char *name;    // shown to the user, such as "Images"
+    const char *pattern; // extensions without dots, separated by semicolons, such as "png;jpg"; "*" for every file
+} ECSDialogFilter;
+
+/// @brief Describes a file dialog. Passed to ECSDialog_Show.
+typedef struct ECSDialogDesc
+{
+    ECSDialogType type;
+    const ECSDialogFilter *filters; // file dialogs: the filters to choose from, or NULL
+    usz filterCount;
+    const char *location; // the folder or file to start in, or NULL
+    bool many;            // open dialogs: the user may choose more than one
+
+    /// @brief Called on the main thread with the user's choice: the paths, valid during the call, and their count. files is NULL if the user cancelled or the dialog failed.
+    void (*Done)(void *data, const char *const *files, usz count);
+    void *data; // passed to Done
+} ECSDialogDesc;
+
 /// @brief Level of a log message.
 typedef enum ECSLogLevel
 {
@@ -451,6 +480,21 @@ OPENECS_EXPORT SHUWUR SHUResult ECSClipboard_SetData(const char *mimeType, SHUSl
 /// @param retData The data; empty if the clipboard has none of that type. Valid until the next call of a clipboard function.
 /// @return SHUResult_Ok, or SHUResult_ErrNotFound if the clipboard has no data of that type.
 OPENECS_EXPORT SHUWUR SHUResult ECSClipboard_GetData(const char *mimeType, SHUSlice *retData);
+
+/// @brief Shows a file dialog. It does not wait: the description's Done function gets the answer later. Main thread only.
+/// @param plugin The plugin that asks.
+/// @param desc Description of the dialog. The core copies it.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSDialog_Show(ECSPlugin plugin, const ECSDialogDesc *desc);
+
+/// @brief Shows a message dialog and waits for the user to press a button. Main thread only.
+/// @param title Title of the dialog.
+/// @param message The message.
+/// @param buttons Texts of the buttons, from left to right. The first is the default for Enter, and the last for Escape.
+/// @param buttonCount Number of buttons, at least 1.
+/// @param retButton Position of the button the user pressed, starting at 0.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if the user closed the dialog without a button, or SHUResult_ErrInternal if it cannot be shown.
+OPENECS_EXPORT SHUWUR SHUResult ECSDialog_ShowMessage(const char *title, const char *message, const char *const *buttons, usz buttonCount, usz *retButton);
 
 /// @brief Starts a timer that calls a function on the main thread, once or repeatedly. Main thread only.
 /// @param plugin The plugin that owns the timer.

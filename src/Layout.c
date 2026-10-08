@@ -1875,6 +1875,11 @@ static void ECSI_LayoutCollectPanels(const ECSI_Node *node, ECSPanel **panels)
     }
 }
 
+SDL_Window *ECSI_LayoutGetWindow(void)
+{
+    return LAYOUT.window;
+}
+
 ECSPanel *ECSI_LayoutGetPanels(void)
 {
     ECSPanel *panels = NULL;

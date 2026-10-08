@@ -156,6 +156,10 @@ bool ECSI_LayoutHasPanel(ECSPanel panel);
 /// @param panel Panel to close.
 void ECSI_LayoutClosePanel(ECSPanel panel);
 
+/// @brief Gets the main OS window, for dialogs that belong to it.
+/// @return The window.
+SDL_Window *ECSI_LayoutGetWindow(void);
+
 /// @brief Gets every panel of every workspace.
 /// @return stb_ds array of the panels. Free it with arrfree.
 ECSPanel *ECSI_LayoutGetPanels(void);

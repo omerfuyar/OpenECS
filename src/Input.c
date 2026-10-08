@@ -95,6 +95,18 @@ static struct
     void *clipboard;                  // what a clipboard getter returned last, freed by the next call
 } INPUT = {0};
 
+/// @brief A file dialog waiting for its answer, with copies of everything SDL reads until it answers.
+typedef struct ECSI_Dialog
+{
+    ECSPlugin plugin;
+    void (*Done)(void *data, const char *const *files, usz count);
+    void *data;
+    SDL_DialogFileFilter *filters; // stb_ds array
+    char **texts;                  // stb_ds array of the copied texts: filter names and patterns, and the location
+    char **files;                  // stb_ds array of the answer
+    bool failed;                   // a text could not be copied
+} ECSI_Dialog;
+
 /// @brief Typed data that the core offers on the clipboard.
 typedef struct ECSI_ClipboardData
 {
@@ -654,6 +666,75 @@ static void ECSI_InputForgetClipboard(void)
     INPUT.clipboard = NULL;
 }
 
+static void ECSI_InputFreeDialog(ECSI_Dialog *dialog)
+{
+    for (usz i = 0; i < arrlenu(dialog->texts); i++)
+    {
+        SDL_free(dialog->texts[i]);
+    }
+
+    for (usz i = 0; i < arrlenu(dialog->files); i++)
+    {
+        SDL_free(dialog->files[i]);
+    }
+
+    arrfree(dialog->filters);
+    arrfree(dialog->texts);
+    arrfree(dialog->files);
+    SDL_free(dialog);
+}
+
+/// @brief Copies a text that a dialog keeps until it answers.
+static const char *ECSI_InputDialogText(ECSI_Dialog *dialog, const char *text)
+{
+    char *copy = text == NULL ? NULL : SDL_strdup(text);
+
+    if (copy != NULL)
+    {
+        arrput(dialog->texts, copy);
+    }
+
+    dialog->failed = dialog->failed || (text != NULL && copy == NULL);
+    return copy;
+}
+
+/// @brief Gives a dialog's answer to its plugin, on the main thread.
+static void ECSI_InputDialogFinish(void *data)
+{
+    ECSI_Dialog *dialog = data;
+    usz count = arrlenu(dialog->files);
+    dialog->Done(dialog->data, count == 0 ? NULL : (const char *const *)dialog->files, count);
+    ECSI_InputFreeDialog(dialog);
+}
+
+/// @brief Takes SDL's answer, maybe on another thread, and sends it to the main thread.
+static void SDLCALL ECSI_InputDialogAnswer(void *userData, const char *const *files, int filter)
+{
+    (void)filter;
+    ECSI_Dialog *dialog = userData;
+
+    if (files == NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A file dialog of plugin '%s' failed: %s", ECSI_PluginGetName(dialog->plugin), SDL_GetError());
+    }
+
+    // a cancelled dialog gives an empty list, which reaches the plugin as NULL, like a failed one
+    for (usz i = 0; files != NULL && files[i] != NULL; i++)
+    {
+        char *copy = SDL_strdup(files[i]);
+
+        if (copy != NULL)
+        {
+            arrput(dialog->files, copy);
+        }
+    }
+
+    if (ECS_RunOnMainThread(ECSI_InputDialogFinish, dialog))
+    {
+        ECSI_InputFreeDialog(dialog);
+    }
+}
+
 #pragma endregion Source Only
 
 SHUResult ECSI_InputInitialize(void)
@@ -1049,3 +1130,99 @@ SHUResult ECSClipboard_GetData(const char *mimeType, SHUSlice *retData)
 }
 
 #pragma endregion Clipboard
+
+#pragma region Dialogs
+
+SHUResult ECSDialog_Show(ECSPlugin plugin, const ECSDialogDesc *desc)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(desc != NULL && desc->Done != NULL);
+    SDL_assert(desc->filters != NULL || desc->filterCount == 0);
+
+    ECSI_Dialog *dialog = SDL_calloc(1, sizeof(ECSI_Dialog));
+
+    if (dialog == NULL)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    dialog->plugin = plugin;
+    dialog->Done = desc->Done;
+    dialog->data = desc->data;
+
+    for (usz i = 0; i < desc->filterCount; i++)
+    {
+        SDL_DialogFileFilter filter = {ECSI_InputDialogText(dialog, desc->filters[i].name), ECSI_InputDialogText(dialog, desc->filters[i].pattern)};
+        arrput(dialog->filters, filter);
+    }
+
+    const char *location = ECSI_InputDialogText(dialog, desc->location);
+
+    if (dialog->failed)
+    {
+        ECSI_InputFreeDialog(dialog);
+        return SHUResult_ErrAllocation;
+    }
+
+    SDL_Window *window = ECSI_LayoutGetWindow();
+    int filterCount = (int)arrlenu(dialog->filters);
+
+    switch (desc->type)
+    {
+    case ECSDialogType_OpenFile:
+        SDL_ShowOpenFileDialog(ECSI_InputDialogAnswer, dialog, window, dialog->filters, filterCount, location, desc->many);
+        break;
+    case ECSDialogType_SaveFile:
+        SDL_ShowSaveFileDialog(ECSI_InputDialogAnswer, dialog, window, dialog->filters, filterCount, location);
+        break;
+    case ECSDialogType_OpenFolder:
+        SDL_ShowOpenFolderDialog(ECSI_InputDialogAnswer, dialog, window, location, desc->many);
+        break;
+    }
+
+    return SHUResult_Ok;
+}
+
+SHUResult ECSDialog_ShowMessage(const char *title, const char *message, const char *const *buttons, usz buttonCount, usz *retButton)
+{
+    SDL_assert(title != NULL && message != NULL && retButton != NULL);
+    SDL_assert(buttons != NULL && buttonCount > 0);
+
+    SDL_MessageBoxButtonData *data = SDL_calloc(buttonCount, sizeof(SDL_MessageBoxButtonData));
+
+    if (data == NULL)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    for (usz i = 0; i < buttonCount; i++)
+    {
+        data[i] = (SDL_MessageBoxButtonData){.buttonID = (int)i, .text = buttons[i]};
+        data[i].flags |= i == 0 ? SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT : 0;
+        data[i].flags |= i + 1 == buttonCount ? SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT : 0;
+    }
+
+    const SDL_MessageBoxData box = {
+        .flags = SDL_MESSAGEBOX_INFORMATION,
+        .window = ECSI_LayoutGetWindow(),
+        .title = title,
+        .message = message,
+        .numbuttons = (int)buttonCount,
+        .buttons = data,
+    };
+
+    int button = -1;
+    bool shown = SDL_ShowMessageBox(&box, &button);
+    SDL_free(data);
+
+    if (!shown)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot show a message dialog: %s", SDL_GetError());
+        return SHUResult_ErrInternal;
+    }
+
+    *retButton = (usz)SDL_max(button, 0);
+    return button < 0 ? SHUResult_ErrNotFound : SHUResult_Ok;
+}
+
+#pragma endregion Dialogs
