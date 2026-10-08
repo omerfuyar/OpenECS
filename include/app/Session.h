@@ -2,7 +2,8 @@
 
 // Session: reading presets and sessions, and building the workspaces they describe.
 
-#include "Plugins.h"
+#include "base/Values.h"
+#include "runtime/Plugins.h"
 
 #pragma region Declarations
 
@@ -13,8 +14,7 @@ typedef struct ECSI_PresetInfo
     char *appId;
     char *appName;
     char *pluginsDirectory; // NULL if the preset names none; ends with a separator
-    char *plugins[OPENECS_MAX_PLUGINS];
-    usz pluginCount;
+    ECSValue *file; // the whole file; its depends field names the plugins it needs
 } ECSI_PresetInfo;
 
 /// @brief Finds a preset's file.
@@ -33,9 +33,16 @@ SHUWUR SHUResult ECSI_SessionReadInfo(const char *path, ECSI_PresetInfo *retInfo
 /// @param info What the preset said.
 void ECSI_SessionFreeInfo(ECSI_PresetInfo *info);
 
-/// @brief Builds the workspaces that a preset or session describes, and creates their panels.
-/// @param path Path of the preset or session.
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the file has no workspaces, or the error of the Lua or layout module.
-SHUWUR SHUResult ECSI_SessionApply(const char *path);
+/// @brief Builds the workspaces that a preset or session describes, creates their panels, and shows the current workspace. A bad part of the file is reported with its path, such as workspaces[1].windows[1], and skipped.
+/// @param path Path of the file, for reports.
+/// @param info What ECSI_SessionReadInfo read from the file.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the file has no workspaces, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_SessionApply(const char *path, const ECSI_PresetInfo *info);
+
+/// @brief Writes a session: the file it came from, with the current workspaces, panels and their saved state.
+/// @param path Path of the session file.
+/// @param info What the preset or session that started this tool said.
+/// @return SHUResult_Ok, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_SessionSave(const char *path, const ECSI_PresetInfo *info);
 
 #pragma endregion Declarations
