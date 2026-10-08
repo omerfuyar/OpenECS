@@ -78,7 +78,7 @@ void ECSILayout_SetForget(ECSILayoutForgetFunction function);
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the core's settings file gives a setting no value, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSILayout_Initialize(void);
 
-/// @brief Gets the height of a tab row, from ecs.tab_row_height.
+/// @brief Gets the height of a tab row, from ecs.tabRowHeight.
 /// @return The height in layout units.
 f32 ECSILayout_GetTabRowHeight(void);
 

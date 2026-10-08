@@ -1,14 +1,14 @@
--- calls the twins' each_canvas with Lua functions, and saves what it saw in its plugin state
+-- calls the twins' eachCanvas with Lua functions, and saves what it saw in its plugin state
 local SIGNATURE = "int(fn<void(handle<ecs.panel>, int)>)"
 local results = {}
 
 local function each(plugin)
-  local each_canvas = assert(ecs.service.get(plugin .. ".each_canvas", SIGNATURE))
+  local eachCanvas = assert(ecs.service.get(plugin .. ".eachCanvas", SIGNATURE))
   local seen = {}
-  local count = each_canvas(function(panel, strokes)
-    seen[#seen + 1] = { type = panel:get_type(), strokes = strokes }
+  local count = eachCanvas(function(panel, strokes)
+    seen[#seen + 1] = { type = panel:getType(), strokes = strokes }
   end)
-  return { count = count, seen = seen, without = each_canvas(nil) }
+  return { count = count, seen = seen, without = eachCanvas(nil) }
 end
 
 local function run()
@@ -23,9 +23,9 @@ local function run()
   results.refused = refused
 end
 
-assert(ecs.service.register("callbacks", { run = { sig = "void()", doc = "Calls the twins' each_canvas", fn = run } }))
+assert(ecs.service.register("callbacks", { run = { sig = "void()", doc = "Calls the twins' eachCanvas", fn = run } }))
 
-ecs.plugin.register_state({
+ecs.plugin.registerState({
   version = 1,
   save = function()
     return results

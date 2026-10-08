@@ -44,7 +44,7 @@ static struct
     u32 prefixModifiers;
     bool prefixDirty;                 // ecs.prefix changed and is read again at the next key press
     ECSIKeyBinding *prefixKeys;      // stb_ds array of the keys after the prefix
-    bool prefixKeysDirty;             // ecs.prefix_keys changed and is read again when they are used
+    bool prefixKeysDirty;             // ecs.prefixKeys changed and is read again when they are used
     ECSIPanelBinding *panelBindings; // stb_ds array of plugins' bindings for their panel types
     ECSValue *toolKeys;               // the preset's bindings for the whole tool, or NULL
     ECSValue **workspaceKeys;         // stb_ds array of the preset's bindings for each workspace; NULL for none
@@ -128,14 +128,14 @@ static void ECSIKeys_PutBinding(ECSIKeyBinding **bindings, const char *text, con
     arrput(*bindings, binding);
 }
 
-/// @brief Adds the entries of the setting ecs.prefix_keys: key texts to function names, or false to remove a key.
+/// @brief Adds the entries of the setting ecs.prefixKeys: key texts to function names, or false to remove a key.
 static void ECSIKeys_AddPrefixKey(const char *name, const ECSValue *field, void *userData)
 {
     (void)userData;
     ECSIKeys_PutBinding(&KEYS.prefixKeys, name, ECSValue_GetString(field, NULL));
 }
 
-/// @brief Reads the keys after the prefix: the defaults, then the setting ecs.prefix_keys, if the setting changed.
+/// @brief Reads the keys after the prefix: the defaults, then the setting ecs.prefixKeys, if the setting changed.
 static void ECSIKeys_ReadPrefixKeys(void)
 {
     if (!KEYS.prefixKeysDirty)
@@ -147,8 +147,8 @@ static void ECSIKeys_ReadPrefixKeys(void)
     ECSIKeys_FreeBindings(&KEYS.prefixKeys);
 
     // the value in effect adds to the core's default, so a layer above it changes keys without repeating the others
-    ECSIValue_TableForEachField(ECSISettings_GetDefault("ecs.prefix_keys"), ECSIKeys_AddPrefixKey, NULL);
-    ECSIValue_TableForEachField(ECSSetting_Get("ecs.prefix_keys"), ECSIKeys_AddPrefixKey, NULL);
+    ECSIValue_TableForEachField(ECSISettings_GetDefault("ecs.prefixKeys"), ECSIKeys_AddPrefixKey, NULL);
+    ECSIValue_TableForEachField(ECSSetting_Get("ecs.prefixKeys"), ECSIKeys_AddPrefixKey, NULL);
 }
 
 /// @brief Keeps a binding that matches a key press, if it wins over the best one so far: a higher layer wins, then a more specific scope.
@@ -284,7 +284,7 @@ SHUResult ECSIKeys_Initialize(void)
     };
 
     ECSSettingDesc prefixKeys = {
-        .name = "ecs.prefix_keys",
+        .name = "ecs.prefixKeys",
         .type = ECSSettingType_Table,
         .description = "Keys after the prefix and the functions they run, added to the core's own; false removes a key",
         .Changed = ECSIKeys_SettingChanged,

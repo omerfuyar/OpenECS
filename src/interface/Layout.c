@@ -24,7 +24,7 @@ typedef struct ECSIWorkspace
 /// @brief A closed panel that ecs.reopen can open again.
 typedef struct ECSIClosedPanel
 {
-    ECSValue *saved; // its type, state and state_version, as ECSIPanel_Save writes them
+    ECSValue *saved; // its type, state and stateVersion, as ECSIPanel_Save writes them
     u32 neighbour;   // id of a panel that stayed in its group, or 0
 } ECSIClosedPanel;
 
@@ -201,7 +201,7 @@ static bool ECSILayout_Locate(ECSPanel panel, ECSIWorkspace **retWorkspace, ECSI
     return false;
 }
 
-/// @brief Emits ecs.focus_changed with the panel that has the focus now, or none.
+/// @brief Emits ecs.focusChanged with the panel that has the focus now, or none.
 static void ECSILayout_EmitFocus(ECSPanel panel)
 {
     ECSValue *value = NULL;
@@ -217,7 +217,7 @@ static void ECSILayout_EmitFocus(ECSPanel panel)
             ECSValue_SetInteger(field, ECSPanel_GetId(panel));
         }
 
-        ECSIEvents_EmitCore("ecs.focus_changed", value);
+        ECSIEvents_EmitCore("ecs.focusChanged", value);
     }
 
     ECSValue_Destroy(&value);
@@ -374,10 +374,10 @@ static ECSINode *ECSILayout_TidyNode(ECSIWorkspace *workspace, ECSINode *node)
     return only;
 }
 
-/// @brief Emits ecs.layout_changed, which carries nothing.
+/// @brief Emits ecs.layoutChanged, which carries nothing.
 static void ECSILayout_EmitLayoutChanged(void)
 {
-    ECSIEvents_EmitCore("ecs.layout_changed", NULL);
+    ECSIEvents_EmitCore("ecs.layoutChanged", NULL);
 }
 
 /// @brief Lets the window forget the nodes it points to, because nodes may have been freed or hidden.
@@ -922,9 +922,9 @@ static void ECSILayout_CollectPanels(const ECSINode *node, ECSPanel **panels)
 static void ECSILayout_ReadSettings(void *data)
 {
     (void)data;
-    LAYOUT.tabRowHeight = (f32)SDL_max(0.0, ECSValue_GetNumber(ECSSetting_Get("ecs.tab_row_height"), 0.0));
-    LAYOUT.dividerSize = (f32)SDL_max(0.0, ECSValue_GetNumber(ECSSetting_Get("ecs.divider_size"), 0.0));
-    LAYOUT.reopenLimit = SDL_max(0, ECSValue_GetInteger(ECSSetting_Get("ecs.reopen_limit"), 0));
+    LAYOUT.tabRowHeight = (f32)SDL_max(0.0, ECSValue_GetNumber(ECSSetting_Get("ecs.tabRowHeight"), 0.0));
+    LAYOUT.dividerSize = (f32)SDL_max(0.0, ECSValue_GetNumber(ECSSetting_Get("ecs.dividerSize"), 0.0));
+    LAYOUT.reopenLimit = SDL_max(0, ECSValue_GetInteger(ECSSetting_Get("ecs.reopenLimit"), 0));
     LAYOUT.frameNeeded = true;
 }
 
@@ -933,9 +933,9 @@ static void ECSILayout_ReadSettings(void *data)
 SHUResult ECSILayout_Initialize(void)
 {
     const ECSSettingDesc settings[] = {
-        {.name = "ecs.tab_row_height", .type = ECSSettingType_Number, .description = "Height of a tab row, in layout units", .Changed = ECSILayout_ReadSettings},
-        {.name = "ecs.divider_size", .type = ECSSettingType_Number, .description = "Gap between the children of a split, which dragging resizes them, in layout units", .Changed = ECSILayout_ReadSettings},
-        {.name = "ecs.reopen_limit", .type = ECSSettingType_Integer, .description = "How many closed panels ecs.reopen remembers", .Changed = ECSILayout_ReadSettings},
+        {.name = "ecs.tabRowHeight", .type = ECSSettingType_Number, .description = "Height of a tab row, in layout units", .Changed = ECSILayout_ReadSettings},
+        {.name = "ecs.dividerSize", .type = ECSSettingType_Number, .description = "Gap between the children of a split, which dragging resizes them, in layout units", .Changed = ECSILayout_ReadSettings},
+        {.name = "ecs.reopenLimit", .type = ECSSettingType_Integer, .description = "How many closed panels ecs.reopen remembers", .Changed = ECSILayout_ReadSettings},
     };
 
     for (usz i = 0; i < SDL_arraysize(settings); i++)
@@ -1032,7 +1032,7 @@ void ECSILayout_GroupAdd(ECSINode *group, ECSPanel panel)
     SDL_assert(group->type == ECSINodeType_Group);
 
     arrput(group->panels, panel);
-    ECSIPanel_Emit("ecs.panel_opened", panel);
+    ECSIPanel_Emit("ecs.panelOpened", panel);
 }
 
 void ECSILayout_GroupShow(ECSINode *group, usz index)
@@ -1134,7 +1134,7 @@ void ECSILayout_WorkspaceSwitch(usz index)
     if (ECSValue_Create(&value) == SHUResult_Ok && ECSValue_TableSetField(value, "workspace", &field) == SHUResult_Ok)
     {
         ECSValue_SetInteger(field, (i64)index + 1);
-        ECSIEvents_EmitCore("ecs.workspace_switched", value);
+        ECSIEvents_EmitCore("ecs.workspaceSwitched", value);
     }
 
     ECSValue_Destroy(&value);
@@ -1560,7 +1560,7 @@ void ECSILayout_Reopen(void)
         group = ECSILayout_DefaultGroup(workspace);
     }
 
-    i64 version = ECSValue_GetInteger(ECSValue_GetTableField(closed.saved, "state_version"), 0);
+    i64 version = ECSValue_GetInteger(ECSValue_GetTableField(closed.saved, "stateVersion"), 0);
     const ECSValue *state = ECSValue_GetTableField(closed.saved, "state");
     ECSPanel panel = NULL;
 
@@ -1576,7 +1576,7 @@ void ECSILayout_Reopen(void)
     }
     else
     {
-        ECSIPanel_Emit("ecs.panel_opened", panel);
+        ECSIPanel_Emit("ecs.panelOpened", panel);
         ECSILayout_WorkspaceSwitch((usz)(workspace - LAYOUT.workspaces));
     }
 
@@ -1697,7 +1697,7 @@ SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type,
     ECSPanel panel = NULL;
     SHU_ReturnResult(ECSIPanel_Create(&panel, type, state, state == NULL ? 0 : ECSIPanels_GetStateVersion(type)));
     SHU_ReturnResult(ECSILayout_Add(workspace, group, panel, ECSILayout_Zone(zone)), ECSIPanel_Destroy(&panel););
-    ECSIPanel_Emit("ecs.panel_opened", panel);
+    ECSIPanel_Emit("ecs.panelOpened", panel);
     *retPanel = panel;
     return SHUResult_Ok;
 }

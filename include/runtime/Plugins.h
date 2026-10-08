@@ -51,11 +51,11 @@ SHUWUR SHUResult ECSIPlugin_RegisterState(ECSPlugin plugin, const ECSPluginState
 /// @param data Passed to the functions.
 void ECSIPlugin_SetLuaShutdown(ECSPlugin plugin, ECSTaskFunction function, ECSTaskFunction release, void *data);
 
-/// @brief Restores the state of every plugin that registered one, from a session's plugin_state table. A plugin whose state is missing keeps its own. Errors are reported.
-/// @param states The plugin_state table: for each plugin's name, a table with its state and state_version. NULL restores nothing.
+/// @brief Restores the state of every plugin that registered one, from a session's pluginState table. A plugin whose state is missing keeps its own. Errors are reported.
+/// @param states The pluginState table: for each plugin's name, a table with its state and stateVersion. NULL restores nothing.
 void ECSIPlugins_RestoreStates(const ECSValue *states);
 
-/// @brief Saves the state of every plugin that registered one into a plugin_state table. Entries of other plugins are kept.
+/// @brief Saves the state of every plugin that registered one into a pluginState table. Entries of other plugins are kept.
 /// @param states The table to fill; a value that is not a table becomes one.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation. A plugin whose Save fails is reported and skipped.
 SHUWUR SHUResult ECSIPlugins_SaveStates(ECSValue *states);

@@ -551,7 +551,7 @@ void ECSIPlugins_RestoreStates(const ECSValue *states)
             continue;
         }
 
-        i64 version = ECSValue_GetInteger(ECSValue_GetTableField(entry, "state_version"), 0);
+        i64 version = ECSValue_GetInteger(ECSValue_GetTableField(entry, "stateVersion"), 0);
 
         if (plugin->state.Restore(plugin->state.data, ECSValue_GetTableField(entry, "state"), version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0))
         {
@@ -597,7 +597,7 @@ SHUResult ECSIPlugins_SaveStates(ECSValue *states)
         }
 
         result = result ? result : ECSIValue_Copy(field, saved);
-        result = result ? result : ECSValue_TableSetField(entry, "state_version", &field);
+        result = result ? result : ECSValue_TableSetField(entry, "stateVersion", &field);
 
         if (!result)
         {

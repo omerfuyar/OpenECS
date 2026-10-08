@@ -3,11 +3,11 @@
 local NAME = ecs.plugin.name
 
 -- makes a name of this plugin, such as "sketch_lua.canvas"
-local function name(local_name)
-  return NAME .. "." .. local_name
+local function name(localName)
+  return NAME .. "." .. localName
 end
 
--- colours a brush can have, in ARGB8888, and their names in the setting sketch_lua.brush_color
+-- colours a brush can have, in ARGB8888, and their names in the setting sketch_lua.brushColor
 local COLOR_NAMES = { "white", "red", "green", "blue", "yellow" }
 local COLORS = { white = 0xFFECEFF4, red = 0xFFBF616A, green = 0xFFA3BE8C, blue = 0xFF5E81AC, yellow = 0xFFEBCB8B }
 local BACKGROUND = 0xFF2E3440
@@ -22,7 +22,7 @@ local STATE_VERSION = 1
 local MIN_SIZE, MAX_SIZE = 1, 64
 
 local canvases = {}       -- every open canvas's state, by its panel handle
-local open_canvases = 0   -- counted from the core's events
+local openCanvases = 0   -- counted from the core's events
 local total, saves = 0, 0 -- strokes drawn and canvases saved in every session; the plugin's own state
 
 local function clamp(value, low, high)
@@ -67,7 +67,7 @@ local function paint(width, height, strokes, plot)
 end
 
 -- writes strokes as text, one stroke per line: "size color x y x y ..."; the clipboard uses it
-local function strokes_to_text(strokes)
+local function strokesToText(strokes)
   local lines = {}
 
   for _, stroke in ipairs(strokes) do
@@ -83,8 +83,8 @@ local function strokes_to_text(strokes)
   return table.concat(lines)
 end
 
--- reads strokes written by strokes_to_text, and adds them to a canvas; gives how many it read
-local function strokes_from_text(canvas, text)
+-- reads strokes written by strokesToText, and adds them to a canvas; gives how many it read
+local function strokesFromText(canvas, text)
   local added = 0
 
   for line in text:gmatch("[^\n]+") do
@@ -114,7 +114,7 @@ end
 
 -- canvas ----------------------------------------------------------------
 
-local function find_canvas(panel)
+local function findCanvas(panel)
   local canvas = canvases[panel]
 
   if not canvas then
@@ -124,102 +124,102 @@ local function find_canvas(panel)
   return canvas
 end
 
-local function setting_size()
-  return clamp(ecs.settings.get(name("brush_size")) or 6, MIN_SIZE, MAX_SIZE)
+local function settingSize()
+  return clamp(ecs.settings.get(name("brushSize")) or 6, MIN_SIZE, MAX_SIZE)
 end
 
-local function setting_color()
-  return COLORS[ecs.settings.get(name("brush_color"))] or COLORS.white
+local function settingColor()
+  return COLORS[ecs.settings.get(name("brushColor"))] or COLORS.white
 end
 
 -- shows the number of strokes in the canvas's title
-local function canvas_title(canvas)
-  canvas.panel:set_title(("Lua canvas (%d)"):format(#canvas.strokes))
+local function canvasTitle(canvas)
+  canvas.panel:setTitle(("Lua canvas (%d)"):format(#canvas.strokes))
 end
 
 -- marks a canvas changed: unsaved, retitled and redrawn
-local function canvas_changed(canvas)
+local function canvasChanged(canvas)
   canvas.unsaved = true
-  canvas.panel:set_unsaved(true)
-  canvas_title(canvas)
+  canvas.panel:setUnsaved(true)
+  canvasTitle(canvas)
   canvas.panel:redraw()
 end
 
 -- tells subscribers that a canvas has a new stroke
-local function emit_stroke(canvas)
-  ecs.event.emit(name("stroke_added"), { panel = canvas.panel:get_id(), strokes = #canvas.strokes })
+local function emitStroke(canvas)
+  ecs.event.emit(name("strokeAdded"), { panel = canvas.panel:getId(), strokes = #canvas.strokes })
 end
 
 -- redraws every canvas when a brush setting changes
-local function brush_changed()
+local function brushChanged()
   for _, canvas in pairs(canvases) do
     canvas.panel:redraw()
   end
 
-  ecs.log.debug(("The brush is %d, %s."):format(setting_size(), ecs.settings.get(name("brush_color"))))
+  ecs.log.debug(("The brush is %d, %s."):format(settingSize(), ecs.settings.get(name("brushColor"))))
 end
 
 ecs.settings.declare({
-  name = name("brush_size"),
+  name = name("brushSize"),
   type = "integer",
   description =
   "Size of the brush, in pixels; the wheel over a canvas changes it",
   default = 6,
-  changed = brush_changed
+  changed = brushChanged
 })
 ecs.settings.declare({
-  name = name("brush_color"),
+  name = name("brushColor"),
   type = "choice",
   description = "Colour of the brush",
   default =
   "white",
   choices = COLOR_NAMES,
-  changed = brush_changed
+  changed = brushChanged
 })
 ecs.settings.declare({
-  name = name("reminder_seconds"),
+  name = name("reminderSeconds"),
   type = "number",
   description =
   "How often a canvas with unsaved strokes says so",
   default = 30.0
 })
-ecs.settings.declare({ name = name("clear_key"), type = "key", description = "Clears the canvas", default = "Delete" })
+ecs.settings.declare({ name = name("clearKey"), type = "key", description = "Clears the canvas", default = "Delete" })
 ecs.settings.declare({
-  name = name("export_key"),
+  name = name("exportKey"),
   type = "key",
   description = "Exports the canvas as an image",
   default =
   "Ctrl+E"
 })
 ecs.settings.declare({
-  name = name("copy_key"),
+  name = name("copyKey"),
   type = "key",
   description = "Copies the canvas's strokes",
   default =
   "Ctrl+C"
 })
-ecs.settings.declare({ name = name("paste_key"), type = "key", description = "Pastes strokes", default = "Ctrl+V" })
+ecs.settings.declare({ name = name("pasteKey"), type = "key", description = "Pastes strokes", default = "Ctrl+V" })
 ecs.settings.declare({
-  name = name("beside_key"),
+  name = name("besideKey"),
   type = "key",
   description = "Opens a canvas beside this one",
   default =
   "Ctrl+B"
 })
 ecs.settings.declare({
-  name = name("gather_key"),
+  name = name("gatherKey"),
   type = "key",
   description = "Gathers every canvas into this group",
   default =
   "Ctrl+G"
 })
 
-ecs.panel.register_type({
+ecs.panel.registerType({
   name = name("canvas"),
   title = "Lua canvas",
-  state_version = STATE_VERSION,
-  min_width = 64,
-  min_height = 64,
+  stateVersion = STATE_VERSION,
+  minWidth = 64,
+  minHeight = 64,
 
   create = function(panel, saved, version)
     local canvas = { panel = panel, strokes = {}, drawing = false, unsaved = false, width = 0, height = 0 }
@@ -233,12 +233,12 @@ ecs.panel.register_type({
     end
 
     canvases[panel] = canvas
-    canvas_title(canvas)
+    canvasTitle(canvas)
 
     -- a panel timer, so it stops when the canvas closes
-    panel:start_timer(math.max(1, ecs.settings.get(name("reminder_seconds")) or 30), true, function()
+    panel:startTimer(math.max(1, ecs.settings.get(name("reminderSeconds")) or 30), true, function()
       if canvas.unsaved then
-        ecs.log.info(panel:get_title() .. " has unsaved strokes.")
+        ecs.log.info(panel:getTitle() .. " has unsaved strokes.")
       end
     end)
 
@@ -254,50 +254,50 @@ ecs.panel.register_type({
     local background = string.pack("=I4", BACKGROUND):rep(surface.width)
 
     for y = 0, surface.height - 1 do
-      surface:set_row(y, background)
+      surface:setRow(y, background)
     end
 
     paint(surface.width, surface.height, canvas.strokes, function(x, y, color)
-      surface:set_pixel(x, y, color)
+      surface:setPixel(x, y, color)
     end)
   end,
 
   event = function(canvas, event)
     local panel = canvas.panel
 
-    if event.type == "pointer_down" and event.button == 1 then
+    if event.type == "pointerDown" and event.button == 1 then
       local brush = canvas.brush
       table.insert(canvas.strokes,
-        { size = brush and brush.size or setting_size(), color = brush and brush.color or setting_color(), points = { event.x, event.y } })
+        { size = brush and brush.size or settingSize(), color = brush and brush.color or settingColor(), points = { event.x, event.y } })
       canvas.drawing = true
       panel:redraw()
-    elseif event.type == "pointer_move" and canvas.drawing then
+    elseif event.type == "pointerMove" and canvas.drawing then
       local points = canvas.strokes[#canvas.strokes].points
       points[#points + 1] = event.x
       points[#points + 1] = event.y
       panel:redraw()
-    elseif event.type == "pointer_up" and canvas.drawing then
+    elseif event.type == "pointerUp" and canvas.drawing then
       canvas.drawing = false
-      canvas_changed(canvas)
-      emit_stroke(canvas)
+      canvasChanged(canvas)
+      emitStroke(canvas)
     elseif event.type == "wheel" then
       -- the wheel changes the setting, so every canvas and the settings window see the new size
-      local ok = ecs.settings.set(name("brush_size"),
-        clamp(setting_size() + (event.wheel_y > 0 and 1 or -1), MIN_SIZE, MAX_SIZE))
+      local ok = ecs.settings.set(name("brushSize"),
+        clamp(settingSize() + (event.wheelY > 0 and 1 or -1), MIN_SIZE, MAX_SIZE))
 
       if not ok then
         ecs.log.warn("Cannot change the brush size.")
       end
     elseif event.type == "focused" or event.type == "unfocused" then
-      ecs.log.debug(("%s is %s."):format(panel:get_title(), event.type))
+      ecs.log.debug(("%s is %s."):format(panel:getTitle(), event.type))
     elseif event.type == "shown" or event.type == "resized" then
-      ecs.log.debug(("%s is %s at %.0fx%.0f."):format(panel:get_title(), event.type, event.width, event.height))
+      ecs.log.debug(("%s is %s at %.0fx%.0f."):format(panel:getTitle(), event.type, event.width, event.height))
     elseif event.type == "hidden" then
-      ecs.log.debug(panel:get_title() .. " is hidden.")
+      ecs.log.debug(panel:getTitle() .. " is hidden.")
     end
   end,
 
-  save_state = function(canvas)
+  saveState = function(canvas)
     return { strokes = canvas.strokes }
   end,
 
@@ -305,8 +305,8 @@ ecs.panel.register_type({
   save = function(canvas)
     canvas.unsaved = false
     saves = saves + 1
-    canvas.panel:set_unsaved(false)
-    ecs.log.info(canvas.panel:get_title() .. " is saved.")
+    canvas.panel:setUnsaved(false)
+    ecs.log.info(canvas.panel:getTitle() .. " is saved.")
     return true
   end,
 })
@@ -314,13 +314,13 @@ ecs.panel.register_type({
 -- clock -----------------------------------------------------------------
 
 -- a dark face with twelve marks and a hand that turns once a minute; a continuous panel, so it is drawn every frame
-ecs.panel.register_type({
+ecs.panel.registerType({
   name = name("clock"),
   title = "Lua clock",
   continuous = true,
 
   create = function(panel)
-    return { panel = panel, time = 0, shown_seconds = -1 }
+    return { panel = panel, time = 0, shownSeconds = -1 }
   end,
 
   draw = function(clock, surface, seconds)
@@ -329,7 +329,7 @@ ecs.panel.register_type({
     local background = string.pack("=I4", BACKGROUND):rep(width)
 
     for y = 0, height - 1 do
-      surface:set_row(y, background)
+      surface:setRow(y, background)
     end
 
     local cx, cy = width / 2, height / 2
@@ -342,7 +342,7 @@ ecs.panel.register_type({
 
       for dy = -2, 2 do
         for dx = -2, 2 do
-          surface:set_pixel(x + dx, y + dy, COLORS.white)
+          surface:setPixel(x + dx, y + dy, COLORS.white)
         end
       end
     end
@@ -350,15 +350,15 @@ ecs.panel.register_type({
     local angle = (clock.time % 60) / 60 * 2 * math.pi
 
     for t = 0, radius - 1 do
-      surface:set_pixel(math.floor(cx + math.sin(angle) * t), math.floor(cy - math.cos(angle) * t), CLOCK_HAND)
+      surface:setPixel(math.floor(cx + math.sin(angle) * t), math.floor(cy - math.cos(angle) * t), CLOCK_HAND)
     end
 
     -- the title changes once a second, not every frame
     local whole = math.floor(clock.time)
 
-    if whole ~= clock.shown_seconds then
-      clock.panel:set_title(("Lua clock %d:%02d"):format(whole // 60, whole % 60))
-      clock.shown_seconds = whole
+    if whole ~= clock.shownSeconds then
+      clock.panel:setTitle(("Lua clock %d:%02d"):format(whole // 60, whole % 60))
+      clock.shownSeconds = whole
     end
   end,
 })
@@ -366,7 +366,7 @@ ecs.panel.register_type({
 -- export ----------------------------------------------------------------
 
 -- paints a canvas into a PPM image; Lua never runs on worker threads, so this runs on the main thread
-local function canvas_ppm(canvas)
+local function canvasPpm(canvas)
   local width, height = canvas.width, canvas.height
   local pixels = {}
 
@@ -396,7 +396,7 @@ local function canvas_ppm(canvas)
   return table.concat(rows)
 end
 
-local function export_chosen(id, files)
+local function exportChosen(id, files)
   local panel = ecs.layout.find(id)
   local canvas = panel and files and canvases[panel]
 
@@ -405,15 +405,15 @@ local function export_chosen(id, files)
   end
 
   -- the canvas is painted and written at once; sketch_c does both on a worker thread
-  local image = canvas_ppm(canvas)
+  local image = canvasPpm(canvas)
   ecs.log.debug(("Canvas %d is painted; writing %s."):format(id, files[1]))
   local file = io.open(files[1], "wb")
   local written = file and file:write(image) and file:close()
 
   if written then
-    ecs.log.info(("%s was exported to %s."):format(panel:get_title(), files[1]))
+    ecs.log.info(("%s was exported to %s."):format(panel:getTitle(), files[1]))
   else
-    ecs.log.warn(("%s could not be exported to %s."):format(panel:get_title(), files[1]))
+    ecs.log.warn(("%s could not be exported to %s."):format(panel:getTitle(), files[1]))
   end
 end
 
@@ -421,14 +421,14 @@ end
 
 local services = {}
 
-function services.stroke_count(panel)
-  local canvas = find_canvas(panel)
+function services.strokeCount(panel)
+  local canvas = findCanvas(panel)
   return canvas and #canvas.strokes or 0
 end
 
 -- clears a canvas; if it has unsaved strokes, the user is asked first
 function services.clear(panel)
-  local canvas = find_canvas(panel)
+  local canvas = findCanvas(panel)
 
   if not canvas or #canvas.strokes == 0 then
     return
@@ -444,19 +444,19 @@ function services.clear(panel)
   end
 
   canvas.strokes = {}
-  canvas_changed(canvas)
+  canvasChanged(canvas)
 end
 
 function services.export(panel)
-  if not find_canvas(panel) then
+  if not findCanvas(panel) then
     return
   end
 
-  local id = panel:get_id()
+  local id = panel:getId()
   local shown = ecs.dialog.show(
-    { type = "save_file", filters = { { name = "PPM images", pattern = "ppm" } }, location = "canvas.ppm" },
+    { type = "saveFile", filters = { { name = "PPM images", pattern = "ppm" } }, location = "canvas.ppm" },
     function(files)
-      export_chosen(id, files)
+      exportChosen(id, files)
     end)
 
   if not shown then
@@ -465,31 +465,31 @@ function services.export(panel)
 end
 
 function services.copy(panel)
-  local canvas = find_canvas(panel)
+  local canvas = findCanvas(panel)
 
-  if canvas and ecs.clipboard.set_data(CLIPBOARD_TYPE, strokes_to_text(canvas.strokes)) then
+  if canvas and ecs.clipboard.setData(CLIPBOARD_TYPE, strokesToText(canvas.strokes)) then
     ecs.log.info(("Copied %d strokes."):format(#canvas.strokes))
   end
 end
 
 -- pastes strokes from the clipboard: strokes data if there is some, otherwise text in the same format
 function services.paste(panel)
-  local canvas = find_canvas(panel)
+  local canvas = findCanvas(panel)
 
   if not canvas then
     return
   end
 
-  local text = ecs.clipboard.get_data(CLIPBOARD_TYPE) or ecs.clipboard.get_text() or ""
-  local added = strokes_from_text(canvas, text)
+  local text = ecs.clipboard.getData(CLIPBOARD_TYPE) or ecs.clipboard.getText() or ""
+  local added = strokesFromText(canvas, text)
   ecs.log.info(("Pasted %d strokes."):format(added))
 
   if added > 0 then
-    canvas_changed(canvas)
+    canvasChanged(canvas)
   end
 end
 
-function services.open_beside(panel)
+function services.openBeside(panel)
   local opened = ecs.layout.open(name("canvas"), nil, panel, "right")
 
   if not opened then
@@ -501,7 +501,7 @@ end
 function services.gather(panel)
   for other in pairs(canvases) do
     if other ~= panel and not ecs.layout.move(other, panel, "center") then
-      ecs.log.warn("Cannot move " .. other:get_title() .. ".")
+      ecs.log.warn("Cannot move " .. other:getTitle() .. ".")
     end
   end
 
@@ -509,7 +509,7 @@ function services.gather(panel)
 end
 
 -- closes every other canvas; each may ask about unsaved work
-function services.close_others(panel)
+function services.closeOthers(panel)
   local closed = 0
 
   -- a closed canvas is destroyed after this call, so the table does not change while it is walked
@@ -522,14 +522,14 @@ function services.close_others(panel)
   return closed
 end
 
-function services.next_workspace()
-  local next = ecs.workspace.get_current() % ecs.workspace.count() + 1
+function services.nextWorkspace()
+  local next = ecs.workspace.getCurrent() % ecs.workspace.count() + 1
   ecs.workspace.switch(next)
-  ecs.log.info(("Workspace %d, '%s'."):format(next, ecs.workspace.get_name(next)))
+  ecs.log.info(("Workspace %d, '%s'."):format(next, ecs.workspace.getName(next)))
 end
 
 -- calls a function with every open canvas and its number of strokes; the function is valid only during the call
-function services.each_canvas(fn)
+function services.eachCanvas(fn)
   local count = 0
 
   for panel, canvas in pairs(canvases) do
@@ -554,23 +554,23 @@ function services.stats()
     end
   end
 
-  local focus = ecs.layout.get_focus()
+  local focus = ecs.layout.getFocus()
   return total,
       {
-        canvases = open_canvases,
+        canvases = openCanvases,
         strokes = total,
         saves = saves,
         settings = own,
-        focus = focus and focus:get_id() or 0,
+        focus = focus and focus:getId() or 0,
         workspace =
-            ecs.workspace.get_current()
+            ecs.workspace.getCurrent()
       }
 end
 
 -- gives a canvas as a PPM image
 function services.pixels(panel)
-  local canvas = find_canvas(panel)
-  return canvas and canvas.width > 0 and canvas_ppm(canvas) or ""
+  local canvas = findCanvas(panel)
+  return canvas and canvas.width > 0 and canvasPpm(canvas) or ""
 end
 
 -- makes a brush, which a canvas can use instead of the settings' brush
@@ -579,60 +579,60 @@ function services.brush(size, color)
 end
 
 -- the canvas keeps the brush's value, so the brush lives while the canvas uses it
-function services.use_brush(brush, panel)
-  local canvas = find_canvas(panel)
+function services.useBrush(brush, panel)
+  local canvas = findCanvas(panel)
 
   if canvas then
     canvas.brush = ecs.handle.value(brush, name("brush"))
   end
 end
 
-ecs.handle.register_type(name("brush"))
+ecs.handle.registerType(name("brush"))
 
 assert(ecs.service.register(NAME, {
-  stroke_count = { sig = "int(handle<ecs.panel>)", doc = "Counts a canvas's strokes", fn = services.stroke_count },
+  strokeCount = { sig = "int(handle<ecs.panel>)", doc = "Counts a canvas's strokes", fn = services.strokeCount },
   clear = { sig = "void(handle<ecs.panel>)", doc = "Clear the canvas", fn = services.clear },
   export = { sig = "void(handle<ecs.panel>)", doc = "Export the canvas as an image", fn = services.export },
   copy = { sig = "void(handle<ecs.panel>)", doc = "Copy the canvas's strokes", fn = services.copy },
   paste = { sig = "void(handle<ecs.panel>)", doc = "Paste strokes", fn = services.paste },
-  open_beside = { sig = "void(handle<ecs.panel>)", doc = "Open a canvas beside this one", fn = services.open_beside },
+  openBeside = { sig = "void(handle<ecs.panel>)", doc = "Open a canvas beside this one", fn = services.openBeside },
   gather = { sig = "void(handle<ecs.panel>)", doc = "Gather every canvas into this group", fn = services.gather },
-  close_others = { sig = "int(handle<ecs.panel>)", doc = "Close the other canvases", fn = services.close_others },
-  next_workspace = { sig = "void()", doc = "Switch to the next workspace", fn = services.next_workspace },
+  closeOthers = { sig = "int(handle<ecs.panel>)", doc = "Close the other canvases", fn = services.closeOthers },
+  nextWorkspace = { sig = "void()", doc = "Switch to the next workspace", fn = services.nextWorkspace },
   stats = { sig = "int(out value)", doc = "Counts strokes, canvases and saves", fn = services.stats },
-  each_canvas = { sig = "int(fn<void(handle<ecs.panel>, int)>)", doc = "Calls a function with every canvas and its number of strokes", fn = services.each_canvas },
+  eachCanvas = { sig = "int(fn<void(handle<ecs.panel>, int)>)", doc = "Calls a function with every canvas and its number of strokes", fn = services.eachCanvas },
   pixels = { sig = "buffer(handle<ecs.panel>)", doc = "Gives a canvas as a PPM image", fn = services.pixels },
   brush = { sig = "handle<sketch_lua.brush>(int, string)", doc = "Makes a brush of a size and a colour", fn = services.brush },
-  use_brush = { sig = "void(handle<sketch_lua.brush>, handle<ecs.panel>)", doc = "Makes a canvas draw with a brush", fn = services.use_brush },
+  useBrush = { sig = "void(handle<sketch_lua.brush>, handle<ecs.panel>)", doc = "Makes a canvas draw with a brush", fn = services.useBrush },
 }))
 
 -- keys work while a canvas has the focus, and the canvas's menu shows the same functions with their keys; the user changes the keys in the settings
-for setting, service in pairs({ clear_key = "clear", export_key = "export", copy_key = "copy", paste_key = "paste", beside_key = "open_beside", gather_key = "gather" }) do
+for setting, service in pairs({ clearKey = "clear", exportKey = "export", copyKey = "copy", pasteKey = "paste", besideKey = "openBeside", gatherKey = "gather" }) do
   assert(ecs.input.bind(name("canvas"), name(setting), name(service)))
-  assert(ecs.panel.add_menu_entry(name("canvas"), name(service)))
+  assert(ecs.panel.addMenuEntry(name("canvas"), name(service)))
 end
 
 -- events ----------------------------------------------------------------
 
-ecs.event.declare(name("stroke_added"), "A canvas has a new stroke: { panel = id, strokes = count }")
+ecs.event.declare(name("strokeAdded"), "A canvas has a new stroke: { panel = id, strokes = count }")
 
-local function on_event(event, value)
-  if event == name("stroke_added") then
+local function onEvent(event, value)
+  if event == name("strokeAdded") then
     total = total + 1
-  elseif event == "ecs.panel_opened" and value.type == name("canvas") then
-    open_canvases = open_canvases + 1
-  elseif event == "ecs.panel_closed" and value.type == name("canvas") then
-    open_canvases = open_canvases - 1
-  elseif event == "ecs.workspace_switched" then
-    ecs.log.debug(("Workspace %d, '%s', is shown."):format(value.workspace, ecs.workspace.get_name(value.workspace)))
+  elseif event == "ecs.panelOpened" and value.type == name("canvas") then
+    openCanvases = openCanvases + 1
+  elseif event == "ecs.panelClosed" and value.type == name("canvas") then
+    openCanvases = openCanvases - 1
+  elseif event == "ecs.workspaceSwitched" then
+    ecs.log.debug(("Workspace %d, '%s', is shown."):format(value.workspace, ecs.workspace.getName(value.workspace)))
   end
 end
 
-for _, event in ipairs({ name("stroke_added"), "ecs.panel_opened", "ecs.panel_closed", "ecs.workspace_switched" }) do
-  ecs.event.subscribe(event, on_event)
+for _, event in ipairs({ name("strokeAdded"), "ecs.panelOpened", "ecs.panelClosed", "ecs.workspaceSwitched" }) do
+  ecs.event.subscribe(event, onEvent)
 end
 
-ecs.plugin.register_state({
+ecs.plugin.registerState({
   version = STATE_VERSION,
   save = function()
     return { total = total, saves = saves }
@@ -643,23 +643,23 @@ ecs.plugin.register_state({
   end,
 })
 
--- logs the numbers of sketch_lua.stats now and then, and each canvas through sketch_lua.each_canvas; a plugin timer
-local each_canvas = assert(ecs.service.get(name("each_canvas"), "int(fn<void(handle<ecs.panel>, int)>)"))
-local stats_timer = ecs.timer.start(60, true, function()
+-- logs the numbers of sketch_lua.stats now and then, and each canvas through sketch_lua.eachCanvas; a plugin timer
+local eachCanvas = assert(ecs.service.get(name("eachCanvas"), "int(fn<void(handle<ecs.panel>, int)>)"))
+local statsTimer = ecs.timer.start(60, true, function()
   local strokes, numbers = services.stats()
   ecs.log.debug(("%d strokes in all, %d canvases open."):format(strokes, numbers.canvases))
-  each_canvas(function(panel, count)
-    ecs.log.debug(("%s has %d strokes."):format(panel:get_title(), count))
+  eachCanvas(function(panel, count)
+    ecs.log.debug(("%s has %d strokes."):format(panel:getTitle(), count))
   end)
 end)
 
-ecs.plugin.on_shutdown(function()
-  stats_timer:stop()
+ecs.plugin.onShutdown(function()
+  statsTimer:stop()
   ecs.log.info(("Goodbye after %d strokes."):format(total))
 end)
 
 -- a service is called through its lookup like any other plugin would call it
 local stats = assert(ecs.service.get(name("stats"), "int(out value)"))
-ecs.log.debug("brush_size comes from the " .. ecs.settings.explain(name("brush_size")).layer .. " layer.")
+ecs.log.debug("brushSize comes from the " .. ecs.settings.explain(name("brushSize")).layer .. " layer.")
 local strokes, numbers = stats()
 ecs.log.info(("Ready with %d settings; %d strokes so far."):format(numbers.settings, strokes))

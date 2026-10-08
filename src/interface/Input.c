@@ -14,7 +14,7 @@
 #pragma region Source Only
 
 /// @brief Start of the names of the functions that switch workspaces; the workspace's number follows.
-#define OPENECS_WORKSPACE_FUNCTION "ecs.workspace_"
+#define OPENECS_WORKSPACE_FUNCTION "ecs.workspace"
 
 /// @brief Choices of the setting ecs.focus; its value comes from the core's settings file.
 static const char *const OPENECS_FOCUS_CHOICES[] = {"click", "hover", NULL};
@@ -28,8 +28,8 @@ static const struct
     const char *functions[4];
     const char *description;
 } OPENECS_ARROW_FAMILIES[] = {
-    {{"ecs.focus_left", "ecs.focus_right", "ecs.focus_up", "ecs.focus_down"}, "Focus the panel in that direction"},
-    {{"ecs.move_left", "ecs.move_right", "ecs.move_up", "ecs.move_down"}, "Move the panel in that direction"},
+    {{"ecs.focusLeft", "ecs.focusRight", "ecs.focusUp", "ecs.focusDown"}, "Focus the panel in that direction"},
+    {{"ecs.moveLeft", "ecs.moveRight", "ecs.moveUp", "ecs.moveDown"}, "Move the panel in that direction"},
 };
 
 static struct
@@ -153,7 +153,7 @@ static ECSPanel ECSIInput_PointerPanel(void)
 /// @brief Finds the section of the list of prefix keys that a function is listed in.
 static usz ECSIInput_SectionOf(const char *function)
 {
-    const char *navigation[] = {"ecs.focus_", "ecs.move_", "ecs.next_tab", OPENECS_WORKSPACE_FUNCTION};
+    const char *navigation[] = {"ecs.focus", "ecs.move", "ecs.nextTab", OPENECS_WORKSPACE_FUNCTION};
 
     for (usz i = 0; i < SDL_arraysize(navigation); i++)
     {

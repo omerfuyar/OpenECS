@@ -1,7 +1,7 @@
 -- the group's menu and the panel's menu run their entries
 return {
   run = function(test)
-    test.call("ecs.workspace_3")
+    test.call("ecs.workspace3")
     local clocks = test.session().workspaces[3].windows[1][2].panels
     local clock = test.rect(clocks[1].id)
     local tabRow = clock.y - 13

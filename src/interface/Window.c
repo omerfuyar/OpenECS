@@ -43,27 +43,27 @@ typedef enum ECSIColor
 
 /// @brief The window's core settings; their values are in the core's settings file. The colours come first, in the order of ECSIColor.
 static const ECSSettingDesc OPENECS_WINDOW_SETTINGS[] = {
-    {.name = "ecs.color_background", .type = ECSSettingType_String, .description = "Colour between panels, such as \"#18191C\" or \"#18191CFF\""},
-    {.name = "ecs.color_tab_row", .type = ECSSettingType_String, .description = "Colour of tab rows"},
-    {.name = "ecs.color_tab", .type = ECSSettingType_String, .description = "Colour of tabs"},
-    {.name = "ecs.color_tab_shown", .type = ECSSettingType_String, .description = "Colour of the shown tab"},
-    {.name = "ecs.color_text", .type = ECSSettingType_String, .description = "Colour of text"},
-    {.name = "ecs.color_text_dim", .type = ECSSettingType_String, .description = "Colour of dim text"},
-    {.name = "ecs.color_accent", .type = ECSSettingType_String, .description = "Colour of the focus border, keys and highlights"},
-    {.name = "ecs.color_placeholder", .type = ECSSettingType_String, .description = "Colour of a placeholder panel"},
-    {.name = "ecs.color_overlay", .type = ECSSettingType_String, .description = "Colour of menus, grips and the list of prefix keys"},
-    {.name = "ecs.color_drop", .type = ECSSettingType_String, .description = "Colour of the place where a dragged panel lands"},
-    {.name = "ecs.color_selected", .type = ECSSettingType_String, .description = "Colour of the selected menu entry"},
-    {.name = "ecs.window_width", .type = ECSSettingType_Integer, .description = "Width of the OS window when it opens, in layout units"},
-    {.name = "ecs.window_height", .type = ECSSettingType_Integer, .description = "Height of the OS window when it opens, in layout units"},
+    {.name = "ecs.colorBackground", .type = ECSSettingType_String, .description = "Colour between panels, such as \"#18191C\" or \"#18191CFF\""},
+    {.name = "ecs.colorTabRow", .type = ECSSettingType_String, .description = "Colour of tab rows"},
+    {.name = "ecs.colorTab", .type = ECSSettingType_String, .description = "Colour of tabs"},
+    {.name = "ecs.colorTabShown", .type = ECSSettingType_String, .description = "Colour of the shown tab"},
+    {.name = "ecs.colorText", .type = ECSSettingType_String, .description = "Colour of text"},
+    {.name = "ecs.colorTextDim", .type = ECSSettingType_String, .description = "Colour of dim text"},
+    {.name = "ecs.colorAccent", .type = ECSSettingType_String, .description = "Colour of the focus border, keys and highlights"},
+    {.name = "ecs.colorPlaceholder", .type = ECSSettingType_String, .description = "Colour of a placeholder panel"},
+    {.name = "ecs.colorOverlay", .type = ECSSettingType_String, .description = "Colour of menus, grips and the list of prefix keys"},
+    {.name = "ecs.colorDrop", .type = ECSSettingType_String, .description = "Colour of the place where a dragged panel lands"},
+    {.name = "ecs.colorSelected", .type = ECSSettingType_String, .description = "Colour of the selected menu entry"},
+    {.name = "ecs.windowWidth", .type = ECSSettingType_Integer, .description = "Width of the OS window when it opens, in layout units"},
+    {.name = "ecs.windowHeight", .type = ECSSettingType_Integer, .description = "Height of the OS window when it opens, in layout units"},
     {.name = "ecs.font", .type = ECSSettingType_String, .description = "TrueType font of the core's interface, read when the window opens; a relative path starts at the executable's folder"},
-    {.name = "ecs.font_size", .type = ECSSettingType_Number, .description = "Size of the core's font, in layout units"},
-    {.name = "ecs.grip_height", .type = ECSSettingType_Number, .description = "Height of a grip, in layout units"},
-    {.name = "ecs.grip_zone", .type = ECSSettingType_Number, .description = "Distance from a panel's top edge within which its grip shows, in layout units"},
-    {.name = "ecs.drag_threshold", .type = ECSSettingType_Number, .description = "How far the pointer moves from a press on a tab or grip before the panel is dragged, in layout units"},
-    {.name = "ecs.dock_edge", .type = ECSSettingType_Number, .description = "Distance from an edge of the OS window within which a dragged panel docks along that edge, in layout units"},
-    {.name = "ecs.split_depth", .type = ECSSettingType_Number, .description = "Deepest edge band of a panel in which a dragged panel splits it, in layout units"},
-    {.name = "ecs.tab_scroll_step", .type = ECSSettingType_Number, .description = "How far one step of the wheel scrolls a tab row, in layout units"},
+    {.name = "ecs.fontSize", .type = ECSSettingType_Number, .description = "Size of the core's font, in layout units"},
+    {.name = "ecs.gripHeight", .type = ECSSettingType_Number, .description = "Height of a grip, in layout units"},
+    {.name = "ecs.gripZone", .type = ECSSettingType_Number, .description = "Distance from a panel's top edge within which its grip shows, in layout units"},
+    {.name = "ecs.dragThreshold", .type = ECSSettingType_Number, .description = "How far the pointer moves from a press on a tab or grip before the panel is dragged, in layout units"},
+    {.name = "ecs.dockEdge", .type = ECSSettingType_Number, .description = "Distance from an edge of the OS window within which a dragged panel docks along that edge, in layout units"},
+    {.name = "ecs.splitDepth", .type = ECSSettingType_Number, .description = "Deepest edge band of a panel in which a dragged panel splits it, in layout units"},
+    {.name = "ecs.tabScrollStep", .type = ECSSettingType_Number, .description = "How far one step of the wheel scrolls a tab row, in layout units"},
 };
 
 /// @brief A tab drawn in the last frame, so a click can find it.
@@ -752,8 +752,8 @@ static SHUResult ECSIWindow_Open(const char *title)
     }
 
     SDL_free(fontPath);
-    i64 width = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.window_width"), 0), 1, SDL_MAX_SINT32);
-    i64 height = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.window_height"), 0), 1, SDL_MAX_SINT32);
+    i64 width = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.windowWidth"), 0), 1, SDL_MAX_SINT32);
+    i64 height = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.windowHeight"), 0), 1, SDL_MAX_SINT32);
     WINDOW.window = SDL_CreateWindow(title, (int)width, (int)height, SDL_WINDOW_RESIZABLE);
 
     if (WINDOW.window == NULL)
@@ -870,13 +870,13 @@ static bool ECSIWindow_Read(void)
         valid = ECSIWindow_ReadColor(OPENECS_WINDOW_SETTINGS[i].name, &WINDOW.colors[i]) && valid;
     }
 
-    WINDOW.fontSize = ECSIWindow_ReadNumber("ecs.font_size");
-    WINDOW.gripHeight = ECSIWindow_ReadNumber("ecs.grip_height");
-    WINDOW.gripZone = ECSIWindow_ReadNumber("ecs.grip_zone");
-    WINDOW.dragThreshold = ECSIWindow_ReadNumber("ecs.drag_threshold");
-    WINDOW.dockEdge = ECSIWindow_ReadNumber("ecs.dock_edge");
-    WINDOW.splitDepth = ECSIWindow_ReadNumber("ecs.split_depth");
-    WINDOW.tabScrollStep = ECSIWindow_ReadNumber("ecs.tab_scroll_step");
+    WINDOW.fontSize = ECSIWindow_ReadNumber("ecs.fontSize");
+    WINDOW.gripHeight = ECSIWindow_ReadNumber("ecs.gripHeight");
+    WINDOW.gripZone = ECSIWindow_ReadNumber("ecs.gripZone");
+    WINDOW.dragThreshold = ECSIWindow_ReadNumber("ecs.dragThreshold");
+    WINDOW.dockEdge = ECSIWindow_ReadNumber("ecs.dockEdge");
+    WINDOW.splitDepth = ECSIWindow_ReadNumber("ecs.splitDepth");
+    WINDOW.tabScrollStep = ECSIWindow_ReadNumber("ecs.tabScrollStep");
     return valid;
 }
 

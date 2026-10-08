@@ -52,11 +52,11 @@ typedef struct ECSIEmission
 
 /// @brief The core's named events.
 static const char *const OPENECS_CORE_EVENTS[][2] = {
-    {"ecs.panel_opened", "A panel was opened: { panel = id, type = name }"},
-    {"ecs.panel_closed", "A panel was closed: { panel = id, type = name }"},
-    {"ecs.focus_changed", "Another panel got the focus: { panel = id }, or {} when no panel has it"},
-    {"ecs.workspace_switched", "Another workspace is shown: { workspace = number }"},
-    {"ecs.layout_changed", "Panels were moved, grouped, closed, maximized or locked: {}"},
+    {"ecs.panelOpened", "A panel was opened: { panel = id, type = name }"},
+    {"ecs.panelClosed", "A panel was closed: { panel = id, type = name }"},
+    {"ecs.focusChanged", "Another panel got the focus: { panel = id }, or {} when no panel has it"},
+    {"ecs.workspaceSwitched", "Another workspace is shown: { workspace = number }"},
+    {"ecs.layoutChanged", "Panels were moved, grouped, closed, maximized or locked: {}"},
 };
 
 /// @brief Work for a worker thread.
