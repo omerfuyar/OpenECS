@@ -637,14 +637,15 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 
 ### 12.1 Declaring
 
-- The core and plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. Owners are told when their settings change.
+- The core and plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. Owners are told when their settings change: the description's `Changed` function runs after the queued events (3.1, step 4), and only when the value in effect really changed.
 - Types: `bool`, `integer`, `number`, `string`, `choice` (one of a list), `key` (a key combination), `list` and `table`.
 - `ECSSetting_Get(name)` returns the value in effect as a value (10.3). It comes from the highest layer that sets the setting with a value of its type; otherwise it is the default. A value of another type is reported with its file and skipped.
 - The core reads a key combination when it uses it. A key text that cannot be read is reported, and the default is used.
 
 ### 12.2 Interface
 
-- `get(name)`, `set(name, value)` (writes the settings window's file), `list()` (every declared setting) and `explain(name)`: the value in effect, the layer it came from, and what each layer says.
+- `get(name)`, `set(name, value)` (writes the settings window's file), `list()` (every declared setting) and `explain(name)`: the value in effect, the layer it came from, and what each layer says. In C: `ECSSetting_Get`, `ECSSetting_Set`, `ECSSetting_List` and `ECSSetting_Explain`; lists and explanations are values.
+- `set` changes the tool's own part of the settings window's file if that part already has the setting; otherwise it changes the part for every tool.
 - The settings window plugin uses `list` and `explain`.
 
 ### 12.3 User files
