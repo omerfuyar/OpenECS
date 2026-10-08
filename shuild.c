@@ -341,48 +341,154 @@ static void Shuild_stb(void)
     SHU_ModuleCompile(tempStr.data, LINK_TYPE);
 }
 
-// todo maybe generate headers and compile manually
+/// @brief Reads a whole file. Free it with free.
+static char *ReadWholeFile(const char *path)
+{
+    FILE *file = fopen(path, "rb");
+    char *text = NULL;
+    long length = -1;
+
+    if (file != NULL && fseek(file, 0, SEEK_END) == 0 && (length = ftell(file)) >= 0 && fseek(file, 0, SEEK_SET) == 0)
+    {
+        text = calloc((size_t)length + 1, 1);
+    }
+
+    if (text != NULL && fread(text, 1, (size_t)length, file) != (size_t)length)
+    {
+        free(text);
+        text = NULL;
+    }
+
+    if (file != NULL)
+    {
+        fclose(file);
+    }
+
+    return text;
+}
+
+/// @brief Writes libffi's ffi.h from its template, include/ffi.h.in, with the values that libffi's configure script would give on this machine.
+static void MakeFfiHeader(const char *target, const char *path)
+{
+    // the version is the second argument of AC_INIT, such as AC_INIT([libffi],[3.8.0],...)
+    char *configure = ReadWholeFile("dependencies/libffi/configure.ac");
+    const char *init = configure == NULL ? NULL : strstr(configure, "AC_INIT([libffi],[");
+    char version[32] = "";
+    int major = 0;
+    int minor = 0;
+    int micro = 0;
+
+    if (init == NULL || sscanf(init, "AC_INIT([libffi],[%31[^]]", version) != 1 || sscanf(version, "%d.%d.%d", &major, &minor, &micro) < 2)
+    {
+        SHU_LogError(SHUResult_ErrBadData, "Cannot find libffi's version in its configure.ac.");
+        exit(1);
+    }
+
+    free(configure);
+    char number[16];
+    snprintf(number, sizeof(number), "%d", major * 10000 + minor * 100 + micro);
+
+    const char *const values[][2] = {
+        {"@VERSION@", version},
+        {"@FFI_VERSION_STRING@", version},
+        {"@FFI_VERSION_NUMBER@", number},
+        {"@TARGET@", target},
+        {"@HAVE_LONG_DOUBLE@", "1"},
+        {"@FFI_EXEC_TRAMPOLINE_TABLE@", "0"},
+    };
+
+    char *text = ReadWholeFile("dependencies/libffi/include/ffi.h.in");
+    FILE *header = fopen(path, "wb");
+
+    if (text == NULL || header == NULL)
+    {
+        SHU_LogError(SHUResult_ErrFile, "Cannot write '%s' from libffi's include/ffi.h.in.", path);
+        exit(1);
+    }
+
+    for (const char *cursor = text; *cursor != '\0';)
+    {
+        size_t i = 0;
+
+        while (i < sizeof(values) / sizeof(*values) && strncmp(cursor, values[i][0], strlen(values[i][0])) != 0)
+        {
+            i++;
+        }
+
+        if (i < sizeof(values) / sizeof(*values))
+        {
+            fputs(values[i][1], header);
+            cursor += strlen(values[i][0]);
+        }
+        else
+        {
+            fputc(*cursor++, header);
+        }
+    }
+
+    fclose(header);
+    free(text);
+}
+
+// libffi is compiled without its configure script: fficonfig.h is a glue header, and ffi.h is made from its template
 static void Shuild_libffi(void)
 {
-    SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'libffi'") "...");
+#if defined(__x86_64__)
+    const char *target = "X86_64";
+    const char *targetDirectory = "src/x86/";
+    const char *const targetSources[] = {"src/x86/ffi64.c", "src/x86/unix64.S", "src/x86/ffiw64.c", "src/x86/win64.S"};
+#elif defined(__aarch64__)
+    const char *target = "AARCH64";
+    const char *targetDirectory = "src/aarch64/";
+    const char *const targetSources[] = {"src/aarch64/ffi.c", "src/aarch64/sysv.S"};
+#else
+    SHU_LogError(SHUResult_ErrBadData, "libffi is configured for x86_64 and aarch64 only.");
+    exit(1);
+#endif
 
-    const char *sharedOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "yes" : "no";
-    const char *staticOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "no" : "yes";
+    // the sources include ffi.h and ffitarget.h, so they are written to the build before libffi compiles
+    SHUI_String headers;
+    SHUI_String tempStr;
+    SHUI_SFormat(&headers, "%sinclude/libffi/", OUTPUT_DIRECTORY.data);
+    SHU_UtilCreateDirectory(headers.data);
+    SHUI_SFormat(&tempStr, "%sffi.h", headers.data);
+    MakeFfiHeader(target, tempStr.data);
+    SHUI_SFormat(&tempStr, "dependencies/libffi/%sffitarget.h", targetDirectory);
+    CopyFile(tempStr.data, headers.data);
 
-    SHUI_String buildDir;
-    SHUI_String sourceDir;
-    SHUI_String outputPrefixDir;
-
-    SHUI_SFormat(&buildDir, "%slibffi/", BUILD_DIRECTORY.data);
-    SHU_UtilCreateDirectory(buildDir.data);
-
-    SHUI_SFormat(&buildDir, "%s%slibffi/", SHU_UtilGetExecutablePath(), BUILD_DIRECTORY.data);
-    SHUI_SFormat(&sourceDir, "%sdependencies/libffi/", SHU_UtilGetExecutablePath());
-    SHUI_SFormat(&outputPrefixDir, "%s%s", SHU_UtilGetExecutablePath(), OUTPUT_DIRECTORY.data);
-
+    SHU_ModuleBegin("ffi", "dependencies/libffi");
     SetBuildFlags(false);
-    char flagBuffer[SHUC_MAX_COMMAND_BUFFER_SIZE];
-    SHU_CompilerGetFlags(cs(flagBuffer, sizeof(flagBuffer)));
+    SHU_CompilerAddFlags(" -w"); // libffi warns about its own deprecated Java interface
+    SHU_CompilerAddDefinitions("HAVE_CONFIG_H", NULL);
 
-    SHU_UtilRun(
-        "cd dependencies/libffi/ && exec autoreconf -v -i");
+    const char *const sources[] = {"src/prep_cif.c", "src/types.c", "src/raw_api.c", "src/java_raw_api.c", "src/closures.c", "src/tramp.c"};
 
-    SHU_UtilRun(
-        "cd %s && %sconfigure --disable-docs --quiet "
-        "--prefix=%s --libdir=%slib/ --includedir=%sinclude/libffi/ --enable-shared=%s --enable-static=%s --enable-pic=%s %s"
-        "CC=gcc CFLAGS=\"%s -w\"",
-        buildDir.data, sourceDir.data,
-        outputPrefixDir.data, outputPrefixDir.data, outputPrefixDir.data,
-        sharedOptStr, staticOptStr, sharedOptStr,
-        BUILD_TYPE == BuildType_Debug ? "--enable-debug " : "", flagBuffer);
+    for (usz i = 0; i < sizeof(sources) / sizeof(*sources); i++)
+    {
+        SHU_ModuleAddSourceFile(sources[i]);
+    }
 
-    SHU_UtilRun(
-        "cd %s && make -j$(nproc) > %s && make install > %s",
-        buildDir.data,
-        SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null",
-        SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
+    for (usz i = 0; i < sizeof(targetSources) / sizeof(*targetSources); i++)
+    {
+        SHU_ModuleAddSourceFile(targetSources[i]);
+    }
 
-    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'libffi'") "\n");
+    // libffi checks its arguments in Debug builds
+    if (BUILD_TYPE == BuildType_Debug)
+    {
+        SHU_CompilerAddDefinitions("FFI_DEBUG", NULL);
+        SHU_ModuleAddSourceFile("src/debug.c");
+    }
+
+    SHU_ModuleAddIncludeDirectory("../other/libffi/");
+    SHU_ModuleAddIncludeDirectory("include/");
+    SHU_ModuleAddIncludeDirectory("src/");
+    SHU_ModuleAddIncludeDirectory(targetDirectory);
+    SHUI_SFormat(&tempStr, "../../%sinclude/libffi/", OUTPUT_DIRECTORY.data);
+    SHU_ModuleAddIncludeDirectory(tempStr.data);
+
+    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
+    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
 }
 
 static void Shuild_OpenECS(void)
