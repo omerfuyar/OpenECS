@@ -166,7 +166,11 @@ One pass of the loop:
 6. Draw the visible panels that need it: continuous panels, and panels that asked to be redrawn or changed size or scale.
 7. Compose and present.
 
-The wait uses `SDL_WaitEventTimeout` with the time until the next timer, and does not wait while events are queued. Continuous drawing is paced by the display's refresh (vsync).
+The wait uses `SDL_WaitEventTimeout` with the time until the next timer or the next allowed frame, and does not wait while events are queued.
+
+- Continuous drawing is paced by the display's refresh (vsync). Some drivers accept vsync without waiting for it, so the core also limits frames to 1.1 times the display's refresh rate. A working vsync still sets the pace.
+- A hidden, minimized or covered window is not drawn.
+- Panels draw before the core declares its interface, because a panel's `Draw` may change its title, which the interface shows.
 
 ### 3.2 Timers
 
