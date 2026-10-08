@@ -25,9 +25,10 @@ void ECSI_EventsDeliver(void);
 /// @param seconds Time until the first call, and between repeated calls. Must be positive for a repeating timer.
 /// @param repeat true to call the function until the timer is stopped.
 /// @param function Function to call.
-/// @param data Passed to the function.
+/// @param release Function called with the data when the timer is freed, after it stops, or NULL.
+/// @param data Passed to the functions.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSI_EventsStartTimer(ECSPlugin plugin, const void *owner, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data);
+SHUWUR SHUResult ECSI_EventsStartTimer(ECSPlugin plugin, const void *owner, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data);
 
 /// @brief Stops every timer of an owner. Their handles become invalid.
 /// @param owner The owner given to ECSI_EventsStartTimer.

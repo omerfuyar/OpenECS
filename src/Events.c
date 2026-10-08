@@ -14,6 +14,7 @@ typedef struct ECSI_Timer
     bool repeat;
     bool stopped; // freed when no timer is running
     ECSTimerFunction Function;
+    ECSTimerFunction Release; // NULL if the data needs no release
     void *data;
 } ECSI_Timer;
 
@@ -31,24 +32,52 @@ static struct
     bool delivering;
     ECSI_Timer **timers; // stb_ds array; handles point to the timers, so each is allocated on its own
     bool runningTimers;
+    bool freeingTimers;
 } EVENTS = {0};
+
+static void ECSI_EventsFreeTimer(ECSI_Timer *timer)
+{
+    if (timer->Release != NULL)
+    {
+        timer->Release(timer->data);
+    }
+
+    SDL_free(timer);
+}
 
 /// @brief Frees the stopped timers, unless timers are running and may still be read.
 static void ECSI_EventsFreeStoppedTimers(void)
 {
-    if (EVENTS.runningTimers)
+    if (EVENTS.runningTimers || EVENTS.freeingTimers)
     {
         return;
     }
 
-    for (usz i = arrlenu(EVENTS.timers); i > 0; i--)
+    // a release may stop more timers, so the list is walked until nothing is freed
+    EVENTS.freeingTimers = true;
+    bool freed = true;
+
+    while (freed)
     {
-        if (EVENTS.timers[i - 1]->stopped)
+        freed = false;
+
+        for (usz i = 0; i < arrlenu(EVENTS.timers);)
         {
-            SDL_free(EVENTS.timers[i - 1]);
-            arrdel(EVENTS.timers, i - 1);
+            ECSI_Timer *timer = EVENTS.timers[i];
+
+            if (!timer->stopped)
+            {
+                i++;
+                continue;
+            }
+
+            arrdel(EVENTS.timers, i);
+            ECSI_EventsFreeTimer(timer);
+            freed = true;
         }
     }
+
+    EVENTS.freeingTimers = false;
 }
 
 #pragma endregion Source Only
@@ -79,7 +108,7 @@ void ECSI_EventsDeliver(void)
     EVENTS.delivering = false;
 }
 
-SHUResult ECSI_EventsStartTimer(ECSPlugin plugin, const void *owner, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
+SHUResult ECSI_EventsStartTimer(ECSPlugin plugin, const void *owner, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data)
 {
     SDL_assert(plugin != NULL);
     SDL_assert(retTimer != NULL);
@@ -102,6 +131,7 @@ SHUResult ECSI_EventsStartTimer(ECSPlugin plugin, const void *owner, ECSTimer *r
         .intervalTicks = intervalTicks,
         .repeat = repeat,
         .Function = function,
+        .Release = release,
         .data = data,
     };
 
@@ -193,9 +223,12 @@ void ECSI_EventsTerminate(void)
 {
     SDL_assert(!EVENTS.runningTimers && !EVENTS.delivering);
 
+    // a release that stops another timer frees nothing here; every timer is freed in this loop
+    EVENTS.freeingTimers = true;
+
     for (usz i = 0; i < arrlenu(EVENTS.timers); i++)
     {
-        SDL_free(EVENTS.timers[i]);
+        ECSI_EventsFreeTimer(EVENTS.timers[i]);
     }
 
     arrfree(EVENTS.timers);
@@ -205,7 +238,7 @@ void ECSI_EventsTerminate(void)
 
 SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
 {
-    return ECSI_EventsStartTimer(plugin, NULL, retTimer, seconds, repeat, function, data);
+    return ECSI_EventsStartTimer(plugin, NULL, retTimer, seconds, repeat, function, NULL, data);
 }
 
 void ECSTimer_Stop(ECSTimer *timer)

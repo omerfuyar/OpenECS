@@ -384,7 +384,7 @@ SHUResult ECSPanel_StartTimer(ECSPanel panel, ECSTimer *retTimer, f64 seconds, b
     SDL_assert(panel != NULL);
     SDL_assert(panel->type != NULL); // placeholders run no code
 
-    return ECSI_EventsStartTimer(panel->type->plugin, panel, retTimer, seconds, repeat, function, data);
+    return ECSI_EventsStartTimer(panel->type->plugin, panel, retTimer, seconds, repeat, function, NULL, data);
 }
 
 void ECSPanel_Redraw(ECSPanel panel)
