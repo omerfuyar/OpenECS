@@ -74,6 +74,16 @@ static void DemoColorDraw(void *state, ECSSurface *surface, f64 seconds)
     }
 }
 
+static SHUResult DemoColorSaveState(void *state, ECSValue *retState)
+{
+    DemoPanel *demo = state;
+    ECSValue *color = NULL;
+
+    SHU_ReturnResult(ECSValue_SetField(retState, "color", &color));
+    ECSValue_SetInteger(color, (i64)demo->color);
+    return SHUResult_Ok;
+}
+
 static void DemoColorEvent(void *state, const ECSEvent *event)
 {
     DemoPanel *demo = state;
@@ -204,8 +214,10 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
         .title = "Color",
         .Create = DemoCreate,
         .Destroy = DemoDestroy,
+        .stateVersion = 1,
         .Draw = DemoColorDraw,
         .Event = DemoColorEvent,
+        .SaveState = DemoColorSaveState,
     };
 
     ECSPanelTypeDesc gradient = {
