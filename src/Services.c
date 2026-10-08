@@ -46,7 +46,10 @@ typedef struct ECSI_Function
     ECSPlugin plugin;
     ECSI_Signature signature;
     ECSFunction pointer;
-    int caller; // registry reference of the Lua function that calls it, made when Lua first asks for it
+    int caller;           // registry reference of the Lua function that calls it, made when Lua first asks for it
+    int lua;              // registry reference of the Lua function, or LUA_NOREF for a C function
+    int result;           // registry reference of the last string a Lua function returned, which C reads
+    ffi_closure *closure; // the code that C calls for a Lua function, or NULL
 } ECSI_Function;
 
 /// @brief Storage for one argument or result of a call through libffi.
@@ -215,6 +218,11 @@ static SHUResult ECSI_SignatureParse(const char *text, ECSI_Signature *retSignat
 
 static void ECSI_FunctionFree(ECSI_Function *function)
 {
+    if (function->closure != NULL)
+    {
+        ffi_closure_free(function->closure);
+    }
+
     ECSI_SignatureFree(&function->signature);
     SDL_free(function->name);
     SDL_free(function->description);
@@ -343,6 +351,153 @@ static int ECSI_ServicesCallC(lua_State *state)
     return ECSI_ServicesPushResult(state, signature->result, &result);
 }
 
+/// @brief Pushes an argument that C passed to a Lua function.
+static void ECSI_ServicesPushArgument(lua_State *state, ECSI_ParameterType type, const void *argument)
+{
+    switch (type)
+    {
+    case ECSI_ParameterType_Bool:
+        lua_pushboolean(state, *(const u8 *)argument != 0);
+        break;
+    case ECSI_ParameterType_Int:
+        lua_pushinteger(state, (lua_Integer) * (const i32 *)argument);
+        break;
+    case ECSI_ParameterType_Int64:
+        lua_pushinteger(state, (lua_Integer) * (const i64 *)argument);
+        break;
+    case ECSI_ParameterType_Float:
+        lua_pushnumber(state, (lua_Number) * (const f32 *)argument);
+        break;
+    case ECSI_ParameterType_Double:
+        lua_pushnumber(state, (lua_Number) * (const f64 *)argument);
+        break;
+    case ECSI_ParameterType_String:
+        lua_pushstring(state, *(const char *const *)argument);
+        break;
+    default:
+        lua_pushnil(state);
+        break;
+    }
+}
+
+/// @brief Writes the result of a Lua function, on top of the stack, for its C caller.
+/// @return false if the result has the wrong type.
+static bool ECSI_ServicesReadResult(lua_State *state, ECSI_Function *function, void *result)
+{
+    int isNumber = 0;
+
+    switch (function->signature.result)
+    {
+    case ECSI_ParameterType_Bool:
+        *(ffi_arg *)result = (ffi_arg)lua_toboolean(state, -1);
+        return true;
+    case ECSI_ParameterType_Int:
+    {
+        lua_Integer integer = lua_tointegerx(state, -1, &isNumber);
+        *(ffi_sarg *)result = (ffi_sarg)(i32)integer;
+        return isNumber && integer >= SDL_MIN_SINT32 && integer <= SDL_MAX_SINT32;
+    }
+    case ECSI_ParameterType_Int64:
+        *(i64 *)result = (i64)lua_tointegerx(state, -1, &isNumber);
+        return isNumber;
+    case ECSI_ParameterType_Float:
+        *(f32 *)result = (f32)lua_tonumberx(state, -1, &isNumber);
+        return isNumber;
+    case ECSI_ParameterType_Double:
+        *(f64 *)result = (f64)lua_tonumberx(state, -1, &isNumber);
+        return isNumber;
+    case ECSI_ParameterType_String:
+        // the string stays alive until the function returns again
+        luaL_unref(state, LUA_REGISTRYINDEX, function->result);
+        *(const char **)result = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
+        lua_pushvalue(state, -1);
+        function->result = luaL_ref(state, LUA_REGISTRYINDEX);
+        return lua_type(state, -1) == LUA_TSTRING;
+    default:
+        return true;
+    }
+}
+
+/// @brief The handler of a Lua function's closure: C calls it through the closure's code.
+static void ECSI_ServicesCallLua(ffi_cif *cif, void *result, void **arguments, void *data)
+{
+    (void)cif;
+    ECSI_Function *function = data;
+    const ECSI_Signature *signature = &function->signature;
+    lua_State *state = ECSI_LuaGetState();
+    int top = lua_gettop(state);
+    usz count = arrlenu(signature->parameters);
+    bool returns = signature->result != ECSI_ParameterType_Void;
+
+    // a failed call gives C a zero result
+    SDL_memset(result, 0, SDL_max(sizeof(ffi_arg), ECSI_ServicesFfiType(signature->result)->size));
+    lua_rawgeti(state, LUA_REGISTRYINDEX, function->lua);
+
+    for (usz i = 0; i < count; i++)
+    {
+        ECSI_ServicesPushArgument(state, signature->parameters[i], arguments[i]);
+    }
+
+    if (ECSI_LuaCall((int)count, returns ? 1 : 0))
+    {
+        ECSI_PluginReportError(function->plugin, lua_tostring(state, -1));
+    }
+    else if (returns && !ECSI_ServicesReadResult(state, function, result))
+    {
+        char *message = NULL;
+
+        if (SDL_asprintf(&message, "'%s' returned a %s, but its signature is %s.", function->name, luaL_typename(state, -1), signature->text) >= 0)
+        {
+            ECSI_PluginReportError(function->plugin, message);
+            SDL_free(message);
+        }
+    }
+
+    lua_settop(state, top);
+}
+
+/// @brief Checks a function's name and makes its record, without its code.
+static SHUResult ECSI_ServicesCreate(ECSPlugin plugin, const char *name, const char *signature, const char *description, ECSI_Function **retFunction)
+{
+    if (!ECSI_PluginOwnsName(plugin, name))
+    {
+        return SHUResult_ErrBadData;
+    }
+
+    if (SERVICES.functions != NULL && shget(SERVICES.functions, name) != NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Function '%s' is already registered.", name);
+        return SHUResult_ErrBadData;
+    }
+
+    ECSI_Function *function = SDL_calloc(1, sizeof(ECSI_Function));
+
+    if (function == NULL)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    function->name = SDL_strdup(name);
+    function->description = SDL_strdup(description == NULL ? "" : description);
+    function->plugin = plugin;
+    function->caller = LUA_NOREF;
+    function->lua = LUA_NOREF;
+    function->result = LUA_NOREF;
+
+    SHUResult result = function->name == NULL || function->description == NULL ? SHUResult_ErrAllocation : ECSI_SignatureParse(signature, &function->signature);
+
+    if (result)
+    {
+        SDL_free(function->name);
+        SDL_free(function->description);
+        SDL_free(function);
+        return result;
+    }
+
+    *retFunction = function;
+    return SHUResult_Ok;
+}
+
 #pragma endregion Source Only
 
 void ECSI_ServicesTerminate(void)
@@ -366,6 +521,13 @@ SHUResult ECSI_ServicesPushFunction(ECSPlugin plugin, const char *name, const ch
 
     lua_State *state = ECSI_LuaGetState();
 
+    // a Lua function is called as it is
+    if (function->lua != LUA_NOREF)
+    {
+        lua_rawgeti(state, LUA_REGISTRYINDEX, function->lua);
+        return SHUResult_Ok;
+    }
+
     // one Lua function per C function, made when Lua first asks for it
     if (function->caller == LUA_NOREF)
     {
@@ -385,41 +547,35 @@ SHUResult ECSService_RegisterFunction(ECSPlugin plugin, const char *name, ECSFun
     SDL_assert(function != NULL);
     SDL_assert(signature != NULL);
 
-    if (!ECSI_PluginOwnsName(plugin, name))
-    {
-        return SHUResult_ErrBadData;
-    }
+    ECSI_Function *registered = NULL;
+    SHU_ReturnResult(ECSI_ServicesCreate(plugin, name, signature, description, &registered));
+    registered->pointer = function;
+    shput(SERVICES.functions, registered->name, registered);
+    return SHUResult_Ok;
+}
 
-    if (SERVICES.functions != NULL && shget(SERVICES.functions, name) != NULL)
-    {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Function '%s' is already registered.", name);
-        return SHUResult_ErrBadData;
-    }
+SHUResult ECSI_ServicesRegisterLua(ECSPlugin plugin, const char *name, const char *signature, const char *description)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(name != NULL);
+    SDL_assert(signature != NULL);
 
-    ECSI_Function *registered = SDL_calloc(1, sizeof(ECSI_Function));
+    ECSI_Function *function = NULL;
+    SHU_ReturnResult(ECSI_ServicesCreate(plugin, name, signature, description, &function));
 
-    if (registered == NULL)
+    void *code = NULL;
+    function->closure = ffi_closure_alloc(sizeof(ffi_closure), &code);
+
+    if (function->closure == NULL || ffi_prep_closure_loc(function->closure, &function->signature.cif, ECSI_ServicesCallLua, function, code) != FFI_OK)
     {
+        ECSI_FunctionFree(function);
         return SHUResult_ErrAllocation;
     }
 
-    registered->name = SDL_strdup(name);
-    registered->description = SDL_strdup(description == NULL ? "" : description);
-    registered->plugin = plugin;
-    registered->pointer = function;
-    registered->caller = LUA_NOREF;
-
-    SHUResult result = registered->name == NULL || registered->description == NULL ? SHUResult_ErrAllocation : ECSI_SignatureParse(signature, &registered->signature);
-
-    if (result)
-    {
-        SDL_free(registered->name);
-        SDL_free(registered->description);
-        SDL_free(registered);
-        return result;
-    }
-
-    shput(SERVICES.functions, registered->name, registered);
+    // C calls the closure's code, which calls the Lua function; POSIX lets a data pointer hold code, but ISO C has no cast for it
+    SDL_memcpy(&function->pointer, &code, sizeof(code));
+    function->lua = luaL_ref(ECSI_LuaGetState(), LUA_REGISTRYINDEX);
+    shput(SERVICES.functions, function->name, function);
     return SHUResult_Ok;
 }
 

@@ -61,3 +61,12 @@ ecs.panel.register_type({
 local add = assert(ecs.service.get("demo.add", "int(int, int)"))
 local repeat_text = assert(ecs.service.get("demo.repeat"))
 ecs.log.info("demo.add(2, 3) = " .. add(2, 3) .. ", demo.repeat = " .. repeat_text("ab", 3))
+
+-- a Lua function of a service; C plugins that depend on hello get it as a typed C function pointer
+ecs.service.register("hello", {
+  shout = {
+    sig = "string(string, int)",
+    doc = "Repeats a text in capitals",
+    fn = function(text, count) return text:upper():rep(count, " ") end,
+  },
+})

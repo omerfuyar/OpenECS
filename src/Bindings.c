@@ -284,7 +284,50 @@ static int ECSI_BindingsServiceGet(lua_State *state)
     return 1;
 }
 
+/// @brief ecs.service.register(prefix, functions): functions is a table of { sig = ..., doc = ..., fn = ... } by local name.
+static int ECSI_BindingsServiceRegister(lua_State *state)
+{
+    const char *prefix = luaL_checkstring(state, 1);
+    luaL_checktype(state, 2, LUA_TTABLE);
+    ECSPlugin plugin = ECSI_BindingsPlugin(state);
+    SHUResult result = SHUResult_Ok;
+    const char *failed = NULL;
+
+    lua_pushnil(state);
+
+    while (lua_next(state, 2) != 0)
+    {
+        // lua_tostring would change a number key in place and break lua_next, so check the types first
+        luaL_argcheck(state, lua_type(state, -2) == LUA_TSTRING && lua_istable(state, -1), 2, "must map names to { sig, doc, fn } tables");
+        lua_getfield(state, -1, "sig");
+        lua_getfield(state, -2, "doc");
+        lua_getfield(state, -3, "fn");
+        luaL_checktype(state, -1, LUA_TFUNCTION);
+
+        const char *name = lua_pushfstring(state, "%s.%s", prefix, lua_tostring(state, -5));
+        lua_insert(state, -2);
+        SHUResult registered = ECSI_ServicesRegisterLua(plugin, name, luaL_checkstring(state, -4), luaL_optstring(state, -3, ""));
+
+        // a failed function stays on the stack; a registered one was taken
+        lua_settop(state, registered ? lua_gettop(state) - 5 : lua_gettop(state) - 4);
+        result = registered ? registered : result;
+        failed = registered ? lua_tostring(state, -1) : failed;
+    }
+
+    // an invalid registration is reported and returned; the plugin continues with the others
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "function '%s.%s' is not registered (%s)", prefix, failed == NULL ? "?" : failed, SHUResult_String(result));
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
 static const luaL_Reg ECSI_BINDINGS_SERVICE[] = {
+    {"register", ECSI_BindingsServiceRegister},
     {"get", ECSI_BindingsServiceGet},
     {NULL, NULL},
 };
