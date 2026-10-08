@@ -3,6 +3,8 @@
 #define SHUC_NO_RUN_LOG
 #include "dependencies/shuild/shuild.h"
 
+#include <dirent.h>
+
 #pragma region Setup
 
 #define PrintUsage() SHU_LogInfo("\n\n\
@@ -32,7 +34,7 @@ static SHUModuleType LINK_TYPE = SHUModuleType_LibraryStatic;
 static SHUI_String BUILD_DIRECTORY = {0};
 static SHUI_String OUTPUT_DIRECTORY = {0};
 
-static const char *const PLUGINS[] = {"demo"};
+static const char *const PLUGINS[] = {"demo", "hello"};
 
 #pragma endregion Setup
 
@@ -411,6 +413,14 @@ static void Shuild_OpenECS(void)
     SHU_ModuleCompile(tempStr.data, SHUModuleType_Executable);
 }
 
+/// @brief Checks whether a file name ends with a suffix.
+static bool EndsWith(const char *name, const char *suffix)
+{
+    size_t nameLength = strlen(name);
+    size_t suffixLength = strlen(suffix);
+    return nameLength >= suffixLength && strcmp(name + nameLength - suffixLength, suffix) == 0;
+}
+
 static void Shuild_Plugins(void)
 {
     for (usz i = 0; i < sizeof(PLUGINS) / sizeof(*PLUGINS); i++)
@@ -424,6 +434,37 @@ static void Shuild_Plugins(void)
         SHUI_SFormat(&root, "plugins/%s/", currentPlugin);
         SHUI_SFormat(&output, "%sbin/plugins/%s/", OUTPUT_DIRECTORY.data, currentPlugin);
         SHUI_SFormat(&include, "../../%sinclude/", OUTPUT_DIRECTORY.data);
+        SHU_UtilCreateDirectory(output.data);
+
+        // a plugin's C files make its native library; its Lua files, the manifest among them, are copied
+        bool native = false;
+        DIR *folder = opendir(root.data);
+        struct dirent *entry = NULL;
+
+        while (folder != NULL && (entry = readdir(folder)) != NULL)
+        {
+            SHUI_String file;
+            SHUI_SFormat(&file, "%s%s", root.data, entry->d_name);
+
+            if (EndsWith(entry->d_name, ".c"))
+            {
+                native = true;
+            }
+            else if (EndsWith(entry->d_name, ".lua"))
+            {
+                CopyFile(file.data, output.data);
+            }
+        }
+
+        if (folder != NULL)
+        {
+            closedir(folder);
+        }
+
+        if (!native)
+        {
+            continue;
+        }
 
         SHU_ModuleBegin(currentPlugin, root.data);
         SetBuildFlags(true);
@@ -433,10 +474,6 @@ static void Shuild_Plugins(void)
         SHU_ModuleAddSourceFile("./");
         SHU_ModuleAddIncludeDirectory(include.data);
         SHU_ModuleCompile(output.data, SHUModuleType_LibraryDynamic);
-
-        SHUI_String tempStr;
-        SHUI_SFormat(&tempStr, "plugins/%s/manifest.lua", currentPlugin);
-        CopyFile(tempStr.data, output.data);
     }
 }
 
