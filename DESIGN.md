@@ -922,6 +922,7 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 
 - A test is a Lua file in `tests/`. Debug builds run it with `openecs --test FILE`; other builds refuse the option.
 - The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `default` if left out), and `run`, a function that gets the `test` table.
+- Tests keep their presets and test plugins in `tests/presets/` and `tests/plugins/`, so a change to a first-party preset does not change a test.
 - A test starts from its preset alone. It reads none of the user's settings, plugins or sessions, and writes no session and no log file. SDL's offscreen video driver and software renderer are the defaults, so a test needs no display; the variables `SDL_VIDEO_DRIVER` and `SDL_RENDER_DRIVER` choose others, for example to watch a test.
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).
 - The `test` table:
