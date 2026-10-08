@@ -104,6 +104,10 @@ gcc shuild.c -o shuild.ignore -O3
 
 Dependencies are built the first time only. To build one again, delete its library from `build/<LINK>/<TYPE>/lib/`.
 
+Shuild compiles again only the files that changed. After changing compiler flags in `shuild.c`, delete `.shu/` to compile everything again.
+
+Debug builds run the static analyzer while compiling, and the sanitizers while the program runs. A sanitizer prints its report to standard error, and the program exits with an error.
+
 ### Running
 
 The build puts the executable, the first-party plugins and presets in `build/<LINK>/<TYPE>/bin/`.

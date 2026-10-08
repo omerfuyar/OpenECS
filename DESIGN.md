@@ -839,7 +839,10 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.3 Compiler
 
-- Warnings: `-Wall -Wextra -Wpedantic -Wconversion -Wshadow`. Debug builds add `-fsanitize=address,undefined`.
+- Warnings: `-Wall -Wextra -Wpedantic -Wconversion -Wshadow`.
+- Debug builds of the core and of plugins add the static analyzer (`-fanalyzer`) and the address, leak and undefined-behaviour sanitizers (`-fsanitize=address,undefined`). Dependencies get neither.
+- `src/Sanitizers.c` sets the sanitizers' options and hides leaks inside graphics drivers. It is compiled only in Debug builds.
+- Release builds set `SDL_ASSERT_LEVEL` to 0, so they have no assertions. Debug builds set it to 2.
 
 ### 17.4 Dependency versions
 
@@ -920,6 +923,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 **SHUSlice.** A pointer and a size that describe a piece of memory, passed together.
 
 **SHUWUR.** A `shu.h` attribute macro that makes the compiler warn when a function's result is not used.
+
+**Static analyzer.** A compiler pass that follows the paths through the code and warns about errors it finds, such as a `NULL` pointer that is dereferenced, without running the program.
 
 **Struct (structure).** A group of named fields stored together in memory.
 
