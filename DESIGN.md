@@ -63,7 +63,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 - Internal names follow the public ones with `ECSI` in place of `ECS`. An internal enumeration value is `<Type>_<Value>` too: `ECSINodeType_Split`.
 - `main.c` and Lua files, such as `manifest.lua` and presets, keep lowercase names.
 - A type that tells variants apart ends with `Type`, never `Kind`: `ECSSurfaceType`, `ECSPanelEventType`. Its field is named `type`.
-- Lua names use camelCase: `ecs.panel.registerType`, `saveState`, the setting `ecs.prefixKeys` and the event type `pointerDown`. The core's Lua names live under the global table `ecs`. The core's own settings, events and bindable functions start with `ecs.`, for example the setting `ecs.focus`.
+- Lua names use camelCase: `ecs.panel.registerType`, `saveState`, the setting `ecs.prefixKeys` and the event type `pointerDown`. The core's Lua names live in the `ecs` module (9.6). The core's own settings, events and bindable functions start with `ecs.`, for example the setting `ecs.focus`.
 
 ### 1.3 Types and results
 
@@ -135,7 +135,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Menus    | The core's bindable functions, and the panel and group menus that offer them (6.8).                                 |
 |           | Input    | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input, the clipboard, dialogs. |
 | app       | Session  | Reading presets and sessions, applying them, writing them.                                                          |
-|           | Bindings | The `ecs` table: the plugin interface for Lua plugins (11.3).                                                       |
+|           | Bindings | The `ecs` module: the plugin interface for Lua plugins (11.3).                                                      |
 |           | Test     | Runs a test in Debug builds (17.5).                                                                                 |
 |           | App      | Start-up, the main loop and shutdown (2.3, 3.1, 2.4).                                                               |
 
@@ -575,8 +575,9 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 
 ### 9.6 Lua plugins
 
-- All Lua plugins share one Lua state. Each plugin's code runs in its own environment, which contains the `ecs` table and reads other globals from the shared global table.
-- Each plugin gets its own `ecs` table, whose functions carry the plugin. So the core knows which plugin made an `ecs` call.
+- All Lua plugins share one Lua state. Each plugin's code runs in its own environment, which reads globals from the shared global table.
+- A plugin gets the core's Lua names from the `ecs` module: `local ecs = require("ecs")`. There is no global `ecs`.
+- The environment has its own `require`. For `"ecs"` it gives the plugin's own `ecs` table, whose functions carry the plugin, so the core knows which plugin made an `ecs` call. Other names go to Lua's `require`.
 - The manifest's `lua` file runs once, in a protected call, after the native `ECSPlugin_Init`. An error fails the plugin.
 
 ### 9.7 Lifecycle
@@ -606,6 +607,8 @@ ECSService_RegisterFunction(plugin, "audio.play", (ECSFunction)AudioPlay, "int(s
 ```
 
 ```lua
+local ecs = require("ecs")
+
 ecs.service.register("audio", {
   play = { sig = "int(string, float)", doc = "Play a sound file",
            fn = function(path, volume) ... end },
@@ -694,7 +697,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 - Manifests, presets, sessions and settings files are read as data. They run without `ecs`, so they cannot call the core or plugins while they are read.
 - They are loaded as text only (`load(text, name, "t", env)`). The environment holds Lua's basic functions and the `string`, `table`, `math` and `utf8` libraries; there is no `io`, `os` or `require`. So all of these files can use loops and conditions.
 
-### 11.3 The `ecs` table
+### 11.3 The `ecs` module
 
 | Table                         | Contents                            |
 | ----------------------------- | ----------------------------------- |
@@ -777,7 +780,7 @@ return {
   version = "1.0.0",
   app = { id = "org.example.Paint", name = "Paint", icon = "paint.png" },
   depends = { canvas = "1.2", palette = "1.0" },
-  pluginsDir = "plugins",                   -- optional extra plugin directory
+  pluginsDir = "plugins",                    -- optional extra plugin directory
   open = "canvas.open",                      -- receives files from the command line
   settings = { ["canvas.grid"] = true },
   keys = { ["Ctrl+N"] = "canvas.new" },      -- bindings for the whole tool

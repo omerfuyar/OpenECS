@@ -1,5 +1,7 @@
 -- Sketch in Lua: canvases to draw on with the mouse, and a clock. The sketch_c plugin does the same in C, so the two can be compared.
 
+local ecs = require("ecs")
+
 local NAME = ecs.plugin.name
 
 -- makes a name of this plugin, such as "sketch_lua.canvas"
