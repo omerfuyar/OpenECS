@@ -101,7 +101,7 @@ static struct
     {
         char *key;
         ECSI_NamedEvent value;
-    } *named;                                // stb_ds hash map of the declared named events, with copied keys
+    } *named;                                 // stb_ds hash map of the declared named events, with copied keys
     struct ECSI_Subscription **subscriptions; // stb_ds array; handles point to them, so each is allocated on its own
 } EVENTS = {0};
 

@@ -14,11 +14,11 @@ typedef struct ECSI_Plugin
 {
     char *name;
     char *version;
-    SDL_SharedObject *library; // NULL if the plugin has no native code
-    void (*Shutdown)(ECSPlugin plugin);
-    bool failed; // its ECSPlugin_Init failed; plugins that depend on it are skipped
-    char **dependencies; // stb_ds array of the names its manifest depends on
-    ECSPluginStateDesc state; // Save is NULL if the plugin saves no state of its own
+    SDL_SharedObject *library;          // NULL if the plugin has no native code
+    void (*Shutdown)(ECSPlugin plugin); // todo make all function pointers a typedef
+    bool failed;                        // its ECSPlugin_Init failed; plugins that depend on it are skipped
+    char **dependencies;                // stb_ds array of the names its manifest depends on
+    ECSPluginStateDesc state;           // Save is NULL if the plugin saves no state of its own
     ECSTimerFunction stateRelease;
     ECSTaskFunction LuaShutdown; // the Lua code's shutdown, or NULL
     ECSTaskFunction luaShutdownRelease;
@@ -54,7 +54,7 @@ static struct
     {
         char *key; // "plugin: message"
         u64 value; // how often it happened
-    } *errors; // stb_ds hash map with copied keys
+    } *errors;     // stb_ds hash map with copied keys
     ECSI_PluginHooks hooks;
 } PLUGINS = {0};
 
@@ -228,7 +228,6 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
     SHUResult dependencies = ECSI_PluginLoadAll(ECSValue_GetTableField(file, "depends"), name);
     (void)arrpop(PLUGINS.loading);
     SHU_ReturnResult(dependencies);
-
 
     ECSI_Plugin plugin = {.name = SDL_strdup(name), .version = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "version"), "0.0.0"))};
     ECSI_Plugin *record = SDL_malloc(sizeof(ECSI_Plugin));

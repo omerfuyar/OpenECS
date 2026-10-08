@@ -309,7 +309,8 @@ static SketchCanvas *SketchFindCanvas(ECSPanel panel)
 static i32 SketchSettingSize(void)
 {
     i64 size = ECSValue_GetInteger(ECSSetting_Get(SKETCH_NAME("brush_size")), 6);
-    return (i32)(size < SKETCH_MIN_SIZE ? SKETCH_MIN_SIZE : size > SKETCH_MAX_SIZE ? SKETCH_MAX_SIZE : size);
+    return (i32)(size < SKETCH_MIN_SIZE ? SKETCH_MIN_SIZE : size > SKETCH_MAX_SIZE ? SKETCH_MAX_SIZE
+                                                                                   : size);
 }
 
 static u32 SketchSettingColor(void)
@@ -522,7 +523,8 @@ static void SketchCanvasEvent(void *state, const ECSPanelEvent *event)
         if (ECSValue_Create(&size) == SHUResult_Ok)
         {
             i32 next = SketchSettingSize() + (event->wheel.amountY > 0.0f ? 1 : -1);
-            ECSValue_SetInteger(size, next < SKETCH_MIN_SIZE ? SKETCH_MIN_SIZE : next > SKETCH_MAX_SIZE ? SKETCH_MAX_SIZE : next);
+            ECSValue_SetInteger(size, next < SKETCH_MIN_SIZE ? SKETCH_MIN_SIZE : next > SKETCH_MAX_SIZE ? SKETCH_MAX_SIZE
+                                                                                                        : next);
 
             if (ECSSetting_Set(SKETCH_NAME("brush_size"), size))
             {
@@ -1050,7 +1052,8 @@ static SketchBrush *SketchNewBrush(i32 size, const char *color)
         return NULL;
     }
 
-    brush->size = size < SKETCH_MIN_SIZE ? SKETCH_MIN_SIZE : size > SKETCH_MAX_SIZE ? SKETCH_MAX_SIZE : size;
+    brush->size = size < SKETCH_MIN_SIZE ? SKETCH_MIN_SIZE : size > SKETCH_MAX_SIZE ? SKETCH_MAX_SIZE
+                                                                                    : size;
     brush->color = SKETCH_COLORS[0];
     brush->references = 1;
 

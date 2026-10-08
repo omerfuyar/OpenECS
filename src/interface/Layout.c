@@ -83,15 +83,15 @@ struct ECSI_Node
     f32 height;
 
     // split
-    bool vertical; // children are stacked from top to bottom
+    bool vertical;        // children are stacked from top to bottom
     ECSI_Node **children; // stb_ds array
 
     // group
-    ECSPanel *panels; // stb_ds array
-    usz shown;        // index of the panel shown
-    bool locked;      // its panels cannot be moved or closed, and it accepts no dropped panels
-    f32 tabScroll;    // how far the tab row is scrolled, in layout units
-    f32 tabsWidth;    // width of all its tabs together, measured in the last frame
+    ECSPanel *panels;    // stb_ds array
+    usz shown;           // index of the panel shown
+    bool locked;         // its panels cannot be moved or closed, and it accepts no dropped panels
+    f32 tabScroll;       // how far the tab row is scrolled, in layout units
+    f32 tabsWidth;       // width of all its tabs together, measured in the last frame
     ECSPanel scrolledTo; // the shown panel whose tab was last scrolled into view
 };
 
@@ -178,19 +178,19 @@ static struct
     usz prefixLineCount;
     ECSI_TabRef *tabs; // stb_ds array
 
-    ECSI_Node *gripGroup;   // lone group whose grip is shown, or NULL
-    ECSI_Node *dragSplit;   // split whose divider is dragged, or NULL
-    usz dragDivider;        // the dragged divider follows this child
+    ECSI_Node *gripGroup; // lone group whose grip is shown, or NULL
+    ECSI_Node *dragSplit; // split whose divider is dragged, or NULL
+    usz dragDivider;      // the dragged divider follows this child
 
-    ECSPanel dragPanel;     // panel pressed on its tab or grip, or NULL; it is dragged once the pointer moves far enough
-    bool dragGroup;         // the whole group of dragPanel is dragged, pressed on its tab row
-    bool dragFromGrip;      // the press was on a grip; a click without dragging opens the panel's menu
-    bool dragLocked;        // the pressed grip is a locked group's, so it is never dragged
+    ECSPanel dragPanel; // panel pressed on its tab or grip, or NULL; it is dragged once the pointer moves far enough
+    bool dragGroup;     // the whole group of dragPanel is dragged, pressed on its tab row
+    bool dragFromGrip;  // the press was on a grip; a click without dragging opens the panel's menu
+    bool dragLocked;    // the pressed grip is a locked group's, so it is never dragged
     bool dragging;
     f32 dragStartX;
     f32 dragStartY;
-    ECSI_Drop drop;         // where the dragged panel lands now
-    SDL_FRect dropRect;     // the highlight of the drop place
+    ECSI_Drop drop;     // where the dragged panel lands now
+    SDL_FRect dropRect; // the highlight of the drop place
 
     SDL_Cursor *cursors[SDL_SYSTEM_CURSOR_COUNT]; // made when first used
     SDL_SystemCursor cursor;                      // the pointer's shape now
@@ -1273,13 +1273,13 @@ static void ECSI_LayoutDeclareGroup(ECSI_Node *group, void *userData)
             for (usz i = 0; i < arrlenu(group->panels); i++)
             {
                 CLAY(CLAY_IDI("Tab", (u32)arrlenu(LAYOUT.tabs)), {
-                    .layout = {
-                        .sizing = {CLAY_SIZING_FIT(0), CLAY_SIZING_GROW(0)},
-                        .padding = {12, 12, 0, 0},
-                        .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
-                    },
-                    .backgroundColor = i == group->shown ? OPENECS_COLOR_TAB_SHOWN : OPENECS_COLOR_TAB,
-                })
+                                                                     .layout = {
+                                                                         .sizing = {CLAY_SIZING_FIT(0), CLAY_SIZING_GROW(0)},
+                                                                         .padding = {12, 12, 0, 0},
+                                                                         .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                                                                     },
+                                                                     .backgroundColor = i == group->shown ? OPENECS_COLOR_TAB_SHOWN : OPENECS_COLOR_TAB,
+                                                                 })
                 {
                     CLAY_TEXT(ECSI_LayoutClayText(group->panels[i]->title),
                               CLAY_TEXT_CONFIG({
@@ -1400,7 +1400,9 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
                 .layout = {.sizing = {CLAY_SIZING_FIXED(focus->width), CLAY_SIZING_FIXED(focus->height)}},
                 .border = {.color = OPENECS_COLOR_ACCENT, .width = {2, 2, 2, 2, 0}},
                 .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {focus->x, focus->y}, .zIndex = 1, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
-            }) {}
+            })
+            {
+            }
         }
 
         // the grip shows the panel's title, centred on its top edge, and whether its group is locked
@@ -1422,18 +1424,18 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
             f32 width = SDL_min((f32)(titleWidth + lockedWidth) + 2.0f * OPENECS_MENU_ITEM_PADDING, group->width);
 
             CLAY(CLAY_ID("Grip"), {
-                .layout = {
-                    .sizing = {CLAY_SIZING_FIXED(width), CLAY_SIZING_FIXED(OPENECS_GRIP_HEIGHT)},
-                    .padding = {(u16)OPENECS_MENU_ITEM_PADDING, (u16)OPENECS_MENU_ITEM_PADDING, 0, 0},
-                    .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
-                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                },
-                .backgroundColor = OPENECS_COLOR_OVERLAY,
-                .cornerRadius = {0, 0, 6, 6},
-                .border = {.color = OPENECS_COLOR_TEXT_DIM, .width = {1, 1, 0, 1, 0}},
-                .clip = {.horizontal = true},
-                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + (group->width - width) / 2.0f, group->y}, .zIndex = 2},
-            })
+                                      .layout = {
+                                          .sizing = {CLAY_SIZING_FIXED(width), CLAY_SIZING_FIXED(OPENECS_GRIP_HEIGHT)},
+                                          .padding = {(u16)OPENECS_MENU_ITEM_PADDING, (u16)OPENECS_MENU_ITEM_PADDING, 0, 0},
+                                          .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
+                                          .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                                      },
+                                      .backgroundColor = OPENECS_COLOR_OVERLAY,
+                                      .cornerRadius = {0, 0, 6, 6},
+                                      .border = {.color = OPENECS_COLOR_TEXT_DIM, .width = {1, 1, 0, 1, 0}},
+                                      .clip = {.horizontal = true},
+                                      .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + (group->width - width) / 2.0f, group->y}, .zIndex = 2},
+                                  })
             {
                 CLAY_TEXT(ECSI_LayoutClayText(title), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
 
@@ -1453,7 +1455,9 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
                 .backgroundColor = OPENECS_COLOR_DROP,
                 .border = {.color = OPENECS_COLOR_ACCENT, .width = {2, 2, 2, 2, 0}},
                 .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = 4, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
-            }) {}
+            })
+            {
+            }
         }
 
         for (usz level = 0; level < OPENECS_MENU_DEPTH && LAYOUT.menus[level].lines != NULL; level++)
@@ -1462,16 +1466,16 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
             SDL_FRect rect = menu->rect;
 
             CLAY(CLAY_IDI("Menu", (u32)level), {
-                .layout = {
-                    .sizing = {CLAY_SIZING_FIXED(rect.w), CLAY_SIZING_FIXED(rect.h)},
-                    .padding = CLAY_PADDING_ALL((u16)OPENECS_MENU_PADDING),
-                    .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                },
-                .backgroundColor = OPENECS_COLOR_OVERLAY,
-                .cornerRadius = CLAY_CORNER_RADIUS(6),
-                .border = {.color = OPENECS_COLOR_TEXT_DIM, .width = {1, 1, 1, 1, 0}},
-                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = (i16)(5 + level)},
-            })
+                                                   .layout = {
+                                                       .sizing = {CLAY_SIZING_FIXED(rect.w), CLAY_SIZING_FIXED(rect.h)},
+                                                       .padding = CLAY_PADDING_ALL((u16)OPENECS_MENU_PADDING),
+                                                       .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                                                   },
+                                                   .backgroundColor = OPENECS_COLOR_OVERLAY,
+                                                   .cornerRadius = CLAY_CORNER_RADIUS(6),
+                                                   .border = {.color = OPENECS_COLOR_TEXT_DIM, .width = {1, 1, 1, 1, 0}},
+                                                   .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = (i16)(5 + level)},
+                                               })
             {
                 // each entry has the height that ECSI_LayoutMenuItemAt counts with
                 for (usz i = 0; i < menu->count; i++)
@@ -2496,7 +2500,9 @@ void ECSI_LayoutMoveFocus(i32 dx, i32 dy)
         return;
     }
 
-    ECSI_Drop drop = {.zone = dx < 0 ? ECSI_Zone_WindowLeft : dx > 0 ? ECSI_Zone_WindowRight : dy < 0 ? ECSI_Zone_WindowTop : ECSI_Zone_WindowBottom};
+    ECSI_Drop drop = {.zone = dx < 0 ? ECSI_Zone_WindowLeft : dx > 0 ? ECSI_Zone_WindowRight
+                                                          : dy < 0   ? ECSI_Zone_WindowTop
+                                                                     : ECSI_Zone_WindowBottom};
 
     if (neighbour != NULL)
     {

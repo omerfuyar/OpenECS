@@ -38,7 +38,7 @@ static const char *const ECSI_PARAMETER_TYPE_NAMES[ECSI_ParameterType_Count] = {
 typedef struct ECSI_HandleType
 {
     char *name;
-    char *metatable; // name of its metatable in the registry
+    char *metatable;  // name of its metatable in the registry
     ECSPlugin plugin; // NULL for the core
     void (*Destroy)(void *object);
 } ECSI_HandleType;

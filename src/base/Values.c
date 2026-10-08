@@ -17,6 +17,7 @@ struct ECSI_Value
         char *string;
     };
 
+    // todo maybe make it a tagged union instead of keeping table together with values
     // table
     ECSValue **items; // stb_ds array; callers keep pointers to items, so each is allocated on its own
     struct

@@ -15,7 +15,7 @@ static struct
     {
         char *key; // the type's own copy of its name
         ECSI_PanelType *value;
-    } *types; // stb_ds hash map; panels point to the types, so each type is allocated on its own
+    } *types;         // stb_ds hash map; panels point to the types, so each type is allocated on its own
     ECSPanel *closed; // stb_ds array
     u32 nextPanelId;
 } PANELS = {0};

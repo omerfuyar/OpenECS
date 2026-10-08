@@ -217,8 +217,7 @@ static SHUResult ECSI_SessionReadWorkspace(ECSI_SessionReader *reader, const ECS
         ECSI_SessionLeave(reader, length);
     }
 
-    SHU_ReturnResult(ECSI_LayoutWorkspaceAdd(ECSValue_GetString(ECSValue_GetTableField(saved, "name"), "workspace"), root, reader->focus, reader->maximized),
-                     if (root != NULL) { ECSI_LayoutNodeDestroy(&root); });
+    SHU_ReturnResult(ECSI_LayoutWorkspaceAdd(ECSValue_GetString(ECSValue_GetTableField(saved, "name"), "workspace"), root, reader->focus, reader->maximized), if (root != NULL) { ECSI_LayoutNodeDestroy(&root); });
 
     // the keys go with the workspace just added, so their positions match
     return ECSI_InputAddWorkspaceKeys(ECSValue_GetTableField(saved, "keys"));

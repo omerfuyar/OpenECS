@@ -77,7 +77,7 @@ typedef struct ECSI_LuaSubscription
 
 static struct
 {
-    ECSI_LuaPanelType **types;     // stb_ds array
+    ECSI_LuaPanelType **types;    // stb_ds array
     ECSI_LuaListener **listeners; // stb_ds array
 } BINDINGS = {0};
 

@@ -112,9 +112,9 @@ typedef struct ECSI_BindingSearch
 typedef struct ECSI_MenuEntry
 {
     char *label;
-    char *keys;     // text of the keys that run it, or NULL
-    char *function; // the function it runs on the focused panel, or NULL
-    ECSPanel tab;   // the panel whose tab it shows, or NULL
+    char *keys;                     // text of the keys that run it, or NULL
+    char *function;                 // the function it runs on the focused panel, or NULL
+    ECSPanel tab;                   // the panel whose tab it shows, or NULL
     struct ECSI_MenuEntry *submenu; // stb_ds array of the entries of the submenu it opens, or NULL
 } ECSI_MenuEntry;
 
@@ -132,10 +132,10 @@ static struct
     u32 prefixModifiers;
     bool prefixDirty; // ecs.prefix changed and is read again at the next key press
     bool prefixActive;
-    ECSI_KeyBinding *prefixKeys; // stb_ds array of the keys after the prefix
-    bool prefixKeysDirty;        // ecs.prefix_keys changed and is read again at the next key press
-    const char **prefixLines;    // stb_ds array of the lines shown after the prefix: key text, description, and so on; a NULL key text makes a heading
-    char **prefixTexts;          // stb_ds array of the key texts made for the lines, such as "1...0"
+    ECSI_KeyBinding *prefixKeys;      // stb_ds array of the keys after the prefix
+    bool prefixKeysDirty;             // ecs.prefix_keys changed and is read again at the next key press
+    const char **prefixLines;         // stb_ds array of the lines shown after the prefix: key text, description, and so on; a NULL key text makes a heading
+    char **prefixTexts;               // stb_ds array of the key texts made for the lines, such as "1...0"
     ECSI_PanelBinding *panelBindings; // stb_ds array of plugins' bindings for their panel types
     ECSValue *toolKeys;               // the preset's bindings for the whole tool, or NULL
     ECSValue **workspaceKeys;         // stb_ds array of the preset's bindings for each workspace; NULL for none
@@ -629,7 +629,8 @@ static void ECSI_InputOpenMenuLevel(ECSI_MenuEntry *entries, SDL_FRect anchor)
     // an entry that opens a submenu shows an arrow instead of keys
     for (usz i = 0; i < arrlenu(entries); i++)
     {
-        arrput(level.lines, entries[i].submenu != NULL ? OPENECS_SUBMENU_MARK : entries[i].keys != NULL ? entries[i].keys : "");
+        arrput(level.lines, entries[i].submenu != NULL ? OPENECS_SUBMENU_MARK : entries[i].keys != NULL ? entries[i].keys
+                                                                                                        : "");
         arrput(level.lines, entries[i].label != NULL ? entries[i].label : "");
     }
 
@@ -1065,7 +1066,8 @@ static void ECSI_InputSetPrefix(bool active)
                 }
 
                 arrput(INPUT.prefixLines, text != NULL ? text : INPUT.prefixKeys[i].text);
-                arrput(INPUT.prefixLines, workspace ? "Switch to workspace" : description != NULL ? description : ECSI_InputLabelOf(function, focus));
+                arrput(INPUT.prefixLines, workspace ? "Switch to workspace" : description != NULL ? description
+                                                                                                  : ECSI_InputLabelOf(function, focus));
             }
 
             if (arrlenu(INPUT.prefixLines) == start + 2)
@@ -1251,37 +1253,37 @@ static void ECSI_InputSplitDown(void)
 }
 
 /// @brief Defines the core's two functions for a workspace number: switching to the workspace, and moving the focused panel to it.
-#define ECSI_WorkspaceFunctions(number)                  \
-    static void ECSI_InputWorkspace##number(void)        \
-    {                                                    \
-        ECSI_LayoutWorkspaceSwitch(number - 1);          \
-    }                                                    \
-                                                         \
-    static void ECSI_InputMoveToWorkspace##number(void)  \
-    {                                                    \
-        ECSI_LayoutMoveToWorkspace(number - 1);          \
+#define ECSI_WorkspaceFunctions(number)                 \
+    static void ECSI_InputWorkspace##number(void)       \
+    {                                                   \
+        ECSI_LayoutWorkspaceSwitch(number - 1);         \
+    }                                                   \
+                                                        \
+    static void ECSI_InputMoveToWorkspace##number(void) \
+    {                                                   \
+        ECSI_LayoutMoveToWorkspace(number - 1);         \
     }
 
 ECSI_WorkspaceFunctions(1)
-ECSI_WorkspaceFunctions(2)
-ECSI_WorkspaceFunctions(3)
-ECSI_WorkspaceFunctions(4)
-ECSI_WorkspaceFunctions(5)
-ECSI_WorkspaceFunctions(6)
-ECSI_WorkspaceFunctions(7)
-ECSI_WorkspaceFunctions(8)
-ECSI_WorkspaceFunctions(9)
-ECSI_WorkspaceFunctions(10)
+    ECSI_WorkspaceFunctions(2)
+        ECSI_WorkspaceFunctions(3)
+            ECSI_WorkspaceFunctions(4)
+                ECSI_WorkspaceFunctions(5)
+                    ECSI_WorkspaceFunctions(6)
+                        ECSI_WorkspaceFunctions(7)
+                            ECSI_WorkspaceFunctions(8)
+                                ECSI_WorkspaceFunctions(9)
+                                    ECSI_WorkspaceFunctions(10)
 
 /// @brief The entries of the core function table for a workspace number.
 #define ECSI_WorkspaceEntries(number)                                                                               \
-    {"ecs.workspace_" #number, ECSI_InputWorkspace##number, "Switch to workspace " #number},                       \
+    {"ecs.workspace_" #number, ECSI_InputWorkspace##number, "Switch to workspace " #number},                        \
     {                                                                                                               \
         "ecs.move_to_workspace_" #number, ECSI_InputMoveToWorkspace##number, "Move the panel to workspace " #number \
     }
 
-/// @brief The core's bindable functions: name, function and description.
-static const struct
+    /// @brief The core's bindable functions: name, function and description.
+    static const struct
 {
     const char *name;
     void (*Function)(void);

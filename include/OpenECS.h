@@ -198,14 +198,14 @@ typedef enum ECSSettingType
 /// @brief Describes a setting. Passed to ECSSetting_Declare.
 typedef struct ECSSettingDesc
 {
-    const char *name;        // "canvas.grid": plugin name + local name
+    const char *name; // "canvas.grid": plugin name + local name
     ECSSettingType type;
     const char *description; // one line, for the settings window
     // the default, in the field of the setting's type; a list or table setting starts empty
     bool defaultBool;
     i64 defaultInteger;
     f64 defaultNumber;
-    const char *defaultString; // string, choice and key settings
+    const char *defaultString;  // string, choice and key settings
     const char *const *choices; // choice settings: the allowed strings, ending with NULL
 
     // optional, NULL if unused

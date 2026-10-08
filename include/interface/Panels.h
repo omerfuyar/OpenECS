@@ -15,7 +15,7 @@ typedef struct ECSI_PanelType
     char *name;
     char *title;
     ECSPlugin plugin;
-    void *typeData; // what the Bindings module keeps for a Lua panel type, or NULL
+    void *typeData;     // what the Bindings module keeps for a Lua panel type, or NULL
     char **menuEntries; // stb_ds array of the functions the type adds to its panels' menu
 } ECSI_PanelType;
 
@@ -31,7 +31,7 @@ struct ECSI_Panel
     u32 stateVersion;     // version of savedState
     bool needsDraw;
     bool unsaved; // the panel has unsaved work
-    f32 x; // rectangle in layout units, set by the layout
+    f32 x;        // rectangle in layout units, set by the layout
     f32 y;
     f32 width;
     f32 height;
@@ -39,9 +39,9 @@ struct ECSI_Panel
     SDL_Texture *texture; // the pixels on the GPU, made by the renderer of the OS window that shows the panel
     u64 lastDrawTicks;
     u64 focusTicks; // when the panel last got focus, for placing new panels of its type; 0 if never
-    bool closed; // out of the layout, waiting for ECSI_PanelsDestroyClosed; it gets no more events
-    bool visible;    // what the panel was last told: shown or hidden
-    f32 toldWidth;   // the size the panel was last told
+    bool closed;    // out of the layout, waiting for ECSI_PanelsDestroyClosed; it gets no more events
+    bool visible;   // what the panel was last told: shown or hidden
+    f32 toldWidth;  // the size the panel was last told
     f32 toldHeight;
     char *fault; // the error of a callback, or NULL; a faulted panel shows it and its type is not called again, except Destroy
 };

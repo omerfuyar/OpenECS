@@ -14,7 +14,7 @@ typedef struct ECSI_PresetInfo
     char *appId;
     char *appName;
     char *pluginsDirectory; // NULL if the preset names none; ends with a separator
-    ECSValue *file; // the whole file; its depends field names the plugins it needs
+    ECSValue *file;         // the whole file; its depends field names the plugins it needs
 } ECSI_PresetInfo;
 
 /// @brief Finds a preset's file.

@@ -21,8 +21,8 @@ local STATE_VERSION = 1
 
 local MIN_SIZE, MAX_SIZE = 1, 64
 
-local canvases = {} -- every open canvas's state, by its panel handle
-local open_canvases = 0 -- counted from the core's events
+local canvases = {}       -- every open canvas's state, by its panel handle
+local open_canvases = 0   -- counted from the core's events
 local total, saves = 0, 0 -- strokes drawn and canvases saved in every session; the plugin's own state
 
 local function clamp(value, low, high)
@@ -159,15 +159,60 @@ local function brush_changed()
   ecs.log.debug(("The brush is %d, %s."):format(setting_size(), ecs.settings.get(name("brush_color"))))
 end
 
-ecs.settings.declare({ name = name("brush_size"), type = "integer", description = "Size of the brush, in pixels; the wheel over a canvas changes it", default = 6, changed = brush_changed })
-ecs.settings.declare({ name = name("brush_color"), type = "choice", description = "Colour of the brush", default = "white", choices = COLOR_NAMES, changed = brush_changed })
-ecs.settings.declare({ name = name("reminder_seconds"), type = "number", description = "How often a canvas with unsaved strokes says so", default = 30.0 })
+ecs.settings.declare({
+  name = name("brush_size"),
+  type = "integer",
+  description =
+  "Size of the brush, in pixels; the wheel over a canvas changes it",
+  default = 6,
+  changed = brush_changed
+})
+ecs.settings.declare({
+  name = name("brush_color"),
+  type = "choice",
+  description = "Colour of the brush",
+  default =
+  "white",
+  choices = COLOR_NAMES,
+  changed = brush_changed
+})
+ecs.settings.declare({
+  name = name("reminder_seconds"),
+  type = "number",
+  description =
+  "How often a canvas with unsaved strokes says so",
+  default = 30.0
+})
 ecs.settings.declare({ name = name("clear_key"), type = "key", description = "Clears the canvas", default = "Delete" })
-ecs.settings.declare({ name = name("export_key"), type = "key", description = "Exports the canvas as an image", default = "Ctrl+E" })
-ecs.settings.declare({ name = name("copy_key"), type = "key", description = "Copies the canvas's strokes", default = "Ctrl+C" })
+ecs.settings.declare({
+  name = name("export_key"),
+  type = "key",
+  description = "Exports the canvas as an image",
+  default =
+  "Ctrl+E"
+})
+ecs.settings.declare({
+  name = name("copy_key"),
+  type = "key",
+  description = "Copies the canvas's strokes",
+  default =
+  "Ctrl+C"
+})
 ecs.settings.declare({ name = name("paste_key"), type = "key", description = "Pastes strokes", default = "Ctrl+V" })
-ecs.settings.declare({ name = name("beside_key"), type = "key", description = "Opens a canvas beside this one", default = "Ctrl+B" })
-ecs.settings.declare({ name = name("gather_key"), type = "key", description = "Gathers every canvas into this group", default = "Ctrl+G" })
+ecs.settings.declare({
+  name = name("beside_key"),
+  type = "key",
+  description = "Opens a canvas beside this one",
+  default =
+  "Ctrl+B"
+})
+ecs.settings.declare({
+  name = name("gather_key"),
+  type = "key",
+  description = "Gathers every canvas into this group",
+  default =
+  "Ctrl+G"
+})
 
 ecs.panel.register_type({
   name = name("canvas"),
@@ -182,7 +227,8 @@ ecs.panel.register_type({
     -- strokes = { { size = 6, color = 0xFFECEFF4, points = { x, y, ... } }, ... }; older versions are not read
     if version == STATE_VERSION and saved and saved.strokes then
       for _, stroke in ipairs(saved.strokes) do
-        table.insert(canvas.strokes, { size = stroke.size or 6, color = stroke.color or COLORS.white, points = stroke.points or {} })
+        table.insert(canvas.strokes,
+          { size = stroke.size or 6, color = stroke.color or COLORS.white, points = stroke.points or {} })
       end
     end
 
@@ -221,7 +267,8 @@ ecs.panel.register_type({
 
     if event.type == "pointer_down" and event.button == 1 then
       local brush = canvas.brush
-      table.insert(canvas.strokes, { size = brush and brush.size or setting_size(), color = brush and brush.color or setting_color(), points = { event.x, event.y } })
+      table.insert(canvas.strokes,
+        { size = brush and brush.size or setting_size(), color = brush and brush.color or setting_color(), points = { event.x, event.y } })
       canvas.drawing = true
       panel:redraw()
     elseif event.type == "pointer_move" and canvas.drawing then
@@ -235,7 +282,8 @@ ecs.panel.register_type({
       emit_stroke(canvas)
     elseif event.type == "wheel" then
       -- the wheel changes the setting, so every canvas and the settings window see the new size
-      local ok = ecs.settings.set(name("brush_size"), clamp(setting_size() + (event.wheel_y > 0 and 1 or -1), MIN_SIZE, MAX_SIZE))
+      local ok = ecs.settings.set(name("brush_size"),
+        clamp(setting_size() + (event.wheel_y > 0 and 1 or -1), MIN_SIZE, MAX_SIZE))
 
       if not ok then
         ecs.log.warn("Cannot change the brush size.")
@@ -405,9 +453,11 @@ function services.export(panel)
   end
 
   local id = panel:get_id()
-  local shown = ecs.dialog.show({ type = "save_file", filters = { { name = "PPM images", pattern = "ppm" } }, location = "canvas.ppm" }, function(files)
-    export_chosen(id, files)
-  end)
+  local shown = ecs.dialog.show(
+    { type = "save_file", filters = { { name = "PPM images", pattern = "ppm" } }, location = "canvas.ppm" },
+    function(files)
+      export_chosen(id, files)
+    end)
 
   if not shown then
     ecs.log.warn("Cannot show the export dialog.")
@@ -490,7 +540,16 @@ function services.stats()
   end
 
   local focus = ecs.layout.get_focus()
-  return total, { canvases = open_canvases, strokes = total, saves = saves, settings = own, focus = focus and focus:get_id() or 0, workspace = ecs.workspace.get_current() }
+  return total,
+      {
+        canvases = open_canvases,
+        strokes = total,
+        saves = saves,
+        settings = own,
+        focus = focus and focus:get_id() or 0,
+        workspace =
+            ecs.workspace.get_current()
+      }
 end
 
 -- gives a canvas as a PPM image
