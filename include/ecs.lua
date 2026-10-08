@@ -133,6 +133,19 @@ function Panel:setUnsaved(unsaved) end
 ---@return ecs.Timer
 function Panel:startTimer(seconds, repeat_, fn) end
 
+---Sets the types of data that the panel accepts when data is dropped on it, such as "color" or "file-list".
+---Data from other applications is "file-list", a list of paths, or "text". A new call replaces the list.
+---@param types string[]
+function Panel:acceptDrops(types) end
+
+---Starts dragging data from the panel, while a pointer button that was pressed on it is held, usually from its pointerDown or pointerMove event.
+---The panel then gets no pointer moves until the release, and still gets its pointerUp. On release, the panel under the pointer that accepts the type gets a drop event. Escape cancels.
+---@param type string The type of the data, such as "color".
+---@param value? any The data: a value as in saved state.
+---@return true|nil ok
+---@return string? message Why no drag starts: no pointer button that was pressed on the panel is held.
+function Panel:startDrag(type, value) end
+
 ---The pixels a panel draws into. It is valid only while draw runs.
 ---@class ecs.Surface
 ---@field width integer
@@ -158,7 +171,7 @@ function Surface:getPixel(x, y) end
 ---@param x? integer The first pixel's column; 0 if missing.
 function Surface:setRow(y, bytes, x) end
 
----@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"
+---@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"|"drop"
 
 ---@class ecs.PanelEvent
 ---@field type ecs.PanelEventType
@@ -166,14 +179,16 @@ function Surface:setRow(y, bytes, x) end
 ---@field ctrl boolean
 ---@field alt boolean
 ---@field super boolean
----@field x? number For pointer and wheel events.
----@field y? number For pointer and wheel events.
+---@field x? number For pointer, wheel and drop events.
+---@field y? number For pointer, wheel and drop events.
 ---@field button? integer For pointerDown and pointerUp.
 ---@field wheelX? number For wheel events.
 ---@field wheelY? number For wheel events.
 ---@field key? string SDL's key name, for keyDown and keyUp.
 ---@field width? number For shown and resized.
 ---@field height? number For shown and resized.
+---@field dataType? string For drop: the type of the dropped data, such as "color" or "file-list".
+---@field value? any For drop: the dropped data.
 
 ---@class ecs.PanelTypeDesc
 ---@field name string The plugin's name, a dot and the type's name, such as "canvas.view".
@@ -235,6 +250,17 @@ function ecs.panel.setUnsaved(panel, unsaved) end
 ---@param fn fun()
 ---@return ecs.Timer
 function ecs.panel.startTimer(panel, seconds, repeat_, fn) end
+
+---@param panel ecs.Panel
+---@param types string[]
+function ecs.panel.acceptDrops(panel, types) end
+
+---@param panel ecs.Panel
+---@param type string
+---@param value? any
+---@return true|nil ok
+---@return string? message
+function ecs.panel.startDrag(panel, type, value) end
 
 ---Restarts the focused panel from its last saved state, if it failed. Keys can run it.
 function ecs.panel.restart() end

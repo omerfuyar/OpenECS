@@ -114,6 +114,18 @@ local function strokesFromText(canvas, text)
   return added
 end
 
+-- reads a whole file; nil if it cannot be read
+local function readFile(path)
+  local file = io.open(path, "rb")
+  local text = file and file:read("a")
+
+  if file then
+    file:close()
+  end
+
+  return text
+end
+
 -- canvas ----------------------------------------------------------------
 
 local function findCanvas(panel)
@@ -150,6 +162,25 @@ end
 -- tells subscribers that a canvas has a new stroke
 local function emitStroke(canvas)
   ecs.event.emit(name("strokeAdded"), { panel = canvas.panel:getId(), strokes = #canvas.strokes })
+end
+
+-- adds dropped strokes to a canvas: strokes or text in the format of copy, or the strokes of each dropped file
+local function dropStrokes(canvas, dataType, value)
+  local added = 0
+
+  if dataType == "file-list" then
+    for _, path in ipairs(value) do
+      added = added + strokesFromText(canvas, readFile(path) or "")
+    end
+  else
+    added = strokesFromText(canvas, value)
+  end
+
+  ecs.log.info(("Dropped %d strokes."):format(added))
+
+  if added > 0 then
+    canvasChanged(canvas)
+  end
 end
 
 -- redraws every canvas when a brush setting changes
@@ -237,6 +268,9 @@ ecs.panel.registerType({
     canvases[panel] = canvas
     canvasTitle(canvas)
 
+    -- a canvas takes strokes dragged from a canvas, text in their format, and files of it
+    panel:acceptDrops({ CLIPBOARD_TYPE, "text", "file-list" })
+
     -- a panel timer, so it stops when the canvas closes
     panel:startTimer(math.max(1, ecs.settings.get(name("reminderSeconds")) or 30), true, function()
       if canvas.unsaved then
@@ -267,7 +301,12 @@ ecs.panel.registerType({
   event = function(canvas, event)
     local panel = canvas.panel
 
-    if event.type == "pointerDown" and event.button == 1 then
+    if event.type == "pointerDown" and event.button == 1 and event.shift then
+      -- Shift and a press drag the canvas's strokes, in the text format of copy
+      if not panel:startDrag(CLIPBOARD_TYPE, strokesToText(canvas.strokes)) then
+        ecs.log.warn("Cannot drag the strokes.")
+      end
+    elseif event.type == "pointerDown" and event.button == 1 then
       local brush = canvas.brush
       table.insert(canvas.strokes,
         { size = brush and brush.size or settingSize(), color = brush and brush.color or settingColor(), points = { event.x, event.y } })
@@ -296,6 +335,8 @@ ecs.panel.registerType({
       ecs.log.debug(("%s is %s at %.0fx%.0f."):format(panel:getTitle(), event.type, event.width, event.height))
     elseif event.type == "hidden" then
       ecs.log.debug(panel:getTitle() .. " is hidden.")
+    elseif event.type == "drop" then
+      dropStrokes(canvas, event.dataType, event.value)
     end
   end,
 
@@ -493,13 +534,7 @@ end
 
 -- opens a canvas with the strokes of a file in the text format of copy; the function a preset opens files with
 function services.open(path)
-  local file = io.open(path, "rb")
-  local text = file and file:read("a")
-
-  if file then
-    file:close()
-  end
-
+  local text = readFile(path)
   local panel = text and ecs.layout.open(name("canvas"))
   local canvas = panel and findCanvas(panel)
 

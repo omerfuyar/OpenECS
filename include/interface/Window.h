@@ -70,6 +70,12 @@ bool ECSIWindow_ScrollTabs(f32 x, f32 y, f32 steps);
 /// @return true if a panel was being dragged.
 bool ECSIWindow_CancelDrag(void);
 
+/// @brief Shows or hides the marks of a data drag: every visible panel that accepts the data's type is marked, and the one under the pointer is filled.
+/// @param type The data's type, or NULL to hide the marks. It must stay valid while it is shown.
+/// @param x Horizontal position of the pointer in layout units.
+/// @param y Vertical position of the pointer in layout units.
+void ECSIWindow_ShowDataDrag(const char *type, f32 x, f32 y);
+
 /// @brief Shows or hides the list of keys that follow the core prefix.
 /// @param lines Each key's text and description, one after the other; a NULL key text makes the description a heading. They must stay valid while they are shown.
 /// @param count Number of lines; 0 hides the list.
