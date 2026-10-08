@@ -14,13 +14,13 @@ static struct
     struct
     {
         char *key; // the type's own copy of its name
-        ECSI_PanelType *value;
+        ECSIPanelType *value;
     } *types;         // stb_ds hash map; panels point to the types, so each type is allocated on its own
     ECSPanel *closed; // stb_ds array
     u32 nextPanelId;
 } PANELS = {0};
 
-static void ECSI_PanelTypeFree(ECSI_PanelType *type)
+static void ECSIPanel_TypeFree(ECSIPanelType *type)
 {
     for (usz i = 0; i < arrlenu(type->menuEntries); i++)
     {
@@ -33,14 +33,14 @@ static void ECSI_PanelTypeFree(ECSI_PanelType *type)
     SDL_free(type);
 }
 
-static ECSI_PanelType *ECSI_PanelTypeFind(const char *name)
+static ECSIPanelType *ECSIPanel_TypeFind(const char *name)
 {
     return shget(PANELS.types, name);
 }
 
 /// @brief Gives a panel pixels of the size of its rectangle, reusing them when the size did not change.
 /// @return false if the pixels cannot be allocated.
-static bool ECSI_PanelResizePixels(ECSPanel panel)
+static bool ECSIPanel_ResizePixels(ECSPanel panel)
 {
     int width = (int)SDL_max(1.0f, SDL_roundf(panel->width));
     int height = (int)SDL_max(1.0f, SDL_roundf(panel->height));
@@ -62,7 +62,7 @@ static bool ECSI_PanelResizePixels(ECSPanel panel)
     return panel->pixels != NULL;
 }
 
-static void ECSI_PanelDeliverEvent(void *target, const ECSPanelEvent *event)
+static void ECSIPanel_DeliverEvent(void *target, const ECSPanelEvent *event)
 {
     ECSPanel panel = target;
 
@@ -74,26 +74,26 @@ static void ECSI_PanelDeliverEvent(void *target, const ECSPanelEvent *event)
 
 #pragma endregion Source Only
 
-void ECSI_PanelsTerminate(void)
+void ECSIPanels_Terminate(void)
 {
-    ECSI_PanelsDestroyClosed();
+    ECSIPanels_DestroyClosed();
 
     for (usz i = 0; i < shlenu(PANELS.types); i++)
     {
-        ECSI_PanelTypeFree(PANELS.types[i].value);
+        ECSIPanel_TypeFree(PANELS.types[i].value);
     }
 
     shfree(PANELS.types);
     SDL_zero(PANELS);
 }
 
-SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName, const ECSValue *savedState, u32 stateVersion)
+SHUResult ECSIPanel_Create(ECSPanel *retPanel, const char *typeName, const ECSValue *savedState, u32 stateVersion)
 {
     SDL_assert(retPanel != NULL);
     SDL_assert(typeName != NULL);
 
-    ECSI_PanelType *type = ECSI_PanelTypeFind(typeName);
-    ECSPanel panel = SDL_calloc(1, sizeof(struct ECSI_Panel));
+    ECSIPanelType *type = ECSIPanel_TypeFind(typeName);
+    ECSPanel panel = SDL_calloc(1, sizeof(struct ECSIPanel));
 
     if (panel == NULL)
     {
@@ -105,13 +105,13 @@ SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName, const ECSVa
 
     if (panel->typeName == NULL || panel->title == NULL || (savedState != NULL && ECSValue_Create(&panel->savedState)))
     {
-        ECSI_PanelDestroy(&panel);
+        ECSIPanel_Destroy(&panel);
         return SHUResult_ErrAllocation;
     }
 
     if (savedState != NULL)
     {
-        SHU_ReturnResult(ECSI_ValueCopy(panel->savedState, savedState), ECSI_PanelDestroy(&panel););
+        SHU_ReturnResult(ECSIValue_Copy(panel->savedState, savedState), ECSIPanel_Destroy(&panel););
     }
 
     panel->id = ++PANELS.nextPanelId;
@@ -131,7 +131,7 @@ SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName, const ECSVa
         {
             // the panel has no state to destroy, so it becomes a placeholder that keeps its saved state
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' failed to create a panel; showing a placeholder.", typeName);
-            ECSI_PanelFault(panel, "The panel type failed to create the panel.");
+            ECSIPanel_Fault(panel, "The panel type failed to create the panel.");
             panel->type = NULL;
             panel->state = NULL;
         }
@@ -141,12 +141,12 @@ SHUResult ECSI_PanelCreate(ECSPanel *retPanel, const char *typeName, const ECSVa
     return SHUResult_Ok;
 }
 
-void ECSI_PanelDestroy(ECSPanel *panel)
+void ECSIPanel_Destroy(ECSPanel *panel)
 {
     SDL_assert(panel != NULL && *panel != NULL);
 
     ECSPanel target = *panel;
-    ECSI_EventsStopTimersOf(target);
+    ECSIEvents_StopTimersOf(target);
 
     if (target->type != NULL)
     {
@@ -168,29 +168,29 @@ void ECSI_PanelDestroy(ECSPanel *panel)
     *panel = NULL;
 }
 
-void ECSI_PanelClose(ECSPanel *panel)
+void ECSIPanel_Close(ECSPanel *panel)
 {
     SDL_assert(panel != NULL && *panel != NULL);
     SDL_assert(!(*panel)->closed);
 
-    ECSI_EventsStopTimersOf(*panel);
-    ECSI_PanelEmit("ecs.panel_closed", *panel);
+    ECSIEvents_StopTimersOf(*panel);
+    ECSIPanel_Emit("ecs.panel_closed", *panel);
     (*panel)->closed = true;
     arrput(PANELS.closed, *panel);
     *panel = NULL;
 }
 
-void ECSI_PanelsDestroyClosed(void)
+void ECSIPanels_DestroyClosed(void)
 {
     for (usz i = 0; i < arrlenu(PANELS.closed); i++)
     {
-        ECSI_PanelDestroy(&PANELS.closed[i]);
+        ECSIPanel_Destroy(&PANELS.closed[i]);
     }
 
     arrfree(PANELS.closed);
 }
 
-void ECSI_PanelSetId(ECSPanel panel, u32 id)
+void ECSIPanel_SetId(ECSPanel panel, u32 id)
 {
     SDL_assert(panel != NULL);
 
@@ -201,7 +201,7 @@ void ECSI_PanelSetId(ECSPanel panel, u32 id)
     }
 }
 
-SHUResult ECSI_PanelSave(ECSPanel panel, ECSValue *retPanel)
+SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retPanel)
 {
     SDL_assert(panel != NULL);
     SDL_assert(retPanel != NULL);
@@ -249,14 +249,14 @@ SHUResult ECSI_PanelSave(ECSPanel panel, ECSValue *retPanel)
             result = ECSValue_TableSetField(retPanel, "state", &field);
         }
 
-        result = result ? result : ECSI_ValueCopy(field, state);
+        result = result ? result : ECSIValue_Copy(field, state);
     }
 
     ECSValue_Destroy(&saved);
     return result;
 }
 
-void ECSI_PanelSetRect(ECSPanel panel, f32 x, f32 y, f32 width, f32 height)
+void ECSIPanel_SetRect(ECSPanel panel, f32 x, f32 y, f32 width, f32 height)
 {
     SDL_assert(panel != NULL);
 
@@ -271,14 +271,14 @@ void ECSI_PanelSetRect(ECSPanel panel, f32 x, f32 y, f32 width, f32 height)
     panel->height = height;
 }
 
-bool ECSI_PanelWantsFrame(ECSPanel panel)
+bool ECSIPanel_WantsFrame(ECSPanel panel)
 {
     SDL_assert(panel != NULL);
 
     return panel->needsDraw || (panel->fault == NULL && panel->type != NULL && panel->type->desc.continuous);
 }
 
-void ECSI_PanelDraw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
+void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
 {
     SDL_assert(panel != NULL);
     SDL_assert(renderer != NULL);
@@ -296,9 +296,9 @@ void ECSI_PanelDraw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         panel->texture = NULL;
     }
 
-    if (ECSI_PanelWantsFrame(panel) || panel->texture == NULL)
+    if (ECSIPanel_WantsFrame(panel) || panel->texture == NULL)
     {
-        if (!ECSI_PanelResizePixels(panel))
+        if (!ECSIPanel_ResizePixels(panel))
         {
             return;
         }
@@ -337,7 +337,7 @@ void ECSI_PanelDraw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
     }
 }
 
-void ECSI_PanelShow(ECSPanel panel, SDL_Renderer *renderer)
+void ECSIPanel_Show(ECSPanel panel, SDL_Renderer *renderer)
 {
     SDL_assert(panel != NULL);
     SDL_assert(renderer != NULL);
@@ -349,7 +349,7 @@ void ECSI_PanelShow(ECSPanel panel, SDL_Renderer *renderer)
     }
 }
 
-void ECSI_PanelSetVisible(ECSPanel panel, bool visible)
+void ECSIPanel_SetVisible(ECSPanel panel, bool visible)
 {
     SDL_assert(panel != NULL);
 
@@ -357,12 +357,12 @@ void ECSI_PanelSetVisible(ECSPanel panel, bool visible)
     {
         panel->visible = visible;
         ECSPanelEvent event = {.type = visible ? ECSPanelEventType_Shown : ECSPanelEventType_Hidden, .size = {panel->width, panel->height}};
-        ECSI_PanelPostEvent(panel, &event);
+        ECSIPanel_PostEvent(panel, &event);
     }
     else if (visible && (panel->width != panel->toldWidth || panel->height != panel->toldHeight))
     {
         ECSPanelEvent event = {.type = ECSPanelEventType_Resized, .size = {panel->width, panel->height}};
-        ECSI_PanelPostEvent(panel, &event);
+        ECSIPanel_PostEvent(panel, &event);
     }
 
     if (visible)
@@ -372,7 +372,7 @@ void ECSI_PanelSetVisible(ECSPanel panel, bool visible)
     }
 }
 
-void ECSI_PanelEmit(const char *name, ECSPanel panel)
+void ECSIPanel_Emit(const char *name, ECSPanel panel)
 {
     SDL_assert(name != NULL);
     SDL_assert(panel != NULL);
@@ -390,38 +390,38 @@ void ECSI_PanelEmit(const char *name, ECSPanel panel)
 
     if (ECSValue_TableSetField(value, "type", &field) == SHUResult_Ok && ECSValue_SetString(field, panel->typeName) == SHUResult_Ok)
     {
-        ECSI_EventsEmitCore(name, value);
+        ECSIEvents_EmitCore(name, value);
     }
 
     ECSValue_Destroy(&value);
 }
 
-void ECSI_PanelPostEvent(ECSPanel panel, const ECSPanelEvent *event)
+void ECSIPanel_PostEvent(ECSPanel panel, const ECSPanelEvent *event)
 {
     SDL_assert(panel != NULL);
     SDL_assert(event != NULL);
 
-    ECSI_EventsPost(ECSI_PanelDeliverEvent, panel, event);
+    ECSIEvents_Post(ECSIPanel_DeliverEvent, panel, event);
 }
 
-void ECSI_PanelsRemovePlugin(ECSPlugin plugin)
+void ECSIPanels_RemovePlugin(ECSPlugin plugin)
 {
     SDL_assert(plugin != NULL);
 
     // backwards, because shdel moves the last type into the hole
     for (usz i = shlenu(PANELS.types); i > 0; i--)
     {
-        ECSI_PanelType *type = PANELS.types[i - 1].value;
+        ECSIPanelType *type = PANELS.types[i - 1].value;
 
         if (type->plugin == plugin)
         {
             (void)shdel(PANELS.types, type->name);
-            ECSI_PanelTypeFree(type);
+            ECSIPanel_TypeFree(type);
         }
     }
 }
 
-bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count, bool quitting)
+bool ECSIPanels_ConfirmClose(const ECSPanel *panels, usz count, bool quitting)
 {
     SDL_assert(panels != NULL || count == 0);
 
@@ -448,15 +448,15 @@ bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count, bool quitting)
 
     enum
     {
-        ECSI_ANSWER_SAVE,
-        ECSI_ANSWER_DISCARD,
-        ECSI_ANSWER_CANCEL,
+        OPENECS_ANSWER_SAVE,
+        OPENECS_ANSWER_DISCARD,
+        OPENECS_ANSWER_CANCEL,
     };
 
     const SDL_MessageBoxButtonData buttons[] = {
-        {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, ECSI_ANSWER_SAVE, "Save"},
-        {0, ECSI_ANSWER_DISCARD, "Discard"},
-        {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, ECSI_ANSWER_CANCEL, "Cancel"},
+        {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, OPENECS_ANSWER_SAVE, "Save"},
+        {0, OPENECS_ANSWER_DISCARD, "Discard"},
+        {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, OPENECS_ANSWER_CANCEL, "Cancel"},
     };
 
     char *message = NULL;
@@ -471,20 +471,20 @@ bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count, bool quitting)
         .buttons = buttons,
     };
 
-    int answer = ECSI_ANSWER_CANCEL;
+    int answer = OPENECS_ANSWER_CANCEL;
 
     // without a dialog the user cannot answer; quitting discards the work so it always finishes, closing panels keeps it
     if (!SDL_ShowMessageBox(&data, &answer))
     {
-        answer = quitting ? ECSI_ANSWER_DISCARD : ECSI_ANSWER_CANCEL;
+        answer = quitting ? OPENECS_ANSWER_DISCARD : OPENECS_ANSWER_CANCEL;
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask about unsaved work (%s); it is %s. %s", SDL_GetError(), quitting ? "discarded" : "kept", data.message);
     }
 
     SDL_free(message);
 
-    if (answer != ECSI_ANSWER_SAVE)
+    if (answer != OPENECS_ANSWER_SAVE)
     {
-        return answer == ECSI_ANSWER_DISCARD;
+        return answer == OPENECS_ANSWER_DISCARD;
     }
 
     // a failed save cancels the close
@@ -509,28 +509,28 @@ bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count, bool quitting)
     return true;
 }
 
-u32 ECSI_PanelsGetStateVersion(const char *typeName)
+u32 ECSIPanels_GetStateVersion(const char *typeName)
 {
     SDL_assert(typeName != NULL);
 
-    ECSI_PanelType *type = ECSI_PanelTypeFind(typeName);
+    ECSIPanelType *type = ECSIPanel_TypeFind(typeName);
     return type == NULL ? 0 : type->desc.stateVersion;
 }
 
-bool ECSI_PanelCanRestart(ECSPanel panel)
+bool ECSIPanel_CanRestart(ECSPanel panel)
 {
     SDL_assert(panel != NULL);
 
     return panel->fault != NULL || panel->type == NULL;
 }
 
-bool ECSI_PanelRestart(ECSPanel panel)
+bool ECSIPanel_Restart(ECSPanel panel)
 {
     SDL_assert(panel != NULL);
 
-    ECSI_PanelType *type = ECSI_PanelTypeFind(panel->typeName);
+    ECSIPanelType *type = ECSIPanel_TypeFind(panel->typeName);
 
-    if (!ECSI_PanelCanRestart(panel) || type == NULL)
+    if (!ECSIPanel_CanRestart(panel) || type == NULL)
     {
         SDL_Log("'%s' cannot be restarted%s.", panel->title, type == NULL ? "; its type is still missing" : "");
         return false;
@@ -542,7 +542,7 @@ bool ECSI_PanelRestart(ECSPanel panel)
         panel->type->desc.Destroy(panel->state);
     }
 
-    ECSI_EventsStopTimersOf(panel);
+    ECSIEvents_StopTimersOf(panel);
     SDL_free(panel->fault);
     panel->fault = NULL;
     panel->state = NULL;
@@ -551,7 +551,7 @@ bool ECSI_PanelRestart(ECSPanel panel)
 
     if (type->desc.Create(panel, panel->savedState, panel->stateVersion, &panel->state))
     {
-        ECSI_PanelFault(panel, "The panel type failed to create the panel again.");
+        ECSIPanel_Fault(panel, "The panel type failed to create the panel again.");
         panel->type = NULL;
         panel->state = NULL;
         return false;
@@ -561,7 +561,7 @@ bool ECSI_PanelRestart(ECSPanel panel)
     return true;
 }
 
-const char *const *ECSI_PanelGetMenuEntries(ECSPanel panel, usz *retCount)
+const char *const *ECSIPanel_GetMenuEntries(ECSPanel panel, usz *retCount)
 {
     SDL_assert(panel != NULL);
     SDL_assert(retCount != NULL);
@@ -575,11 +575,11 @@ SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, con
     SDL_assert(plugin != NULL);
     SDL_assert(panelType != NULL && function != NULL);
 
-    ECSI_PanelType *type = ECSI_PanelTypeFind(panelType);
+    ECSIPanelType *type = ECSIPanel_TypeFind(panelType);
 
     if (type == NULL || type->plugin != plugin)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' adds a menu entry to '%s', which is not one of its panel types.", ECSI_PluginGetName(plugin), panelType);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' adds a menu entry to '%s', which is not one of its panel types.", ECSIPlugin_GetName(plugin), panelType);
         return SHUResult_ErrBadData;
     }
 
@@ -594,7 +594,7 @@ SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, con
     return SHUResult_Ok;
 }
 
-void ECSI_PanelFault(ECSPanel panel, const char *message)
+void ECSIPanel_Fault(ECSPanel panel, const char *message)
 {
     SDL_assert(panel != NULL);
     SDL_assert(message != NULL);
@@ -608,15 +608,15 @@ void ECSI_PanelFault(ECSPanel panel, const char *message)
 
 SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc)
 {
-    return ECSI_PanelTypeRegister(plugin, desc, NULL);
+    return ECSIPanel_TypeRegister(plugin, desc, NULL);
 }
 
-SHUResult ECSI_PanelTypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc, void *typeData)
+SHUResult ECSIPanel_TypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc, void *typeData)
 {
     SDL_assert(plugin != NULL);
     SDL_assert(desc != NULL);
 
-    const char *pluginName = ECSI_PluginGetName(plugin);
+    const char *pluginName = ECSIPlugin_GetName(plugin);
 
     if (desc->name == NULL || desc->Create == NULL || desc->Destroy == NULL)
     {
@@ -624,7 +624,7 @@ SHUResult ECSI_PanelTypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
         return SHUResult_ErrBadData;
     }
 
-    if (!ECSI_PluginOwnsName(plugin, desc->name))
+    if (!ECSIPlugin_OwnsName(plugin, desc->name))
     {
         return SHUResult_ErrBadData;
     }
@@ -635,13 +635,13 @@ SHUResult ECSI_PanelTypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
         return SHUResult_ErrBadData;
     }
 
-    if (ECSI_PanelTypeFind(desc->name) != NULL)
+    if (ECSIPanel_TypeFind(desc->name) != NULL)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' is already registered.", desc->name);
         return SHUResult_ErrBadData;
     }
 
-    ECSI_PanelType *type = SDL_malloc(sizeof(ECSI_PanelType));
+    ECSIPanelType *type = SDL_malloc(sizeof(ECSIPanelType));
     char *name = SDL_strdup(desc->name);
     char *title = SDL_strdup(desc->title == NULL ? desc->name : desc->title);
 
@@ -653,7 +653,7 @@ SHUResult ECSI_PanelTypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
         return SHUResult_ErrAllocation;
     }
 
-    *type = (ECSI_PanelType){.desc = *desc, .name = name, .title = title, .plugin = plugin, .typeData = typeData};
+    *type = (ECSIPanelType){.desc = *desc, .name = name, .title = title, .plugin = plugin, .typeData = typeData};
     type->desc.name = name;
     type->desc.title = title;
     shput(PANELS.types, name, type);
@@ -666,7 +666,7 @@ SHUResult ECSPanel_StartTimer(ECSPanel panel, ECSTimer *retTimer, f64 seconds, b
     SDL_assert(panel != NULL);
     SDL_assert(panel->type != NULL); // placeholders run no code
 
-    return ECSI_EventsStartTimer(panel->type->plugin, panel, retTimer, seconds, repeat, function, NULL, data);
+    return ECSIEvents_StartTimer(panel->type->plugin, panel, retTimer, seconds, repeat, function, NULL, data);
 }
 
 void ECSPanel_SetUnsaved(ECSPanel panel, bool unsaved)

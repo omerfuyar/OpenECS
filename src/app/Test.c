@@ -27,7 +27,7 @@ static struct
     int threadReference;          // registry reference that keeps the coroutine alive
     bool started;                 // false until the run function is first resumed
     bool failed;                  // true when the test failed
-    const ECSI_PresetInfo *info;  // what the preset said, for test.session
+    const ECSIPresetInfo *info;  // what the preset said, for test.session
     SDL_Event *events;            // input events the test sent; one goes to the loop in each pass
     usz nextEvent;                // index of the next event to send
     u64 resumeTicks;              // when the test goes on after test.wait, in nanoseconds
@@ -37,7 +37,7 @@ static struct
 } TEST = {0};
 
 /// @brief test.match: compares by contents and names the path of the first difference.
-static const char ECSI_TEST_MATCH[] =
+static const char OPENECS_TEST_MATCH[] =
     "local format = string.format\n"
     "local function show(value)\n"
     "  if type(value) == 'string' then return format('%q', value) end\n"
@@ -67,9 +67,9 @@ static const char ECSI_TEST_MATCH[] =
     "end\n";
 
 /// @brief Adds an input event for the loop, in the test's OS window.
-static void ECSI_TestSend(SDL_Event event)
+static void ECSITest_Send(SDL_Event event)
 {
-    SDL_Window *window = ECSI_WindowGetMain();
+    SDL_Window *window = ECSIWindow_GetMain();
     SDL_WindowID id = window != NULL ? SDL_GetWindowID(window) : 0;
 
     switch (event.type)
@@ -96,7 +96,7 @@ static void ECSI_TestSend(SDL_Event event)
 }
 
 /// @brief Adds a pointer move to a position.
-static void ECSI_TestSendMove(f32 x, f32 y)
+static void ECSITest_SendMove(f32 x, f32 y)
 {
     SDL_Event event = {.type = SDL_EVENT_MOUSE_MOTION};
     event.motion.x = x;
@@ -104,14 +104,14 @@ static void ECSI_TestSendMove(f32 x, f32 y)
     event.motion.xrel = x - TEST.pointerX;
     event.motion.yrel = y - TEST.pointerY;
     event.motion.state = TEST.buttons;
-    ECSI_TestSend(event);
+    ECSITest_Send(event);
 
     TEST.pointerX = x;
     TEST.pointerY = y;
 }
 
 /// @brief Adds a button press or release at a position.
-static void ECSI_TestSendButton(f32 x, f32 y, u8 button, bool down)
+static void ECSITest_SendButton(f32 x, f32 y, u8 button, bool down)
 {
     if (down)
     {
@@ -128,21 +128,21 @@ static void ECSI_TestSendButton(f32 x, f32 y, u8 button, bool down)
     event.button.clicks = 1;
     event.button.x = x;
     event.button.y = y;
-    ECSI_TestSend(event);
+    ECSITest_Send(event);
 
     TEST.pointerX = x;
     TEST.pointerY = y;
 }
 
 /// @brief Reads a position from two Lua arguments.
-static void ECSI_TestCheckPosition(lua_State *state, int index, f32 *retX, f32 *retY)
+static void ECSITest_CheckPosition(lua_State *state, int index, f32 *retX, f32 *retY)
 {
     *retX = (f32)luaL_checknumber(state, index);
     *retY = (f32)luaL_checknumber(state, index + 1);
 }
 
 /// @brief Reads a button from an optional Lua argument: 1 left, 2 middle, 3 right.
-static u8 ECSI_TestCheckButton(lua_State *state, int index)
+static u8 ECSITest_CheckButton(lua_State *state, int index)
 {
     lua_Integer button = luaL_optinteger(state, index, SDL_BUTTON_LEFT);
     luaL_argcheck(state, button >= SDL_BUTTON_LEFT && button <= SDL_BUTTON_RIGHT, index, "1 (left), 2 (middle) or 3 (right) expected");
@@ -150,13 +150,13 @@ static u8 ECSI_TestCheckButton(lua_State *state, int index)
 }
 
 /// @brief test.key(combination): presses and releases a key combination.
-static int ECSI_TestKey(lua_State *state)
+static int ECSITest_Key(lua_State *state)
 {
     const char *text = luaL_checkstring(state, 1);
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSI_KeysParse(text, false, &key, &modifiers))
+    if (ECSIKeys_Parse(text, false, &key, &modifiers))
     {
         return luaL_error(state, "'%s' is not a key combination", text);
     }
@@ -172,103 +172,103 @@ static int ECSI_TestKey(lua_State *state)
     event.key.scancode = SDL_GetScancodeFromKey(key, NULL);
     event.key.mod = mod;
     event.key.down = true;
-    ECSI_TestSend(event);
+    ECSITest_Send(event);
 
     event.type = SDL_EVENT_KEY_UP;
     event.key.down = false;
-    ECSI_TestSend(event);
+    ECSITest_Send(event);
 
     return lua_yield(state, 0);
 }
 
 /// @brief test.move(x, y): moves the pointer.
-static int ECSI_TestMove(lua_State *state)
+static int ECSITest_Move(lua_State *state)
 {
     f32 x = 0.0f;
     f32 y = 0.0f;
-    ECSI_TestCheckPosition(state, 1, &x, &y);
-    ECSI_TestSendMove(x, y);
+    ECSITest_CheckPosition(state, 1, &x, &y);
+    ECSITest_SendMove(x, y);
     return lua_yield(state, 0);
 }
 
 /// @brief test.press(x, y, button): presses a button.
-static int ECSI_TestPress(lua_State *state)
+static int ECSITest_Press(lua_State *state)
 {
     f32 x = 0.0f;
     f32 y = 0.0f;
-    ECSI_TestCheckPosition(state, 1, &x, &y);
-    ECSI_TestSendButton(x, y, ECSI_TestCheckButton(state, 3), true);
+    ECSITest_CheckPosition(state, 1, &x, &y);
+    ECSITest_SendButton(x, y, ECSITest_CheckButton(state, 3), true);
     return lua_yield(state, 0);
 }
 
 /// @brief test.release(x, y, button): releases a button.
-static int ECSI_TestRelease(lua_State *state)
+static int ECSITest_Release(lua_State *state)
 {
     f32 x = 0.0f;
     f32 y = 0.0f;
-    ECSI_TestCheckPosition(state, 1, &x, &y);
-    ECSI_TestSendButton(x, y, ECSI_TestCheckButton(state, 3), false);
+    ECSITest_CheckPosition(state, 1, &x, &y);
+    ECSITest_SendButton(x, y, ECSITest_CheckButton(state, 3), false);
     return lua_yield(state, 0);
 }
 
 /// @brief test.click(x, y, button): presses and releases a button.
-static int ECSI_TestClick(lua_State *state)
+static int ECSITest_Click(lua_State *state)
 {
     f32 x = 0.0f;
     f32 y = 0.0f;
-    ECSI_TestCheckPosition(state, 1, &x, &y);
-    u8 button = ECSI_TestCheckButton(state, 3);
-    ECSI_TestSendButton(x, y, button, true);
-    ECSI_TestSendButton(x, y, button, false);
+    ECSITest_CheckPosition(state, 1, &x, &y);
+    u8 button = ECSITest_CheckButton(state, 3);
+    ECSITest_SendButton(x, y, button, true);
+    ECSITest_SendButton(x, y, button, false);
     return lua_yield(state, 0);
 }
 
 /// @brief test.drag(x, y, toX, toY): presses the left button, moves in steps and releases it.
-static int ECSI_TestDrag(lua_State *state)
+static int ECSITest_Drag(lua_State *state)
 {
     f32 x = 0.0f;
     f32 y = 0.0f;
     f32 toX = 0.0f;
     f32 toY = 0.0f;
-    ECSI_TestCheckPosition(state, 1, &x, &y);
-    ECSI_TestCheckPosition(state, 3, &toX, &toY);
+    ECSITest_CheckPosition(state, 1, &x, &y);
+    ECSITest_CheckPosition(state, 3, &toX, &toY);
 
-    ECSI_TestSendMove(x, y);
-    ECSI_TestSendButton(x, y, SDL_BUTTON_LEFT, true);
+    ECSITest_SendMove(x, y);
+    ECSITest_SendButton(x, y, SDL_BUTTON_LEFT, true);
 
     for (i32 i = 1; i <= OPENECS_TEST_DRAG_STEPS; i++)
     {
         f32 part = (f32)i / (f32)OPENECS_TEST_DRAG_STEPS;
-        ECSI_TestSendMove(x + (toX - x) * part, y + (toY - y) * part);
+        ECSITest_SendMove(x + (toX - x) * part, y + (toY - y) * part);
     }
 
-    ECSI_TestSendButton(toX, toY, SDL_BUTTON_LEFT, false);
+    ECSITest_SendButton(toX, toY, SDL_BUTTON_LEFT, false);
     return lua_yield(state, 0);
 }
 
 /// @brief test.wheel(x, y, amount): turns the wheel; a positive amount is away from the user.
-static int ECSI_TestWheel(lua_State *state)
+static int ECSITest_Wheel(lua_State *state)
 {
     f32 x = 0.0f;
     f32 y = 0.0f;
-    ECSI_TestCheckPosition(state, 1, &x, &y);
+    ECSITest_CheckPosition(state, 1, &x, &y);
 
     SDL_Event event = {.type = SDL_EVENT_MOUSE_WHEEL};
     event.wheel.y = (f32)luaL_checknumber(state, 3);
     event.wheel.direction = SDL_MOUSEWHEEL_NORMAL;
     event.wheel.mouse_x = x;
     event.wheel.mouse_y = y;
-    ECSI_TestSend(event);
+    ECSITest_Send(event);
 
     return lua_yield(state, 0);
 }
 
 /// @brief test.call(name): runs a bound function with the focused panel.
-static int ECSI_TestCall(lua_State *state)
+static int ECSITest_Call(lua_State *state)
 {
     const char *name = luaL_checkstring(state, 1);
 
-    if (ECSI_ServicesCallBound(name, ECSI_LayoutGetFocus()))
+    if (ECSIServices_CallBound(name, ECSILayout_GetFocus()))
     {
         return luaL_error(state, "'%s' cannot be called; see the log", name);
     }
@@ -277,7 +277,7 @@ static int ECSI_TestCall(lua_State *state)
 }
 
 /// @brief test.wait(seconds): lets the program run.
-static int ECSI_TestWait(lua_State *state)
+static int ECSITest_Wait(lua_State *state)
 {
     lua_Number seconds = luaL_optnumber(state, 1, 0.0);
     luaL_argcheck(state, seconds >= 0.0, 1, "seconds must not be negative");
@@ -287,25 +287,25 @@ static int ECSI_TestWait(lua_State *state)
 }
 
 /// @brief test.session(): the session that quitting would save now.
-static int ECSI_TestSession(lua_State *state)
+static int ECSITest_Session(lua_State *state)
 {
     ECSValue *session = NULL;
 
-    if (ECSValue_Create(&session) || ECSI_SessionBuild(TEST.info, session))
+    if (ECSValue_Create(&session) || ECSISession_Build(TEST.info, session))
     {
         ECSValue_Destroy(&session);
         return luaL_error(state, "the session cannot be built; see the log");
     }
 
     // values are pushed onto the main state, and the test runs in its own thread
-    ECSI_LuaPushValue(session);
-    lua_xmove(ECSI_LuaGetState(), state, 1);
+    ECSILua_PushValue(session);
+    lua_xmove(ECSILua_GetState(), state, 1);
     ECSValue_Destroy(&session);
     return 1;
 }
 
 /// @brief test.rect(id): the rectangle of a shown panel.
-static int ECSI_TestRect(lua_State *state)
+static int ECSITest_Rect(lua_State *state)
 {
     lua_Integer id = luaL_checkinteger(state, 1);
     ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : NULL;
@@ -334,11 +334,11 @@ static int ECSI_TestRect(lua_State *state)
 }
 
 /// @brief test.screenshot(path): draws a frame and saves it as a PNG file.
-static int ECSI_TestScreenshot(lua_State *state)
+static int ECSITest_Screenshot(lua_State *state)
 {
     const char *path = luaL_checkstring(state, 1);
 
-    if (ECSI_WindowScreenshot(path))
+    if (ECSIWindow_Screenshot(path))
     {
         return luaL_error(state, "cannot save a screenshot to '%s'", path);
     }
@@ -346,28 +346,28 @@ static int ECSI_TestScreenshot(lua_State *state)
     return 0;
 }
 
-static const luaL_Reg ECSI_TEST_FUNCTIONS[] = {
-    {"key", ECSI_TestKey},
-    {"move", ECSI_TestMove},
-    {"press", ECSI_TestPress},
-    {"release", ECSI_TestRelease},
-    {"click", ECSI_TestClick},
-    {"drag", ECSI_TestDrag},
-    {"wheel", ECSI_TestWheel},
-    {"call", ECSI_TestCall},
-    {"wait", ECSI_TestWait},
-    {"session", ECSI_TestSession},
-    {"rect", ECSI_TestRect},
-    {"screenshot", ECSI_TestScreenshot},
+static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
+    {"key", ECSITest_Key},
+    {"move", ECSITest_Move},
+    {"press", ECSITest_Press},
+    {"release", ECSITest_Release},
+    {"click", ECSITest_Click},
+    {"drag", ECSITest_Drag},
+    {"wheel", ECSITest_Wheel},
+    {"call", ECSITest_Call},
+    {"wait", ECSITest_Wait},
+    {"session", ECSITest_Session},
+    {"rect", ECSITest_Rect},
+    {"screenshot", ECSITest_Screenshot},
     {NULL, NULL},
 };
 
 /// @brief Pushes the test table. It also holds match, which is written in Lua.
-static SHUResult ECSI_TestPushTable(lua_State *state)
+static SHUResult ECSITest_PushTable(lua_State *state)
 {
-    luaL_newlib(state, ECSI_TEST_FUNCTIONS);
+    luaL_newlib(state, OPENECS_TEST_FUNCTIONS);
 
-    if (luaL_loadbufferx(state, ECSI_TEST_MATCH, sizeof(ECSI_TEST_MATCH) - 1, "=match", "t") != LUA_OK || ECSI_LuaCall(0, 1))
+    if (luaL_loadbufferx(state, OPENECS_TEST_MATCH, sizeof(OPENECS_TEST_MATCH) - 1, "=match", "t") != LUA_OK || ECSILua_Call(0, 1))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "test.match does not load: %s", lua_tostring(state, -1));
         lua_pop(state, 2);
@@ -379,11 +379,11 @@ static SHUResult ECSI_TestPushTable(lua_State *state)
 }
 
 /// @brief Ends the test and lets the garbage collector take its coroutine.
-static void ECSI_TestFinish(void)
+static void ECSITest_Finish(void)
 {
     if (TEST.thread != NULL)
     {
-        luaL_unref(ECSI_LuaGetState(), LUA_REGISTRYINDEX, TEST.threadReference);
+        luaL_unref(ECSILua_GetState(), LUA_REGISTRYINDEX, TEST.threadReference);
         TEST.thread = NULL;
     }
 
@@ -393,14 +393,14 @@ static void ECSI_TestFinish(void)
 
 #pragma endregion Source Only
 
-SHUResult ECSI_TestLoad(const char *path, const ECSI_PresetInfo *info, char **retPreset)
+SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **retPreset)
 {
     SDL_assert(path != NULL);
     SDL_assert(info != NULL);
     SDL_assert(retPreset != NULL);
     SDL_assert(TEST.thread == NULL);
 
-    lua_State *state = ECSI_LuaGetState();
+    lua_State *state = ECSILua_GetState();
     int top = lua_gettop(state);
     *retPreset = NULL;
 
@@ -419,7 +419,7 @@ SHUResult ECSI_TestLoad(const char *path, const ECSI_PresetInfo *info, char **re
     lua_setmetatable(state, -2);
     lua_setupvalue(state, -2, 1);
 
-    if (ECSI_LuaCall(0, 1))
+    if (ECSILua_Call(0, 1))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Error in the test '%s': %s", path, lua_tostring(state, -1));
         lua_settop(state, top);
@@ -454,9 +454,9 @@ SHUResult ECSI_TestLoad(const char *path, const ECSI_PresetInfo *info, char **re
     TEST.threadReference = luaL_ref(state, LUA_REGISTRYINDEX);
     lua_xmove(state, TEST.thread, 1);
 
-    if (ECSI_TestPushTable(state))
+    if (ECSITest_PushTable(state))
     {
-        ECSI_TestFinish();
+        ECSITest_Finish();
         SDL_free(*retPreset);
         *retPreset = NULL;
         lua_settop(state, top);
@@ -472,18 +472,18 @@ SHUResult ECSI_TestLoad(const char *path, const ECSI_PresetInfo *info, char **re
     return SHUResult_Ok;
 }
 
-void ECSI_TestTerminate(void)
+void ECSITest_Terminate(void)
 {
-    ECSI_TestFinish();
+    ECSITest_Finish();
     SDL_zero(TEST);
 }
 
-bool ECSI_TestIsRunning(void)
+bool ECSITest_IsRunning(void)
 {
     return TEST.thread != NULL;
 }
 
-i32 ECSI_TestGetWait(void)
+i32 ECSITest_GetWait(void)
 {
     if (TEST.thread == NULL)
     {
@@ -494,7 +494,7 @@ i32 ECSI_TestGetWait(void)
     return now >= TEST.resumeTicks ? 0 : (i32)((TEST.resumeTicks - now + SDL_NS_PER_MS - 1) / SDL_NS_PER_MS);
 }
 
-bool ECSI_TestStep(void)
+bool ECSITest_Step(void)
 {
     if (TEST.thread == NULL || SDL_GetTicksNS() < TEST.resumeTicks)
     {
@@ -511,7 +511,7 @@ bool ECSI_TestStep(void)
     arrfree(TEST.events);
     TEST.nextEvent = 0;
 
-    lua_State *state = ECSI_LuaGetState();
+    lua_State *state = ECSILua_GetState();
     int results = 0;
     int status = lua_resume(TEST.thread, state, TEST.started ? 0 : 1, &results);
     TEST.started = true;
@@ -534,18 +534,18 @@ bool ECSI_TestStep(void)
         TEST.failed = true;
     }
 
-    ECSI_TestFinish();
+    ECSITest_Finish();
     return false;
 }
 
-int ECSI_TestGetStatus(void)
+int ECSITest_GetStatus(void)
 {
     return TEST.failed || TEST.thread != NULL ? 1 : 0;
 }
 
 #else
 
-SHUResult ECSI_TestLoad(const char *path, const ECSI_PresetInfo *info, char **retPreset)
+SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **retPreset)
 {
     (void)path;
     (void)info;
@@ -554,26 +554,26 @@ SHUResult ECSI_TestLoad(const char *path, const ECSI_PresetInfo *info, char **re
     return SHUResult_ErrPrivileges;
 }
 
-void ECSI_TestTerminate(void)
+void ECSITest_Terminate(void)
 {
 }
 
-bool ECSI_TestIsRunning(void)
+bool ECSITest_IsRunning(void)
 {
     return false;
 }
 
-i32 ECSI_TestGetWait(void)
+i32 ECSITest_GetWait(void)
 {
     return -1;
 }
 
-bool ECSI_TestStep(void)
+bool ECSITest_Step(void)
 {
     return true;
 }
 
-int ECSI_TestGetStatus(void)
+int ECSITest_GetStatus(void)
 {
     return 0;
 }

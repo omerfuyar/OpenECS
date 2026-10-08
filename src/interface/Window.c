@@ -55,21 +55,21 @@
 #define OPENECS_COLOR_SELECTED ((Clay_Color){58, 62, 70, 255})
 
 /// @brief A tab drawn in the last frame, so a click can find it.
-typedef struct ECSI_TabRef
+typedef struct ECSITabRef
 {
-    ECSI_Node *group;
+    ECSINode *group;
     usz index;
-} ECSI_TabRef;
+} ECSITabRef;
 
 /// @brief A shown menu. Each line pair is an entry's key text and its label.
-typedef struct ECSI_MenuView
+typedef struct ECSIMenuView
 {
     const char *const *lines; // NULL when this menu is closed
     usz count;
     usz selected;
     SDL_FRect rect;
     f32 itemHeight;
-} ECSI_MenuView;
+} ECSIMenuView;
 
 static struct
 {
@@ -87,10 +87,10 @@ static struct
     u64 lastFrameTicks;
     const char *const *prefixLines; // keys after the prefix and what they do, in pairs, or NULL when the prefix is not pressed
     usz prefixLineCount;
-    ECSI_TabRef *tabs; // stb_ds array
+    ECSITabRef *tabs; // stb_ds array
 
-    ECSI_Node *gripGroup; // lone group whose grip is shown, or NULL
-    ECSI_Node *dragSplit; // split whose divider is dragged, or NULL
+    ECSINode *gripGroup; // lone group whose grip is shown, or NULL
+    ECSINode *dragSplit; // split whose divider is dragged, or NULL
     usz dragDivider;      // the dragged divider follows this child
 
     ECSPanel dragPanel; // panel pressed on its tab or grip, or NULL; it is dragged once the pointer moves far enough
@@ -100,30 +100,30 @@ static struct
     bool dragging;
     f32 dragStartX;
     f32 dragStartY;
-    ECSI_Drop drop;     // where the dragged panel lands now
+    ECSIDrop drop;     // where the dragged panel lands now
     SDL_FRect dropRect; // the highlight of the drop place
 
     SDL_Cursor *cursors[SDL_SYSTEM_CURSOR_COUNT]; // made when first used
     SDL_SystemCursor cursor;                      // the pointer's shape now
 
-    ECSI_MenuView menus[OPENECS_MENU_DEPTH]; // the panel menu, then its open submenus
+    ECSIMenuView menus[OPENECS_MENU_DEPTH]; // the panel menu, then its open submenus
 } WINDOW = {0};
 
 /// @brief Width of the key column in the list of prefix keys.
 #define OPENECS_PREFIX_KEY_COLUMN 104.0f
 
-static Clay_String ECSI_WindowClayText(const char *text)
+static Clay_String ECSIWindow_ClayText(const char *text)
 {
     return (Clay_String){.isStaticallyAllocated = false, .length = (int32_t)SDL_strlen(text), .chars = text};
 }
 
-static void ECSI_WindowClayError(Clay_ErrorData error)
+static void ECSIWindow_ClayError(Clay_ErrorData error)
 {
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Clay: %.*s", (int)error.errorText.length, error.errorText.chars);
 }
 
 /// @brief Measures text for Clay, with the core's font.
-static Clay_Dimensions ECSI_WindowMeasureText(Clay_StringSlice text, Clay_TextElementConfig *config, void *userData)
+static Clay_Dimensions ECSIWindow_MeasureText(Clay_StringSlice text, Clay_TextElementConfig *config, void *userData)
 {
     (void)userData;
 
@@ -138,7 +138,7 @@ static Clay_Dimensions ECSI_WindowMeasureText(Clay_StringSlice text, Clay_TextEl
 }
 
 /// @brief Reads the size of the OS window.
-static void ECSI_WindowReadSize(void)
+static void ECSIWindow_ReadSize(void)
 {
     int width = 0;
     int height = 0;
@@ -148,13 +148,13 @@ static void ECSI_WindowReadSize(void)
     WINDOW.height = (f32)height;
 }
 
-static bool ECSI_WindowContains(f32 x, f32 y, f32 left, f32 top, f32 width, f32 height)
+static bool ECSIWindow_Contains(f32 x, f32 y, f32 left, f32 top, f32 width, f32 height)
 {
     return x >= left && y >= top && x < left + width && y < top + height;
 }
 
 /// @brief Forgets the nodes the window points to; the layout calls it after the trees change.
-static void ECSI_WindowForget(void)
+static void ECSIWindow_Forget(void)
 {
     WINDOW.gripGroup = NULL;
     WINDOW.dragSplit = NULL;
@@ -165,16 +165,16 @@ static void ECSI_WindowForget(void)
 #pragma region Dragging
 
 /// @brief Finds the group whose tab row is at a point.
-static ECSI_Node *ECSI_WindowTabRowGroupAt(f32 x, f32 y)
+static ECSINode *ECSIWindow_TabRowGroupAt(f32 x, f32 y)
 {
-    ECSI_Node *group = ECSI_LayoutGroupAt(x, y);
+    ECSINode *group = ECSILayout_GroupAt(x, y);
     return group != NULL && arrlenu(group->panels) >= 2 && y < group->y + OPENECS_TAB_ROW_HEIGHT ? group : NULL;
 }
 
 /// @brief Finds the gap between a group's tabs nearest to a point, from the tabs drawn in the last frame.
-static ECSI_Drop ECSI_WindowFindTabGap(ECSI_Node *group, f32 x, SDL_FRect *retRect)
+static ECSIDrop ECSIWindow_FindTabGap(ECSINode *group, f32 x, SDL_FRect *retRect)
 {
-    ECSI_Drop drop = {.zone = ECSI_Zone_Tabs, .group = group, .index = 0};
+    ECSIDrop drop = {.zone = ECSIZone_Tabs, .group = group, .index = 0};
     f32 gapX = group->x;
     Clay_SetCurrentContext(WINDOW.clay);
 
@@ -203,43 +203,43 @@ static ECSI_Drop ECSI_WindowFindTabGap(ECSI_Node *group, f32 x, SDL_FRect *retRe
 }
 
 /// @brief Finds where a panel dragged to a point lands, and the rectangle to highlight. The checks follow DESIGN 6.7.
-static ECSI_Drop ECSI_WindowFindDrop(f32 x, f32 y, SDL_FRect *retRect)
+static ECSIDrop ECSIWindow_FindDrop(f32 x, f32 y, SDL_FRect *retRect)
 {
     f32 width = WINDOW.width;
     f32 height = WINDOW.height;
     *retRect = (SDL_FRect){0};
 
     // outside the window, the panel would pop out; pop-out windows are not implemented yet
-    if (!ECSI_WindowContains(x, y, 0.0f, 0.0f, width, height))
+    if (!ECSIWindow_Contains(x, y, 0.0f, 0.0f, width, height))
     {
-        return (ECSI_Drop){0};
+        return (ECSIDrop){0};
     }
 
     if (x < OPENECS_DOCK_EDGE || x >= width - OPENECS_DOCK_EDGE || y < OPENECS_DOCK_EDGE || y >= height - OPENECS_DOCK_EDGE)
     {
-        ECSI_Zone zone = x < OPENECS_DOCK_EDGE            ? ECSI_Zone_WindowLeft
-                         : x >= width - OPENECS_DOCK_EDGE ? ECSI_Zone_WindowRight
-                         : y < OPENECS_DOCK_EDGE          ? ECSI_Zone_WindowTop
-                                                          : ECSI_Zone_WindowBottom;
+        ECSIZone zone = x < OPENECS_DOCK_EDGE            ? ECSIZone_WindowLeft
+                         : x >= width - OPENECS_DOCK_EDGE ? ECSIZone_WindowRight
+                         : y < OPENECS_DOCK_EDGE          ? ECSIZone_WindowTop
+                                                          : ECSIZone_WindowBottom;
 
-        *retRect = zone == ECSI_Zone_WindowLeft    ? (SDL_FRect){0.0f, 0.0f, width / 4.0f, height}
-                   : zone == ECSI_Zone_WindowRight ? (SDL_FRect){width * 0.75f, 0.0f, width / 4.0f, height}
-                   : zone == ECSI_Zone_WindowTop   ? (SDL_FRect){0.0f, 0.0f, width, height / 4.0f}
+        *retRect = zone == ECSIZone_WindowLeft    ? (SDL_FRect){0.0f, 0.0f, width / 4.0f, height}
+                   : zone == ECSIZone_WindowRight ? (SDL_FRect){width * 0.75f, 0.0f, width / 4.0f, height}
+                   : zone == ECSIZone_WindowTop   ? (SDL_FRect){0.0f, 0.0f, width, height / 4.0f}
                                                    : (SDL_FRect){0.0f, height * 0.75f, width, height / 4.0f};
-        return (ECSI_Drop){.zone = zone};
+        return (ECSIDrop){.zone = zone};
     }
 
-    ECSI_Node *group = ECSI_LayoutGroupAt(x, y);
+    ECSINode *group = ECSILayout_GroupAt(x, y);
 
     if (group == NULL || arrlenu(group->panels) == 0)
     {
-        return (ECSI_Drop){0};
+        return (ECSIDrop){0};
     }
 
     // a locked group accepts no dropped panels
     if (arrlenu(group->panels) >= 2 && y < group->y + OPENECS_TAB_ROW_HEIGHT)
     {
-        return group->locked ? (ECSI_Drop){0} : ECSI_WindowFindTabGap(group, x, retRect);
+        return group->locked ? (ECSIDrop){0} : ECSIWindow_FindTabGap(group, x, retRect);
     }
 
     // edge bands are a quarter of the panel deep at most, so the centre keeps at least half of it
@@ -254,7 +254,7 @@ static ECSI_Drop ECSI_WindowFindDrop(f32 x, f32 y, SDL_FRect *retRect)
     };
 
     // the nearest band wins; distances are relative to the band, so 1 is its inner edge
-    ECSI_Zone zone = ECSI_Zone_Center;
+    ECSIZone zone = ECSIZone_Center;
     f32 nearest = 1.0f;
 
     for (usz i = 0; i < SDL_arraysize(distances); i++)
@@ -262,32 +262,32 @@ static ECSI_Drop ECSI_WindowFindDrop(f32 x, f32 y, SDL_FRect *retRect)
         if (distances[i] < nearest)
         {
             nearest = distances[i];
-            zone = (ECSI_Zone)(ECSI_Zone_Left + (i32)i);
+            zone = (ECSIZone)(ECSIZone_Left + (i32)i);
         }
     }
 
     f32 halfWidth = panel->width / 2.0f;
     f32 halfHeight = panel->height / 2.0f;
-    *retRect = zone == ECSI_Zone_Left     ? (SDL_FRect){panel->x, panel->y, halfWidth, panel->height}
-               : zone == ECSI_Zone_Right  ? (SDL_FRect){panel->x + halfWidth, panel->y, halfWidth, panel->height}
-               : zone == ECSI_Zone_Top    ? (SDL_FRect){panel->x, panel->y, panel->width, halfHeight}
-               : zone == ECSI_Zone_Bottom ? (SDL_FRect){panel->x, panel->y + halfHeight, panel->width, halfHeight}
+    *retRect = zone == ECSIZone_Left     ? (SDL_FRect){panel->x, panel->y, halfWidth, panel->height}
+               : zone == ECSIZone_Right  ? (SDL_FRect){panel->x + halfWidth, panel->y, halfWidth, panel->height}
+               : zone == ECSIZone_Top    ? (SDL_FRect){panel->x, panel->y, panel->width, halfHeight}
+               : zone == ECSIZone_Bottom ? (SDL_FRect){panel->x, panel->y + halfHeight, panel->width, halfHeight}
                                           : (SDL_FRect){panel->x, panel->y, panel->width, panel->height};
-    if (zone == ECSI_Zone_Center && group->locked)
+    if (zone == ECSIZone_Center && group->locked)
     {
         *retRect = (SDL_FRect){0};
-        return (ECSI_Drop){0};
+        return (ECSIDrop){0};
     }
 
-    return (ECSI_Drop){.zone = zone, .group = group};
+    return (ECSIDrop){.zone = zone, .group = group};
 }
 
 /// @brief Checks whether dropping the dragged panel, or its group, at a place would change the layout.
-static bool ECSI_WindowDropChanges(const ECSI_Drop *drop)
+static bool ECSIWindow_DropChanges(const ECSIDrop *drop)
 {
-    ECSI_Node *source = ECSI_LayoutGroupOf(WINDOW.dragPanel);
+    ECSINode *source = ECSILayout_GroupOf(WINDOW.dragPanel);
 
-    if (source == NULL || drop->zone == ECSI_Zone_None)
+    if (source == NULL || drop->zone == ECSIZone_None)
     {
         return false;
     }
@@ -295,9 +295,9 @@ static bool ECSI_WindowDropChanges(const ECSI_Drop *drop)
     // a whole group moves when the group is dragged or holds only the dragged panel
     bool whole = WINDOW.dragGroup || arrlenu(source->panels) == 1;
 
-    if (drop->zone >= ECSI_Zone_WindowLeft)
+    if (drop->zone >= ECSIZone_WindowLeft)
     {
-        return !whole || ECSI_LayoutGetTree() != source;
+        return !whole || ECSILayout_GetTree() != source;
     }
 
     if (drop->group != source)
@@ -305,13 +305,13 @@ static bool ECSI_WindowDropChanges(const ECSI_Drop *drop)
         return true;
     }
 
-    if (whole || drop->zone == ECSI_Zone_Center)
+    if (whole || drop->zone == ECSIZone_Center)
     {
         return false;
     }
 
     // a gap next to the panel's own tab leaves it where it is
-    if (drop->zone == ECSI_Zone_Tabs)
+    if (drop->zone == ECSIZone_Tabs)
     {
         usz index = 0;
 
@@ -327,7 +327,7 @@ static bool ECSI_WindowDropChanges(const ECSI_Drop *drop)
 }
 
 /// @brief Remembers a press on a panel's tab or grip, or on its group's tab row; the panel or group is dragged once the pointer moves far enough.
-static void ECSI_WindowArmDrag(ECSPanel panel, bool group, bool grip, f32 x, f32 y)
+static void ECSIWindow_ArmDrag(ECSPanel panel, bool group, bool grip, f32 x, f32 y)
 {
     WINDOW.dragPanel = panel;
     WINDOW.dragGroup = group;
@@ -339,7 +339,7 @@ static void ECSI_WindowArmDrag(ECSPanel panel, bool group, bool grip, f32 x, f32
 }
 
 /// @brief Sets the pointer's shape, if it changed.
-static void ECSI_WindowSetCursor(SDL_SystemCursor cursor)
+static void ECSIWindow_SetCursor(SDL_SystemCursor cursor)
 {
     if (cursor == WINDOW.cursor)
     {
@@ -361,33 +361,33 @@ static void ECSI_WindowSetCursor(SDL_SystemCursor cursor)
 
 #pragma region Interface
 
-typedef struct ECSI_GripHit
+typedef struct ECSIGripHit
 {
     f32 x;
     f32 y;
-    ECSI_Node *group;
-} ECSI_GripHit;
+    ECSINode *group;
+} ECSIGripHit;
 
-static void ECSI_WindowFindGripGroup(ECSI_Node *group, void *userData)
+static void ECSIWindow_FindGripGroup(ECSINode *group, void *userData)
 {
-    ECSI_GripHit *hit = userData;
+    ECSIGripHit *hit = userData;
 
-    if (arrlenu(group->panels) == 1 && ECSI_WindowContains(hit->x, hit->y, group->x, group->y, group->width, OPENECS_GRIP_ZONE))
+    if (arrlenu(group->panels) == 1 && ECSIWindow_Contains(hit->x, hit->y, group->x, group->y, group->width, OPENECS_GRIP_ZONE))
     {
         hit->group = group;
     }
 }
 
 /// @brief Checks whether a point is on an element that Clay laid out in the last frame.
-static bool ECSI_WindowOnElement(Clay_ElementId id, f32 x, f32 y)
+static bool ECSIWindow_OnElement(Clay_ElementId id, f32 x, f32 y)
 {
     Clay_SetCurrentContext(WINDOW.clay);
     Clay_ElementData element = Clay_GetElementData(id);
-    return element.found && ECSI_WindowContains(x, y, element.boundingBox.x, element.boundingBox.y, element.boundingBox.width, element.boundingBox.height);
+    return element.found && ECSIWindow_Contains(x, y, element.boundingBox.x, element.boundingBox.y, element.boundingBox.width, element.boundingBox.height);
 }
 
 /// @brief Declares a group's tab row, or its placeholder text, for Clay.
-static void ECSI_WindowDeclareGroup(ECSI_Node *group, void *userData)
+static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
 {
     (void)userData;
 
@@ -420,7 +420,7 @@ static void ECSI_WindowDeclareGroup(ECSI_Node *group, void *userData)
                                                                      .backgroundColor = i == group->shown ? OPENECS_COLOR_TAB_SHOWN : OPENECS_COLOR_TAB,
                                                                  })
                 {
-                    CLAY_TEXT(ECSI_WindowClayText(group->panels[i]->title),
+                    CLAY_TEXT(ECSIWindow_ClayText(group->panels[i]->title),
                               CLAY_TEXT_CONFIG({
                                   .textColor = i == group->shown ? OPENECS_COLOR_TEXT : OPENECS_COLOR_TEXT_DIM,
                                   .fontSize = OPENECS_FONT_SIZE,
@@ -443,7 +443,7 @@ static void ECSI_WindowDeclareGroup(ECSI_Node *group, void *userData)
                     }
                 }
 
-                arrput(WINDOW.tabs, ((ECSI_TabRef){group, i}));
+                arrput(WINDOW.tabs, ((ECSITabRef){group, i}));
             }
         }
     }
@@ -466,25 +466,25 @@ static void ECSI_WindowDeclareGroup(ECSI_Node *group, void *userData)
         {
             Clay_String heading = panel->fault != NULL ? CLAY_STRING("Panel failed") : CLAY_STRING("Missing panel type");
             CLAY_TEXT(heading, CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
-            CLAY_TEXT(ECSI_WindowClayText(panel->typeName), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE}));
+            CLAY_TEXT(ECSIWindow_ClayText(panel->typeName), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE}));
 
             if (panel->fault != NULL)
             {
-                CLAY_TEXT(ECSI_WindowClayText(panel->fault), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
+                CLAY_TEXT(ECSIWindow_ClayText(panel->fault), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
             }
         }
     }
 }
 
 /// @brief Measures each tab row from the tabs Clay just laid out, keeps its scroll inside it, and scrolls a newly shown tab into view.
-static void ECSI_WindowFitTabs(void)
+static void ECSIWindow_FitTabs(void)
 {
     Clay_SetCurrentContext(WINDOW.clay);
 
     for (usz i = 0; i < arrlenu(WINDOW.tabs);)
     {
         // the tabs of one group are next to each other in the list
-        ECSI_Node *group = WINDOW.tabs[i].group;
+        ECSINode *group = WINDOW.tabs[i].group;
         f32 left = 0.0f;
         f32 right = 0.0f;
         Clay_BoundingBox shown = {0};
@@ -512,13 +512,13 @@ static void ECSI_WindowFitTabs(void)
         if (scroll != group->tabScroll)
         {
             group->tabScroll = scroll;
-            ECSI_LayoutRequestFrame();
+            ECSILayout_RequestFrame();
         }
     }
 }
 
 /// @brief Declares the core's own interface for Clay and returns what to draw.
-static Clay_RenderCommandArray ECSI_WindowDeclareInterface(void)
+static Clay_RenderCommandArray ECSIWindow_DeclareInterface(void)
 {
     Clay_SetCurrentContext(WINDOW.clay);
     Clay_SetLayoutDimensions((Clay_Dimensions){WINDOW.width, WINDOW.height});
@@ -527,9 +527,9 @@ static Clay_RenderCommandArray ECSI_WindowDeclareInterface(void)
     arrfree(WINDOW.tabs);
     CLAY(CLAY_ID("Root"), {.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0)}}})
     {
-        ECSI_LayoutForEachGroup(ECSI_WindowDeclareGroup, NULL);
+        ECSILayout_ForEachGroup(ECSIWindow_DeclareGroup, NULL);
 
-        ECSPanel focus = ECSI_LayoutGetFocus();
+        ECSPanel focus = ECSILayout_GetFocus();
 
         if (focus != NULL)
         {
@@ -545,7 +545,7 @@ static Clay_RenderCommandArray ECSI_WindowDeclareInterface(void)
         // the grip shows the panel's title, centred on its top edge, and whether its group is locked
         if (WINDOW.gripGroup != NULL)
         {
-            ECSI_Node *group = WINDOW.gripGroup;
+            ECSINode *group = WINDOW.gripGroup;
             const char *title = group->panels[0]->title;
             int titleWidth = 0;
             int lockedWidth = 0;
@@ -574,7 +574,7 @@ static Clay_RenderCommandArray ECSI_WindowDeclareInterface(void)
                                       .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + (group->width - width) / 2.0f, group->y}, .zIndex = 2},
                                   })
             {
-                CLAY_TEXT(ECSI_WindowClayText(title), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                CLAY_TEXT(ECSIWindow_ClayText(title), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
 
                 if (group->locked)
                 {
@@ -583,7 +583,7 @@ static Clay_RenderCommandArray ECSI_WindowDeclareInterface(void)
             }
         }
 
-        if (WINDOW.dragging && WINDOW.drop.zone != ECSI_Zone_None)
+        if (WINDOW.dragging && WINDOW.drop.zone != ECSIZone_None)
         {
             SDL_FRect rect = WINDOW.dropRect;
 
@@ -599,7 +599,7 @@ static Clay_RenderCommandArray ECSI_WindowDeclareInterface(void)
 
         for (usz level = 0; level < OPENECS_MENU_DEPTH && WINDOW.menus[level].lines != NULL; level++)
         {
-            const ECSI_MenuView *menu = &WINDOW.menus[level];
+            const ECSIMenuView *menu = &WINDOW.menus[level];
             SDL_FRect rect = menu->rect;
 
             CLAY(CLAY_IDI("Menu", (u32)level), {
@@ -614,7 +614,7 @@ static Clay_RenderCommandArray ECSI_WindowDeclareInterface(void)
                                                    .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = (i16)(5 + level)},
                                                })
             {
-                // each entry has the height that ECSI_WindowMenuItemAt counts with
+                // each entry has the height that ECSIWindow_MenuItemAt counts with
                 for (usz i = 0; i < menu->count; i++)
                 {
                     CLAY_AUTO_ID({
@@ -628,9 +628,9 @@ static Clay_RenderCommandArray ECSI_WindowDeclareInterface(void)
                         .cornerRadius = CLAY_CORNER_RADIUS(4),
                     })
                     {
-                        CLAY_TEXT(ECSI_WindowClayText(menu->lines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                        CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                         CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}}}) {}
-                        CLAY_TEXT(ECSI_WindowClayText(menu->lines[2 * i]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                        CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                     }
                 }
             }
@@ -653,7 +653,7 @@ static Clay_RenderCommandArray ECSI_WindowDeclareInterface(void)
                     {
                         CLAY_AUTO_ID({.layout = {.padding = {0, 0, i == 0 ? 0 : 6, 0}}})
                         {
-                            CLAY_TEXT(ECSI_WindowClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
+                            CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT_DIM, .fontSize = OPENECS_FONT_SIZE}));
                         }
 
                         continue;
@@ -663,10 +663,10 @@ static Clay_RenderCommandArray ECSI_WindowDeclareInterface(void)
                     {
                         CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(OPENECS_PREFIX_KEY_COLUMN), CLAY_SIZING_FIT(0)}}})
                         {
-                            CLAY_TEXT(ECSI_WindowClayText(WINDOW.prefixLines[2 * i]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_ACCENT, .fontSize = OPENECS_FONT_SIZE}));
+                            CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_ACCENT, .fontSize = OPENECS_FONT_SIZE}));
                         }
 
-                        CLAY_TEXT(ECSI_WindowClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE}));
+                        CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE}));
                     }
                 }
             }
@@ -680,30 +680,30 @@ static Clay_RenderCommandArray ECSI_WindowDeclareInterface(void)
 
 #pragma region Drawing
 
-static void ECSI_WindowDrawGroup(ECSI_Node *group, void *userData)
+static void ECSIWindow_DrawGroup(ECSINode *group, void *userData)
 {
     u64 *nowTicks = userData;
 
     if (arrlenu(group->panels) > 0)
     {
-        ECSI_PanelDraw(group->panels[group->shown], WINDOW.renderer, *nowTicks);
+        ECSIPanel_Draw(group->panels[group->shown], WINDOW.renderer, *nowTicks);
     }
 }
 
-static void ECSI_WindowShowGroup(ECSI_Node *group, void *userData)
+static void ECSIWindow_ShowGroup(ECSINode *group, void *userData)
 {
     (void)userData;
 
     if (arrlenu(group->panels) > 0)
     {
-        ECSI_PanelShow(group->panels[group->shown], WINDOW.renderer);
+        ECSIPanel_Show(group->panels[group->shown], WINDOW.renderer);
     }
 }
 
 #pragma endregion Drawing
 
 /// @brief Opens the OS window, its renderer and the core's font.
-static SHUResult ECSI_WindowOpen(const char *title, const char *fontPath)
+static SHUResult ECSIWindow_Open(const char *title, const char *fontPath)
 {
     if (!TTF_Init())
     {
@@ -753,7 +753,7 @@ static SHUResult ECSI_WindowOpen(const char *title, const char *fontPath)
         return SHUResult_ErrInternal;
     }
 
-    ECSI_WindowReadSize();
+    ECSIWindow_ReadSize();
 
     u32 claySize = Clay_MinMemorySize();
     WINDOW.clayMemory = SDL_malloc(claySize);
@@ -764,20 +764,20 @@ static SHUResult ECSI_WindowOpen(const char *title, const char *fontPath)
     }
 
     Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(claySize, WINDOW.clayMemory);
-    WINDOW.clay = Clay_Initialize(arena, (Clay_Dimensions){WINDOW.width, WINDOW.height}, (Clay_ErrorHandler){ECSI_WindowClayError, NULL});
-    Clay_SetMeasureTextFunction(ECSI_WindowMeasureText, NULL);
+    WINDOW.clay = Clay_Initialize(arena, (Clay_Dimensions){WINDOW.width, WINDOW.height}, (Clay_ErrorHandler){ECSIWindow_ClayError, NULL});
+    Clay_SetMeasureTextFunction(ECSIWindow_MeasureText, NULL);
 
     return SHUResult_Ok;
 }
 
 /// @brief Reads ecs.vsync and sets the renderer's vsync. Also the Changed function of ecs.vsync.
-static void ECSI_WindowReadVsync(void *data)
+static void ECSIWindow_ReadVsync(void *data)
 {
     (void)data;
 
     i64 percent = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.vsync"), 100), 0, 100);
     WINDOW.framePercent = percent;
-    ECSI_LayoutRequestFrame();
+    ECSILayout_RequestFrame();
 
     // a whole fraction of the refresh rate, such as 50%, lets the display wait for every second refresh; other rates wait for every refresh and are limited by the core
     if (percent == 0)
@@ -791,7 +791,7 @@ static void ECSI_WindowReadVsync(void *data)
 }
 
 /// @brief Draws a frame without presenting it.
-static void ECSI_WindowDrawFrame(u64 nowTicks)
+static void ECSIWindow_DrawFrame(u64 nowTicks)
 {
     // some drivers accept vsync but do not wait for it, so frames are limited a little above the rate ecs.vsync asks for; a working vsync still sets the pace
     const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(WINDOW.window));
@@ -799,46 +799,46 @@ static void ECSI_WindowDrawFrame(u64 nowTicks)
     f64 limit = (f64)rate * (f64)WINDOW.framePercent / 100.0 * (f64)OPENECS_FRAME_RATE_MARGIN;
     WINDOW.frameNanoseconds = WINDOW.framePercent == 0 ? 0 : (u64)((f64)SDL_NS_PER_SECOND / limit);
     WINDOW.lastFrameTicks = nowTicks;
-    ECSI_WindowReadSize();
-    ECSI_LayoutUpdate(WINDOW.width, WINDOW.height);
+    ECSIWindow_ReadSize();
+    ECSILayout_Update(WINDOW.width, WINDOW.height);
 
     // the interface's commands point to the panels' titles, so panels draw first; their Draw may change a title
-    ECSI_LayoutForEachGroup(ECSI_WindowDrawGroup, &nowTicks);
-    Clay_RenderCommandArray commands = ECSI_WindowDeclareInterface();
-    ECSI_WindowFitTabs();
+    ECSILayout_ForEachGroup(ECSIWindow_DrawGroup, &nowTicks);
+    Clay_RenderCommandArray commands = ECSIWindow_DeclareInterface();
+    ECSIWindow_FitTabs();
 
     SDL_SetRenderDrawColor(WINDOW.renderer, OPENECS_COLOR_BACKGROUND);
     SDL_RenderClear(WINDOW.renderer);
-    ECSI_LayoutForEachGroup(ECSI_WindowShowGroup, NULL);
+    ECSILayout_ForEachGroup(ECSIWindow_ShowGroup, NULL);
     SDL_Clay_RenderClayCommands(&WINDOW.clayRenderer, &commands);
 }
 
 #pragma endregion Source Only
 
-SHUResult ECSI_WindowInitialize(const char *title, const char *fontPath)
+SHUResult ECSIWindow_Initialize(const char *title, const char *fontPath)
 {
     SDL_assert(title != NULL);
     SDL_assert(fontPath != NULL);
 
-    SHU_ReturnResult(ECSI_WindowOpen(title, fontPath), ECSI_WindowTerminate(););
+    SHU_ReturnResult(ECSIWindow_Open(title, fontPath), ECSIWindow_Terminate(););
 
     const ECSSettingDesc vsync = {
         .name = "ecs.vsync",
         .type = ECSSettingType_Integer,
         .description = "Frame rate in percent of the display's refresh rate: 100 waits for every refresh, 50 for every second one, 0 turns vsync off",
         .defaultInteger = 100,
-        .Changed = ECSI_WindowReadVsync,
+        .Changed = ECSIWindow_ReadVsync,
     };
 
-    SHU_ReturnResult(ECSI_SettingsDeclareCore(&vsync), ECSI_WindowTerminate(););
-    ECSI_WindowReadVsync(NULL);
-    ECSI_LayoutSetForget(ECSI_WindowForget);
+    SHU_ReturnResult(ECSISettings_DeclareCore(&vsync), ECSIWindow_Terminate(););
+    ECSIWindow_ReadVsync(NULL);
+    ECSILayout_SetForget(ECSIWindow_Forget);
     return SHUResult_Ok;
 }
 
-void ECSI_WindowTerminate(void)
+void ECSIWindow_Terminate(void)
 {
-    ECSI_LayoutSetForget(NULL);
+    ECSILayout_SetForget(NULL);
     arrfree(WINDOW.tabs);
 
     for (usz i = 0; i < SDL_arraysize(WINDOW.cursors); i++)
@@ -876,12 +876,12 @@ void ECSI_WindowTerminate(void)
     SDL_zero(WINDOW);
 }
 
-SDL_Window *ECSI_WindowGetMain(void)
+SDL_Window *ECSIWindow_GetMain(void)
 {
     return WINDOW.window;
 }
 
-i32 ECSI_WindowGetFrameWait(void)
+i32 ECSIWindow_GetFrameWait(void)
 {
     // a window that cannot be seen is not drawn; showing it again asks for a frame
     if ((SDL_GetWindowFlags(WINDOW.window) & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED)) != 0)
@@ -889,7 +889,7 @@ i32 ECSI_WindowGetFrameWait(void)
         return -1;
     }
 
-    if (!ECSI_LayoutWantsFrame())
+    if (!ECSILayout_WantsFrame())
     {
         return -1;
     }
@@ -899,18 +899,18 @@ i32 ECSI_WindowGetFrameWait(void)
     return now >= next ? 0 : (i32)((next - now + SDL_NS_PER_MS - 1) / SDL_NS_PER_MS);
 }
 
-void ECSI_WindowRender(u64 nowTicks)
+void ECSIWindow_Render(u64 nowTicks)
 {
-    ECSI_WindowDrawFrame(nowTicks);
+    ECSIWindow_DrawFrame(nowTicks);
     SDL_RenderPresent(WINDOW.renderer);
 }
 
-SHUResult ECSI_WindowScreenshot(const char *path)
+SHUResult ECSIWindow_Screenshot(const char *path)
 {
     SDL_assert(path != NULL);
 
     // the picture is read before it is presented, because presenting may discard it
-    ECSI_WindowDrawFrame(SDL_GetTicksNS());
+    ECSIWindow_DrawFrame(SDL_GetTicksNS());
     SDL_Surface *picture = SDL_RenderReadPixels(WINDOW.renderer, NULL);
     bool saved = picture != NULL && SDL_SavePNG(picture, path);
 
@@ -924,33 +924,33 @@ SHUResult ECSI_WindowScreenshot(const char *path)
     return saved ? SHUResult_Ok : SHUResult_ErrFile;
 }
 
-bool ECSI_WindowPointerDown(f32 x, f32 y)
+bool ECSIWindow_PointerDown(f32 x, f32 y)
 {
-    if (ECSI_LayoutDividerAt(x, y, &WINDOW.dragSplit, &WINDOW.dragDivider))
+    if (ECSILayout_DividerAt(x, y, &WINDOW.dragSplit, &WINDOW.dragDivider))
     {
         return true;
     }
 
     for (usz i = 0; i < arrlenu(WINDOW.tabs); i++)
     {
-        ECSI_Node *group = WINDOW.tabs[i].group;
+        ECSINode *group = WINDOW.tabs[i].group;
         ECSPanel panel = group->panels[WINDOW.tabs[i].index];
 
         // closing may ask about unsaved work; the tabs of the last frame are not used after it
-        if (ECSI_WindowOnElement(CLAY_IDI("TabClose", (u32)i), x, y))
+        if (ECSIWindow_OnElement(CLAY_IDI("TabClose", (u32)i), x, y))
         {
             ECSLayout_Close(panel);
             return true;
         }
 
-        if (ECSI_WindowOnElement(CLAY_IDI("Tab", (u32)i), x, y))
+        if (ECSIWindow_OnElement(CLAY_IDI("Tab", (u32)i), x, y))
         {
-            ECSI_LayoutShowTab(panel);
+            ECSILayout_ShowTab(panel);
 
             // a locked panel cannot be dragged, but its tab still shows it
             if (!group->locked)
             {
-                ECSI_WindowArmDrag(panel, false, false, x, y);
+                ECSIWindow_ArmDrag(panel, false, false, x, y);
             }
 
             return true;
@@ -958,24 +958,24 @@ bool ECSI_WindowPointerDown(f32 x, f32 y)
     }
 
     // the empty part of a tab row drags the whole group
-    ECSI_Node *group = ECSI_WindowTabRowGroupAt(x, y);
+    ECSINode *group = ECSIWindow_TabRowGroupAt(x, y);
 
     if (group != NULL)
     {
-        ECSI_LayoutSetFocus(group->panels[group->shown]);
+        ECSILayout_SetFocus(group->panels[group->shown]);
 
         if (!group->locked)
         {
-            ECSI_WindowArmDrag(group->panels[group->shown], true, false, x, y);
+            ECSIWindow_ArmDrag(group->panels[group->shown], true, false, x, y);
         }
 
         return true;
     }
 
     // a locked group's grip only opens the menu
-    if (WINDOW.gripGroup != NULL && ECSI_WindowOnElement(CLAY_ID("Grip"), x, y))
+    if (WINDOW.gripGroup != NULL && ECSIWindow_OnElement(CLAY_ID("Grip"), x, y))
     {
-        ECSI_WindowArmDrag(WINDOW.gripGroup->panels[0], false, true, x, y);
+        ECSIWindow_ArmDrag(WINDOW.gripGroup->panels[0], false, true, x, y);
         WINDOW.dragLocked = WINDOW.gripGroup->locked;
         return true;
     }
@@ -983,24 +983,24 @@ bool ECSI_WindowPointerDown(f32 x, f32 y)
     return false;
 }
 
-bool ECSI_WindowPointerMove(f32 x, f32 y)
+bool ECSIWindow_PointerMove(f32 x, f32 y)
 {
     // the pointer shows a divider can be dragged, and while a panel is dragged
-    ECSI_Node *split = WINDOW.dragSplit;
+    ECSINode *split = WINDOW.dragSplit;
     usz divider = 0;
 
     if (split == NULL && WINDOW.dragPanel == NULL)
     {
-        ECSI_LayoutDividerAt(x, y, &split, &divider);
+        ECSILayout_DividerAt(x, y, &split, &divider);
     }
 
-    ECSI_WindowSetCursor(split != NULL ? (split->vertical ? SDL_SYSTEM_CURSOR_NS_RESIZE : SDL_SYSTEM_CURSOR_EW_RESIZE)
+    ECSIWindow_SetCursor(split != NULL ? (split->vertical ? SDL_SYSTEM_CURSOR_NS_RESIZE : SDL_SYSTEM_CURSOR_EW_RESIZE)
                          : WINDOW.dragging     ? SDL_SYSTEM_CURSOR_MOVE
                                                : SDL_SYSTEM_CURSOR_DEFAULT);
 
     if (WINDOW.dragSplit != NULL)
     {
-        ECSI_LayoutMoveDivider(WINDOW.dragSplit, WINDOW.dragDivider, x, y);
+        ECSILayout_MoveDivider(WINDOW.dragSplit, WINDOW.dragDivider, x, y);
         return true;
     }
 
@@ -1012,7 +1012,7 @@ bool ECSI_WindowPointerMove(f32 x, f32 y)
         // a locked grip is never dragged, and pulling it is not a click
         if (moved && WINDOW.dragLocked)
         {
-            ECSI_WindowCancelDrag();
+            ECSIWindow_CancelDrag();
             return true;
         }
 
@@ -1021,47 +1021,47 @@ bool ECSI_WindowPointerMove(f32 x, f32 y)
         if (WINDOW.dragging)
         {
             // a drop that changes nothing is not highlighted
-            WINDOW.drop = ECSI_WindowFindDrop(x, y, &WINDOW.dropRect);
-            WINDOW.drop = ECSI_WindowDropChanges(&WINDOW.drop) ? WINDOW.drop : (ECSI_Drop){0};
-            ECSI_LayoutRequestFrame();
+            WINDOW.drop = ECSIWindow_FindDrop(x, y, &WINDOW.dropRect);
+            WINDOW.drop = ECSIWindow_DropChanges(&WINDOW.drop) ? WINDOW.drop : (ECSIDrop){0};
+            ECSILayout_RequestFrame();
         }
 
         if (WINDOW.dragging && !wasDragging)
         {
-            ECSI_WindowSetCursor(SDL_SYSTEM_CURSOR_MOVE);
+            ECSIWindow_SetCursor(SDL_SYSTEM_CURSOR_MOVE);
         }
 
         return true;
     }
 
-    ECSI_GripHit hit = {x, y, NULL};
-    ECSI_LayoutForEachGroup(ECSI_WindowFindGripGroup, &hit);
+    ECSIGripHit hit = {x, y, NULL};
+    ECSILayout_ForEachGroup(ECSIWindow_FindGripGroup, &hit);
 
     if (hit.group != WINDOW.gripGroup)
     {
         WINDOW.gripGroup = hit.group;
-        ECSI_LayoutRequestFrame();
+        ECSILayout_RequestFrame();
     }
 
     return false;
 }
 
-ECSPanel ECSI_WindowPointerUp(void)
+ECSPanel ECSIWindow_PointerUp(void)
 {
     ECSPanel clicked = WINDOW.dragFromGrip && !WINDOW.dragging ? WINDOW.dragPanel : NULL;
 
     if (WINDOW.dragging)
     {
-        ECSI_LayoutDrop(WINDOW.dragPanel, WINDOW.dragGroup, &WINDOW.drop);
+        ECSILayout_Drop(WINDOW.dragPanel, WINDOW.dragGroup, &WINDOW.drop);
     }
 
-    ECSI_WindowCancelDrag();
+    ECSIWindow_CancelDrag();
     WINDOW.dragSplit = NULL;
-    ECSI_WindowSetCursor(SDL_SYSTEM_CURSOR_DEFAULT);
+    ECSIWindow_SetCursor(SDL_SYSTEM_CURSOR_DEFAULT);
     return clicked;
 }
 
-bool ECSI_WindowCancelDrag(void)
+bool ECSIWindow_CancelDrag(void)
 {
     bool dragging = WINDOW.dragging;
     WINDOW.dragPanel = NULL;
@@ -1069,26 +1069,26 @@ bool ECSI_WindowCancelDrag(void)
     WINDOW.dragFromGrip = false;
     WINDOW.dragLocked = false;
     WINDOW.dragging = false;
-    WINDOW.drop = (ECSI_Drop){0};
+    WINDOW.drop = (ECSIDrop){0};
     if (dragging)
     {
-        ECSI_LayoutRequestFrame();
+        ECSILayout_RequestFrame();
     }
 
     return dragging;
 }
 
-ECSPanel ECSI_WindowTabAt(f32 x, f32 y)
+ECSPanel ECSIWindow_TabAt(f32 x, f32 y)
 {
     for (usz i = 0; i < arrlenu(WINDOW.tabs); i++)
     {
-        if (ECSI_WindowOnElement(CLAY_IDI("Tab", (u32)i), x, y))
+        if (ECSIWindow_OnElement(CLAY_IDI("Tab", (u32)i), x, y))
         {
             return WINDOW.tabs[i].group->panels[WINDOW.tabs[i].index];
         }
     }
 
-    if (WINDOW.gripGroup != NULL && ECSI_WindowOnElement(CLAY_ID("Grip"), x, y))
+    if (WINDOW.gripGroup != NULL && ECSIWindow_OnElement(CLAY_ID("Grip"), x, y))
     {
         return WINDOW.gripGroup->panels[0];
     }
@@ -1096,15 +1096,15 @@ ECSPanel ECSI_WindowTabAt(f32 x, f32 y)
     return NULL;
 }
 
-ECSPanel ECSI_WindowTabRowAt(f32 x, f32 y)
+ECSPanel ECSIWindow_TabRowAt(f32 x, f32 y)
 {
-    ECSI_Node *group = ECSI_WindowTabRowGroupAt(x, y);
+    ECSINode *group = ECSIWindow_TabRowGroupAt(x, y);
     return group == NULL ? NULL : group->panels[group->shown];
 }
 
-bool ECSI_WindowScrollTabs(f32 x, f32 y, f32 steps)
+bool ECSIWindow_ScrollTabs(f32 x, f32 y, f32 steps)
 {
-    ECSI_Node *group = ECSI_WindowTabRowGroupAt(x, y);
+    ECSINode *group = ECSIWindow_TabRowGroupAt(x, y);
 
     if (group == NULL)
     {
@@ -1112,23 +1112,23 @@ bool ECSI_WindowScrollTabs(f32 x, f32 y, f32 steps)
     }
 
     group->tabScroll = SDL_clamp(group->tabScroll + steps * OPENECS_TAB_SCROLL_STEP, 0.0f, SDL_max(0.0f, group->tabsWidth - group->width));
-    ECSI_LayoutRequestFrame();
+    ECSILayout_RequestFrame();
     return true;
 }
 
-void ECSI_WindowShowMenu(usz level, SDL_FRect anchor, const char *const *lines, usz count)
+void ECSIWindow_ShowMenu(usz level, SDL_FRect anchor, const char *const *lines, usz count)
 {
     SDL_assert(level < OPENECS_MENU_DEPTH);
 
     // a menu that closes or changes closes its submenus
     for (usz i = level + 1; i < OPENECS_MENU_DEPTH; i++)
     {
-        WINDOW.menus[i] = (ECSI_MenuView){0};
+        WINDOW.menus[i] = (ECSIMenuView){0};
     }
 
-    ECSI_MenuView *menu = &WINDOW.menus[level];
-    *menu = (ECSI_MenuView){0};
-    ECSI_LayoutRequestFrame();
+    ECSIMenuView *menu = &WINDOW.menus[level];
+    *menu = (ECSIMenuView){0};
+    ECSILayout_RequestFrame();
 
     if (count == 0)
     {
@@ -1167,19 +1167,19 @@ void ECSI_WindowShowMenu(usz level, SDL_FRect anchor, const char *const *lines, 
     };
 }
 
-void ECSI_WindowSelectMenuItem(usz level, usz index)
+void ECSIWindow_SelectMenuItem(usz level, usz index)
 {
     SDL_assert(level < OPENECS_MENU_DEPTH);
 
     WINDOW.menus[level].selected = index;
-    ECSI_LayoutRequestFrame();
+    ECSILayout_RequestFrame();
 }
 
-SDL_FRect ECSI_WindowMenuItemRect(usz level, usz index)
+SDL_FRect ECSIWindow_MenuItemRect(usz level, usz index)
 {
     SDL_assert(level < OPENECS_MENU_DEPTH);
 
-    const ECSI_MenuView *menu = &WINDOW.menus[level];
+    const ECSIMenuView *menu = &WINDOW.menus[level];
     return (SDL_FRect){
         menu->rect.x + OPENECS_MENU_PADDING,
         menu->rect.y + OPENECS_MENU_PADDING + (f32)index * menu->itemHeight,
@@ -1188,7 +1188,7 @@ SDL_FRect ECSI_WindowMenuItemRect(usz level, usz index)
     };
 }
 
-bool ECSI_WindowMenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex)
+bool ECSIWindow_MenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex)
 {
     SDL_assert(retLevel != NULL);
     SDL_assert(retIndex != NULL);
@@ -1198,9 +1198,9 @@ bool ECSI_WindowMenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex)
     {
         for (usz i = 0; i < WINDOW.menus[level - 1].count; i++)
         {
-            SDL_FRect item = ECSI_WindowMenuItemRect(level - 1, i);
+            SDL_FRect item = ECSIWindow_MenuItemRect(level - 1, i);
 
-            if (ECSI_WindowContains(x, y, item.x, item.y, item.w, item.h))
+            if (ECSIWindow_Contains(x, y, item.x, item.y, item.w, item.h))
             {
                 *retLevel = level - 1;
                 *retIndex = i;
@@ -1212,13 +1212,13 @@ bool ECSI_WindowMenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex)
     return false;
 }
 
-bool ECSI_WindowMenuContains(f32 x, f32 y)
+bool ECSIWindow_MenuContains(f32 x, f32 y)
 {
     for (usz level = 0; level < OPENECS_MENU_DEPTH; level++)
     {
         const SDL_FRect *rect = &WINDOW.menus[level].rect;
 
-        if (WINDOW.menus[level].lines != NULL && ECSI_WindowContains(x, y, rect->x, rect->y, rect->w, rect->h))
+        if (WINDOW.menus[level].lines != NULL && ECSIWindow_Contains(x, y, rect->x, rect->y, rect->w, rect->h))
         {
             return true;
         }
@@ -1227,9 +1227,9 @@ bool ECSI_WindowMenuContains(f32 x, f32 y)
     return false;
 }
 
-void ECSI_WindowShowPrefixKeys(const char *const *lines, usz count)
+void ECSIWindow_ShowPrefixKeys(const char *const *lines, usz count)
 {
     WINDOW.prefixLines = count == 0 ? NULL : lines;
     WINDOW.prefixLineCount = count;
-    ECSI_LayoutRequestFrame();
+    ECSILayout_RequestFrame();
 }

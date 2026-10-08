@@ -8,9 +8,9 @@
 /// @brief Preset used when the command line names none.
 #define OPENECS_DEFAULT_PRESET "default"
 
-static ECSI_Arguments ECSI_ReadArguments(int argc, char **argv)
+static ECSIArguments ECSIMain_ReadArguments(int argc, char **argv)
 {
-    ECSI_Arguments arguments = {.preset = OPENECS_DEFAULT_PRESET};
+    ECSIArguments arguments = {.preset = OPENECS_DEFAULT_PRESET};
 
     for (int i = 1; i < argc; i++)
     {
@@ -43,12 +43,12 @@ static ECSI_Arguments ECSI_ReadArguments(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    ECSI_LogInitialize();
-    ECSI_Arguments arguments = ECSI_ReadArguments(argc, argv);
+    ECSILog_Initialize();
+    ECSIArguments arguments = ECSIMain_ReadArguments(argc, argv);
 
-    ECSI_AppStart(&arguments);
-    int status = ECSI_AppRun();
-    ECSI_AppStop();
+    ECSIApp_Start(&arguments);
+    int status = ECSIApp_Run();
+    ECSIApp_Stop();
 
     return status;
 }

@@ -5,7 +5,7 @@
 
 #pragma region Source Only
 
-struct ECSI_Value
+struct ECSIValue
 {
     ECSValueType type;
 
@@ -31,7 +31,7 @@ struct ECSI_Value
 };
 
 /// @brief Frees what a value holds and makes it nil.
-static void ECSI_ValueClear(ECSValue *value)
+static void ECSIValue_Clear(ECSValue *value)
 {
     if (value->type == ECSValueType_String)
     {
@@ -56,11 +56,11 @@ static void ECSI_ValueClear(ECSValue *value)
     SDL_zerop(value);
 }
 
-static void ECSI_ValueMakeTable(ECSValue *value)
+static void ECSIValue_MakeTable(ECSValue *value)
 {
     if (value->type != ECSValueType_Table)
     {
-        ECSI_ValueClear(value);
+        ECSIValue_Clear(value);
         value->type = ECSValueType_Table;
     }
 }
@@ -81,13 +81,13 @@ void ECSValue_Destroy(ECSValue **value)
 
     if (*value != NULL)
     {
-        ECSI_ValueClear(*value);
+        ECSIValue_Clear(*value);
         SDL_free(*value);
         *value = NULL;
     }
 }
 
-SHUResult ECSI_ValueCopy(ECSValue *value, const ECSValue *source)
+SHUResult ECSIValue_Copy(ECSValue *value, const ECSValue *source)
 {
     SDL_assert(value != NULL);
     SDL_assert(value != source);
@@ -118,20 +118,20 @@ SHUResult ECSI_ValueCopy(ECSValue *value, const ECSValue *source)
     {
         ECSValue *item = NULL;
         SHU_ReturnResult(ECSValue_ListAddItem(value, &item));
-        SHU_ReturnResult(ECSI_ValueCopy(item, source->items[i]));
+        SHU_ReturnResult(ECSIValue_Copy(item, source->items[i]));
     }
 
     for (usz i = 0; i < shlenu(source->fields); i++)
     {
         ECSValue *field = NULL;
         SHU_ReturnResult(ECSValue_TableSetField(value, source->fields[i].key, &field));
-        SHU_ReturnResult(ECSI_ValueCopy(field, source->fields[i].value));
+        SHU_ReturnResult(ECSIValue_Copy(field, source->fields[i].value));
     }
 
     return SHUResult_Ok;
 }
 
-bool ECSI_ValueEqual(const ECSValue *first, const ECSValue *second)
+bool ECSIValue_Equal(const ECSValue *first, const ECSValue *second)
 {
     ECSValueType type = ECSValue_GetType(first);
 
@@ -163,7 +163,7 @@ bool ECSI_ValueEqual(const ECSValue *first, const ECSValue *second)
 
     for (usz i = 0; i < arrlenu(first->items); i++)
     {
-        if (!ECSI_ValueEqual(first->items[i], second->items[i]))
+        if (!ECSIValue_Equal(first->items[i], second->items[i]))
         {
             return false;
         }
@@ -171,7 +171,7 @@ bool ECSI_ValueEqual(const ECSValue *first, const ECSValue *second)
 
     for (usz i = 0; i < shlenu(first->fields); i++)
     {
-        if (!ECSI_ValueEqual(first->fields[i].value, ECSValue_GetTableField(second, first->fields[i].key)))
+        if (!ECSIValue_Equal(first->fields[i].value, ECSValue_GetTableField(second, first->fields[i].key)))
         {
             return false;
         }
@@ -180,7 +180,7 @@ bool ECSI_ValueEqual(const ECSValue *first, const ECSValue *second)
     return true;
 }
 
-void ECSI_ValueTableForEachField(const ECSValue *table, ECSI_ValueFieldFunction function, void *userData)
+void ECSIValue_TableForEachField(const ECSValue *table, ECSIValueFieldFunction function, void *userData)
 {
     SDL_assert(function != NULL);
 
@@ -270,14 +270,14 @@ void ECSValue_SetNil(ECSValue *value)
 {
     SDL_assert(value != NULL);
 
-    ECSI_ValueClear(value);
+    ECSIValue_Clear(value);
 }
 
 void ECSValue_SetBool(ECSValue *value, bool boolean)
 {
     SDL_assert(value != NULL);
 
-    ECSI_ValueClear(value);
+    ECSIValue_Clear(value);
     value->type = ECSValueType_Bool;
     value->boolean = boolean;
 }
@@ -286,7 +286,7 @@ void ECSValue_SetInteger(ECSValue *value, i64 integer)
 {
     SDL_assert(value != NULL);
 
-    ECSI_ValueClear(value);
+    ECSIValue_Clear(value);
     value->type = ECSValueType_Integer;
     value->integer = integer;
 }
@@ -295,7 +295,7 @@ void ECSValue_SetNumber(ECSValue *value, f64 number)
 {
     SDL_assert(value != NULL);
 
-    ECSI_ValueClear(value);
+    ECSIValue_Clear(value);
     value->type = ECSValueType_Number;
     value->number = number;
 }
@@ -312,7 +312,7 @@ SHUResult ECSValue_SetString(ECSValue *value, const char *string)
         return SHUResult_ErrAllocation;
     }
 
-    ECSI_ValueClear(value);
+    ECSIValue_Clear(value);
     value->type = ECSValueType_String;
     value->string = copy;
     return SHUResult_Ok;
@@ -322,7 +322,7 @@ void ECSValue_SetTable(ECSValue *value)
 {
     SDL_assert(value != NULL);
 
-    ECSI_ValueClear(value);
+    ECSIValue_Clear(value);
     value->type = ECSValueType_Table;
 }
 
@@ -331,7 +331,7 @@ SHUResult ECSValue_ListAddItem(ECSValue *table, ECSValue **retItem)
     SDL_assert(table != NULL);
     SDL_assert(retItem != NULL);
 
-    ECSI_ValueMakeTable(table);
+    ECSIValue_MakeTable(table);
     SHU_ReturnResult(ECSValue_Create(retItem));
     arrput(table->items, *retItem);
     return SHUResult_Ok;
@@ -343,7 +343,7 @@ SHUResult ECSValue_TableSetField(ECSValue *table, const char *name, ECSValue **r
     SDL_assert(name != NULL);
     SDL_assert(retField != NULL);
 
-    ECSI_ValueMakeTable(table);
+    ECSIValue_MakeTable(table);
 
     // keys are copied; the mode is set before shget, which would allocate a map without it
     if (table->fields == NULL)
