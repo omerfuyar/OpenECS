@@ -490,6 +490,12 @@ void ECS_Log(ECSPlugin plugin, ECSLogLevel level, const char *format, ...)
         [ECSLogLevel_Error] = SDL_LOG_PRIORITY_ERROR,
     };
 
+    // a message the log does not show is not formatted
+    if (PRIORITIES[level] < SDL_GetLogPriority(SDL_LOG_CATEGORY_APPLICATION))
+    {
+        return;
+    }
+
     char *message = NULL;
     va_list arguments;
     va_start(arguments, format);
