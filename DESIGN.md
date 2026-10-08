@@ -112,6 +112,7 @@ In order: a module includes only the modules above it (1.5).
 
 | Module   | Job                                                                                                                 |
 | -------- | ------------------------------------------------------------------------------------------------------------------- |
+| Values   | Generic values (10.3).                                                                                              |
 | Lua      | The Lua state. Reads data files (11.2) and runs all Lua code in protected calls.                                    |
 | Plugins  | Finding, ordering and loading plugins. Logging for plugins.                                                         |
 | Settings | Declarations, layers, explanations.                                                                                 |
@@ -540,7 +541,11 @@ ecs.service.register("audio", {
 
 ### 10.3 Values
 
-A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a string, a buffer, a handle, or a table (a list or named fields). Saved state, plugin events and generic calls use values.
+A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a string, a buffer, a handle, or a table (a list or named fields). Saved state, settings, plugin events and generic calls use values.
+
+- The core owns every value. A plugin fills a value that the core gives it, with `ECSValue_SetInteger`, `ECSValue_SetField` and so on.
+- Getters take a fallback, returned when the value has another type or is missing: `ECSValue_GetInteger(ECSValue_GetField(state, "document"), 0)`. So saved state from an older or edited file never needs extra checks.
+- A table is a list and named fields together. From Lua, integer keys from 1 up to the first missing one are the list, and text keys are the fields. Other keys are reported and skipped.
 
 ### 10.4 Calls
 
@@ -674,7 +679,8 @@ return {
 
 - A layout node is a split (`split` plus its children) or a group (`panels`, and optionally `shown` and `locked`). A split's child has a fixed `size` in layout units or a `share`.
 - A workspace can have its own `keys`.
-- Sessions also store panel ids, the focused panel, the maximized group, each saved state's version, and `plugin_state`, the state of each plugin.
+- A panel's saved state is its `state` field, and the state's version is `state_version`.
+- Sessions also store panel ids, the focused panel, the maximized group, and `plugin_state`, the state of each plugin.
 - The app id matches the name of the tool's `.desktop` file.
 
 ### 13.3 Applying a session
