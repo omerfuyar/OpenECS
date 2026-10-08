@@ -329,7 +329,7 @@ After every operation:
 
 ### 6.4 Grips and locked groups
 
-- A grip appears when the pointer is within a few pixels of a panel's top edge. While it is shown, pointer events over it go to the core.
+- A grip appears when the pointer is within 24 layout units of a panel's top edge. It shows the panel's title. While it is shown, pointer events over it go to the core.
 - Locked groups show no grip and accept no dropped panels. Their panels cannot be dragged, moved with keys or closed by the user.
 - `ecs.lock` locks or unlocks the focused group.
 
@@ -358,16 +358,26 @@ While a panel is dragged, the zones are checked in this order:
 
 On release, the matching operation is called. In small panels, the edge bands shrink so that the centre stays at least a third of the panel.
 
-- A press on a tab or a grip starts a drag once the pointer moves 6 layout units. Escape cancels the drag.
+- A press on a tab or a grip starts a drag once the pointer moves 6 layout units. A press on the empty part of a tab row drags the whole group the same way. Escape cancels the drag.
+- A drop that would change nothing is not highlighted and does nothing: a panel on its own group or next to its own tab, a whole group on itself, or a group that fills the OS window on an edge of it.
+- The pointer shows a resize arrow over a divider and while it is dragged, and a move arrow while a panel or group is dragged.
 - The drop place is highlighted while the panel is dragged.
 - A panel that splits another takes half of the other's place. A panel docked along an edge of the OS window takes a quarter of it.
 
-### 6.8 Clay
+### 6.8 Panel menu
+
+- The core draws a panel's menu itself, inside the OS window, with Clay. It is kept inside the OS window.
+- A right click on a tab or grip, or a click on a grip, opens it. The panel gets the focus.
+- Its entries are core functions that act on the focused panel: close, maximize, lock and move. Each entry shows the keys that run its function after the prefix (7.5).
+- The arrow keys choose an entry and Enter runs it. Escape or a press outside the menu closes it. While it is open, pointer and key events go to the menu only.
+- A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
+
+### 6.9 Clay
 
 - The core computes the rectangles of the layout tree itself.
-- Clay lays out the core's own interface on top of them: tab rows, grips and the list of prefix keys. There is one Clay context per OS window (`Clay_SetCurrentContext`).
+- Clay lays out the core's own interface on top of them: tab rows, grips, panel menus and the list of prefix keys. There is one Clay context per OS window (`Clay_SetCurrentContext`).
 
-### 6.9 Maximize, pop-out and workspaces
+### 6.10 Maximize, pop-out and workspaces
 
 - Maximize is a mark on one group. The mark is saved in the session.
 - Pop-out creates an OS window with a new root that holds one group with the panel.
