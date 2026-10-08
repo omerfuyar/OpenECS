@@ -36,6 +36,12 @@ const char *ECSI_PluginGetName(ECSPlugin plugin);
 /// @return The version its manifest gives.
 const char *ECSI_PluginGetVersion(ECSPlugin plugin);
 
+/// @brief Checks whether a plugin's manifest depends on another plugin. A plugin counts as depending on itself.
+/// @param plugin The plugin.
+/// @param other The other plugin.
+/// @return true if the plugin may use the other plugin's services and events.
+bool ECSI_PluginDependsOn(ECSPlugin plugin, ECSPlugin other);
+
 /// @brief Checks that a name that a plugin registers starts with the plugin's name and a dot, and reports it if not.
 /// @param plugin The plugin.
 /// @param name The name, such as "canvas.view".

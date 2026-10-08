@@ -14,6 +14,7 @@ typedef struct ECSI_Plugin
     SDL_SharedObject *library; // NULL if the plugin has no native code
     void (*Shutdown)(ECSPlugin plugin);
     bool failed; // its ECSPlugin_Init failed; plugins that depend on it are skipped
+    char **dependencies; // stb_ds array of the names its manifest depends on
 } ECSI_Plugin;
 
 /// @brief State while the plugins of a table are loaded.
@@ -46,6 +47,31 @@ static struct
 static ECSI_Plugin *ECSI_PluginFind(const char *name)
 {
     return shget(PLUGINS.plugins, name);
+}
+
+static void ECSI_PluginFree(ECSI_Plugin *plugin)
+{
+    for (usz i = 0; i < arrlenu(plugin->dependencies); i++)
+    {
+        SDL_free(plugin->dependencies[i]);
+    }
+
+    arrfree(plugin->dependencies);
+    SDL_free(plugin->name);
+    SDL_free(plugin->version);
+}
+
+/// @brief Copies the name of a dependency into a plugin.
+static void ECSI_PluginAddDependency(const char *name, const ECSValue *field, void *userData)
+{
+    (void)field;
+    ECSI_Plugin *plugin = userData;
+    char *copy = SDL_strdup(name);
+
+    if (copy != NULL)
+    {
+        arrput(plugin->dependencies, copy);
+    }
 }
 
 static void ECSI_ManifestFree(ECSI_Manifest *manifest)
@@ -148,11 +174,12 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
     ECSI_Plugin *record = SDL_malloc(sizeof(ECSI_Plugin));
     SHUResult (*Init)(ECSPlugin plugin) = NULL;
 
+    ECSI_ValueForEachField(ECSValue_GetField(file, "depends"), ECSI_PluginAddDependency, &plugin);
+
     if (plugin.name == NULL || plugin.version == NULL || record == NULL)
     {
         SDL_free(record);
-        SDL_free(plugin.name);
-        SDL_free(plugin.version);
+        ECSI_PluginFree(&plugin);
         return SHUResult_ErrAllocation;
     }
 
@@ -170,8 +197,7 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot load the library of plugin '%s': %s", name, SDL_GetError());
             SDL_free(record);
-            SDL_free(plugin.name);
-            SDL_free(plugin.version);
+            ECSI_PluginFree(&plugin);
             return SHUResult_ErrFile;
         }
 
@@ -183,8 +209,7 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' does not export ECSPlugin_Init.", name);
             SDL_UnloadObject(plugin.library);
             SDL_free(record);
-            SDL_free(plugin.name);
-            SDL_free(plugin.version);
+            ECSI_PluginFree(&plugin);
             return SHUResult_ErrBadData;
         }
     }
@@ -347,8 +372,7 @@ void ECSI_PluginsUnload(void)
             SDL_UnloadObject(plugin->library);
         }
 
-        SDL_free(plugin->name);
-        SDL_free(plugin->version);
+        ECSI_PluginFree(plugin);
         SDL_free(plugin);
     }
 
@@ -376,6 +400,22 @@ const char *ECSI_PluginGetName(ECSPlugin plugin)
     SDL_assert(plugin != NULL);
 
     return plugin->name;
+}
+
+bool ECSI_PluginDependsOn(ECSPlugin plugin, ECSPlugin other)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(other != NULL);
+
+    for (usz i = 0; i < arrlenu(plugin->dependencies); i++)
+    {
+        if (SDL_strcmp(plugin->dependencies[i], other->name) == 0)
+        {
+            return true;
+        }
+    }
+
+    return plugin == other;
 }
 
 bool ECSI_PluginOwnsName(ECSPlugin plugin, const char *name)
