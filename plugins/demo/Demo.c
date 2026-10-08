@@ -131,17 +131,25 @@ static void DemoGradientDraw(void *state, ECSSurface *surface, f64 seconds)
     demo->time += seconds;
 
     f64 shift = demo->time * 60.0;
+    u32 *first = DemoRow(surface, 0);
 
-    for (i32 y = 0; y < surface->height; y++)
+    // red and blue change only along x, so the first row holds them once, and every row adds its green
+    for (i32 x = 0; x < surface->width; x++)
+    {
+        u32 red = (u32)fmod(x + shift, 256.0);
+        u32 blue = (u32)(128.0 + 127.0 * sin(demo->time + x * 0.01));
+        first[x] = 0xFF000000 | (red << 16) | blue;
+    }
+
+    // the first row is filled last, because the others read it
+    for (i32 y = surface->height - 1; y >= 0; y--)
     {
         u32 *row = DemoRow(surface, y);
-        u32 green = (u32)(y * 255 / (surface->height > 1 ? surface->height - 1 : 1));
+        u32 green = (u32)(y * 255 / (surface->height > 1 ? surface->height - 1 : 1)) << 8;
 
         for (i32 x = 0; x < surface->width; x++)
         {
-            u32 red = (u32)fmod(x + shift, 256.0);
-            u32 blue = (u32)(128.0 + 127.0 * sin(demo->time + x * 0.01));
-            row[x] = 0xFF000000 | (red << 16) | (green << 8) | blue;
+            row[x] = first[x] | green;
         }
     }
 }
