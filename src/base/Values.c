@@ -9,22 +9,25 @@ struct ECSI_Value
 {
     ECSValueType type;
 
+    // type chooses the member that is set
     union
     {
         bool boolean;
         i64 integer;
         f64 number;
         char *string;
-    };
 
-    // todo maybe make it a tagged union instead of keeping table together with values
-    // table
-    ECSValue **items; // stb_ds array; callers keep pointers to items, so each is allocated on its own
-    struct
-    {
-        char *key;
-        ECSValue *value;
-    } *fields; // stb_ds hash map with copied keys, in the order fields were added
+        // table
+        struct
+        {
+            ECSValue **items; // stb_ds array; callers keep pointers to items, so each is allocated on its own
+            struct
+            {
+                char *key;
+                ECSValue *value;
+            } *fields; // stb_ds hash map with copied keys, in the order fields were added
+        };
+    };
 };
 
 /// @brief Frees what a value holds and makes it nil.
@@ -34,19 +37,22 @@ static void ECSI_ValueClear(ECSValue *value)
     {
         SDL_free(value->string);
     }
-
-    for (usz i = 0; i < arrlenu(value->items); i++)
+    else if (value->type == ECSValueType_Table)
     {
-        ECSValue_Destroy(&value->items[i]);
+        for (usz i = 0; i < arrlenu(value->items); i++)
+        {
+            ECSValue_Destroy(&value->items[i]);
+        }
+
+        for (usz i = 0; i < shlenu(value->fields); i++)
+        {
+            ECSValue_Destroy(&value->fields[i].value);
+        }
+
+        arrfree(value->items);
+        shfree(value->fields);
     }
 
-    for (usz i = 0; i < shlenu(value->fields); i++)
-    {
-        ECSValue_Destroy(&value->fields[i].value);
-    }
-
-    arrfree(value->items);
-    shfree(value->fields);
     SDL_zerop(value);
 }
 
