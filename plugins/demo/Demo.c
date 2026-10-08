@@ -9,6 +9,11 @@
 /// @brief Colours of the color panel, in ARGB8888.
 static const u32 DEMO_COLORS[] = {0xFF2E3440, 0xFF5E81AC, 0xFFA3BE8C, 0xFFB48EAD, 0xFFD08770, 0xFFEBCB8B};
 
+static struct
+{
+    ECSPlugin plugin;
+} DEMO = {0};
+
 /// @brief State of one demo panel.
 typedef struct DemoPanel
 {
@@ -84,13 +89,23 @@ static SHUResult DemoColorSaveState(void *state, ECSValue *retState)
     return SHUResult_Ok;
 }
 
+static SHUResult DemoColorSave(void *state)
+{
+    DemoPanel *demo = state;
+    ECS_Log(DEMO.plugin, ECSLogLevel_Info, "Colour %zu saved.", demo->color);
+    ECSPanel_SetUnsaved(demo->panel, false);
+    return SHUResult_Ok;
+}
+
 static void DemoColorEvent(void *state, const ECSEvent *event)
 {
     DemoPanel *demo = state;
 
     if (event->type == ECSEventType_PointerDown)
     {
+        // a changed colour is unsaved work, to show the question before closing
         demo->color = (demo->color + 1) % (sizeof(DEMO_COLORS) / sizeof(*DEMO_COLORS));
+        ECSPanel_SetUnsaved(demo->panel, true);
     }
     else if (event->type == ECSEventType_PointerMove)
     {
@@ -268,6 +283,8 @@ static SHUSlice DemoReverse(SHUSlice buffer)
 
 SHUResult ECSPlugin_Init(ECSPlugin plugin)
 {
+    DEMO.plugin = plugin;
+
     ECSPanelTypeDesc color = {
         .name = "demo.color",
         .title = "Color",
@@ -277,6 +294,7 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
         .Draw = DemoColorDraw,
         .Event = DemoColorEvent,
         .SaveState = DemoColorSaveState,
+        .Save = DemoColorSave,
     };
 
     ECSPanelTypeDesc gradient = {

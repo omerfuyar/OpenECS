@@ -690,6 +690,12 @@ static int ECSI_BindingsPanelSetTitle(lua_State *state)
     return 0;
 }
 
+static int ECSI_BindingsPanelSetUnsaved(lua_State *state)
+{
+    ECSPanel_SetUnsaved(ECSI_BindingsCheckPanel(state, 1), lua_toboolean(state, 2));
+    return 0;
+}
+
 static int ECSI_BindingsPanelStartTimer(lua_State *state)
 {
     ECSPanel panel = ECSI_BindingsCheckPanel(state, 1);
@@ -701,6 +707,7 @@ static const luaL_Reg ECSI_BINDINGS_PANEL_METHODS[] = {
     {"redraw", ECSI_BindingsPanelRedraw},
     {"get_title", ECSI_BindingsPanelGetTitle},
     {"set_title", ECSI_BindingsPanelSetTitle},
+    {"set_unsaved", ECSI_BindingsPanelSetUnsaved},
     {"start_timer", ECSI_BindingsPanelStartTimer},
     {NULL, NULL},
 };
@@ -710,6 +717,7 @@ static const luaL_Reg ECSI_BINDINGS_PANEL[] = {
     {"redraw", ECSI_BindingsPanelRedraw},
     {"get_title", ECSI_BindingsPanelGetTitle},
     {"set_title", ECSI_BindingsPanelSetTitle},
+    {"set_unsaved", ECSI_BindingsPanelSetUnsaved},
     {"start_timer", ECSI_BindingsPanelStartTimer},
     {NULL, NULL},
 };

@@ -134,6 +134,10 @@ void ECSI_LayoutToggleMaximize(void);
 /// @param panel Panel to close.
 void ECSI_LayoutClosePanel(ECSPanel panel);
 
+/// @brief Gets every panel of every workspace.
+/// @return stb_ds array of the panels. Free it with arrfree.
+ECSPanel *ECSI_LayoutGetPanels(void);
+
 /// @brief Shows or hides the list of keys that follow the core prefix.
 /// @param show true to show it.
 void ECSI_LayoutShowPrefixKeys(bool show);

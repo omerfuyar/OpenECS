@@ -353,6 +353,94 @@ void ECSI_PanelsRemovePlugin(ECSPlugin plugin)
     }
 }
 
+bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count)
+{
+    SDL_assert(panels != NULL || count == 0);
+
+    char *list = SDL_strdup("");
+    usz unsaved = 0;
+
+    for (usz i = 0; i < count && list != NULL; i++)
+    {
+        if (panels[i]->unsaved)
+        {
+            char *next = NULL;
+            SDL_asprintf(&next, "%s\n- %s", list, panels[i]->title);
+            SDL_free(list);
+            list = next;
+            unsaved++;
+        }
+    }
+
+    if (unsaved == 0)
+    {
+        SDL_free(list);
+        return true;
+    }
+
+    enum
+    {
+        ECSI_ANSWER_SAVE,
+        ECSI_ANSWER_DISCARD,
+        ECSI_ANSWER_CANCEL,
+    };
+
+    const SDL_MessageBoxButtonData buttons[] = {
+        {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, ECSI_ANSWER_SAVE, "Save"},
+        {0, ECSI_ANSWER_DISCARD, "Discard"},
+        {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, ECSI_ANSWER_CANCEL, "Cancel"},
+    };
+
+    char *message = NULL;
+    SDL_asprintf(&message, "%s unsaved work:%s", unsaved == 1 ? "This panel has" : "These panels have", list == NULL ? "" : list);
+    SDL_free(list);
+
+    const SDL_MessageBoxData data = {
+        .flags = SDL_MESSAGEBOX_WARNING,
+        .title = "Unsaved work",
+        .message = message == NULL ? "Some panels have unsaved work." : message,
+        .numbuttons = SDL_arraysize(buttons),
+        .buttons = buttons,
+    };
+
+    int answer = ECSI_ANSWER_CANCEL;
+
+    // without a dialog the user cannot answer; closing goes on, so the program can still quit
+    if (!SDL_ShowMessageBox(&data, &answer))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask about unsaved work (%s); it is discarded. %s", SDL_GetError(), data.message);
+        answer = ECSI_ANSWER_DISCARD;
+    }
+
+    SDL_free(message);
+
+    if (answer != ECSI_ANSWER_SAVE)
+    {
+        return answer == ECSI_ANSWER_DISCARD;
+    }
+
+    // a failed save cancels the close
+    for (usz i = 0; i < count; i++)
+    {
+        ECSPanel panel = panels[i];
+
+        if (!panel->unsaved)
+        {
+            continue;
+        }
+
+        if (panel->type == NULL || panel->fault != NULL || panel->type->desc.Save == NULL || panel->type->desc.Save(panel->state))
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel '%s' could not save its work; closing is cancelled.", panel->title);
+            return false;
+        }
+
+        panel->unsaved = false;
+    }
+
+    return true;
+}
+
 void ECSI_PanelFault(ECSPanel panel, const char *message)
 {
     SDL_assert(panel != NULL);
@@ -426,6 +514,15 @@ SHUResult ECSPanel_StartTimer(ECSPanel panel, ECSTimer *retTimer, f64 seconds, b
     SDL_assert(panel->type != NULL); // placeholders run no code
 
     return ECSI_EventsStartTimer(panel->type->plugin, panel, retTimer, seconds, repeat, function, NULL, data);
+}
+
+void ECSPanel_SetUnsaved(ECSPanel panel, bool unsaved)
+{
+    SDL_assert(panel != NULL);
+
+    // the tab shows the mark
+    panel->needsDraw = panel->needsDraw || panel->unsaved != unsaved;
+    panel->unsaved = unsaved;
 }
 
 void ECSPanel_Redraw(ECSPanel panel)

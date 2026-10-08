@@ -893,6 +893,12 @@ static void ECSI_LayoutDeclareGroup(ECSI_Node *group, void *userData)
                                   .fontSize = OPENECS_FONT_SIZE,
                                   .wrapMode = CLAY_TEXT_WRAP_NONE,
                               }));
+
+                    // the mark of unsaved work
+                    if (group->panels[i]->unsaved)
+                    {
+                        CLAY_TEXT(CLAY_STRING(" *"), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_ACCENT, .fontSize = OPENECS_FONT_SIZE, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                    }
                 }
 
                 arrput(LAYOUT.tabs, ((ECSI_TabRef){group, i}));
@@ -1671,6 +1677,37 @@ void ECSI_LayoutClosePanel(ECSPanel panel)
     {
         workspace->focus = ECSI_LayoutFirstPanel(workspace->tree);
     }
+}
+
+/// @brief Adds every panel of a tree to an stb_ds array.
+static void ECSI_LayoutCollectPanels(const ECSI_Node *node, ECSPanel **panels)
+{
+    if (node == NULL)
+    {
+        return;
+    }
+
+    for (usz i = 0; i < arrlenu(node->panels); i++)
+    {
+        arrput(*panels, node->panels[i]);
+    }
+
+    for (usz i = 0; i < arrlenu(node->children); i++)
+    {
+        ECSI_LayoutCollectPanels(node->children[i], panels);
+    }
+}
+
+ECSPanel *ECSI_LayoutGetPanels(void)
+{
+    ECSPanel *panels = NULL;
+
+    for (usz i = 0; i < arrlenu(LAYOUT.workspaces); i++)
+    {
+        ECSI_LayoutCollectPanels(LAYOUT.workspaces[i].tree, &panels);
+    }
+
+    return panels;
 }
 
 void ECSI_LayoutShowPrefixKeys(bool show)

@@ -5,6 +5,7 @@
 #include "Settings.h"
 
 #include "SDL3/SDL.h"
+#include "stb/stbSDL3.h"
 
 #pragma region Source Only
 
@@ -280,7 +281,11 @@ static void ECSI_InputRunAction(SDL_Keycode key, u32 modifiers)
             INPUT.pointerPanel = NULL;
         }
 
-        ECSI_LayoutClosePanel(focus);
+        if (focus != NULL && ECSI_PanelsConfirmClose(&focus, 1))
+        {
+            ECSI_LayoutClosePanel(focus);
+        }
+
         break;
     default:
         break;
@@ -325,7 +330,13 @@ bool ECSI_InputHandle(const SDL_Event *event)
     {
     case SDL_EVENT_QUIT:
     case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-        return false;
+    {
+        // the user may cancel quitting to keep unsaved work
+        ECSPanel *panels = ECSI_LayoutGetPanels();
+        bool quit = ECSI_PanelsConfirmClose(panels, arrlenu(panels));
+        arrfree(panels);
+        return !quit;
+    }
 
     case SDL_EVENT_WINDOW_RESIZED:
     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:

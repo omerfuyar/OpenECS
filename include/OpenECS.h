@@ -334,6 +334,11 @@ OPENECS_EXPORT void ECSTimer_Stop(ECSTimer *timer);
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSPanel_StartTimer(ECSPanel panel, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data);
 
+/// @brief Marks whether a panel has unsaved work. Before such a panel closes, the core asks the user to save it, discard it or cancel. Main thread only.
+/// @param panel Panel to mark.
+/// @param unsaved true if the panel has unsaved work.
+OPENECS_EXPORT void ECSPanel_SetUnsaved(ECSPanel panel, bool unsaved);
+
 /// @brief Asks the core to draw the panel again.
 /// @param panel Panel to draw.
 OPENECS_EXPORT void ECSPanel_Redraw(ECSPanel panel);

@@ -29,6 +29,7 @@ struct ECSI_Panel
     ECSValue *savedState; // the saved state the panel was created with; a placeholder keeps it to save it again
     u32 stateVersion;     // version of savedState
     bool needsDraw;
+    bool unsaved; // the panel has unsaved work
     f32 x; // rectangle in layout units, set by the layout
     f32 y;
     f32 width;
@@ -46,6 +47,12 @@ struct ECSI_Panel
 /// @param typeData Kept in the type, or NULL.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_PanelTypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc, void *typeData);
+
+/// @brief Asks the user about the unsaved work of panels that are about to close: Save, Discard or Cancel. One dialog lists them all.
+/// @param panels The panels that close. Those without unsaved work are skipped.
+/// @param count Number of panels.
+/// @return true if the panels may close: none had unsaved work, the user discarded it, or every save worked.
+bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count);
 
 /// @brief Removes every panel type a plugin registered. Call it before panels of those types exist.
 /// @param plugin The plugin.
