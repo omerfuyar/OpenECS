@@ -45,6 +45,13 @@ static const char *const ECSI_SETTINGS_LAYER_NAMES[ECSI_SettingsLayer_Count] = {
 /// @brief Names of the setting types, for explanations, in the order of ECSSettingType.
 static const char *const ECSI_SETTING_TYPE_NAMES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table"};
 
+/// @brief Copies every field of a table into another, while its fields are walked.
+typedef struct ECSI_SettingsFileCopier
+{
+    ECSValue *target;
+    SHUResult result;
+} ECSI_SettingsFileCopier;
+
 /// @brief Collects what a user file says, while its fields are walked.
 typedef struct ECSI_SettingsFileReader
 {
@@ -62,6 +69,7 @@ static struct
     ECSValue *layers[ECSI_SettingsLayer_Count]; // the preset, window and user layers: tables of setting names and values
     char *paths[ECSI_SettingsLayer_Count];      // the file of each of those layers
     ECSValue *plugins;                          // list of extra plugin names
+    ECSValue *keys[ECSI_SettingsLayer_Count];   // the window and user layers' key bindings: key texts and function names
     ECSValue *windowFile;                       // the whole settings window's file, which ECSSetting_Set changes and writes
     char *appId;                                // chooses the tool's own part of the user's files
     ECSI_Setting **changed;                     // stb_ds array of settings whose owners are not told yet
@@ -278,6 +286,18 @@ static void ECSI_SettingsReadField(const char *name, const ECSValue *field, void
     reader->result = reader->result ? reader->result : ECSI_ValueCopy(copy, field);
 }
 
+static void ECSI_SettingsCopyField(const char *name, const ECSValue *field, void *userData)
+{
+    ECSI_SettingsFileCopier *copier = userData;
+    ECSValue *copy = NULL;
+
+    if (!copier->result)
+    {
+        copier->result = ECSValue_SetField(copier->target, name, &copy);
+        copier->result = copier->result ? copier->result : ECSI_ValueCopy(copy, field);
+    }
+}
+
 /// @brief Adds the plugins that a part of a user file names.
 static SHUResult ECSI_SettingsReadPlugins(const ECSValue *part)
 {
@@ -312,6 +332,14 @@ static SHUResult ECSI_SettingsBuildLayer(ECSI_SettingsLayer layer, const ECSValu
     return reader.result;
 }
 
+/// @brief Copies the key bindings of a part of a user file into a layer's keys.
+static SHUResult ECSI_SettingsReadKeys(ECSI_SettingsLayer layer, const ECSValue *part)
+{
+    ECSI_SettingsFileCopier copier = {.target = SETTINGS.keys[layer], .result = SHUResult_Ok};
+    ECSI_ValueForEachField(ECSValue_GetField(part, "keys"), ECSI_SettingsCopyField, &copier);
+    return copier.result;
+}
+
 /// @brief Reads a user file into its layer and adds the plugins it names. A missing file, or one that cannot be read, gives an empty table.
 /// @param retFile The whole file, kept by the caller, or NULL to free it.
 static SHUResult ECSI_SettingsReadFile(ECSI_SettingsLayer layer, const char *folder, const char *fileName, ECSValue **retFile)
@@ -338,6 +366,15 @@ static SHUResult ECSI_SettingsReadFile(ECSI_SettingsLayer layer, const char *fol
     }
 
     result = result ? result : ECSI_SettingsBuildLayer(layer, file);
+    result = result ? result : ECSValue_Create(&SETTINGS.keys[layer]);
+
+    if (!result)
+    {
+        ECSValue_SetTable(SETTINGS.keys[layer]);
+        result = ECSI_SettingsReadKeys(layer, file);
+        result = result ? result : ECSI_SettingsReadKeys(layer, ECSValue_GetField(ECSValue_GetField(file, "tools"), SETTINGS.appId));
+    }
+
     result = result ? result : ECSI_SettingsReadPlugins(file);
     result = result ? result : ECSI_SettingsReadPlugins(ECSValue_GetField(ECSValue_GetField(file, "tools"), SETTINGS.appId));
 
@@ -420,6 +457,7 @@ void ECSI_SettingsTerminate(void)
     for (usz i = 0; i < ECSI_SettingsLayer_Count; i++)
     {
         ECSValue_Destroy(&SETTINGS.layers[i]);
+        ECSValue_Destroy(&SETTINGS.keys[i]);
         SDL_free(SETTINGS.paths[i]);
     }
 
@@ -463,6 +501,31 @@ void ECSI_SettingsRemovePlugin(ECSPlugin plugin)
             ECSI_SettingFree(setting);
         }
     }
+}
+
+const ECSValue *ECSI_SettingsGetKeys(ECSI_SettingsLayer layer)
+{
+    SDL_assert(layer < ECSI_SettingsLayer_Count);
+
+    return SETTINGS.keys[layer];
+}
+
+bool ECSI_SettingsDescribe(const char *name, ECSPlugin *retOwner, ECSSettingType *retType, ECSI_SettingsLayer *retLayer)
+{
+    SDL_assert(name != NULL);
+    SDL_assert(retOwner != NULL && retType != NULL && retLayer != NULL);
+
+    ECSI_Setting *setting = ECSI_SettingsFind(name);
+
+    if (setting == NULL)
+    {
+        return false;
+    }
+
+    *retOwner = setting->owner;
+    *retType = setting->type;
+    *retLayer = setting->layer;
+    return true;
 }
 
 void ECSI_SettingsDeliverChanges(void)

@@ -1,5 +1,6 @@
 #include "Session.h"
 
+#include "Input.h"
 #include "Layout.h"
 #include "Lua.h"
 #include "Panels.h"
@@ -216,7 +217,9 @@ static SHUResult ECSI_SessionReadWorkspace(ECSI_SessionReader *reader, const ECS
 
     SHU_ReturnResult(ECSI_LayoutWorkspaceAdd(ECSValue_GetString(ECSValue_GetField(saved, "name"), "workspace"), root, reader->focus, reader->maximized),
                      if (root != NULL) { ECSI_LayoutNodeDestroy(&root); });
-    return SHUResult_Ok;
+
+    // the keys go with the workspace just added, so their positions match
+    return ECSI_InputAddWorkspaceKeys(ECSValue_GetField(saved, "keys"));
 }
 
 #pragma endregion Source Only
@@ -299,6 +302,7 @@ SHUResult ECSI_SessionApply(const char *path, const ECSI_PresetInfo *info)
     SDL_assert(info != NULL);
 
     ECSI_SessionReader reader = {.file = path, .path = "workspaces"};
+    SHU_ReturnResult(ECSI_InputSetToolKeys(ECSValue_GetField(info->file, "keys")));
     const ECSValue *workspaces = ECSValue_GetField(info->file, "workspaces");
 
     if (ECSValue_GetCount(workspaces) == 0)
@@ -355,6 +359,20 @@ SHUResult ECSI_SessionSave(const char *path, const ECSI_PresetInfo *info)
 
     result = result ? result : ECSValue_SetField(session, "workspaces", &field);
     result = result ? result : ECSI_LayoutSave(field, &current);
+
+    // the layout knows nothing of keys, so each workspace's keys are added to it
+    for (usz i = 0; !result && i < ECSValue_GetCount(field); i++)
+    {
+        const ECSValue *keys = ECSI_InputGetWorkspaceKeys(i);
+        ECSValue *copy = NULL;
+
+        if (keys != NULL)
+        {
+            result = ECSValue_SetField((ECSValue *)ECSValue_GetItem(field, i), "keys", &copy);
+            result = result ? result : ECSI_ValueCopy(copy, keys);
+        }
+    }
+
     result = result ? result : ECSValue_SetField(session, "current_workspace", &field);
 
     if (!result)

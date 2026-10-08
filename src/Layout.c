@@ -1419,6 +1419,11 @@ void ECSI_LayoutWorkspaceSwitch(usz index)
     LAYOUT.frameNeeded = true;
 }
 
+usz ECSI_LayoutGetCurrentWorkspace(void)
+{
+    return LAYOUT.current;
+}
+
 void ECSI_LayoutRequestFrame(void)
 {
     LAYOUT.frameNeeded = true;

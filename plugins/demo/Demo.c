@@ -309,6 +309,12 @@ static void DemoCounterDestroy(void *counter)
     free(counter);
 }
 
+/// @brief Says hello in the log; the default preset binds it to Ctrl+N.
+static void DemoHello(void)
+{
+    ECS_Log(DEMO.plugin, ECSLogLevel_Info, "Hello from a key.");
+}
+
 #pragma endregion Service
 
 #pragma endregion Source Only
@@ -366,6 +372,7 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.repeat", (ECSFunction)DemoRepeat, "string(string, int)", "Repeats a text"));
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.split", (ECSFunction)DemoSplit, "void(double, out int64, out double)", "Splits a number into its whole and fraction parts"));
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.describe", (ECSFunction)DemoDescribe, "int(value, out value)", "Gives a value's type and counts its items"));
+    SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.hello", (ECSFunction)DemoHello, "void()", "Says hello in the log"));
     SHU_ReturnResult(ECSHandle_RegisterType(plugin, "demo.counter", DemoCounterDestroy));
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.counter", (ECSFunction)DemoCounterCreate, "handle<demo.counter>(int64)", "Makes a counter"));
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.counter_add", (ECSFunction)DemoCounterAdd, "int64(handle<demo.counter>, int64)", "Adds to a counter and gives its count"));

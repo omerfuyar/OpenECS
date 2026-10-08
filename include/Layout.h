@@ -68,6 +68,10 @@ void ECSI_LayoutWorkspaceSwitch(usz index);
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_LayoutSave(ECSValue *retWorkspaces, usz *retCurrent);
 
+/// @brief Gets the current workspace.
+/// @return Its position, starting at 0.
+usz ECSI_LayoutGetCurrentWorkspace(void);
+
 /// @brief Asks for the window to be drawn again.
 void ECSI_LayoutRequestFrame(void);
 

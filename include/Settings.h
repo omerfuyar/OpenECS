@@ -41,6 +41,19 @@ SHUWUR SHUResult ECSI_SettingsDeclareCore(const ECSSettingDesc *desc);
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description or the default is invalid or the name is taken, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSI_SettingsDeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *desc, const ECSValue *defaultValue);
 
+/// @brief Gets the key bindings of a user file: its keys table for every tool, with the tool's own keys, which win.
+/// @param layer ECSI_SettingsLayer_Window or ECSI_SettingsLayer_User.
+/// @return A table of key texts and function names, or NULL. Valid until ECSI_SettingsTerminate.
+const ECSValue *ECSI_SettingsGetKeys(ECSI_SettingsLayer layer);
+
+/// @brief Describes a declared setting.
+/// @param name Name of the setting.
+/// @param retOwner Its owner; NULL for the core.
+/// @param retType Its type.
+/// @param retLayer The layer its value in effect comes from.
+/// @return true if the setting is declared.
+bool ECSI_SettingsDescribe(const char *name, ECSPlugin *retOwner, ECSSettingType *retType, ECSI_SettingsLayer *retLayer);
+
 /// @brief Tells owners about the settings whose value in effect changed since the last call. The main loop calls it after delivering events.
 void ECSI_SettingsDeliverChanges(void);
 

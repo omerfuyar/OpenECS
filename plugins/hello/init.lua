@@ -21,8 +21,16 @@ timer = ecs.timer.start(0.5, true, function()
   end
 end)
 
--- a panel type written in Lua: stripes whose colour changes on click
+-- a panel type written in Lua: stripes whose colour changes on click, or with a key
 local colors = { 0xFF3B4252, 0xFF88C0D0, 0xFFA3BE8C, 0xFFEBCB8B }
+local stripes = setmetatable({}, { __mode = "k" }) -- each panel's state, by its handle
+
+local function next_color(state)
+  state.color = state.color % #colors + 1
+  state.clicks = state.clicks + 1
+  state.panel:set_title("Stripes " .. state.clicks)
+  state.panel:redraw()
+end
 
 ecs.panel.register_type({
   name = "hello.stripes",
@@ -31,7 +39,9 @@ ecs.panel.register_type({
 
   create = function(panel, saved, version)
     local color = saved and saved.color or 1
-    return { panel = panel, color = colors[color] and color or 1, clicks = 0 }
+    local state = { panel = panel, color = colors[color] and color or 1, clicks = 0 }
+    stripes[panel] = state
+    return state
   end,
 
   draw = function(state, surface)
@@ -45,10 +55,7 @@ ecs.panel.register_type({
 
   event = function(state, event)
     if event.type == "pointer_down" then
-      state.color = state.color % #colors + 1
-      state.clicks = state.clicks + 1
-      state.panel:set_title("Stripes " .. state.clicks)
-      state.panel:redraw()
+      next_color(state)
     end
   end,
 
@@ -81,3 +88,14 @@ local counter = ecs.service.get("demo.counter")(10)
 ecs.log.info("counter: " .. ecs.service.get("demo.counter_add")(counter, 5) .. " " .. tostring(counter))
 counter = nil
 collectgarbage()
+
+-- a key for the stripes panel: its setting holds the key, so the user can change it
+ecs.service.register("hello", {
+  next_color = {
+    sig = "void(handle<ecs.panel>)",
+    doc = "Shows the next colour of a stripes panel",
+    fn = function(panel) next_color(stripes[panel]) end,
+  },
+})
+ecs.settings.declare({ name = "hello.next_color_key", type = "key", default = "N", description = "Key for the next colour of a stripes panel" })
+ecs.input.bind("hello.stripes", "hello.next_color_key", "hello.next_color")

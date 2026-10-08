@@ -347,6 +347,14 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Explain(const char *name, ECSValue *r
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the name is invalid or taken, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, void (*Destroy)(void *object));
 
+/// @brief Binds a key to a function for one of the plugin's panel types: the key works while a panel of that type has focus. Main thread only.
+/// @param plugin The plugin. It owns the panel type and the setting.
+/// @param panelType Name of the panel type, such as "canvas.view".
+/// @param setting Name of the plugin's key setting that holds the key combination, so the user can change it.
+/// @param function Name of the function the key runs. It takes no arguments, or the focused panel: void() or void(handle<ecs.panel>).
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the panel type or the setting is not the plugin's, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *setting, const char *function);
+
 /// @brief Starts a timer that calls a function on the main thread, once or repeatedly. Main thread only.
 /// @param plugin The plugin that owns the timer.
 /// @param retTimer The new timer. A one-shot timer's handle is invalid after its function returns.

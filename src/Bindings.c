@@ -1,6 +1,7 @@
 #include "Bindings.h"
 
 #include "Events.h"
+#include "Input.h"
 #include "Lua.h"
 #include "Panels.h"
 #include "Services.h"
@@ -381,6 +382,34 @@ static const luaL_Reg ECSI_BINDINGS_TIMER_METHODS[] = {
 };
 
 #pragma endregion Timers
+
+#pragma region Input
+
+static int ECSI_BindingsInputBind(lua_State *state)
+{
+    const char *panelType = luaL_checkstring(state, 1);
+    const char *setting = luaL_checkstring(state, 2);
+    const char *function = luaL_checkstring(state, 3);
+    SHUResult result = ECSKey_Bind(ECSI_BindingsPlugin(state), panelType, setting, function);
+
+    // an invalid binding is reported and returned; the plugin continues
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "the key of '%s' is not bound (%s)", setting, SHUResult_String(result));
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
+static const luaL_Reg ECSI_BINDINGS_INPUT[] = {
+    {"bind", ECSI_BindingsInputBind},
+    {NULL, NULL},
+};
+
+#pragma endregion Input
 
 #pragma region Services
 
@@ -939,6 +968,7 @@ static void ECSI_BindingsPushEcs(lua_State *state, ECSPlugin plugin)
     ECSI_BindingsAddTable(state, plugin, "timer", ECSI_BINDINGS_TIMER);
     ECSI_BindingsAddTable(state, plugin, "panel", ECSI_BINDINGS_PANEL);
     ECSI_BindingsAddTable(state, plugin, "service", ECSI_BINDINGS_SERVICE);
+    ECSI_BindingsAddTable(state, plugin, "input", ECSI_BINDINGS_INPUT);
 
     lua_newtable(state);
     lua_pushstring(state, ECSI_PluginGetName(plugin));

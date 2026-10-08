@@ -154,6 +154,7 @@ static void ECSI_RemoveRegistrations(ECSPlugin plugin)
     ECSI_ServicesRemovePlugin(plugin);
     ECSI_SettingsRemovePlugin(plugin);
     ECSI_EventsStopTimersOfPlugin(plugin);
+    ECSI_InputRemovePlugin(plugin);
 }
 
 /// @brief Stops the program if a start-up step failed. The details are already in the log.

@@ -49,6 +49,35 @@ typedef struct ECSI_KeyBinding
     char *function; // name of the function
 } ECSI_KeyBinding;
 
+/// @brief A plugin's binding for its panel type. The key is the value of a key setting, so the user can change it.
+typedef struct ECSI_PanelBinding
+{
+    ECSPlugin plugin;
+    char *panelType;
+    char *setting;
+    char *function;
+} ECSI_PanelBinding;
+
+/// @brief How specific a binding is; a more specific binding wins within one settings layer.
+typedef enum ECSI_BindingScope
+{
+    ECSI_BindingScope_Tool = 0,
+    ECSI_BindingScope_Workspace,
+    ECSI_BindingScope_PanelType,
+} ECSI_BindingScope;
+
+/// @brief The binding that a key press runs, found by ECSI_InputFindBinding.
+typedef struct ECSI_BindingSearch
+{
+    u32 key;
+    u32 modifiers;
+    ECSI_SettingsLayer layer; // of the table being searched
+    ECSI_BindingScope scope;  // of the table being searched
+    const char *function;     // the best binding so far, or NULL
+    ECSI_SettingsLayer bestLayer;
+    ECSI_BindingScope bestScope;
+} ECSI_BindingSearch;
+
 static struct
 {
     u32 prefixKey;
@@ -58,7 +87,10 @@ static struct
     ECSI_KeyBinding *prefixKeys; // stb_ds array of the keys after the prefix
     bool prefixKeysDirty;        // ecs.prefix_keys changed and is read again at the next key press
     const char **prefixLines;    // stb_ds array of the lines shown after the prefix: key text, description, and so on
-    ECSPanel pointerPanel;       // panel that got the press; it gets pointer events until the release
+    ECSI_PanelBinding *panelBindings; // stb_ds array of plugins' bindings for their panel types
+    ECSValue *toolKeys;               // the preset's bindings for the whole tool, or NULL
+    ECSValue **workspaceKeys;         // stb_ds array of the preset's bindings for each workspace; NULL for none
+    ECSPanel pointerPanel;            // panel that got the press; it gets pointer events until the release
 } INPUT = {0};
 
 /// @brief Converts SDL's modifier bits to ECSModifier bits.
@@ -95,7 +127,8 @@ static u32 ECSI_InputModifiers(SDL_Keymod modifiers)
 }
 
 /// @brief Reads a key combination written as text, such as "Ctrl+Shift+P". Key names are SDL's.
-static SHUResult ECSI_InputParseKey(const char *text, u32 *retKey, u32 *retModifiers)
+/// @param report true to report a text that is not a key combination.
+static SHUResult ECSI_InputParseKey(const char *text, bool report, u32 *retKey, u32 *retModifiers)
 {
     char *copy = SDL_strdup(text);
 
@@ -137,7 +170,11 @@ static SHUResult ECSI_InputParseKey(const char *text, u32 *retKey, u32 *retModif
 
     if (*retKey == SDLK_UNKNOWN)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a key combination.", text);
+        if (report)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a key combination.", text);
+        }
+
         return SHUResult_ErrBadData;
     }
 
@@ -154,9 +191,9 @@ static void ECSI_InputReadPrefix(void)
 
     INPUT.prefixDirty = false;
 
-    if (ECSI_InputParseKey(ECSValue_GetString(ECSSetting_Get("ecs.prefix"), OPENECS_DEFAULT_PREFIX), &INPUT.prefixKey, &INPUT.prefixModifiers))
+    if (ECSI_InputParseKey(ECSValue_GetString(ECSSetting_Get("ecs.prefix"), OPENECS_DEFAULT_PREFIX), true, &INPUT.prefixKey, &INPUT.prefixModifiers))
     {
-        SHUResult result = ECSI_InputParseKey(OPENECS_DEFAULT_PREFIX, &INPUT.prefixKey, &INPUT.prefixModifiers);
+        SHUResult result = ECSI_InputParseKey(OPENECS_DEFAULT_PREFIX, true, &INPUT.prefixKey, &INPUT.prefixModifiers);
         SDL_assert(result == SHUResult_Ok);
         (void)result;
     }
@@ -179,7 +216,7 @@ static void ECSI_InputPutBinding(ECSI_KeyBinding **bindings, const char *text, c
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSI_InputParseKey(text, &key, &modifiers))
+    if (ECSI_InputParseKey(text, true, &key, &modifiers))
     {
         return;
     }
@@ -245,6 +282,93 @@ static void ECSI_InputReadPrefixKeys(void)
     }
 
     ECSI_ValueForEachField(ECSSetting_Get("ecs.prefix_keys"), ECSI_InputAddPrefixKey, NULL);
+}
+
+/// @brief Keeps a binding that matches a key press, if it wins over the best one so far: a higher layer wins, then a more specific scope.
+static void ECSI_InputConsiderBinding(ECSI_BindingSearch *search, const char *text, const char *function)
+{
+    u32 key = 0;
+    u32 modifiers = 0;
+
+    if (function == NULL || ECSI_InputParseKey(text, false, &key, &modifiers) || key != search->key || modifiers != search->modifiers)
+    {
+        return;
+    }
+
+    if (search->function == NULL || search->layer > search->bestLayer || (search->layer == search->bestLayer && search->scope > search->bestScope))
+    {
+        search->function = function;
+        search->bestLayer = search->layer;
+        search->bestScope = search->scope;
+    }
+}
+
+static void ECSI_InputConsiderField(const char *name, const ECSValue *field, void *userData)
+{
+    ECSI_InputConsiderBinding(userData, name, ECSValue_GetString(field, NULL));
+}
+
+/// @brief Considers every binding of a table of key texts and function names.
+static void ECSI_InputConsiderTable(ECSI_BindingSearch *search, const ECSValue *keys, ECSI_SettingsLayer layer, ECSI_BindingScope scope)
+{
+    search->layer = layer;
+    search->scope = scope;
+    ECSI_ValueForEachField(keys, ECSI_InputConsiderField, search);
+}
+
+/// @brief Finds the function that a key press runs: the binding of the highest settings layer, and within it the most specific one.
+/// @return The function's name, or NULL if no binding matches.
+static const char *ECSI_InputFindBinding(u32 key, u32 modifiers, ECSPanel focus)
+{
+    ECSI_BindingSearch search = {.key = key, .modifiers = modifiers};
+    usz workspace = ECSI_LayoutGetCurrentWorkspace();
+
+    ECSI_InputConsiderTable(&search, ECSI_SettingsGetKeys(ECSI_SettingsLayer_User), ECSI_SettingsLayer_User, ECSI_BindingScope_Tool);
+    ECSI_InputConsiderTable(&search, ECSI_SettingsGetKeys(ECSI_SettingsLayer_Window), ECSI_SettingsLayer_Window, ECSI_BindingScope_Tool);
+    ECSI_InputConsiderTable(&search, INPUT.toolKeys, ECSI_SettingsLayer_Preset, ECSI_BindingScope_Tool);
+
+    if (workspace < arrlenu(INPUT.workspaceKeys))
+    {
+        ECSI_InputConsiderTable(&search, INPUT.workspaceKeys[workspace], ECSI_SettingsLayer_Preset, ECSI_BindingScope_Workspace);
+    }
+
+    // a plugin's binding counts in the layer that sets its key setting
+    for (usz i = 0; focus != NULL && i < arrlenu(INPUT.panelBindings); i++)
+    {
+        ECSI_PanelBinding *binding = &INPUT.panelBindings[i];
+        ECSPlugin owner = NULL;
+        ECSSettingType type = ECSSettingType_Key;
+
+        if (SDL_strcmp(binding->panelType, focus->typeName) == 0 && ECSI_SettingsDescribe(binding->setting, &owner, &type, &search.layer))
+        {
+            search.scope = ECSI_BindingScope_PanelType;
+            ECSI_InputConsiderBinding(&search, ECSValue_GetString(ECSSetting_Get(binding->setting), ""), binding->function);
+        }
+    }
+
+    return search.function;
+}
+
+static void ECSI_InputCheckKey(const char *name, const ECSValue *field, void *userData)
+{
+    (void)field;
+    (void)userData;
+    u32 key = 0;
+    u32 modifiers = 0;
+    (void)ECSI_InputParseKey(name, true, &key, &modifiers);
+}
+
+/// @brief Reports the key texts of a table of bindings that are not key combinations; they never match.
+static void ECSI_InputCheckKeys(const ECSValue *keys)
+{
+    ECSI_ValueForEachField(keys, ECSI_InputCheckKey, NULL);
+}
+
+static void ECSI_InputFreePanelBinding(ECSI_PanelBinding *binding)
+{
+    SDL_free(binding->panelType);
+    SDL_free(binding->setting);
+    SDL_free(binding->function);
 }
 
 /// @brief Marks a setting to be read again; given as the Changed function of the input settings.
@@ -528,12 +652,70 @@ SHUResult ECSI_InputInitialize(void)
     INPUT.prefixDirty = true;
     INPUT.prefixKeysDirty = true;
     ECSI_InputReadPrefix();
+    ECSI_InputCheckKeys(ECSI_SettingsGetKeys(ECSI_SettingsLayer_Window));
+    ECSI_InputCheckKeys(ECSI_SettingsGetKeys(ECSI_SettingsLayer_User));
     return SHUResult_Ok;
+}
+
+SHUResult ECSI_InputSetToolKeys(const ECSValue *keys)
+{
+    ECSValue_Destroy(&INPUT.toolKeys);
+    ECSI_InputCheckKeys(keys);
+    SHU_ReturnResult(ECSValue_Create(&INPUT.toolKeys));
+    return ECSI_ValueCopy(INPUT.toolKeys, keys);
+}
+
+SHUResult ECSI_InputAddWorkspaceKeys(const ECSValue *keys)
+{
+    ECSValue *copy = NULL;
+
+    if (keys != NULL)
+    {
+        ECSI_InputCheckKeys(keys);
+        SHU_ReturnResult(ECSValue_Create(&copy));
+        SHU_ReturnResult(ECSI_ValueCopy(copy, keys), ECSValue_Destroy(&copy););
+    }
+
+    arrput(INPUT.workspaceKeys, copy);
+    return SHUResult_Ok;
+}
+
+const ECSValue *ECSI_InputGetWorkspaceKeys(usz index)
+{
+    return index < arrlenu(INPUT.workspaceKeys) ? INPUT.workspaceKeys[index] : NULL;
+}
+
+void ECSI_InputRemovePlugin(ECSPlugin plugin)
+{
+    SDL_assert(plugin != NULL);
+
+    for (usz i = arrlenu(INPUT.panelBindings); i > 0; i--)
+    {
+        if (INPUT.panelBindings[i - 1].plugin == plugin)
+        {
+            ECSI_InputFreePanelBinding(&INPUT.panelBindings[i - 1]);
+            arrdel(INPUT.panelBindings, i - 1);
+        }
+    }
 }
 
 void ECSI_InputTerminate(void)
 {
     ECSI_InputFreeBindings(&INPUT.prefixKeys);
+
+    for (usz i = 0; i < arrlenu(INPUT.panelBindings); i++)
+    {
+        ECSI_InputFreePanelBinding(&INPUT.panelBindings[i]);
+    }
+
+    for (usz i = 0; i < arrlenu(INPUT.workspaceKeys); i++)
+    {
+        ECSValue_Destroy(&INPUT.workspaceKeys[i]);
+    }
+
+    arrfree(INPUT.panelBindings);
+    arrfree(INPUT.workspaceKeys);
+    ECSValue_Destroy(&INPUT.toolKeys);
     arrfree(INPUT.prefixLines);
     SDL_zero(INPUT);
 }
@@ -675,9 +857,17 @@ bool ECSI_InputHandle(const SDL_Event *event)
             break;
         }
 
+        // a binding wins over the focused panel's own handling of the key
         ECSPanel focus = ECSI_LayoutGetFocus();
+        bool modifierKey = (key->key >= SDLK_LCTRL && key->key <= SDLK_RGUI) || key->key == SDLK_MODE;
+        u32 modifiers = ECSI_InputModifiers(key->mod);
+        const char *function = modifierKey || (modifiers & ECSModifier_AltGr) != 0 ? NULL : ECSI_InputFindBinding(key->key, modifiers, focus);
 
-        if (focus != NULL)
+        if (function != NULL)
+        {
+            ECSI_ServicesCallBound(function, focus);
+        }
+        else if (focus != NULL)
         {
             ECSI_InputSendKey(focus, ECSEventType_KeyDown, key);
         }
@@ -702,4 +892,46 @@ bool ECSI_InputHandle(const SDL_Event *event)
     }
 
     return true;
+}
+
+SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *setting, const char *function)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(panelType != NULL && setting != NULL && function != NULL);
+
+    ECSPlugin owner = NULL;
+    ECSSettingType type = ECSSettingType_Bool;
+    ECSI_SettingsLayer layer = ECSI_SettingsLayer_Core;
+
+    // a plugin binds keys only for its own panel types, with its own key settings
+    if (!ECSI_PluginOwnsName(plugin, panelType))
+    {
+        return SHUResult_ErrBadData;
+    }
+
+    if (!ECSI_SettingsDescribe(setting, &owner, &type, &layer) || owner != plugin || type != ECSSettingType_Key)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' binds a key with '%s', which is not one of its key settings.", ECSI_PluginGetName(plugin), setting);
+        return SHUResult_ErrBadData;
+    }
+
+    u32 key = 0;
+    u32 modifiers = 0;
+    ECSI_InputReadPrefix();
+
+    if (ECSI_InputParseKey(ECSValue_GetString(ECSSetting_Get(setting), ""), true, &key, &modifiers) == SHUResult_Ok && key == INPUT.prefixKey && modifiers == INPUT.prefixModifiers)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The key of '%s' is the core prefix; the binding is never triggered.", setting);
+    }
+
+    ECSI_PanelBinding binding = {.plugin = plugin, .panelType = SDL_strdup(panelType), .setting = SDL_strdup(setting), .function = SDL_strdup(function)};
+
+    if (binding.panelType == NULL || binding.setting == NULL || binding.function == NULL)
+    {
+        ECSI_InputFreePanelBinding(&binding);
+        return SHUResult_ErrAllocation;
+    }
+
+    arrput(INPUT.panelBindings, binding);
+    return SHUResult_Ok;
 }
