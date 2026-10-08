@@ -318,7 +318,8 @@ After every operation:
 ### 6.4 Grips and locked groups
 
 - A grip appears when the pointer is within a few pixels of a panel's top edge. While it is shown, pointer events over it go to the core.
-- Locked groups show no grip and accept no dropped panels.
+- Locked groups show no grip and accept no dropped panels. Their panels cannot be dragged, moved with keys or closed by the user.
+- `ecs.lock` locks or unlocks the focused group.
 
 ### 6.5 Operations
 
@@ -396,6 +397,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | M            | `ecs.maximize`                               | Maximize or restore                                                                                     |
   | P            | `ecs.pop_out`                                | Pop out                                                                                                 |
   | X            | `ecs.close`                                  | Close the panel                                                                                         |
+  | L            | `ecs.lock`                                   | Lock or unlock the group                                                                                |
   | Escape       |                                              | Cancel; it is not a function, so it always works                                                        |
 
 ### 7.6 Binding keys
