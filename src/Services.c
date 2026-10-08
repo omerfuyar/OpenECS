@@ -346,7 +346,8 @@ static SHUResult ECSI_ServicesFind(ECSPlugin plugin, const char *name, const cha
         return SHUResult_ErrNotFound;
     }
 
-    if (!ECSI_PluginDependsOn(plugin, function->plugin))
+    // every plugin may use the core's functions
+    if (function->plugin != NULL && !ECSI_PluginDependsOn(plugin, function->plugin))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' looks up '%s', but its manifest does not depend on '%s'.", ECSI_PluginGetName(plugin), name, ECSI_PluginGetName(function->plugin));
         return SHUResult_ErrPrivileges;
@@ -872,7 +873,8 @@ static void ECSI_ServicesCallLua(ffi_cif *cif, void *result, void **arguments, v
 /// @brief Checks a function's name and makes its record, without its code.
 static SHUResult ECSI_ServicesCreate(ECSPlugin plugin, const char *name, const char *signature, const char *description, ECSI_Function **retFunction)
 {
-    if (!ECSI_PluginOwnsName(plugin, name))
+    // the core's own names start with "ecs."
+    if (plugin == NULL ? SDL_strncmp(name, "ecs.", 4) != 0 : !ECSI_PluginOwnsName(plugin, name))
     {
         return SHUResult_ErrBadData;
     }
@@ -1125,6 +1127,56 @@ SHUResult ECSI_ServicesRegisterLua(ECSPlugin plugin, const char *name, const cha
     function->anchors = luaL_ref(state, LUA_REGISTRYINDEX);
     shput(SERVICES.functions, function->name, function);
     return SHUResult_Ok;
+}
+
+SHUResult ECSI_ServicesRegisterCore(const char *name, ECSFunction function, const char *signature, const char *description)
+{
+    SDL_assert(name != NULL);
+    SDL_assert(function != NULL);
+    SDL_assert(signature != NULL);
+
+    ECSI_Function *registered = NULL;
+    SHU_ReturnResult(ECSI_ServicesCreate(NULL, name, signature, description, &registered));
+    registered->pointer = function;
+    shput(SERVICES.functions, registered->name, registered);
+    return SHUResult_Ok;
+}
+
+SHUResult ECSI_ServicesCallBound(const char *name, ECSPanel focus)
+{
+    SDL_assert(name != NULL);
+
+    ECSI_Function *function = SERVICES.functions == NULL ? NULL : shget(SERVICES.functions, name);
+
+    if (function == NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A key is bound to '%s', which is not registered.", name);
+        return SHUResult_ErrNotFound;
+    }
+
+    // a C function and a Lua function's closure are called the same way
+    if (SDL_strcmp(function->signature.text, "void()") == 0)
+    {
+        ((void (*)(void))function->pointer)();
+        return SHUResult_Ok;
+    }
+
+    if (SDL_strcmp(function->signature.text, "void(handle<ecs.panel>)") == 0)
+    {
+        ((void (*)(ECSPanel))function->pointer)(focus);
+        return SHUResult_Ok;
+    }
+
+    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A key is bound to '%s', which is %s; a bound function is void() or void(handle<ecs.panel>).", name, function->signature.text);
+    return SHUResult_ErrBadData;
+}
+
+const char *ECSI_ServicesGetDescription(const char *name)
+{
+    SDL_assert(name != NULL);
+
+    ECSI_Function *function = SERVICES.functions == NULL ? NULL : shget(SERVICES.functions, name);
+    return function == NULL ? NULL : function->description;
 }
 
 SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, void (*Destroy)(void *object))

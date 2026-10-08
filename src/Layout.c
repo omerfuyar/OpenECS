@@ -130,7 +130,8 @@ static struct
     usz current;
 
     bool frameNeeded;
-    bool showPrefixKeys;
+    const char *const *prefixLines; // keys after the prefix and what they do, in pairs, or NULL when the prefix is not pressed
+    usz prefixLineCount;
     ECSI_TabRef *tabs; // stb_ds array
 
     ECSI_Node *gripGroup;   // lone group whose grip is shown, or NULL
@@ -147,17 +148,6 @@ static struct
 
 /// @brief Width of the key column in the list of prefix keys.
 #define OPENECS_PREFIX_KEY_COLUMN 104.0f
-
-/// @brief The keys shown after the core prefix, as key and action. Mirrors the default of the setting ecs.prefix_keys.
-static const char *const ECSI_PREFIX_KEY_LINES[][2] = {
-    {"Arrows", "move focus"},
-    {"Shift+Arrows", "move the panel"},
-    {"Tab", "next tab"},
-    {"1 to 9", "switch workspace"},
-    {"M", "maximize or restore"},
-    {"X", "close the panel"},
-    {"Escape", "cancel"},
-};
 
 static ECSI_Workspace *ECSI_LayoutCurrent(void)
 {
@@ -983,7 +973,7 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
             }) {}
         }
 
-        if (LAYOUT.showPrefixKeys)
+        if (LAYOUT.prefixLines != NULL)
         {
             CLAY_AUTO_ID({
                 .layout = {.padding = CLAY_PADDING_ALL(14), .childGap = 4, .layoutDirection = CLAY_TOP_TO_BOTTOM},
@@ -993,16 +983,16 @@ static Clay_RenderCommandArray ECSI_LayoutDeclareInterface(void)
                 .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {24.0f, 24.0f}, .zIndex = 3},
             })
             {
-                for (usz i = 0; i < SDL_arraysize(ECSI_PREFIX_KEY_LINES); i++)
+                for (usz i = 0; i < LAYOUT.prefixLineCount; i++)
                 {
                     CLAY_AUTO_ID({.layout = {.layoutDirection = CLAY_LEFT_TO_RIGHT}})
                     {
                         CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(OPENECS_PREFIX_KEY_COLUMN), CLAY_SIZING_FIT(0)}}})
                         {
-                            CLAY_TEXT(ECSI_LayoutClayText(ECSI_PREFIX_KEY_LINES[i][0]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_ACCENT, .fontSize = OPENECS_FONT_SIZE}));
+                            CLAY_TEXT(ECSI_LayoutClayText(LAYOUT.prefixLines[2 * i]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_ACCENT, .fontSize = OPENECS_FONT_SIZE}));
                         }
 
-                        CLAY_TEXT(ECSI_LayoutClayText(ECSI_PREFIX_KEY_LINES[i][1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE}));
+                        CLAY_TEXT(ECSI_LayoutClayText(LAYOUT.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = OPENECS_COLOR_TEXT, .fontSize = OPENECS_FONT_SIZE}));
                     }
                 }
             }
@@ -1710,9 +1700,10 @@ ECSPanel *ECSI_LayoutGetPanels(void)
     return panels;
 }
 
-void ECSI_LayoutShowPrefixKeys(bool show)
+void ECSI_LayoutShowPrefixKeys(const char *const *lines, usz count)
 {
-    LAYOUT.showPrefixKeys = show;
+    LAYOUT.prefixLines = count == 0 ? NULL : lines;
+    LAYOUT.prefixLineCount = count;
     LAYOUT.frameNeeded = true;
 }
 

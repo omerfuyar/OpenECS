@@ -139,7 +139,8 @@ void ECSI_LayoutClosePanel(ECSPanel panel);
 ECSPanel *ECSI_LayoutGetPanels(void);
 
 /// @brief Shows or hides the list of keys that follow the core prefix.
-/// @param show true to show it.
-void ECSI_LayoutShowPrefixKeys(bool show);
+/// @param lines Each key's text and description, one after the other. They must stay valid while they are shown.
+/// @param count Number of keys; 0 hides the list.
+void ECSI_LayoutShowPrefixKeys(const char *const *lines, usz count);
 
 #pragma endregion Declarations

@@ -2,6 +2,7 @@
 
 #include "Layout.h"
 #include "Panels.h"
+#include "Services.h"
 #include "Settings.h"
 
 #include "SDL3/SDL.h"
@@ -9,55 +10,55 @@
 
 #pragma region Source Only
 
-/// @brief An action of the core that follows the core prefix.
-typedef enum ECSI_CoreAction
-{
-    ECSI_CoreAction_FocusLeft = 0,
-    ECSI_CoreAction_FocusRight,
-    ECSI_CoreAction_FocusUp,
-    ECSI_CoreAction_FocusDown,
-    ECSI_CoreAction_MoveLeft,
-    ECSI_CoreAction_MoveRight,
-    ECSI_CoreAction_MoveUp,
-    ECSI_CoreAction_MoveDown,
-    ECSI_CoreAction_NextTab,
-    ECSI_CoreAction_Maximize,
-    ECSI_CoreAction_Close,
-    ECSI_CoreAction_Cancel,
-    ECSI_CoreAction_Count,
-} ECSI_CoreAction;
-
-/// @brief The keys that follow the core prefix: the default of the setting ecs.prefix_keys. Digits 1 to 9 switch workspace.
-static const char *const ECSI_PREFIX_KEYS[ECSI_CoreAction_Count] = {
-    [ECSI_CoreAction_FocusLeft] = "Left",
-    [ECSI_CoreAction_FocusRight] = "Right",
-    [ECSI_CoreAction_FocusUp] = "Up",
-    [ECSI_CoreAction_FocusDown] = "Down",
-    [ECSI_CoreAction_MoveLeft] = "Shift+Left",
-    [ECSI_CoreAction_MoveRight] = "Shift+Right",
-    [ECSI_CoreAction_MoveUp] = "Shift+Up",
-    [ECSI_CoreAction_MoveDown] = "Shift+Down",
-    [ECSI_CoreAction_NextTab] = "Tab",
-    [ECSI_CoreAction_Maximize] = "M",
-    [ECSI_CoreAction_Close] = "X",
-    [ECSI_CoreAction_Cancel] = "Escape",
-};
-
 /// @brief Default of the setting ecs.prefix.
 #define OPENECS_DEFAULT_PREFIX "Alt+W"
 
 /// @brief Choices of the setting ecs.focus; the first is the default.
 static const char *const ECSI_FOCUS_CHOICES[] = {"click", "hover", NULL};
 
+/// @brief The default keys after the core prefix, with the functions they run. The setting ecs.prefix_keys adds to them and changes them.
+static const char *const ECSI_PREFIX_KEYS[][2] = {
+    {"Left", "ecs.focus_left"},
+    {"Right", "ecs.focus_right"},
+    {"Up", "ecs.focus_up"},
+    {"Down", "ecs.focus_down"},
+    {"Shift+Left", "ecs.move_left"},
+    {"Shift+Right", "ecs.move_right"},
+    {"Shift+Up", "ecs.move_up"},
+    {"Shift+Down", "ecs.move_down"},
+    {"Tab", "ecs.next_tab"},
+    {"M", "ecs.maximize"},
+    {"X", "ecs.close"},
+    {"1", "ecs.workspace_1"},
+    {"2", "ecs.workspace_2"},
+    {"3", "ecs.workspace_3"},
+    {"4", "ecs.workspace_4"},
+    {"5", "ecs.workspace_5"},
+    {"6", "ecs.workspace_6"},
+    {"7", "ecs.workspace_7"},
+    {"8", "ecs.workspace_8"},
+    {"9", "ecs.workspace_9"},
+};
+
+/// @brief A key combination and the function it runs.
+typedef struct ECSI_KeyBinding
+{
+    u32 key;
+    u32 modifiers;
+    char *text;     // the combination as written
+    char *function; // name of the function
+} ECSI_KeyBinding;
+
 static struct
 {
-    const ECSValue *prefixSetting; // the value of ecs.prefix that prefixKey was read from
     u32 prefixKey;
     u32 prefixModifiers;
+    bool prefixDirty; // ecs.prefix changed and is read again at the next key press
     bool prefixActive;
-    u32 actionKeys[ECSI_CoreAction_Count];
-    u32 actionModifiers[ECSI_CoreAction_Count];
-    ECSPanel pointerPanel; // panel that got the press; it gets pointer events until the release
+    ECSI_KeyBinding *prefixKeys; // stb_ds array of the keys after the prefix
+    bool prefixKeysDirty;        // ecs.prefix_keys changed and is read again at the next key press
+    const char **prefixLines;    // stb_ds array of the lines shown after the prefix: key text, description, and so on
+    ECSPanel pointerPanel;       // panel that got the press; it gets pointer events until the release
 } INPUT = {0};
 
 /// @brief Converts SDL's modifier bits to ECSModifier bits.
@@ -146,21 +147,110 @@ static SHUResult ECSI_InputParseKey(const char *text, u32 *retKey, u32 *retModif
 /// @brief Reads the core prefix from the setting ecs.prefix if the setting changed. A key text that cannot be read is reported, and the default is used.
 static void ECSI_InputReadPrefix(void)
 {
-    const ECSValue *setting = ECSSetting_Get("ecs.prefix");
-
-    if (setting == INPUT.prefixSetting)
+    if (!INPUT.prefixDirty)
     {
         return;
     }
 
-    INPUT.prefixSetting = setting;
+    INPUT.prefixDirty = false;
 
-    if (ECSI_InputParseKey(ECSValue_GetString(setting, OPENECS_DEFAULT_PREFIX), &INPUT.prefixKey, &INPUT.prefixModifiers))
+    if (ECSI_InputParseKey(ECSValue_GetString(ECSSetting_Get("ecs.prefix"), OPENECS_DEFAULT_PREFIX), &INPUT.prefixKey, &INPUT.prefixModifiers))
     {
         SHUResult result = ECSI_InputParseKey(OPENECS_DEFAULT_PREFIX, &INPUT.prefixKey, &INPUT.prefixModifiers);
         SDL_assert(result == SHUResult_Ok);
         (void)result;
     }
+}
+
+static void ECSI_InputFreeBindings(ECSI_KeyBinding **bindings)
+{
+    for (usz i = 0; i < arrlenu(*bindings); i++)
+    {
+        SDL_free((*bindings)[i].text);
+        SDL_free((*bindings)[i].function);
+    }
+
+    arrfree(*bindings);
+}
+
+/// @brief Adds a binding to a list, or changes the binding of the same combination. A function name of NULL removes it. A key text that cannot be read is reported and skipped.
+static void ECSI_InputPutBinding(ECSI_KeyBinding **bindings, const char *text, const char *function)
+{
+    u32 key = 0;
+    u32 modifiers = 0;
+
+    if (ECSI_InputParseKey(text, &key, &modifiers))
+    {
+        return;
+    }
+
+    for (usz i = 0; i < arrlenu(*bindings); i++)
+    {
+        ECSI_KeyBinding *binding = &(*bindings)[i];
+
+        if (binding->key != key || binding->modifiers != modifiers)
+        {
+            continue;
+        }
+
+        char *copy = function == NULL ? NULL : SDL_strdup(function);
+        SDL_free(binding->function);
+        SDL_free(binding->text);
+        binding->function = copy;
+        binding->text = SDL_strdup(text);
+
+        if (copy == NULL || binding->text == NULL)
+        {
+            SDL_free(binding->function);
+            SDL_free(binding->text);
+            arrdel(*bindings, i);
+        }
+
+        return;
+    }
+
+    ECSI_KeyBinding binding = {.key = key, .modifiers = modifiers, .text = SDL_strdup(text), .function = function == NULL ? NULL : SDL_strdup(function)};
+
+    if (binding.text == NULL || binding.function == NULL)
+    {
+        SDL_free(binding.text);
+        SDL_free(binding.function);
+        return;
+    }
+
+    arrput(*bindings, binding);
+}
+
+/// @brief Adds the entries of the setting ecs.prefix_keys: key texts to function names, or false to remove a key.
+static void ECSI_InputAddPrefixKey(const char *name, const ECSValue *field, void *userData)
+{
+    (void)userData;
+    ECSI_InputPutBinding(&INPUT.prefixKeys, name, ECSValue_GetString(field, NULL));
+}
+
+/// @brief Reads the keys after the prefix: the defaults, then the setting ecs.prefix_keys, if the setting changed.
+static void ECSI_InputReadPrefixKeys(void)
+{
+    if (!INPUT.prefixKeysDirty)
+    {
+        return;
+    }
+
+    INPUT.prefixKeysDirty = false;
+    ECSI_InputFreeBindings(&INPUT.prefixKeys);
+
+    for (usz i = 0; i < SDL_arraysize(ECSI_PREFIX_KEYS); i++)
+    {
+        ECSI_InputPutBinding(&INPUT.prefixKeys, ECSI_PREFIX_KEYS[i][0], ECSI_PREFIX_KEYS[i][1]);
+    }
+
+    ECSI_ValueForEachField(ECSSetting_Get("ecs.prefix_keys"), ECSI_InputAddPrefixKey, NULL);
+}
+
+/// @brief Marks a setting to be read again; given as the Changed function of the input settings.
+static void ECSI_InputSettingChanged(void *data)
+{
+    *(bool *)data = true;
 }
 
 /// @brief Sends a pointer event to a panel, with the position made relative to the panel.
@@ -208,10 +298,28 @@ static void ECSI_InputFocus(ECSPanel panel)
     ECSI_PanelPostEvent(panel, &event);
 }
 
+/// @brief Starts or ends waiting for the key after the prefix, and shows or hides the keys with what they do.
 static void ECSI_InputSetPrefix(bool active)
 {
     INPUT.prefixActive = active;
-    ECSI_LayoutShowPrefixKeys(active);
+    arrfree(INPUT.prefixLines);
+
+    if (active)
+    {
+        ECSI_InputReadPrefixKeys();
+
+        for (usz i = 0; i < arrlenu(INPUT.prefixKeys); i++)
+        {
+            const char *description = ECSI_ServicesGetDescription(INPUT.prefixKeys[i].function);
+            arrput(INPUT.prefixLines, INPUT.prefixKeys[i].text);
+            arrput(INPUT.prefixLines, description == NULL ? INPUT.prefixKeys[i].function : description);
+        }
+
+        arrput(INPUT.prefixLines, "Escape");
+        arrput(INPUT.prefixLines, "Cancel");
+    }
+
+    ECSI_LayoutShowPrefixKeys(INPUT.prefixLines, arrlenu(INPUT.prefixLines) / 2);
 }
 
 /// @brief Checks the modifiers of a key press against a binding's. AltGr is never part of a binding.
@@ -220,77 +328,165 @@ static bool ECSI_InputModifiersMatch(u32 modifiers, u32 expected)
     return (modifiers & ECSModifier_AltGr) == 0 && modifiers == expected;
 }
 
-/// @brief Runs the core action chosen by the key pressed after the core prefix.
-static void ECSI_InputRunAction(SDL_Keycode key, u32 modifiers)
+/// @brief Runs the function of the key pressed after the core prefix. Escape cancels.
+static void ECSI_InputRunPrefixKey(SDL_Keycode key, u32 modifiers)
 {
     ECSI_InputSetPrefix(false);
 
-    if (key >= SDLK_1 && key <= SDLK_9)
+    for (usz i = 0; key != SDLK_ESCAPE && i < arrlenu(INPUT.prefixKeys); i++)
     {
-        ECSI_LayoutWorkspaceSwitch(key - SDLK_1);
+        if (INPUT.prefixKeys[i].key == key && ECSI_InputModifiersMatch(modifiers, INPUT.prefixKeys[i].modifiers))
+        {
+            ECSI_ServicesCallBound(INPUT.prefixKeys[i].function, ECSI_LayoutGetFocus());
+            return;
+        }
+    }
+}
+
+#pragma region Core Functions
+
+static void ECSI_InputFocusLeft(void)
+{
+    ECSI_InputFocus(ECSI_LayoutFindNeighbour(-1, 0));
+}
+
+static void ECSI_InputFocusRight(void)
+{
+    ECSI_InputFocus(ECSI_LayoutFindNeighbour(1, 0));
+}
+
+static void ECSI_InputFocusUp(void)
+{
+    ECSI_InputFocus(ECSI_LayoutFindNeighbour(0, -1));
+}
+
+static void ECSI_InputFocusDown(void)
+{
+    ECSI_InputFocus(ECSI_LayoutFindNeighbour(0, 1));
+}
+
+static void ECSI_InputMoveLeft(void)
+{
+    ECSI_LayoutMoveFocus(-1, 0);
+}
+
+static void ECSI_InputMoveRight(void)
+{
+    ECSI_LayoutMoveFocus(1, 0);
+}
+
+static void ECSI_InputMoveUp(void)
+{
+    ECSI_LayoutMoveFocus(0, -1);
+}
+
+static void ECSI_InputMoveDown(void)
+{
+    ECSI_LayoutMoveFocus(0, 1);
+}
+
+static void ECSI_InputNextTab(void)
+{
+    ECSI_InputFocus(ECSI_LayoutNextTab());
+}
+
+static void ECSI_InputMaximize(void)
+{
+    ECSI_LayoutToggleMaximize();
+}
+
+static void ECSI_InputClose(void)
+{
+    ECSPanel focus = ECSI_LayoutGetFocus();
+
+    if (focus == NULL || !ECSI_PanelsConfirmClose(&focus, 1))
+    {
         return;
     }
 
-    ECSI_CoreAction action = ECSI_CoreAction_Count;
-
-    for (u32 i = 0; i < ECSI_CoreAction_Count; i++)
+    if (focus == INPUT.pointerPanel)
     {
-        if (INPUT.actionKeys[i] == key && ECSI_InputModifiersMatch(modifiers, INPUT.actionModifiers[i]))
-        {
-            action = (ECSI_CoreAction)i;
-        }
+        INPUT.pointerPanel = NULL;
     }
 
-    ECSPanel focus = ECSI_LayoutGetFocus();
-
-    switch (action)
-    {
-    case ECSI_CoreAction_FocusLeft:
-        ECSI_InputFocus(ECSI_LayoutFindNeighbour(-1, 0));
-        break;
-    case ECSI_CoreAction_FocusRight:
-        ECSI_InputFocus(ECSI_LayoutFindNeighbour(1, 0));
-        break;
-    case ECSI_CoreAction_FocusUp:
-        ECSI_InputFocus(ECSI_LayoutFindNeighbour(0, -1));
-        break;
-    case ECSI_CoreAction_FocusDown:
-        ECSI_InputFocus(ECSI_LayoutFindNeighbour(0, 1));
-        break;
-    case ECSI_CoreAction_MoveLeft:
-        ECSI_LayoutMoveFocus(-1, 0);
-        break;
-    case ECSI_CoreAction_MoveRight:
-        ECSI_LayoutMoveFocus(1, 0);
-        break;
-    case ECSI_CoreAction_MoveUp:
-        ECSI_LayoutMoveFocus(0, -1);
-        break;
-    case ECSI_CoreAction_MoveDown:
-        ECSI_LayoutMoveFocus(0, 1);
-        break;
-    case ECSI_CoreAction_NextTab:
-        ECSI_InputFocus(ECSI_LayoutNextTab());
-        break;
-    case ECSI_CoreAction_Maximize:
-        ECSI_LayoutToggleMaximize();
-        break;
-    case ECSI_CoreAction_Close:
-        if (focus != NULL && focus == INPUT.pointerPanel)
-        {
-            INPUT.pointerPanel = NULL;
-        }
-
-        if (focus != NULL && ECSI_PanelsConfirmClose(&focus, 1))
-        {
-            ECSI_LayoutClosePanel(focus);
-        }
-
-        break;
-    default:
-        break;
-    }
+    ECSI_LayoutClosePanel(focus);
 }
+
+static void ECSI_InputWorkspace1(void)
+{
+    ECSI_LayoutWorkspaceSwitch(0);
+}
+
+static void ECSI_InputWorkspace2(void)
+{
+    ECSI_LayoutWorkspaceSwitch(1);
+}
+
+static void ECSI_InputWorkspace3(void)
+{
+    ECSI_LayoutWorkspaceSwitch(2);
+}
+
+static void ECSI_InputWorkspace4(void)
+{
+    ECSI_LayoutWorkspaceSwitch(3);
+}
+
+static void ECSI_InputWorkspace5(void)
+{
+    ECSI_LayoutWorkspaceSwitch(4);
+}
+
+static void ECSI_InputWorkspace6(void)
+{
+    ECSI_LayoutWorkspaceSwitch(5);
+}
+
+static void ECSI_InputWorkspace7(void)
+{
+    ECSI_LayoutWorkspaceSwitch(6);
+}
+
+static void ECSI_InputWorkspace8(void)
+{
+    ECSI_LayoutWorkspaceSwitch(7);
+}
+
+static void ECSI_InputWorkspace9(void)
+{
+    ECSI_LayoutWorkspaceSwitch(8);
+}
+
+/// @brief The core's bindable functions: name, function and description.
+static const struct
+{
+    const char *name;
+    void (*Function)(void);
+    const char *description;
+} ECSI_CORE_FUNCTIONS[] = {
+    {"ecs.focus_left", ECSI_InputFocusLeft, "Focus the panel on the left"},
+    {"ecs.focus_right", ECSI_InputFocusRight, "Focus the panel on the right"},
+    {"ecs.focus_up", ECSI_InputFocusUp, "Focus the panel above"},
+    {"ecs.focus_down", ECSI_InputFocusDown, "Focus the panel below"},
+    {"ecs.move_left", ECSI_InputMoveLeft, "Move the panel to the left"},
+    {"ecs.move_right", ECSI_InputMoveRight, "Move the panel to the right"},
+    {"ecs.move_up", ECSI_InputMoveUp, "Move the panel up"},
+    {"ecs.move_down", ECSI_InputMoveDown, "Move the panel down"},
+    {"ecs.next_tab", ECSI_InputNextTab, "Show the next tab"},
+    {"ecs.maximize", ECSI_InputMaximize, "Maximize or restore the group"},
+    {"ecs.close", ECSI_InputClose, "Close the panel"},
+    {"ecs.workspace_1", ECSI_InputWorkspace1, "Switch to workspace 1"},
+    {"ecs.workspace_2", ECSI_InputWorkspace2, "Switch to workspace 2"},
+    {"ecs.workspace_3", ECSI_InputWorkspace3, "Switch to workspace 3"},
+    {"ecs.workspace_4", ECSI_InputWorkspace4, "Switch to workspace 4"},
+    {"ecs.workspace_5", ECSI_InputWorkspace5, "Switch to workspace 5"},
+    {"ecs.workspace_6", ECSI_InputWorkspace6, "Switch to workspace 6"},
+    {"ecs.workspace_7", ECSI_InputWorkspace7, "Switch to workspace 7"},
+    {"ecs.workspace_8", ECSI_InputWorkspace8, "Switch to workspace 8"},
+    {"ecs.workspace_9", ECSI_InputWorkspace9, "Switch to workspace 9"},
+};
+
+#pragma endregion Core Functions
 
 #pragma endregion Source Only
 
@@ -301,6 +497,16 @@ SHUResult ECSI_InputInitialize(void)
         .type = ECSSettingType_Key,
         .description = "The key combination before a core action",
         .defaultString = OPENECS_DEFAULT_PREFIX,
+        .Changed = ECSI_InputSettingChanged,
+        .data = &INPUT.prefixDirty,
+    };
+
+    ECSSettingDesc prefixKeys = {
+        .name = "ecs.prefix_keys",
+        .type = ECSSettingType_Table,
+        .description = "Keys after the prefix and the functions they run, added to the core's own; false removes a key",
+        .Changed = ECSI_InputSettingChanged,
+        .data = &INPUT.prefixKeysDirty,
     };
 
     ECSSettingDesc focus = {
@@ -311,15 +517,25 @@ SHUResult ECSI_InputInitialize(void)
     };
 
     SHU_ReturnResult(ECSI_SettingsDeclareCore(&prefix));
+    SHU_ReturnResult(ECSI_SettingsDeclareCore(&prefixKeys));
     SHU_ReturnResult(ECSI_SettingsDeclareCore(&focus));
-    ECSI_InputReadPrefix();
 
-    for (u32 i = 0; i < ECSI_CoreAction_Count; i++)
+    for (usz i = 0; i < SDL_arraysize(ECSI_CORE_FUNCTIONS); i++)
     {
-        SHU_ReturnResult(ECSI_InputParseKey(ECSI_PREFIX_KEYS[i], &INPUT.actionKeys[i], &INPUT.actionModifiers[i]));
+        SHU_ReturnResult(ECSI_ServicesRegisterCore(ECSI_CORE_FUNCTIONS[i].name, (ECSFunction)ECSI_CORE_FUNCTIONS[i].Function, "void()", ECSI_CORE_FUNCTIONS[i].description));
     }
 
+    INPUT.prefixDirty = true;
+    INPUT.prefixKeysDirty = true;
+    ECSI_InputReadPrefix();
     return SHUResult_Ok;
+}
+
+void ECSI_InputTerminate(void)
+{
+    ECSI_InputFreeBindings(&INPUT.prefixKeys);
+    arrfree(INPUT.prefixLines);
+    SDL_zero(INPUT);
 }
 
 bool ECSI_InputHandle(const SDL_Event *event)
@@ -439,7 +655,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
 
             if (!modifierKey && !key->repeat)
             {
-                ECSI_InputRunAction(key->key, ECSI_InputModifiers(key->mod));
+                ECSI_InputRunPrefixKey(key->key, ECSI_InputModifiers(key->mod));
             }
 
             break;

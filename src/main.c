@@ -228,6 +228,7 @@ int main(int argc, char **argv)
 
     // read the preset first, because SDL needs the tool's identity before it starts
     ECSI_CheckStart(ECSI_LuaInitialize(), "starting Lua");
+    ECSI_CheckStart(ECSI_ServicesInitialize(), "preparing services");
 
     char *presetPath = NULL;
     ECSI_PresetInfo preset;
@@ -284,7 +285,6 @@ int main(int argc, char **argv)
     ECSI_CheckStart(ECSI_InputInitialize(), "declaring the input settings");
     SDL_free(fontPath);
 
-    ECSI_CheckStart(ECSI_ServicesInitialize(), "preparing services");
     ECSI_BindingsInitialize();
     ECSI_PluginHooks hooks = {.StartLua = ECSI_BindingsStartPlugin, .RemoveRegistrations = ECSI_RemoveRegistrations};
     ECSI_PluginsSetHooks(&hooks);
@@ -328,6 +328,7 @@ int main(int argc, char **argv)
     }
 
     // panels are destroyed before their types, and their types before their plugins are unloaded
+    ECSI_InputTerminate();
     ECSI_LayoutTerminate();
     ECSI_PanelsTerminate();
     ECSI_EventsTerminate();

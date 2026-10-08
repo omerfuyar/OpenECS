@@ -36,6 +36,25 @@ void ECSI_ServicesPushHandleMetatable(const char *type);
 /// @param plugin The plugin.
 void ECSI_ServicesRemovePlugin(ECSPlugin plugin);
 
+/// @brief Registers one of the core's own functions, such as ecs.maximize, so keys and plugins can call it.
+/// @param name Name of the function. It starts with "ecs.".
+/// @param function The function.
+/// @param signature The function's signature.
+/// @param description One line that says what the function does.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the name or signature is invalid or the name is taken, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_ServicesRegisterCore(const char *name, ECSFunction function, const char *signature, const char *description);
+
+/// @brief Calls a function that a key is bound to. It takes no arguments, or the focused panel.
+/// @param name Name of the function.
+/// @param focus The focused panel, or NULL.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, or SHUResult_ErrBadData if its signature is neither void() nor void(handle<ecs.panel>). Errors are reported.
+SHUResult ECSI_ServicesCallBound(const char *name, ECSPanel focus);
+
+/// @brief Gets a function's one-line description.
+/// @param name Name of the function.
+/// @return The description, or NULL if no function has the name. Valid while the function is registered.
+const char *ECSI_ServicesGetDescription(const char *name);
+
 /// @brief Registers a Lua function of a plugin's service. C gets it as a function pointer: a libffi closure that converts the arguments, calls the Lua function in a protected call, and converts the result.
 /// @param plugin The plugin that provides the function.
 /// @param name Name of the function.
