@@ -1,5 +1,6 @@
 -- dragging a grip onto the centre of a panel groups them; dragging a tab to an edge splits them again
 return {
+  preset = "presets/sketch.lua",
   run = function(test)
     local canvas = test.rect(1)
     local clock = test.rect(2)

@@ -1,5 +1,6 @@
 -- the keys after the core prefix move focus, maximize, close and reopen
 return {
+  preset = "presets/sketch.lua",
   run = function(test)
     local function workspace()
       return test.session().workspaces[1]
