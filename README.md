@@ -77,7 +77,7 @@ sudo pacman -S alsa-lib cmake hidapi ibus jack libdecor libthai fribidi libgl li
 
 ### Building
 
-The code is C23, so it needs a C23 compiler such as gcc 14 or later. The dependencies also need cmake, ninja, autoconf, automake and libtool.
+The code is C23, so it needs a C23 compiler such as gcc 14 or later. SDL and SDL_ttf also need cmake and ninja.
 
 Shuild builds the program:
 

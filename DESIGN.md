@@ -901,6 +901,7 @@ OpenECS follows the XDG Base Directory specification:
 
 - SDL3 and SDL3_ttf are shared libraries shipped next to the executable and found through an `$ORIGIN` run path. So the core, the sdl plugin and any plugin that links an SDL library, such as SDL3_mixer or SDL3_net, share one copy of SDL.
 - Lua, Clay, libffi and stb are linked statically into the executable.
+- libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.
 - Native plugins are shared libraries, built against the plugin header only. They do not link against the core; their calls to it are resolved when they are loaded.
 - A first-party plugin is built from every C file in its folder, `plugins/<name>/`, so the build needs no settings for each plugin.
@@ -949,6 +950,7 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 ## 18. Platform notes
 
 - OpenECS supports X11 and Wayland, through SDL3.
+- OpenECS runs on x86_64 and aarch64 processors (17.2).
 - On Wayland, dragging a panel out of its window still works, because the core keeps receiving pointer events while the button is held (7.2). Only the position of the new window cannot be chosen.
 - Popups are positioned relative to their parent window, which Wayland supports.
 
