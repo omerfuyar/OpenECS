@@ -3,30 +3,23 @@
 #include "Plugins.h"
 
 #include "SDL3/SDL.h"
+#include "stb/stbSDL3.h"
 
 #pragma region Source Only
 
-/// @brief Most panel types that can be registered.
-#define OPENECS_MAX_PANEL_TYPES 256
-
 static struct
 {
-    ECSI_PanelType types[OPENECS_MAX_PANEL_TYPES];
-    usz typeCount;
+    struct
+    {
+        char *key; // the type's own copy of its name
+        ECSI_PanelType *value;
+    } *types; // stb_ds hash map; panels point to the types, so each type is allocated on its own
     u32 nextPanelId;
 } PANELS = {0};
 
 static ECSI_PanelType *ECSI_PanelTypeFind(const char *name)
 {
-    for (usz i = 0; i < PANELS.typeCount; i++)
-    {
-        if (SDL_strcmp(PANELS.types[i].name, name) == 0)
-        {
-            return &PANELS.types[i];
-        }
-    }
-
-    return NULL;
+    return shget(PANELS.types, name);
 }
 
 /// @brief Gives a panel pixels of the size of its rectangle, reusing them when the size did not change.
@@ -57,12 +50,15 @@ static bool ECSI_PanelResizePixels(ECSPanel panel)
 
 void ECSI_PanelsTerminate(void)
 {
-    for (usz i = 0; i < PANELS.typeCount; i++)
+    for (usz i = 0; i < shlenu(PANELS.types); i++)
     {
-        SDL_free(PANELS.types[i].name);
-        SDL_free(PANELS.types[i].title);
+        ECSI_PanelType *type = PANELS.types[i].value;
+        SDL_free(type->name);
+        SDL_free(type->title);
+        SDL_free(type);
     }
 
+    shfree(PANELS.types);
     SDL_zero(PANELS);
 }
 
@@ -264,25 +260,22 @@ SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc)
         return SHUResult_ErrBadData;
     }
 
-    if (PANELS.typeCount == OPENECS_MAX_PANEL_TYPES)
-    {
-        return SHUResult_ErrOverflow;
-    }
-
+    ECSI_PanelType *type = SDL_malloc(sizeof(ECSI_PanelType));
     char *name = SDL_strdup(desc->name);
     char *title = SDL_strdup(desc->title == NULL ? desc->name : desc->title);
 
-    if (name == NULL || title == NULL)
+    if (type == NULL || name == NULL || title == NULL)
     {
+        SDL_free(type);
         SDL_free(name);
         SDL_free(title);
         return SHUResult_ErrAllocation;
     }
 
-    ECSI_PanelType *type = &PANELS.types[PANELS.typeCount++];
     *type = (ECSI_PanelType){.desc = *desc, .name = name, .title = title, .plugin = plugin};
     type->desc.name = name;
     type->desc.title = title;
+    shput(PANELS.types, name, type);
 
     return SHUResult_Ok;
 }

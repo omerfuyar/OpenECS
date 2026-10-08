@@ -143,7 +143,7 @@ OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel l
 /// @brief Registers a panel type. The core copies the description and its texts.
 /// @param plugin The plugin that provides the panel type.
 /// @param desc Description of the panel type. Its name must start with the plugin's name and a dot.
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, SHUResult_ErrOverflow if there is no room for more panel types, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc);
 
 /// @brief Asks the core to draw the panel again.
