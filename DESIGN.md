@@ -791,7 +791,7 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [FILE...]
 
 ### 14.4 Logging
 
-- Levels: error, warning, info and debug.
+- Levels: error, warning, info and debug. Debug builds show every level; other builds show info and above. A message that is not shown is not formatted.
 - All logging goes through SDL's log, including SDL's own messages. The core calls it directly; plugins call `ECS_Log`, which adds the plugin's name.
 - Each line holds the time, the level, the plugin and the message: `12:30:05.123 warning  [canvas] message`. The core's own lines name `ecs`.
 - Lines go to standard error and to the log file (16). Each start writes the log file anew.
