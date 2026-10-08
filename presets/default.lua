@@ -18,7 +18,10 @@ return {
       },
     },
     { name = "second",
-      windows = { { panels = { { type = "demo.checker" } } } },
+      windows = { { split = "horizontal",
+        { panels = { { type = "demo.checker" } } },
+        { panels = { { type = "hello.stripes", state = { color = 2 } } } },
+      } },
     },
   },
 }

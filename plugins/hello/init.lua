@@ -20,3 +20,39 @@ timer = ecs.timer.start(0.5, true, function()
     timer:stop()
   end
 end)
+
+-- a panel type written in Lua: stripes whose colour changes on click
+local colors = { 0xFF3B4252, 0xFF88C0D0, 0xFFA3BE8C, 0xFFEBCB8B }
+
+ecs.panel.register_type({
+  name = "hello.stripes",
+  title = "Stripes",
+  state_version = 1,
+
+  create = function(panel, saved, version)
+    local color = saved and saved.color or 1
+    return { panel = panel, color = colors[color] and color or 1, clicks = 0 }
+  end,
+
+  draw = function(state, surface)
+    local row = string.pack("=I4", colors[state.color]):rep(surface.width)
+    local dark = string.pack("=I4", 0xFF2E3440):rep(surface.width)
+
+    for y = 0, surface.height - 1 do
+      surface:set_row(y, (y // 16) % 2 == 0 and row or dark)
+    end
+  end,
+
+  event = function(state, event)
+    if event.type == "pointer_down" then
+      state.color = state.color % #colors + 1
+      state.clicks = state.clicks + 1
+      state.panel:set_title("Stripes " .. state.clicks)
+      state.panel:redraw()
+    end
+  end,
+
+  save_state = function(state)
+    return { color = state.color }
+  end,
+})
