@@ -306,7 +306,7 @@ typedef struct ECSSurface
 After every operation:
 
 - A split with one child is replaced by that child.
-- A split inside a split of the same direction is merged into it.
+- A split inside a split of the same direction is merged into it. Its children share its place in proportion to their shares. A fixed-size split is not merged, so its children's shares keep their meaning.
 - An empty group is removed.
 - Node and panel ids stay stable and unique within a session.
 
@@ -340,6 +340,10 @@ While a panel is dragged, the zones are checked in this order:
 5. Anywhere else over a panel: group with it.
 
 On release, the matching operation is called. In small panels, the edge bands shrink so that the centre stays at least a third of the panel.
+
+- A press on a tab or a grip starts a drag once the pointer moves 6 layout units. Escape cancels the drag.
+- The drop place is highlighted while the panel is dragged.
+- A panel that splits another takes half of the other's place. A panel docked along an edge of the OS window takes a quarter of it.
 
 ### 6.8 Clay
 
@@ -385,7 +389,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | Key          | Action                 |
   | ------------ | ---------------------- |
   | Arrows       | Move focus             |
-  | Shift+Arrows | Move the focused panel |
+  | Shift+Arrows | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
   | 1 to 9       | Switch workspace       |
   | Tab          | Show the next tab      |
   | M            | Maximize or restore    |
