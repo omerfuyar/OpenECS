@@ -422,6 +422,7 @@ static void Shuild_OpenECS(void)
 
     SHUI_SFormat(&tempStr, "%sinclude/", OUTPUT_DIRECTORY.data);
     CopyFile("include/OpenECS.h", tempStr.data);
+    CopyFile("include/ecs.lua", tempStr.data);
 }
 
 /// @brief Checks whether a file name ends with a suffix.

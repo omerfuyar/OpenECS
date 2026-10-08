@@ -85,7 +85,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 ### 1.5 Files
 
 - Headers are in `include/`, source files in `src/`.
-- `include/OpenECS.h` is the one header that plugins include. It holds every public type and function, with documentation. The build copies only this header to the build's `include/` folder, and plugins are built against that copy, so they never see the core's headers.
+- `include/OpenECS.h` is the one header that plugins include. It holds every public type and function, with documentation. The build copies only this header and `include/ecs.lua` (9.6) to the build's `include/` folder, and plugins are built against that copy, so they never see the core's headers.
 - Each module (2.1) is a pair of files in its group's folder: `include/<group>/<Module>.h` with the module's declarations and their documentation, and `src/<group>/<Module>.c` with the definitions. Includes name the folder: `#include "base/Values.h"`.
 - `src/main.c` only reads the command line and runs the App module.
 - A module includes only the modules listed before it in 2.1, so modules never depend on each other in a cycle. So a group includes only its own folder and the groups before it.
@@ -578,6 +578,7 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 - All Lua plugins share one Lua state. Each plugin's code runs in its own environment, which reads globals from the shared global table.
 - A plugin gets the core's Lua names from the `ecs` module: `local ecs = require("ecs")`. There is no global `ecs`.
 - The environment has its own `require`. For `"ecs"` it gives the plugin's own `ecs` table, whose functions carry the plugin, so the core knows which plugin made an `ecs` call. Other names go to Lua's `require`.
+- `include/ecs.lua` describes the `ecs` module for editors: every function's parameters, results and documentation, in LuaLS annotations. It changes with the bindings. A plugin's author adds the build's `include/` folder to `workspace.library` in the plugin's `.luarc.json`.
 - The manifest's `lua` file runs once, in a protected call, after the native `ECSPlugin_Init`. An error fails the plugin.
 
 ### 9.7 Lifecycle
@@ -1004,6 +1005,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 **Hit testing.** Finding which element is under a point, such as the pointer.
 
 **Input method.** Software that composes characters a keyboard cannot type directly, for languages such as Chinese or Japanese.
+
+**LuaLS (Lua language server).** The program behind Lua support in editors such as VS Code. It reads annotations in comments, such as `---@param`, to give completion, documentation and warnings.
 
 **Main thread.** The thread on which the program starts. OS windows, input and all Lua code run there.
 
