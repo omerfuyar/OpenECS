@@ -117,7 +117,7 @@ bool ECSI_LayoutCancelDrag(void);
 /// @return The panel, or NULL if the workspace has no panels.
 ECSPanel ECSI_LayoutGetFocus(void);
 
-/// @brief Sets the focused panel of the current workspace.
+/// @brief Sets the focused panel of the current workspace. The panel that loses focus and the one that gets it are told.
 /// @param panel Panel to focus.
 void ECSI_LayoutSetFocus(ECSPanel panel);
 
@@ -147,7 +147,12 @@ void ECSI_LayoutToggleLock(void);
 /// @brief Maximizes the focused panel's group, or restores it if it is maximized.
 void ECSI_LayoutToggleMaximize(void);
 
-/// @brief Closes a panel and tidies the layout tree.
+/// @brief Checks whether a panel is in the layout of any workspace. It compares pointers only, so the panel may already be destroyed.
+/// @param panel The panel.
+/// @return true if a workspace holds the panel.
+bool ECSI_LayoutHasPanel(ECSPanel panel);
+
+/// @brief Closes a panel of any workspace and tidies its tree. If it had focus, the focus moves to a panel near it.
 /// @param panel Panel to close.
 void ECSI_LayoutClosePanel(ECSPanel panel);
 

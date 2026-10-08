@@ -400,27 +400,24 @@ static void ECSI_InputSendKey(ECSPanel panel, ECSEventType type, const SDL_Keybo
     ECSI_PanelPostEvent(panel, &event);
 }
 
-/// @brief Moves the keyboard focus to a panel and tells both panels.
+/// @brief Moves the keyboard focus to a panel; the layout tells both panels.
 static void ECSI_InputFocus(ECSPanel panel)
 {
-    ECSPanel old = ECSI_LayoutGetFocus();
-
-    if (panel == NULL || panel == old)
+    if (panel != NULL)
     {
-        return;
+        ECSI_LayoutSetFocus(panel);
+    }
+}
+
+/// @brief Gets the panel that got the pointer press, unless code closed it since.
+static ECSPanel ECSI_InputPointerPanel(void)
+{
+    if (INPUT.pointerPanel != NULL && !ECSI_LayoutHasPanel(INPUT.pointerPanel))
+    {
+        INPUT.pointerPanel = NULL;
     }
 
-    ECSEvent event = {.type = ECSEventType_Unfocused};
-
-    if (old != NULL)
-    {
-        ECSI_PanelPostEvent(old, &event);
-    }
-
-    ECSI_LayoutSetFocus(panel);
-
-    event.type = ECSEventType_Focused;
-    ECSI_PanelPostEvent(panel, &event);
+    return INPUT.pointerPanel;
 }
 
 /// @brief Starts or ends waiting for the key after the prefix, and shows or hides the keys with what they do.
@@ -533,11 +530,6 @@ static void ECSI_InputClose(void)
     if (focus == NULL || !ECSI_PanelsConfirmClose(&focus, 1))
     {
         return;
-    }
-
-    if (focus == INPUT.pointerPanel)
-    {
-        INPUT.pointerPanel = NULL;
     }
 
     ECSI_LayoutClosePanel(focus);
@@ -793,7 +785,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
             break;
         }
 
-        ECSPanel panel = INPUT.pointerPanel != NULL ? INPUT.pointerPanel : ECSI_LayoutPanelAt(motion->x, motion->y);
+        ECSPanel panel = ECSI_InputPointerPanel() != NULL ? INPUT.pointerPanel : ECSI_LayoutPanelAt(motion->x, motion->y);
 
         if (panel == NULL)
         {
@@ -816,7 +808,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
         const SDL_MouseButtonEvent *button = &event->button;
         ECSI_LayoutPointerUp();
 
-        if (INPUT.pointerPanel != NULL)
+        if (ECSI_InputPointerPanel() != NULL)
         {
             ECSEvent details = {.button = button->button, .modifiers = ECSI_InputModifiers(SDL_GetModState())};
             ECSI_InputSendPointer(INPUT.pointerPanel, ECSEventType_PointerUp, button->x, button->y, &details);

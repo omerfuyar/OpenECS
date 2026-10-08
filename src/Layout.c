@@ -355,6 +355,57 @@ static ECSI_Node *ECSI_LayoutFindGroup(ECSI_Node *node, ECSPanel panel)
     return NULL;
 }
 
+/// @brief Finds the workspace and group that hold a panel, in any workspace.
+/// @return false if the panel is not in the layout.
+static bool ECSI_LayoutLocate(ECSPanel panel, ECSI_Workspace **retWorkspace, ECSI_Node **retGroup)
+{
+    for (usz i = 0; panel != NULL && i < arrlenu(LAYOUT.workspaces); i++)
+    {
+        ECSI_Node *group = ECSI_LayoutFindGroup(LAYOUT.workspaces[i].tree, panel);
+
+        if (group != NULL)
+        {
+            *retWorkspace = &LAYOUT.workspaces[i];
+            *retGroup = group;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/// @brief Changes a workspace's focus. In the current workspace, the panel that loses focus and the one that gets it are told.
+static void ECSI_LayoutChangeFocus(ECSI_Workspace *workspace, ECSPanel panel)
+{
+    ECSPanel old = workspace->focus;
+
+    if (old == panel)
+    {
+        return;
+    }
+
+    workspace->focus = panel;
+    LAYOUT.frameNeeded = true;
+
+    if (workspace != ECSI_LayoutCurrent())
+    {
+        return;
+    }
+
+    ECSEvent event = {.type = ECSEventType_Unfocused};
+
+    if (old != NULL)
+    {
+        ECSI_PanelPostEvent(old, &event);
+    }
+
+    if (panel != NULL)
+    {
+        event.type = ECSEventType_Focused;
+        ECSI_PanelPostEvent(panel, &event);
+    }
+}
+
 /// @brief Finds the first panel of a tree.
 static ECSPanel ECSI_LayoutFirstPanel(ECSI_Node *node)
 {
@@ -599,7 +650,7 @@ static void ECSI_LayoutMove(ECSI_Workspace *workspace, ECSPanel panel, const ECS
     }
 
     workspace->maximized = NULL;
-    workspace->focus = panel;
+    ECSI_LayoutChangeFocus(workspace, panel);
     ECSI_LayoutTidy(workspace);
 }
 
@@ -1438,6 +1489,22 @@ void ECSI_LayoutWorkspaceSwitch(usz index)
         return;
     }
 
+    // the focus moves to the other workspace's focused panel
+    ECSPanel old = LAYOUT.workspaces[LAYOUT.current].focus;
+    ECSPanel focus = LAYOUT.workspaces[index].focus;
+    ECSEvent event = {.type = ECSEventType_Unfocused};
+
+    if (old != NULL)
+    {
+        ECSI_PanelPostEvent(old, &event);
+    }
+
+    if (focus != NULL)
+    {
+        event.type = ECSEventType_Focused;
+        ECSI_PanelPostEvent(focus, &event);
+    }
+
     LAYOUT.current = index;
     LAYOUT.gripGroup = NULL;
     LAYOUT.dragSplit = NULL;
@@ -1599,11 +1666,17 @@ void ECSI_LayoutSetFocus(ECSPanel panel)
 {
     ECSI_Workspace *workspace = ECSI_LayoutCurrent();
 
-    if (workspace != NULL && workspace->focus != panel)
+    if (workspace != NULL)
     {
-        workspace->focus = panel;
-        LAYOUT.frameNeeded = true;
+        ECSI_LayoutChangeFocus(workspace, panel);
     }
+}
+
+bool ECSI_LayoutHasPanel(ECSPanel panel)
+{
+    ECSI_Workspace *workspace = NULL;
+    ECSI_Node *group = NULL;
+    return ECSI_LayoutLocate(panel, &workspace, &group);
 }
 
 ECSPanel ECSI_LayoutFindNeighbour(i32 dx, i32 dy)
@@ -1692,10 +1765,10 @@ void ECSI_LayoutToggleMaximize(void)
 
 void ECSI_LayoutClosePanel(ECSPanel panel)
 {
-    ECSI_Workspace *workspace = ECSI_LayoutCurrent();
-    ECSI_Node *group = workspace == NULL || panel == NULL ? NULL : ECSI_LayoutFindGroup(workspace->tree, panel);
+    ECSI_Workspace *workspace = NULL;
+    ECSI_Node *group = NULL;
 
-    if (group == NULL)
+    if (!ECSI_LayoutLocate(panel, &workspace, &group))
     {
         return;
     }
@@ -1708,22 +1781,27 @@ void ECSI_LayoutClosePanel(ECSPanel panel)
     }
 
     arrdel(group->panels, index);
-    ECSI_PanelClose(&panel);
 
-    // tidying frees an empty group, so its focus is found before and after
+    // tidying frees an empty group, so the next focus is found before and after
     bool emptied = arrlenu(group->panels) == 0;
+    bool focused = workspace->focus == panel;
 
     if (!emptied)
     {
         group->shown = SDL_min(group->shown, arrlenu(group->panels) - 1);
-        workspace->focus = group->panels[group->shown];
     }
 
+    if (focused)
+    {
+        ECSI_LayoutChangeFocus(workspace, emptied ? NULL : group->panels[group->shown]);
+    }
+
+    ECSI_PanelClose(&panel);
     ECSI_LayoutTidy(workspace);
 
-    if (emptied)
+    if (focused && emptied)
     {
-        workspace->focus = ECSI_LayoutFirstPanel(workspace->tree);
+        ECSI_LayoutChangeFocus(workspace, ECSI_LayoutFirstPanel(workspace->tree));
     }
 }
 
