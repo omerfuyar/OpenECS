@@ -454,8 +454,8 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | `ecs.lock`                            | Lock or unlock the group                                                                                 |
   | `ecs.reopen`                          | Reopen the last closed panel                                                                             |
   | `ecs.restart`                         | Restart the failed panel                                                                                 |
-  | `ecs.saveSession`                     | Save the session to a file, which a save dialog asks for                                                 |
-  | `ecs.openSession`                     | Open a saved session (13.5), which an open dialog asks for                                               |
+  | `ecs.session.save`                    | Save the session to a file, which a save dialog asks for (13.4)                                          |
+  | `ecs.session.open`                    | Open a saved session, which an open dialog asks for (13.5)                                               |
   | `ecs.workspace1` to `ecs.workspace10` | Switch to workspace 1 to 10                                                                              |
 
 - Escape after the prefix cancels. It is not a function, so it always works.
@@ -831,11 +831,11 @@ The core converts only layout data.
 - Named fields are read and written in the order of their names, so the same session always writes the same file.
 - A session is written from the file it came from, with the current workspaces. So fields that the core does not use are kept.
 - A file is written to a temporary file, then renamed over the old one, so it is never left half-written.
-- `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. `ecs.saveSession` asks for the file with a save dialog that starts in the folder of saved sessions (16). Quitting still saves the tool's last session.
+- `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. Without a path, they ask for the file with a save dialog that starts in the folder of saved sessions (16). Keys run `ecs.session.save` that way. Quitting still saves the tool's last session.
 
 ### 13.5 Opening a session
 
-- `ECSSession_Open(path)`, and in Lua `ecs.session.open(path)`, open a session in place of the current one. `ecs.openSession` asks for the file with an open dialog that starts in the folder of saved sessions (16).
+- `ECSSession_Open(path)`, and in Lua `ecs.session.open(path)`, open a session in place of the current one. Without a path, they ask for the file with an open dialog that starts in the folder of saved sessions (16). Keys run `ecs.session.open` that way.
 - A file without a list of workspaces is reported, and nothing changes.
 - The core asks about unsaved work (4.5). When the dialog cannot be shown, the work is kept and the session is not opened.
 - When the current pass of the main loop ends, OpenECS shuts down from step 2 of 2.4, so the tool's last session is saved. Then the program replaces itself with `openecs --session FILE`. So the session's identity, plugins and settings apply as at a start.

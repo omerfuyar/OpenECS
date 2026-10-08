@@ -22,7 +22,7 @@
 static struct
 {
     const ECSIPresetInfo *info; // the preset or session in use, which saved sessions are written from
-    char *folder;               // where the dialogs of ecs.saveSession and ecs.openSession start, or NULL
+    char *folder;               // where the dialogs that ask for session files start, or NULL
     bool canOpen;               // false during a test
     char *next;                 // the session that OpenECS starts again from once it stops, or NULL
 } SESSION = {0};
@@ -260,7 +260,7 @@ static void ECSISession_OpenChosen(void *data, const char *const *files, usz cou
 }
 
 /// @brief Shows a dialog of saved sessions, which starts in the sessions folder.
-static void ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunction Done)
+static SHUResult ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunction Done)
 {
     if (SESSION.folder != NULL && !SDL_CreateDirectory(SESSION.folder))
     {
@@ -269,23 +269,25 @@ static void ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunction Don
 
     ECSDialogFilter filter = {"OpenECS sessions", "lua"};
     ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = SESSION.folder, .Done = Done};
+    return ECSIInput_ShowDialog(NULL, &desc);
+}
 
-    if (ECSIInput_ShowDialog(NULL, &desc))
+/// @brief What keys and menus run as ecs.session.save: saving without a path, which asks for the file.
+static void ECSISession_SaveBound(void)
+{
+    if (ECSSession_Save(NULL))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot show the dialog of sessions.");
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask where to save the session.");
     }
 }
 
-/// @brief ecs.saveSession: asks for a file and saves the session to it.
-static void ECSISession_SaveWithDialog(void)
+/// @brief What keys and menus run as ecs.session.open: opening without a path, which asks for the file. ECSSession_Open reports why it refuses.
+static void ECSISession_OpenBound(void)
 {
-    ECSISession_ShowDialog(ECSDialogType_SaveFile, ECSISession_SaveChosen);
-}
-
-/// @brief ecs.openSession: asks for a session file and opens it.
-static void ECSISession_OpenWithDialog(void)
-{
-    ECSISession_ShowDialog(ECSDialogType_OpenFile, ECSISession_OpenChosen);
+    if (ECSSession_Open(NULL) == SHUResult_ErrAllocation)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask which session to open.");
+    }
 }
 
 #pragma endregion Source Only
@@ -466,8 +468,9 @@ SHUResult ECSISession_Initialize(const char *folder, bool canOpen)
         return SHUResult_ErrAllocation;
     }
 
-    SHU_ReturnResult(ECSIServices_RegisterCore("ecs.saveSession", (ECSFunction)ECSISession_SaveWithDialog, "void()", "Save the session to a file"));
-    return ECSIServices_RegisterCore("ecs.openSession", (ECSFunction)ECSISession_OpenWithDialog, "void()", "Open a saved session");
+    // keys run the same names as the Lua functions, which ask for the file when they get no path
+    SHU_ReturnResult(ECSIServices_RegisterCore("ecs.session.save", (ECSFunction)ECSISession_SaveBound, "void()", "Save the session to a file"));
+    return ECSIServices_RegisterCore("ecs.session.open", (ECSFunction)ECSISession_OpenBound, "void()", "Open a saved session");
 }
 
 const char *ECSISession_GetNext(void)
@@ -484,12 +487,15 @@ void ECSISession_Terminate(void)
 
 SHUResult ECSSession_Open(const char *path)
 {
-    SDL_assert(path != NULL);
-
     if (!SESSION.canOpen)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A test starts from its preset alone, so it cannot open the session '%s'.", path);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A test starts from its preset alone, so it cannot open a session.");
         return SHUResult_ErrPrivileges;
+    }
+
+    if (path == NULL)
+    {
+        return ECSISession_ShowDialog(ECSDialogType_OpenFile, ECSISession_OpenChosen);
     }
 
     // the file is checked first, so a file that is not a session never stops OpenECS
@@ -531,8 +537,12 @@ SHUResult ECSSession_Open(const char *path)
 
 SHUResult ECSSession_Save(const char *path)
 {
-    SDL_assert(path != NULL);
     SDL_assert(SESSION.info != NULL);
+
+    if (path == NULL)
+    {
+        return ECSISession_ShowDialog(ECSDialogType_SaveFile, ECSISession_SaveChosen);
+    }
 
     ECSValue *session = NULL;
     SHU_ReturnResult(ECSValue_Create(&session));

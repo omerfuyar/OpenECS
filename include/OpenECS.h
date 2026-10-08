@@ -615,14 +615,14 @@ OPENECS_EXPORT const char *ECSWorkspace_GetName(usz number);
 OPENECS_EXPORT void ECSWorkspace_Switch(usz number);
 
 /// @brief Writes the session to a file: the plugins' state, the workspaces and the panels with their saved state. Quitting still saves the tool's last session. Main thread only.
-/// @param path Path of the file. Missing folders are created.
-/// @return SHUResult_Ok, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
+/// @param path Path of the file, or NULL to ask the user with a save dialog that starts in the folder of saved sessions. Missing folders are created.
+/// @return SHUResult_Ok when the file is written or the dialog is shown, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
 /// @lua ecs.session.save
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_Save(const char *path);
 
 /// @brief Opens a session in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session. Main thread only.
-/// @param path Path of the session file.
-/// @return SHUResult_Ok if OpenECS restarts into the session, SHUResult_ErrFile or SHUResult_ErrBadData if the file is not a session, SHUResult_Err if the user keeps the unsaved work, or SHUResult_ErrPrivileges during a test, which cannot restart.
+/// @param path Path of the session file, or NULL to ask the user with an open dialog that starts in the folder of saved sessions.
+/// @return SHUResult_Ok if OpenECS restarts into the session or the dialog is shown, SHUResult_ErrFile or SHUResult_ErrBadData if the file is not a session, SHUResult_Err if the user keeps the unsaved work, SHUResult_ErrPrivileges during a test, which cannot restart, or SHUResult_ErrAllocation.
 /// @lua ecs.session.open
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_Open(const char *path);
 

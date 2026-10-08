@@ -296,13 +296,15 @@ function ecs.workspace.switch(number) end
 ecs.session = {}
 
 ---Writes the session to a file: the plugins' state, the workspaces and the panels with their saved state. Quitting still saves the tool's last session.
----@param path string Missing folders are created.
+---Without a path, it asks for the file with a save dialog, as the key after the prefix does.
+---@param path? string Missing folders are created.
 ---@return true|nil ok
 ---@return string? message Why the session is not saved.
 function ecs.session.save(path) end
 
 ---Opens a session in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
----@param path string
+---Without a path, it asks for the file with an open dialog, as the key after the prefix does.
+---@param path? string
 ---@return true|nil ok
 ---@return string? message Why the session is not opened: the file is not a session, the user keeps the unsaved work, or a test runs.
 function ecs.session.open(path) end

@@ -298,7 +298,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_CheckStart(ECSIMenus_Initialize(), "registering the core's functions");
     ECSIApp_CheckStart(ECSIInput_Initialize(), "declaring the input settings");
 
-    // a test has no data folder, so the dialog of ecs.saveSession starts where the system chooses
+    // a test has no data folder, so the dialogs of sessions start where the system chooses
     char *dataFolder = APP.test ? NULL : ECSIApp_XdgFolder("XDG_DATA_HOME", ".local/share");
     char *sessionsFolder = NULL;
 
