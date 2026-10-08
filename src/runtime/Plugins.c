@@ -15,6 +15,11 @@ typedef struct ECSI_Plugin
     void (*Shutdown)(ECSPlugin plugin);
     bool failed; // its ECSPlugin_Init failed; plugins that depend on it are skipped
     char **dependencies; // stb_ds array of the names its manifest depends on
+    ECSPluginStateDesc state; // Save is NULL if the plugin saves no state of its own
+    ECSTimerFunction stateRelease;
+    ECSTaskFunction LuaShutdown; // the Lua code's shutdown, or NULL
+    ECSTaskFunction luaShutdownRelease;
+    void *luaShutdownData;
 } ECSI_Plugin;
 
 /// @brief State while the plugins of a table are loaded.
@@ -52,6 +57,26 @@ static struct
 static ECSI_Plugin *ECSI_PluginFind(const char *name)
 {
     return shget(PLUGINS.plugins, name);
+}
+
+/// @brief Forgets a plugin's state description, and releases its data.
+static void ECSI_PluginForgetState(ECSI_Plugin *plugin)
+{
+    if (plugin->stateRelease != NULL)
+    {
+        plugin->stateRelease(plugin->state.data);
+    }
+
+    plugin->state = (ECSPluginStateDesc){0};
+    plugin->stateRelease = NULL;
+
+    if (plugin->luaShutdownRelease != NULL)
+    {
+        plugin->luaShutdownRelease(plugin->luaShutdownData);
+    }
+
+    plugin->LuaShutdown = NULL;
+    plugin->luaShutdownRelease = NULL;
 }
 
 static void ECSI_PluginFree(ECSI_Plugin *plugin)
@@ -231,6 +256,7 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
         record->Shutdown = NULL;
         record->failed = true;
         PLUGINS.hooks.RemoveRegistrations(record);
+        ECSI_PluginForgetState(record);
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' failed to start (%s).", name, SHUResult_String(result));
         return result;
     }
@@ -248,6 +274,7 @@ static SHUResult ECSI_PluginStart(const char *name, const ECSI_Manifest *manifes
         {
             record->failed = true;
             PLUGINS.hooks.RemoveRegistrations(record);
+            ECSI_PluginForgetState(record);
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' failed to start its Lua code (%s).", name, SHUResult_String(result));
             return result;
         }
@@ -363,6 +390,28 @@ SHUResult ECSI_PluginsLoad(const char *const *directories, usz directoryCount, c
     return result;
 }
 
+void ECSI_PluginsShutdown(void)
+{
+    for (usz i = shlenu(PLUGINS.plugins); i > 0; i--)
+    {
+        ECSI_Plugin *plugin = PLUGINS.plugins[i - 1].value;
+
+        // the Lua code started after the native code, so it shuts down first
+        if (plugin->LuaShutdown != NULL)
+        {
+            plugin->LuaShutdown(plugin->luaShutdownData);
+        }
+
+        if (plugin->Shutdown != NULL)
+        {
+            plugin->Shutdown(plugin);
+        }
+
+        plugin->LuaShutdown = NULL;
+        plugin->Shutdown = NULL;
+    }
+}
+
 void ECSI_PluginsUnload(void)
 {
     for (usz i = 0; i < shlenu(PLUGINS.errors); i++)
@@ -377,10 +426,7 @@ void ECSI_PluginsUnload(void)
     {
         ECSI_Plugin *plugin = PLUGINS.plugins[i - 1].value;
 
-        if (plugin->Shutdown != NULL)
-        {
-            plugin->Shutdown(plugin);
-        }
+        ECSI_PluginForgetState(plugin);
 
         if (plugin->library != NULL)
         {
@@ -416,6 +462,113 @@ const char *ECSI_PluginGetName(ECSPlugin plugin)
     SDL_assert(plugin != NULL);
 
     return plugin->name;
+}
+
+SHUResult ECSI_PluginRegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc, ECSTimerFunction release)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(desc != NULL);
+
+    if (desc->Save == NULL || desc->Restore == NULL || plugin->state.Save != NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' registers its state without Save and Restore, or a second time.", plugin->name);
+        return SHUResult_ErrBadData;
+    }
+
+    plugin->state = *desc;
+    plugin->stateRelease = release;
+    return SHUResult_Ok;
+}
+
+void ECSI_PluginSetLuaShutdown(ECSPlugin plugin, ECSTaskFunction function, ECSTaskFunction release, void *data)
+{
+    SDL_assert(plugin != NULL);
+
+    if (plugin->luaShutdownRelease != NULL)
+    {
+        plugin->luaShutdownRelease(plugin->luaShutdownData);
+    }
+
+    plugin->LuaShutdown = function;
+    plugin->luaShutdownRelease = release;
+    plugin->luaShutdownData = data;
+}
+
+SHUResult ECSPlugin_RegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc)
+{
+    return ECSI_PluginRegisterState(plugin, desc, NULL);
+}
+
+void ECSI_PluginsRestoreStates(const ECSValue *states)
+{
+    for (usz i = 0; i < shlenu(PLUGINS.plugins); i++)
+    {
+        ECSI_Plugin *plugin = PLUGINS.plugins[i].value;
+        const ECSValue *entry = ECSValue_GetTableField(states, plugin->name);
+
+        if (plugin->state.Restore == NULL || entry == NULL)
+        {
+            continue;
+        }
+
+        i64 version = ECSValue_GetInteger(ECSValue_GetTableField(entry, "state_version"), 0);
+
+        if (plugin->state.Restore(plugin->state.data, ECSValue_GetTableField(entry, "state"), version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0))
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not restore its state from the session.", plugin->name);
+        }
+    }
+}
+
+SHUResult ECSI_PluginsSaveStates(ECSValue *states)
+{
+    SDL_assert(states != NULL);
+
+    ECSValue_SetTable(states);
+
+    for (usz i = 0; i < shlenu(PLUGINS.plugins); i++)
+    {
+        ECSI_Plugin *plugin = PLUGINS.plugins[i].value;
+        ECSValue *saved = NULL;
+        ECSValue *entry = NULL;
+        ECSValue *field = NULL;
+
+        if (plugin->state.Save == NULL)
+        {
+            continue;
+        }
+
+        SHU_ReturnResult(ECSValue_Create(&saved));
+
+        // a failed save keeps the state the session already had
+        if (plugin->state.Save(plugin->state.data, saved))
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not save its state.", plugin->name);
+            ECSValue_Destroy(&saved);
+            continue;
+        }
+
+        SHUResult result = ECSValue_TableSetField(states, plugin->name, &entry);
+
+        if (!result)
+        {
+            ECSValue_SetTable(entry);
+            result = ECSValue_TableSetField(entry, "state", &field);
+        }
+
+        result = result ? result : ECSI_ValueCopy(field, saved);
+        result = result ? result : ECSValue_TableSetField(entry, "state_version", &field);
+
+        if (!result)
+        {
+            ECSValue_SetInteger(field, plugin->state.version);
+        }
+
+        ECSValue_Destroy(&saved);
+        SHU_ReturnResult(result);
+    }
+
+    return SHUResult_Ok;
 }
 
 void ECSI_PluginReportError(ECSPlugin plugin, const char *message)

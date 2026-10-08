@@ -16,6 +16,7 @@ typedef struct ECSI_PanelType
     char *title;
     ECSPlugin plugin;
     void *typeData; // what the Bindings module keeps for a Lua panel type, or NULL
+    char **menuEntries; // stb_ds array of the functions the type adds to its panels' menu
 } ECSI_PanelType;
 
 /// @brief A panel: one instance of a panel type, placed in the layout.
@@ -39,6 +40,9 @@ struct ECSI_Panel
     u64 lastDrawTicks;
     u64 focusTicks; // when the panel last got focus, for placing new panels of its type; 0 if never
     bool closed; // out of the layout, waiting for ECSI_PanelsDestroyClosed; it gets no more events
+    bool visible;    // what the panel was last told: shown or hidden
+    f32 toldWidth;   // the size the panel was last told
+    f32 toldHeight;
     char *fault; // the error of a callback, or NULL; a faulted panel shows it and its type is not called again, except Destroy
 };
 
@@ -55,6 +59,20 @@ SHUWUR SHUResult ECSI_PanelTypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc
 /// @param quitting true when the program quits. If the dialog cannot be shown, quitting discards the work, so it always finishes; closing panels is cancelled.
 /// @return true if the panels may close: none had unsaved work, the user discarded it, or every save worked.
 bool ECSI_PanelsConfirmClose(const ECSPanel *panels, usz count, bool quitting);
+
+/// @brief Recreates a faulted panel, or a placeholder whose type is registered now, from its last saved state. The panel keeps its place and id.
+/// @param panel The panel.
+/// @return true if the panel runs again; false if it was not faulted, its type is still missing, or creating it failed again.
+bool ECSI_PanelRestart(ECSPanel panel);
+
+/// @brief Checks whether a panel can be restarted: it is faulted, or a placeholder.
+bool ECSI_PanelCanRestart(ECSPanel panel);
+
+/// @brief Gets the functions that a panel's type adds to its menu.
+/// @param panel The panel.
+/// @param retCount Number of functions.
+/// @return The function names, or NULL for none. Valid while the type is registered.
+const char *const *ECSI_PanelGetMenuEntries(ECSPanel panel, usz *retCount);
 
 /// @brief Removes every panel type a plugin registered. Call it before panels of those types exist.
 /// @param plugin The plugin.
@@ -127,9 +145,19 @@ void ECSI_PanelDraw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks);
 /// @param renderer Renderer of the OS window that shows the panel.
 void ECSI_PanelShow(ECSPanel panel, SDL_Renderer *renderer);
 
+/// @brief Tells a panel whether it is visible, and its size. Queues Shown, Hidden or Resized when they changed since the last call.
+/// @param panel The panel.
+/// @param visible true if the panel is shown in the current workspace.
+void ECSI_PanelSetVisible(ECSPanel panel, bool visible);
+
+/// @brief Emits one of the core's named events about a panel, with the value { panel = id, type = name }.
+/// @param name Name of the event, such as "ecs.panel_opened".
+/// @param panel The panel.
+void ECSI_PanelEmit(const char *name, ECSPanel panel);
+
 /// @brief Queues an event for a panel's type.
 /// @param panel Panel that receives the event.
 /// @param event The event.
-void ECSI_PanelPostEvent(ECSPanel panel, const ECSEvent *event);
+void ECSI_PanelPostEvent(ECSPanel panel, const ECSPanelEvent *event);
 
 #pragma endregion Declarations

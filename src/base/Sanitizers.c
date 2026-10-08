@@ -1,8 +1,15 @@
-// Sanitizers: settings of the address and leak sanitizers that the Debug build uses.
+// for dl_iterate_phdr and RTLD_NODELETE
+#define _GNU_SOURCE
+
+#include "base/Sanitizers.h"
+
+#include "OpenECS.h"
 
 #ifdef DEBUG
 
-#include "OpenECS.h"
+#include <dlfcn.h>
+#include <link.h>
+#include <sanitizer/lsan_interface.h>
 
 #pragma region Source Only
 
@@ -15,7 +22,7 @@ const char *__asan_default_options(void)
     return "detect_leaks=1:strict_string_checks=1:check_initialization_order=1";
 }
 
-/// @brief Leaks inside the system libraries that SDL loads: graphics drivers, display servers, input methods and D-Bus. They are not OpenECS's. App checks for leaks while these libraries are still loaded, so their names can be matched.
+/// @brief Leaks inside the system libraries that SDL loads: graphics drivers, display servers, input methods and D-Bus. They are not OpenECS's. The libraries are kept loaded, so their names can be matched.
 const char *__lsan_default_suppressions(void)
 {
     return "leak:libdbus-1.so\n"
@@ -32,7 +39,7 @@ const char *__lsan_default_suppressions(void)
            "leak:libLLVM\n"
            "leak:_dri.so\n"
            "leak:libdrm\n"
-           "leak:libvulkan\n"
+           "leak:libvulkan\n" // the loader and drivers such as libvulkan_radeon.so
            "leak:libnvidia\n"
            "leak:libibus\n"
            "leak:libfcitx\n"
@@ -43,6 +50,40 @@ const char *__lsan_default_suppressions(void)
            "leak:GL_RunCommandQueue\n";
 }
 
+/// @brief Marks a loaded library so it is never unloaded. dlopen with RTLD_NOLOAD finds it without loading anything.
+static int ECSI_SanitizersKeep(struct dl_phdr_info *info, size_t size, void *data)
+{
+    (void)size;
+    (void)data;
+
+    if (info->dlpi_name != NULL && info->dlpi_name[0] != '\0')
+    {
+        (void)dlopen(info->dlpi_name, RTLD_LAZY | RTLD_NOLOAD | RTLD_NODELETE);
+    }
+
+    return 0;
+}
+
 #pragma endregion Source Only
+
+void ECSI_SanitizersKeepLibraries(void)
+{
+    dl_iterate_phdr(ECSI_SanitizersKeep, NULL);
+}
+
+void ECSI_SanitizersCheckLeaks(void)
+{
+    __lsan_do_leak_check();
+}
+
+#else
+
+void ECSI_SanitizersKeepLibraries(void)
+{
+}
+
+void ECSI_SanitizersCheckLeaks(void)
+{
+}
 
 #endif

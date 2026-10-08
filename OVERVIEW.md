@@ -172,10 +172,10 @@ A panel type can declare a **minimum size**. Splits never make a panel smaller t
 
 ### 6.2 Tab rows
 
-- A group with two or more panels shows a **tab row**. The user drags a tab to move its panel and right-clicks it for the panel's menu. A middle click on a tab closes its panel. Dragging the empty part of the tab row moves the whole group.
+- A group with two or more panels shows a **tab row**. The user drags a tab to move its panel and right-clicks it for the panel's menu; a right click on the rest of the tab row opens the shown panel's menu. A middle click on a tab closes its panel. Dragging the empty part of the tab row moves the whole group.
 - A group with one panel shows no tab row. Instead, when the pointer comes near the top edge of the panel, the core shows a small **grip** with the panel's title at its top centre. Dragging the grip moves the panel; clicking or right-clicking it opens the panel's menu.
 - Dropping a panel onto the centre of another panel groups them, and the tab row appears. When a group is left with one panel, the tab row disappears.
-- Tabs can be reordered by dragging, and a long tab row scrolls. A tab shows the panel's title, a mark for unsaved work and a close button.
+- Tabs can be reordered by dragging, and a long tab row scrolls with the mouse wheel. A tab that becomes shown scrolls into view. A tab shows the panel's title, a mark for unsaved work and a close button.
 
 ### 6.3 Operations are plain functions
 

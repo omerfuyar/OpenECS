@@ -3,6 +3,7 @@
 #include "app/Session.h"
 #include "base/Log.h"
 #include "base/Lua.h"
+#include "base/Sanitizers.h"
 #include "interface/Input.h"
 #include "interface/Layout.h"
 #include "interface/Panels.h"
@@ -13,10 +14,6 @@
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
-
-#ifdef DEBUG
-#include <sanitizer/lsan_interface.h>
-#endif
 
 #pragma region Source Only
 
@@ -83,6 +80,7 @@ static void ECSI_RemoveRegistrations(ECSPlugin plugin)
     ECSI_ServicesRemovePlugin(plugin);
     ECSI_SettingsRemovePlugin(plugin);
     ECSI_EventsStopTimersOfPlugin(plugin);
+    ECSI_EventsRemovePlugin(plugin);
     ECSI_InputRemovePlugin(plugin);
 }
 
@@ -220,6 +218,9 @@ void ECSI_AppStart(const ECSI_Arguments *arguments)
     ECSI_PluginsSetHooks(&hooks);
     ECSI_LoadPlugins(&APP.preset);
     ECSI_CheckStart(ECSI_SessionApply(sourcePath, &APP.preset), "building the layout");
+
+    // drivers, plugins and system libraries are loaded now
+    ECSI_SanitizersKeepLibraries();
 }
 
 void ECSI_AppRun(void)
@@ -265,17 +266,22 @@ void ECSI_AppRun(void)
 
 void ECSI_AppStop(void)
 {
+    ECSI_SanitizersKeepLibraries();
+
     if (APP.lastSession != NULL && ECSI_SessionSave(APP.lastSession, &APP.preset) == SHUResult_Ok)
     {
         SDL_Log("Session saved to '%s'.", APP.lastSession);
     }
 
-    // panels are destroyed before their types, and their types before their plugins are unloaded
+    // panels are destroyed before their types, handles' objects before their plugins shut down, and plugins before they are unloaded
     ECSI_InputTerminate();
     ECSI_LayoutTerminate();
     ECSI_PanelsTerminate();
-    ECSI_EventsTerminate();
     ECSI_ServicesTerminate();
+
+    // plugins shut down while timers and events still work, and their code is unloaded once no worker runs it
+    ECSI_PluginsShutdown();
+    ECSI_EventsTerminate();
     ECSI_PluginsUnload();
     ECSI_SettingsTerminate();
     ECSI_BindingsTerminate();
@@ -287,10 +293,8 @@ void ECSI_AppStop(void)
     SDL_free(APP.stateFolder);
     ECSI_LuaTerminate();
 
-    // Debug builds check for leaks here, when OpenECS has freed its memory but the drivers that SDL loaded are still loaded, so their leaks can be told apart by library name
-#ifdef DEBUG
-    __lsan_do_leak_check();
-#endif
+    // Debug builds check for leaks here, when OpenECS has freed its memory but SDL still holds its own
+    ECSI_SanitizersCheckLeaks();
 
     SDL_Quit();
     ECSI_LogTerminate();

@@ -116,6 +116,19 @@ ECSPanel ECSI_LayoutPointerUp(void);
 /// @return The panel, or NULL.
 ECSPanel ECSI_LayoutTabAt(f32 x, f32 y);
 
+/// @brief Finds the group whose tab row is at a point, on a tab or not.
+/// @param x Horizontal position in layout units.
+/// @param y Vertical position in layout units.
+/// @return The group's shown panel, or NULL.
+ECSPanel ECSI_LayoutTabRowAt(f32 x, f32 y);
+
+/// @brief Scrolls the tab row at a point, if there is one.
+/// @param x Horizontal position in layout units.
+/// @param y Vertical position in layout units.
+/// @param steps Wheel steps; positive scrolls toward the last tab.
+/// @return true if a tab row was scrolled.
+bool ECSI_LayoutScrollTabs(f32 x, f32 y, f32 steps);
+
 /// @brief Stops dragging a panel without moving it.
 /// @return true if a panel was being dragged.
 bool ECSI_LayoutCancelDrag(void);
@@ -170,6 +183,13 @@ SDL_Window *ECSI_LayoutGetWindow(void);
 /// @brief Gets every panel of every workspace.
 /// @return stb_ds array of the panels. Free it with arrfree.
 ECSPanel *ECSI_LayoutGetPanels(void);
+
+/// @brief Opens the last closed panel again, with the state it had: next to a panel that stayed in its group, or else in the focused group. Its workspace is shown.
+void ECSI_LayoutReopen(void);
+
+/// @brief Moves the focused panel into another workspace's focused group. The current workspace stays shown. Locked panels stay.
+/// @param index Position of the other workspace, starting at 0.
+void ECSI_LayoutMoveToWorkspace(usz index);
 
 /// @brief Shows or hides the list of keys that follow the core prefix.
 /// @param lines Each key's text and description, one after the other. They must stay valid while they are shown.

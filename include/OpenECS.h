@@ -30,6 +30,9 @@ typedef struct ECSI_Panel *ECSPanel;
 /// @brief Handle of a timer.
 typedef struct ECSI_Timer *ECSTimer;
 
+/// @brief A plugin's subscription to a named event.
+typedef struct ECSI_Subscription *ECSSubscription;
+
 /// @brief A function of a service, of any signature. Cast it to its real type before calling it.
 typedef void (*ECSFunction)(void);
 
@@ -43,6 +46,12 @@ typedef void (*ECSTimerFunction)(void *data);
 
 /// @brief A generic value: nil, a boolean, an integer, a number, a string, or a table that holds a list and named fields. Saved state, settings and services use values.
 typedef struct ECSI_Value ECSValue;
+
+/// @brief Function called with a named event that a plugin subscribed to.
+/// @param data The data given to ECSEvent_Subscribe.
+/// @param name Name of the event.
+/// @param value What the event carries; nil if it carries nothing. Valid only during the call.
+typedef void (*ECSEventFunction)(void *data, const char *name, const ECSValue *value);
 
 /// @brief Type of a value.
 typedef enum ECSValueType
@@ -96,22 +105,25 @@ typedef enum ECSModifier
 } ECSModifier;
 
 /// @brief Type of an event.
-typedef enum ECSEventType
+typedef enum ECSPanelEventType
 {
-    ECSEventType_PointerDown = 0,
-    ECSEventType_PointerUp,
-    ECSEventType_PointerMove,
-    ECSEventType_Wheel,
-    ECSEventType_KeyDown,
-    ECSEventType_KeyUp,
-    ECSEventType_Focused,
-    ECSEventType_Unfocused,
-} ECSEventType;
+    ECSPanelEventType_PointerDown = 0,
+    ECSPanelEventType_PointerUp,
+    ECSPanelEventType_PointerMove,
+    ECSPanelEventType_Wheel,
+    ECSPanelEventType_KeyDown,
+    ECSPanelEventType_KeyUp,
+    ECSPanelEventType_Focused,
+    ECSPanelEventType_Unfocused,
+    ECSPanelEventType_Shown,   // the panel became visible
+    ECSPanelEventType_Hidden,  // the panel is no longer visible: another tab, workspace or maximized group is shown
+    ECSPanelEventType_Resized, // the panel's size changed while it is visible
+} ECSPanelEventType;
 
 /// @brief An event sent to a panel. Its type chooses the member of the union that is set.
-typedef struct ECSEvent
+typedef struct ECSPanelEvent
 {
-    ECSEventType type;
+    ECSPanelEventType type;
     u32 modifiers; // ECSModifier bits held when the event happened
 
     union
@@ -138,8 +150,15 @@ typedef struct ECSEvent
         {
             u32 code; // SDL key code
         } key;
+
+        // Shown and Resized
+        struct
+        {
+            f32 width;  // in layout units
+            f32 height; // in layout units
+        } size;
     };
-} ECSEvent;
+} ECSPanelEvent;
 
 /// @brief Describes a panel type. Passed to ECSPanelType_Register.
 typedef struct ECSPanelTypeDesc
@@ -158,7 +177,7 @@ typedef struct ECSPanelTypeDesc
 
     // optional, NULL if unused
     void (*Draw)(void *state, ECSSurface *surface, f64 seconds);
-    void (*Event)(void *state, const ECSEvent *event);
+    void (*Event)(void *state, const ECSPanelEvent *event);
     SHUResult (*SaveState)(void *state, ECSValue *retState);
     SHUResult (*Save)(void *state); // saves unsaved work
 } ECSPanelTypeDesc;
@@ -193,6 +212,18 @@ typedef struct ECSSettingDesc
     void (*Changed)(void *data); // called after the value in effect changes, outside other callbacks
     void *data;                  // passed to Changed
 } ECSSettingDesc;
+
+/// @brief Describes how a plugin saves its own state into the session, apart from its panels' state. Passed to ECSPlugin_RegisterState.
+typedef struct ECSPluginStateDesc
+{
+    u32 version; // version of the state the plugin saves now; Restore gets the version the state was saved with
+
+    // called when the session is saved; fill retState, which starts as nil
+    SHUResult (*Save)(void *data, ECSValue *retState);
+    // called when a session that holds the plugin's state is applied, before panels are created
+    SHUResult (*Restore)(void *data, const ECSValue *state, u32 version);
+    void *data; // passed to the functions
+} ECSPluginStateDesc;
 
 /// @brief Type of a file dialog.
 typedef enum ECSDialogType
@@ -254,6 +285,12 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 /// @param level Level of the message.
 /// @param format printf-style format.
 /// @param ... Format arguments.
+/// @brief Registers how a plugin saves and restores its own state in sessions. Call it from ECSPlugin_Init. Main thread only.
+/// @param plugin The plugin.
+/// @param desc Description of the state. The core copies it.
+/// @return SHUResult_Ok, or SHUResult_ErrBadData if the description lacks Save or Restore, or the plugin registered its state already.
+OPENECS_EXPORT SHUWUR SHUResult ECSPlugin_RegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc);
+
 OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel level, const char *format, ...);
 
 /// @brief Runs a function on a worker thread, then another function on the main thread. Thread-safe.
@@ -275,6 +312,13 @@ OPENECS_EXPORT SHUWUR SHUResult ECS_RunOnMainThread(ECSTaskFunction function, vo
 /// @param desc Description of the panel type. Its name must start with the plugin's name and a dot.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc);
+
+/// @brief Adds a function to the menu of a panel type's panels, after the core's entries. The entry shows the function's description, and runs it on the panel. Main thread only.
+/// @param plugin The plugin that registered the panel type.
+/// @param panelType Name of the panel type.
+/// @param function Name of a service function whose signature is void(handle<ecs.panel>) or void().
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the panel type is not the plugin's, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, const char *function);
 
 /// @brief Creates a nil value, for a plugin that passes a value to the core or to a service. Main thread only.
 /// @param retValue The new value. Destroy it with ECSValue_Destroy.
@@ -443,11 +487,11 @@ OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelT
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if the target is not in the current workspace, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type, const ECSValue *state, ECSPanel target, ECSZone zone);
 
-/// @brief Moves a panel into a target's group, or beside it. Both must be in the same workspace. Main thread only.
+/// @brief Moves a panel into a target's group, or beside it, also from another workspace. Main thread only.
 /// @param panel Panel to move.
 /// @param target The target panel.
 /// @param zone Where next to the target.
-/// @return SHUResult_Ok, or SHUResult_ErrNotFound if the panels are not in one workspace.
+/// @return SHUResult_Ok, or SHUResult_ErrNotFound if a panel is not in the layout.
 OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone);
 
 /// @brief Closes a panel. If it has unsaved work, the user is asked first and may cancel. Main thread only.
@@ -462,6 +506,11 @@ OPENECS_EXPORT void ECSLayout_Focus(ECSPanel panel);
 /// @brief Gets the focused panel of the current workspace. Main thread only.
 /// @return The panel, or NULL if the workspace has none.
 OPENECS_EXPORT ECSPanel ECSLayout_GetFocus(void);
+
+/// @brief Finds a panel in any workspace by its id. Main thread only.
+/// @param id The panel's id, as ECSPanel_GetId gives it and the core's events carry it.
+/// @return The panel, or NULL if no open panel has the id.
+OPENECS_EXPORT ECSPanel ECSLayout_FindPanel(u32 id);
 
 /// @brief Counts the workspaces. Main thread only.
 /// @return Number of workspaces.
@@ -524,6 +573,33 @@ OPENECS_EXPORT SHUWUR SHUResult ECSDialog_ShowMessage(const char *title, const c
 /// @param function Function to call.
 /// @param data Passed to the function.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @brief Declares a named event that a plugin emits. Main thread only.
+/// @param plugin The plugin that emits the event.
+/// @param name Name of the event: the plugin's name, a dot and a local name, such as "canvas.selection_changed".
+/// @param description One line about the event.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the name is taken or does not belong to the plugin, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *description);
+
+/// @brief Emits a named event that the plugin declared. Subscribers get it after the current callback returns. Main thread only.
+/// @param plugin The plugin that declared the event.
+/// @param name Name of the event.
+/// @param value What the event carries, or NULL. The core copies it.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if the plugin declared no such event, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name, const ECSValue *value);
+
+/// @brief Subscribes to a named event. The event must be declared by the core, by the plugin itself, or by a plugin its manifest depends on. Main thread only.
+/// @param plugin The plugin that subscribes.
+/// @param name Name of the event.
+/// @param retSubscription The new subscription.
+/// @param function Function called with each emission.
+/// @param data Passed to the function.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if no such event is declared, SHUResult_ErrBadData if the plugin does not depend on the event's plugin, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Subscribe(ECSPlugin plugin, const char *name, ECSSubscription *retSubscription, ECSEventFunction function, void *data);
+
+/// @brief Ends a subscription and sets the handle to NULL. Main thread only.
+/// @param subscription The subscription, or a handle to NULL.
+OPENECS_EXPORT void ECSEvent_Unsubscribe(ECSSubscription *subscription);
+
 OPENECS_EXPORT SHUWUR SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data);
 
 /// @brief Stops a timer and sets the handle to NULL. A timer may stop itself from its own function. Main thread only.
@@ -558,5 +634,15 @@ OPENECS_EXPORT const char *ECSPanel_GetTitle(ECSPanel panel);
 /// @param panel Panel to change.
 /// @param title New title.
 OPENECS_EXPORT void ECSPanel_SetTitle(ECSPanel panel, const char *title);
+
+/// @brief Gets a panel's id, which is unique and stable within a session. Main thread only.
+/// @param panel The panel.
+/// @return The id.
+OPENECS_EXPORT u32 ECSPanel_GetId(ECSPanel panel);
+
+/// @brief Gets the name of a panel's type, such as "canvas.view". Main thread only.
+/// @param panel The panel.
+/// @return The name. Valid while the panel exists.
+OPENECS_EXPORT const char *ECSPanel_GetType(ECSPanel panel);
 
 #pragma endregion Core Functions

@@ -20,7 +20,10 @@
 static const char *const ECSI_FOCUS_CHOICES[] = {"click", "hover", NULL};
 
 /// @brief Core functions in every panel's menu. They act on the focused panel, which the menu's panel becomes.
-static const char *const ECSI_MENU_FUNCTIONS[] = {"ecs.close", "ecs.maximize", "ecs.lock", "ecs.move_left", "ecs.move_right", "ecs.move_up", "ecs.move_down"};
+static const char *const ECSI_MENU_FUNCTIONS[] = {"ecs.close", "ecs.restart", "ecs.maximize", "ecs.lock", "ecs.split_right", "ecs.split_down", "ecs.reopen", "ecs.move_left", "ecs.move_right", "ecs.move_up", "ecs.move_down"};
+
+/// @brief Most workspaces that have their own functions: keys 1 to 9 and 0.
+#define OPENECS_WORKSPACE_FUNCTION_COUNT 10
 
 /// @brief The default keys after the core prefix, with the functions they run. The setting ecs.prefix_keys adds to them and changes them.
 static const char *const ECSI_PREFIX_KEYS[][2] = {
@@ -46,6 +49,8 @@ static const char *const ECSI_PREFIX_KEYS[][2] = {
     {"8", "ecs.workspace_8"},
     {"9", "ecs.workspace_9"},
     {"0", "ecs.workspace_10"},
+    {"T", "ecs.reopen"},
+    {"R", "ecs.restart"},
 };
 
 /// @brief A key combination and the function it runs.
@@ -415,9 +420,9 @@ static void ECSI_InputSettingChanged(void *data)
 }
 
 /// @brief Sends a pointer event to a panel, with the position made relative to the panel.
-static void ECSI_InputSendPointer(ECSPanel panel, ECSEventType type, f32 x, f32 y, i32 button)
+static void ECSI_InputSendPointer(ECSPanel panel, ECSPanelEventType type, f32 x, f32 y, i32 button)
 {
-    ECSEvent event = {
+    ECSPanelEvent event = {
         .type = type,
         .modifiers = ECSI_InputModifiers(SDL_GetModState()),
         .pointer = {.x = x - panel->x, .y = y - panel->y, .button = button},
@@ -430,8 +435,8 @@ static void ECSI_InputSendPointer(ECSPanel panel, ECSEventType type, f32 x, f32 
 static void ECSI_InputSendWheel(ECSPanel panel, const SDL_MouseWheelEvent *wheel)
 {
     f32 direction = wheel->direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
-    ECSEvent event = {
-        .type = ECSEventType_Wheel,
+    ECSPanelEvent event = {
+        .type = ECSPanelEventType_Wheel,
         .modifiers = ECSI_InputModifiers(SDL_GetModState()),
         .wheel = {.x = wheel->mouse_x - panel->x, .y = wheel->mouse_y - panel->y, .amountX = wheel->x * direction, .amountY = wheel->y * direction},
     };
@@ -439,9 +444,9 @@ static void ECSI_InputSendWheel(ECSPanel panel, const SDL_MouseWheelEvent *wheel
     ECSI_PanelPostEvent(panel, &event);
 }
 
-static void ECSI_InputSendKey(ECSPanel panel, ECSEventType type, const SDL_KeyboardEvent *key)
+static void ECSI_InputSendKey(ECSPanel panel, ECSPanelEventType type, const SDL_KeyboardEvent *key)
 {
-    ECSEvent event = {
+    ECSPanelEvent event = {
         .type = type,
         .modifiers = ECSI_InputModifiers(key->mod),
         .key = {.code = key->key},
@@ -479,6 +484,47 @@ static void ECSI_InputCloseMenu(void)
 }
 
 /// @brief Opens a panel's menu at a point. Each entry shows the keys that run its function after the prefix.
+/// @brief Adds an entry to the panel menu. Texts made for it are kept with the menu and freed when it closes.
+/// @param function The function the entry runs; valid while the menu is open.
+/// @param keys Text of its keys, made for the menu, or NULL.
+/// @param label Its label, made for the menu, or NULL for the function's description.
+static void ECSI_InputAddMenuEntry(const char *function, char *keys, char *label)
+{
+    const char *description = ECSI_ServicesGetDescription(function);
+
+    if (keys != NULL)
+    {
+        arrput(INPUT.menuTexts, keys);
+    }
+
+    if (label != NULL)
+    {
+        arrput(INPUT.menuTexts, label);
+    }
+
+    arrput(INPUT.menuFunctions, function);
+    arrput(INPUT.menuLines, keys == NULL ? "" : keys);
+    arrput(INPUT.menuLines, label != NULL ? label : description != NULL ? description : function);
+}
+
+/// @brief Makes the text of the keys that run a function after the prefix, such as "Alt+W, X".
+/// @return The text, or NULL if no key after the prefix runs the function. Free it with SDL_free.
+static char *ECSI_InputPrefixKeysOf(const char *function, const char *prefix)
+{
+    char *keys = NULL;
+
+    for (usz i = 0; keys == NULL && i < arrlenu(INPUT.prefixKeys); i++)
+    {
+        if (SDL_strcmp(INPUT.prefixKeys[i].function, function) == 0 && SDL_asprintf(&keys, "%s, %s", prefix, INPUT.prefixKeys[i].text) < 0)
+        {
+            keys = NULL;
+        }
+    }
+
+    return keys;
+}
+
+/// @brief Opens a panel's menu at a point: the core's entries, one for each other workspace, then the entries of the panel's type. Each entry shows its keys.
 static void ECSI_InputOpenMenu(ECSPanel panel, f32 x, f32 y)
 {
     ECSI_InputCloseMenu();
@@ -486,28 +532,55 @@ static void ECSI_InputOpenMenu(ECSPanel panel, f32 x, f32 y)
     ECSI_InputReadPrefixKeys();
     const char *prefix = ECSValue_GetString(ECSSetting_Get("ecs.prefix"), OPENECS_DEFAULT_PREFIX);
 
+    // restarting is offered only to a panel that failed or whose type is missing
     for (usz i = 0; i < SDL_arraysize(ECSI_MENU_FUNCTIONS); i++)
     {
-        const char *function = ECSI_MENU_FUNCTIONS[i];
-        const char *description = ECSI_ServicesGetDescription(function);
+        if (SDL_strcmp(ECSI_MENU_FUNCTIONS[i], "ecs.restart") != 0 || ECSI_PanelCanRestart(panel))
+        {
+            ECSI_InputAddMenuEntry(ECSI_MENU_FUNCTIONS[i], ECSI_InputPrefixKeysOf(ECSI_MENU_FUNCTIONS[i], prefix), NULL);
+        }
+    }
+
+    // the function's name is made for the menu too, so it is kept with the label
+    for (usz number = 1; number <= ECSWorkspace_GetCount() && number <= OPENECS_WORKSPACE_FUNCTION_COUNT; number++)
+    {
+        char *function = NULL;
+        char *label = NULL;
+
+        if (number == ECSWorkspace_GetCurrent() || SDL_asprintf(&function, "ecs.move_to_workspace_%zu", number) < 0)
+        {
+            continue;
+        }
+
+        if (SDL_asprintf(&label, "Move the panel to workspace %zu, %s", number, ECSWorkspace_GetName(number)) < 0)
+        {
+            label = NULL;
+        }
+
+        arrput(INPUT.menuTexts, function);
+        ECSI_InputAddMenuEntry(function, ECSI_InputPrefixKeysOf(function, prefix), label);
+    }
+
+    // a type's entry shows the key its plugin bound to the same function for the type
+    usz count = 0;
+    const char *const *entries = ECSI_PanelGetMenuEntries(panel, &count);
+
+    for (usz i = 0; i < count; i++)
+    {
         char *keys = NULL;
 
-        for (usz j = 0; keys == NULL && j < arrlenu(INPUT.prefixKeys); j++)
+        for (usz j = 0; keys == NULL && j < arrlenu(INPUT.panelBindings); j++)
         {
-            if (SDL_strcmp(INPUT.prefixKeys[j].function, function) == 0 && SDL_asprintf(&keys, "%s, %s", prefix, INPUT.prefixKeys[j].text) < 0)
+            const ECSI_PanelBinding *binding = &INPUT.panelBindings[j];
+
+            if (SDL_strcmp(binding->panelType, panel->typeName) == 0 && SDL_strcmp(binding->function, entries[i]) == 0)
             {
-                keys = NULL;
+                const char *key = ECSValue_GetString(ECSSetting_Get(binding->setting), NULL);
+                keys = key == NULL ? NULL : SDL_strdup(key);
             }
         }
 
-        if (keys != NULL)
-        {
-            arrput(INPUT.menuTexts, keys);
-        }
-
-        arrput(INPUT.menuFunctions, function);
-        arrput(INPUT.menuLines, keys == NULL ? "" : keys);
-        arrput(INPUT.menuLines, description == NULL ? function : description);
+        ECSI_InputAddMenuEntry(entries[i], keys, NULL);
     }
 
     INPUT.menuOpen = true;
@@ -527,9 +600,15 @@ static void ECSI_InputSelectMenuItem(usz index)
 /// @brief Closes the menu and runs the function of one of its entries on the focused panel.
 static void ECSI_InputRunMenuItem(usz index)
 {
-    const char *function = INPUT.menuFunctions[index];
+    // closing the menu frees the names made for it, so the name is copied first
+    char *function = SDL_strdup(INPUT.menuFunctions[index]);
     ECSI_InputCloseMenu();
-    ECSI_ServicesCallBound(function, ECSI_LayoutGetFocus());
+
+    if (function != NULL)
+    {
+        ECSI_ServicesCallBound(function, ECSI_LayoutGetFocus());
+        SDL_free(function);
+    }
 }
 
 /// @brief Gives an event to the open panel menu. Pointer and key events go to the menu only.
@@ -788,55 +867,72 @@ static void ECSI_InputLock(void)
     ECSI_LayoutToggleLock();
 }
 
-static void ECSI_InputWorkspace1(void)
+static void ECSI_InputReopen(void)
 {
-    ECSI_LayoutWorkspaceSwitch(0);
+    ECSI_LayoutReopen();
 }
 
-static void ECSI_InputWorkspace2(void)
+static void ECSI_InputRestart(void)
 {
-    ECSI_LayoutWorkspaceSwitch(1);
+    ECSPanel focus = ECSI_LayoutGetFocus();
+
+    if (focus != NULL && ECSI_PanelRestart(focus))
+    {
+        ECSI_LayoutRequestFrame();
+    }
 }
 
-static void ECSI_InputWorkspace3(void)
+/// @brief Opens another panel of the focused panel's type beside it, for the type's plugin.
+static void ECSI_InputSplit(ECSZone zone)
 {
-    ECSI_LayoutWorkspaceSwitch(2);
+    ECSPanel focus = ECSI_LayoutGetFocus();
+    ECSPanel opened = NULL;
+
+    if (focus != NULL && focus->type != NULL && ECSLayout_Open(focus->type->plugin, &opened, focus->typeName, NULL, focus, zone))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot open another '%s'.", focus->typeName);
+    }
 }
 
-static void ECSI_InputWorkspace4(void)
+static void ECSI_InputSplitRight(void)
 {
-    ECSI_LayoutWorkspaceSwitch(3);
+    ECSI_InputSplit(ECSZone_Right);
 }
 
-static void ECSI_InputWorkspace5(void)
+static void ECSI_InputSplitDown(void)
 {
-    ECSI_LayoutWorkspaceSwitch(4);
+    ECSI_InputSplit(ECSZone_Bottom);
 }
 
-static void ECSI_InputWorkspace6(void)
-{
-    ECSI_LayoutWorkspaceSwitch(5);
-}
+/// @brief Defines the core's two functions for a workspace number: switching to the workspace, and moving the focused panel to it.
+#define ECSI_WorkspaceFunctions(number)                  \
+    static void ECSI_InputWorkspace##number(void)        \
+    {                                                    \
+        ECSI_LayoutWorkspaceSwitch(number - 1);          \
+    }                                                    \
+                                                         \
+    static void ECSI_InputMoveToWorkspace##number(void)  \
+    {                                                    \
+        ECSI_LayoutMoveToWorkspace(number - 1);          \
+    }
 
-static void ECSI_InputWorkspace7(void)
-{
-    ECSI_LayoutWorkspaceSwitch(6);
-}
+ECSI_WorkspaceFunctions(1)
+ECSI_WorkspaceFunctions(2)
+ECSI_WorkspaceFunctions(3)
+ECSI_WorkspaceFunctions(4)
+ECSI_WorkspaceFunctions(5)
+ECSI_WorkspaceFunctions(6)
+ECSI_WorkspaceFunctions(7)
+ECSI_WorkspaceFunctions(8)
+ECSI_WorkspaceFunctions(9)
+ECSI_WorkspaceFunctions(10)
 
-static void ECSI_InputWorkspace8(void)
-{
-    ECSI_LayoutWorkspaceSwitch(7);
-}
-
-static void ECSI_InputWorkspace9(void)
-{
-    ECSI_LayoutWorkspaceSwitch(8);
-}
-
-static void ECSI_InputWorkspace10(void)
-{
-    ECSI_LayoutWorkspaceSwitch(9);
-}
+/// @brief The entries of the core function table for a workspace number.
+#define ECSI_WorkspaceEntries(number)                                                                               \
+    {"ecs.workspace_" #number, ECSI_InputWorkspace##number, "Switch to workspace " #number},                       \
+    {                                                                                                               \
+        "ecs.move_to_workspace_" #number, ECSI_InputMoveToWorkspace##number, "Move the panel to workspace " #number \
+    }
 
 /// @brief The core's bindable functions: name, function and description.
 static const struct
@@ -857,16 +953,20 @@ static const struct
     {"ecs.maximize", ECSI_InputMaximize, "Maximize or restore the group"},
     {"ecs.close", ECSI_InputClose, "Close the panel"},
     {"ecs.lock", ECSI_InputLock, "Lock or unlock the group"},
-    {"ecs.workspace_1", ECSI_InputWorkspace1, "Switch to workspace 1"},
-    {"ecs.workspace_2", ECSI_InputWorkspace2, "Switch to workspace 2"},
-    {"ecs.workspace_3", ECSI_InputWorkspace3, "Switch to workspace 3"},
-    {"ecs.workspace_4", ECSI_InputWorkspace4, "Switch to workspace 4"},
-    {"ecs.workspace_5", ECSI_InputWorkspace5, "Switch to workspace 5"},
-    {"ecs.workspace_6", ECSI_InputWorkspace6, "Switch to workspace 6"},
-    {"ecs.workspace_7", ECSI_InputWorkspace7, "Switch to workspace 7"},
-    {"ecs.workspace_8", ECSI_InputWorkspace8, "Switch to workspace 8"},
-    {"ecs.workspace_9", ECSI_InputWorkspace9, "Switch to workspace 9"},
-    {"ecs.workspace_10", ECSI_InputWorkspace10, "Switch to workspace 10"},
+    {"ecs.reopen", ECSI_InputReopen, "Reopen the last closed panel"},
+    {"ecs.restart", ECSI_InputRestart, "Restart the failed panel"},
+    {"ecs.split_right", ECSI_InputSplitRight, "Open another one on the right"},
+    {"ecs.split_down", ECSI_InputSplitDown, "Open another one below"},
+    ECSI_WorkspaceEntries(1),
+    ECSI_WorkspaceEntries(2),
+    ECSI_WorkspaceEntries(3),
+    ECSI_WorkspaceEntries(4),
+    ECSI_WorkspaceEntries(5),
+    ECSI_WorkspaceEntries(6),
+    ECSI_WorkspaceEntries(7),
+    ECSI_WorkspaceEntries(8),
+    ECSI_WorkspaceEntries(9),
+    ECSI_WorkspaceEntries(10),
 };
 
 #pragma endregion Core Functions
@@ -1118,8 +1218,9 @@ bool ECSI_InputHandle(const SDL_Event *event)
             ECSI_InputSetPrefix(false);
         }
 
-        // on a tab or grip, the middle button closes the panel and the right button opens its menu
+        // on a tab or grip, the middle button closes the panel and the right button opens its menu; on the rest of a tab row, the right button opens the shown panel's menu
         ECSPanel tab = button->button == SDL_BUTTON_LEFT ? NULL : ECSI_LayoutTabAt(button->x, button->y);
+        tab = tab == NULL && button->button == SDL_BUTTON_RIGHT ? ECSI_LayoutTabRowAt(button->x, button->y) : tab;
 
         if (tab != NULL)
         {
@@ -1147,7 +1248,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
             ECSI_InputFocus(panel);
             INPUT.pointerPanel = panel;
 
-            ECSI_InputSendPointer(panel, ECSEventType_PointerDown, button->x, button->y, button->button);
+            ECSI_InputSendPointer(panel, ECSPanelEventType_PointerDown, button->x, button->y, button->button);
         }
 
         break;
@@ -1175,7 +1276,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
             ECSI_InputFocus(panel);
         }
 
-        ECSI_InputSendPointer(panel, ECSEventType_PointerMove, motion->x, motion->y, 0);
+        ECSI_InputSendPointer(panel, ECSPanelEventType_PointerMove, motion->x, motion->y, 0);
 
         break;
     }
@@ -1194,7 +1295,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
 
         if (ECSI_InputPointerPanel() != NULL)
         {
-            ECSI_InputSendPointer(INPUT.pointerPanel, ECSEventType_PointerUp, button->x, button->y, button->button);
+            ECSI_InputSendPointer(INPUT.pointerPanel, ECSPanelEventType_PointerUp, button->x, button->y, button->button);
             INPUT.pointerPanel = NULL;
         }
 
@@ -1204,6 +1305,15 @@ bool ECSI_InputHandle(const SDL_Event *event)
     case SDL_EVENT_MOUSE_WHEEL:
     {
         const SDL_MouseWheelEvent *wheel = &event->wheel;
+
+        // over a tab row, the wheel scrolls the tabs; down and right go toward the last tab
+        f32 direction = wheel->direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
+
+        if (ECSI_LayoutScrollTabs(wheel->mouse_x, wheel->mouse_y, (wheel->x - wheel->y) * direction))
+        {
+            break;
+        }
+
         ECSPanel panel = ECSI_LayoutPanelAt(wheel->mouse_x, wheel->mouse_y);
 
         if (panel != NULL)
@@ -1256,7 +1366,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
         }
         else if (focus != NULL)
         {
-            ECSI_InputSendKey(focus, ECSEventType_KeyDown, key);
+            ECSI_InputSendKey(focus, ECSPanelEventType_KeyDown, key);
         }
 
         break;
@@ -1268,7 +1378,7 @@ bool ECSI_InputHandle(const SDL_Event *event)
 
         if (focus != NULL && !INPUT.prefixActive)
         {
-            ECSI_InputSendKey(focus, ECSEventType_KeyUp, &event->key);
+            ECSI_InputSendKey(focus, ECSPanelEventType_KeyUp, &event->key);
         }
 
         break;

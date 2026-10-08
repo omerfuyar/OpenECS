@@ -32,6 +32,24 @@ void ECSI_ServicesForgetHandle(void *object);
 /// @param type Name of the handle type. Nil is pushed if the type is gone.
 void ECSI_ServicesPushHandleMetatable(const char *type);
 
+/// @brief Registers a handle type that a Lua plugin provides. Its objects are Lua values, which the core keeps until the handle is collected.
+/// @param plugin The plugin.
+/// @param name Name of the type; it starts with the plugin's name.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the name is taken or not the plugin's, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_ServicesRegisterLuaHandleType(ECSPlugin plugin, const char *name);
+
+/// @brief Pushes a new handle of a type that a Lua plugin provides, standing for a Lua value. Raises a Lua error if the type is not the plugin's.
+/// @param plugin The plugin that calls.
+/// @param name Name of the handle type.
+/// @param index Index of the Lua value on the stack.
+void ECSI_ServicesPushLuaHandle(ECSPlugin plugin, const char *name, int index);
+
+/// @brief Pushes the Lua value that a handle of a Lua plugin's type stands for. Raises a Lua error if the handle is not of the type, its object is gone, or the type is not the plugin's.
+/// @param plugin The plugin that calls.
+/// @param name Name of the handle type.
+/// @param index Index of the handle on the stack.
+void ECSI_ServicesPushLuaHandleValue(ECSPlugin plugin, const char *name, int index);
+
 /// @brief Removes every function a plugin registered.
 /// @param plugin The plugin.
 void ECSI_ServicesRemovePlugin(ECSPlugin plugin);
