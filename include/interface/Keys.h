@@ -45,6 +45,9 @@ SHUWUR SHUResult ECSIKeys_AddWorkspace(const ECSValue *keys);
 /// @return The table, or NULL if the workspace has none.
 const ECSValue *ECSIKeys_GetWorkspace(usz index);
 
+/// @brief Reports the keys of the preset, the user's files and ecs.prefixKeys that run a function its owner does not have, though the owner runs (ECSIPlugins_OwnerRuns), so a misspelt name is noticed. Call it once the session is built.
+void ECSIKeys_ReportUnknownFunctions(void);
+
 /// @brief Removes the bindings a failed plugin made.
 /// @param plugin The plugin.
 void ECSIKeys_RemovePlugin(ECSPlugin plugin);

@@ -67,6 +67,9 @@ void ECSISettings_DeliverChanges(void);
 /// @param plugin The plugin.
 void ECSISettings_RemovePlugin(ECSPlugin plugin);
 
+/// @brief Reports the settings of the files that are not declared, though their owner runs (ECSIPlugins_OwnerRuns), so a misspelt name is noticed. They are kept. Call it once the plugins are loaded.
+void ECSISettings_ReportUndeclared(void);
+
 /// @brief Gets the plugins that the user's files name for every tool and for this tool.
 /// @return A list of plugin names, for ECSIPlugins_Load. Valid until ECSISettings_Terminate.
 const ECSValue *ECSISettings_GetPlugins(void);

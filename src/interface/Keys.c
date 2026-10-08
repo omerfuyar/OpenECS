@@ -2,6 +2,7 @@
 
 #include "interface/Layout.h"
 #include "runtime/Plugins.h"
+#include "runtime/Services.h"
 #include "runtime/Settings.h"
 
 #include "SDL3/SDL.h"
@@ -192,6 +193,26 @@ static void ECSIKeys_CheckKey(const char *name, const ECSValue *field, void *use
     (void)ECSIKeys_Parse(name, true, &key, &modifiers);
 }
 
+/// @brief Reports a key that runs a function its owner does not have, though the owner runs.
+static void ECSIKeys_ReportFunction(const char *key, const char *function, const char *place)
+{
+    if (ECSIServices_GetDescription(function) == NULL && ECSIPlugins_OwnerRuns(function))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The key '%s' in %s runs '%s', which does not exist.", key, place, function);
+    }
+}
+
+/// @brief Reports a binding of a table that runs a function that does not exist; the data names where the table comes from.
+static void ECSIKeys_ReportField(const char *name, const ECSValue *field, void *userData)
+{
+    const char *function = ECSValue_GetString(field, NULL);
+
+    if (function != NULL)
+    {
+        ECSIKeys_ReportFunction(name, function, userData);
+    }
+}
+
 /// @brief Reports the key texts of a table of bindings that are not key combinations; they never match.
 static void ECSIKeys_CheckKeys(const ECSValue *keys)
 {
@@ -333,6 +354,29 @@ SHUResult ECSIKeys_AddWorkspace(const ECSValue *keys)
 const ECSValue *ECSIKeys_GetWorkspace(usz index)
 {
     return index < arrlenu(KEYS.workspaceKeys) ? KEYS.workspaceKeys[index] : NULL;
+}
+
+void ECSIKeys_ReportUnknownFunctions(void)
+{
+    const ECSValue *tables[] = {KEYS.toolKeys, ECSISettings_GetKeys(ECSISettingsLayer_Window), ECSISettings_GetKeys(ECSISettingsLayer_User)};
+    const char *places[] = {"the preset", "the settings window's file", "the user's settings"};
+
+    for (usz i = 0; i < SDL_arraysize(tables); i++)
+    {
+        ECSIValue_TableForEachField(tables[i], ECSIKeys_ReportField, (void *)places[i]);
+    }
+
+    for (usz i = 0; i < arrlenu(KEYS.workspaceKeys); i++)
+    {
+        ECSIValue_TableForEachField(KEYS.workspaceKeys[i], ECSIKeys_ReportField, "a workspace of the preset");
+    }
+
+    const ECSIKeyBinding *prefixKeys = ECSIKeys_GetPrefixKeys();
+
+    for (usz i = 0; i < arrlenu(prefixKeys); i++)
+    {
+        ECSIKeys_ReportFunction(prefixKeys[i].text, prefixKeys[i].function, "ecs.prefixKeys");
+    }
 }
 
 void ECSIKeys_RemovePlugin(ECSPlugin plugin)

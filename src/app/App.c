@@ -285,6 +285,10 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_LoadPlugins(&APP.preset);
     ECSIApp_CheckStart(ECSISession_Apply(sourcePath, &APP.preset), "building the layout");
 
+    // misspelt names change nothing, so they are reported once everything is registered
+    ECSISettings_ReportUndeclared();
+    ECSIKeys_ReportUnknownFunctions();
+
     // drivers, plugins and system libraries are loaded now
     ECSISanitizers_KeepLibraries();
 }

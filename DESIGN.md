@@ -156,7 +156,8 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 6. Load each plugin in order and call its `Init`. Plugins register what they provide.
 7. Build the settings layers (OVERVIEW 10.4).
 8. Restore plugin state, then build the layout and panels, from this tool's last session or from the preset (OVERVIEW 10.2).
-9. Enter the main loop.
+9. Report the settings and keys whose names nothing registered (7.8, 12.1).
+10. Enter the main loop.
 
 ### 2.4 Shutdown
 
@@ -472,6 +473,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Plugins have no function for workspace or global bindings.
 - `ECSKey_Bind(plugin, panelType, settingName, functionName)`, and in Lua `ecs.input.bind(panelType, settingName, functionName)`: the plugin's key setting holds the key, and the key runs a registered function (10). The binding counts in the layer that sets the key setting (OVERVIEW 7.3).
 - Presets bind keys with `keys` tables for the whole tool and for each workspace (13.2); the user's files with `keys` tables for every tool and for one tool (12.3). The tables map key combinations to function names.
+- Once the session is built, a key of these tables or of `ecs.prefixKeys` that runs a function its owner does not have is reported, if the owner runs (12.1).
 - A function bound by name takes no arguments, or one argument: the focused panel. Its signature is `void()` or `void(handle<ecs.panel>)`.
 - The core registers its own bindable actions as functions under `ecs`, for example `ecs.focusLeft` and `ecs.maximize`. So settings name them like any plugin function.
 
@@ -743,6 +745,7 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 - The core's settings file is `resources/settings.lua` next to the executable, in the format of the user's file (12.3). It is the core layer, and the only place that gives the core's settings their defaults. OpenECS does not start if the file cannot be read, or if it gives a core setting no value of its type. Its `ecs.prefix` must be a key combination, because a prefix that cannot be read falls back to it.
 - `ECSSetting_Get(name)` returns the value in effect as a value (10.3). It comes from the highest layer that sets the setting with a value of its type; otherwise it is the default. A value of another type is reported with its file and skipped.
 - The core reads a key combination when it uses it. A key text that cannot be read is reported, and the default is used.
+- A name's owner is the text before its first dot: `ecs` for the core, or a plugin. Once the plugins are loaded, a setting in a file that is not declared is reported with its file if its owner runs: the core, or a plugin that loaded and did not fail. So a misspelt name is noticed. The setting is kept (OVERVIEW 12).
 
 ### 12.2 Interface
 
