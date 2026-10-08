@@ -442,6 +442,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Core events: panel opened, closed, resized, scale changed, shown, hidden, focused, unfocused, moved, popped out, grouped, maximized; workspace switched. Input events (key, pointer, text, drag and drop) go to the panel concerned.
 - Plugin events carry a value (10.3).
 - Events are notifications. Handlers return nothing and cannot cancel anything.
+- A panel's event is a tagged union, `ECSEvent`: its type chooses which member is set, `pointer`, `wheel` or `key`. Every input event carries the modifiers held when it happened. A wheel amount is positive away from the user, even when the system flips the wheel.
 
 ### 8.2 Delivery
 
@@ -655,7 +656,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 - A Lua panel type is a table (4.1). The core registers C callbacks that call its Lua functions in protected calls.
 - Panels are handles with methods: `panel:redraw()`, `panel:get_title()`, `panel:set_title(text)` and `panel:start_timer(seconds, repeat, fn)`. A handle of a destroyed panel raises an error when it is used.
 - `draw(state, surface, seconds)` gets a surface with `width`, `height` and `scale`, and the methods `set_pixel(x, y, color)`, `get_pixel(x, y)` and `set_row(y, bytes, x)`. Colours are ARGB integers; `set_row` takes the row's pixels as a string in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
-- `event(state, event)` gets a table: `type` (such as `"pointer_down"`), `x`, `y`, `button`, `wheel_x`, `wheel_y`, `key` (SDL's key name), and the booleans `shift`, `ctrl`, `alt` and `super`.
+- `event(state, event)` gets a table: `type` (such as `"pointer_down"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheel_x` and `wheel_y` for the wheel, and `key` (SDL's key name) for keys.
 
 ### 11.5 Parity
 
