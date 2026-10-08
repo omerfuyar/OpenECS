@@ -4,6 +4,7 @@ return {
   version = "0.1.0",
   app = { id = "openecs.default", name = "OpenECS" },
   depends = { demo = "0.1" },
+  settings = { ["demo.blink_seconds"] = 0.75 },
   workspaces = {
     { name = "main",
       windows = {

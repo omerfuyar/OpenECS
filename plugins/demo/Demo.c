@@ -172,7 +172,8 @@ static SHUResult DemoBlinkCreate(ECSPanel panel, const ECSValue *savedState, u32
 
     // the timer belongs to the panel, so it stops when the panel closes
     DemoPanel *demo = *retState;
-    SHU_ReturnResult(ECSPanel_StartTimer(panel, &demo->timer, 0.5, true, DemoBlinkTick, demo), DemoDestroy(demo););
+    f64 seconds = ECSValue_GetNumber(ECSSetting_Get("demo.blink_seconds"), 0.5);
+    SHU_ReturnResult(ECSPanel_StartTimer(panel, &demo->timer, seconds > 0.0 ? seconds : 0.5, true, DemoBlinkTick, demo), DemoDestroy(demo););
     return SHUResult_Ok;
 }
 
@@ -232,6 +233,14 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
         .Draw = DemoBlinkDraw,
     };
 
+    ECSSettingDesc blinkSeconds = {
+        .name = "demo.blink_seconds",
+        .type = ECSSettingType_Number,
+        .description = "Seconds between the colours of a blink panel",
+        .defaultNumber = 0.5,
+    };
+
+    SHU_ReturnResult(ECSSetting_Declare(plugin, &blinkSeconds));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &color));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &gradient));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &checker));
