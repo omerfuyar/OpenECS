@@ -757,6 +757,59 @@ static void ECSI_LayoutFindNeighbourIn(ECSI_Node *group, void *userData)
 
 #pragma endregion Panels
 
+#pragma region Saving
+
+/// @brief Describes a node and its children for a session. A split holds its children as list items; a group holds its panels.
+static SHUResult ECSI_LayoutSaveNode(const ECSI_Workspace *workspace, const ECSI_Node *node, ECSValue *retNode)
+{
+    ECSValue *field = NULL;
+    ECSValue_SetTable(retNode);
+
+    if (node->parent != NULL)
+    {
+        bool fixed = node->fixedSize > 0.0f;
+        SHU_ReturnResult(ECSValue_SetField(retNode, fixed ? "size" : "share", &field));
+        ECSValue_SetNumber(field, fixed ? node->fixedSize : node->share);
+    }
+
+    if (node->type == ECSI_NodeType_Split)
+    {
+        SHU_ReturnResult(ECSValue_SetField(retNode, "split", &field));
+        SHU_ReturnResult(ECSValue_SetString(field, node->vertical ? "vertical" : "horizontal"));
+
+        for (usz i = 0; i < arrlenu(node->children); i++)
+        {
+            SHU_ReturnResult(ECSValue_AddItem(retNode, &field));
+            SHU_ReturnResult(ECSI_LayoutSaveNode(workspace, node->children[i], field));
+        }
+
+        return SHUResult_Ok;
+    }
+
+    ECSValue *panels = NULL;
+    SHU_ReturnResult(ECSValue_SetField(retNode, "panels", &panels));
+    ECSValue_SetTable(panels);
+
+    for (usz i = 0; i < arrlenu(node->panels); i++)
+    {
+        SHU_ReturnResult(ECSValue_AddItem(panels, &field));
+        SHU_ReturnResult(ECSI_PanelSave(node->panels[i], field));
+    }
+
+    SHU_ReturnResult(ECSValue_SetField(retNode, "shown", &field));
+    ECSValue_SetInteger(field, (i64)node->shown + 1);
+
+    if (workspace->maximized == node)
+    {
+        SHU_ReturnResult(ECSValue_SetField(retNode, "maximized", &field));
+        ECSValue_SetBool(field, true);
+    }
+
+    return SHUResult_Ok;
+}
+
+#pragma endregion Saving
+
 /// @brief Opens the OS window, its renderer and the core's font.
 static SHUResult ECSI_LayoutOpen(const char *title, const char *fontPath)
 {
@@ -939,6 +992,18 @@ void ECSI_LayoutGroupAdd(ECSI_Node *group, ECSPanel panel)
     arrput(group->panels, panel);
 }
 
+void ECSI_LayoutGroupShow(ECSI_Node *group, usz index)
+{
+    SDL_assert(group != NULL);
+    SDL_assert(group->type == ECSI_NodeType_Group);
+
+    if (index < arrlenu(group->panels))
+    {
+        group->shown = index;
+        LAYOUT.frameNeeded = true;
+    }
+}
+
 void ECSI_LayoutNodeDestroy(ECSI_Node **node)
 {
     SDL_assert(node != NULL);
@@ -962,7 +1027,7 @@ void ECSI_LayoutNodeDestroy(ECSI_Node **node)
     *node = NULL;
 }
 
-SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree)
+SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree, ECSPanel focus, ECSI_Node *maximized)
 {
     SDL_assert(name != NULL);
 
@@ -976,8 +1041,8 @@ SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree)
     ECSI_Workspace workspace = {
         .name = copy,
         .tree = tree,
-        .maximized = NULL,
-        .focus = ECSI_LayoutFirstPanel(tree),
+        .maximized = maximized,
+        .focus = focus != NULL ? focus : ECSI_LayoutFirstPanel(tree),
     };
 
     arrput(LAYOUT.workspaces, workspace);
@@ -986,7 +1051,7 @@ SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree)
     return SHUResult_Ok;
 }
 
-void ECSI_LayoutWorkspaceSwitch(u32 index)
+void ECSI_LayoutWorkspaceSwitch(usz index)
 {
     if (index >= arrlenu(LAYOUT.workspaces) || index == LAYOUT.current)
     {
@@ -1204,4 +1269,41 @@ void ECSI_LayoutShowPrefixKeys(bool show)
 {
     LAYOUT.showPrefixKeys = show;
     LAYOUT.frameNeeded = true;
+}
+
+SHUResult ECSI_LayoutSave(ECSValue *retWorkspaces, usz *retCurrent)
+{
+    SDL_assert(retWorkspaces != NULL);
+    SDL_assert(retCurrent != NULL);
+
+    ECSValue_SetTable(retWorkspaces);
+    *retCurrent = LAYOUT.current;
+
+    for (usz i = 0; i < arrlenu(LAYOUT.workspaces); i++)
+    {
+        const ECSI_Workspace *workspace = &LAYOUT.workspaces[i];
+        ECSValue *saved = NULL;
+        ECSValue *field = NULL;
+
+        SHU_ReturnResult(ECSValue_AddItem(retWorkspaces, &saved));
+        SHU_ReturnResult(ECSValue_SetField(saved, "name", &field));
+        SHU_ReturnResult(ECSValue_SetString(field, workspace->name));
+
+        if (workspace->focus != NULL)
+        {
+            SHU_ReturnResult(ECSValue_SetField(saved, "focus", &field));
+            ECSValue_SetInteger(field, workspace->focus->id);
+        }
+
+        SHU_ReturnResult(ECSValue_SetField(saved, "windows", &field));
+        ECSValue_SetTable(field);
+
+        if (workspace->tree != NULL)
+        {
+            SHU_ReturnResult(ECSValue_AddItem(field, &field));
+            SHU_ReturnResult(ECSI_LayoutSaveNode(workspace, workspace->tree, field));
+        }
+    }
+
+    return SHUResult_Ok;
 }

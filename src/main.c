@@ -16,10 +16,15 @@
 /// @brief Font of the core's interface, relative to the executable.
 #define OPENECS_FONT_FILE "resources/Roboto-Regular.ttf"
 
+/// @brief A tool's last session, in its folder in the state folder.
+#define OPENECS_LAST_SESSION_FILE "session.lua"
+
 /// @brief What the command line asks for.
 typedef struct ECSI_Arguments
 {
     const char *preset;
+    const char *session; // NULL if the command line names none
+    bool fresh;
 } ECSI_Arguments;
 
 static ECSI_Arguments ECSI_ReadArguments(int argc, char **argv)
@@ -32,13 +37,59 @@ static ECSI_Arguments ECSI_ReadArguments(int argc, char **argv)
         {
             arguments.preset = argv[++i];
         }
+        else if (SDL_strcmp(argv[i], "--session") == 0 && i + 1 < argc)
+        {
+            arguments.session = argv[++i];
+        }
+        else if (SDL_strcmp(argv[i], "--fresh") == 0)
+        {
+            arguments.fresh = true;
+        }
         else
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Unknown argument '%s'. Usage: openecs [--preset NAME|FILE]", argv[i]);
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Unknown argument '%s'. Usage: openecs [--preset NAME|FILE] [--session FILE] [--fresh]", argv[i]);
         }
     }
 
     return arguments;
+}
+
+/// @brief Finds an XDG base folder for OpenECS: $variable/openecs/, or ~/fallback/openecs/ if the variable is not set.
+/// @return The folder, ending with a separator, or NULL if neither the variable nor HOME is set. Free it with SDL_free.
+static char *ECSI_XdgFolder(const char *variable, const char *fallback)
+{
+    const char *base = SDL_getenv(variable);
+    const char *home = SDL_getenv("HOME");
+    char *folder = NULL;
+
+    if (base != NULL && base[0] != '\0')
+    {
+        SDL_asprintf(&folder, "%s/openecs/", base);
+    }
+    else if (home != NULL)
+    {
+        SDL_asprintf(&folder, "%s/%s/openecs/", home, fallback);
+    }
+    else
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Neither %s nor HOME is set; OpenECS does not use that folder.", variable);
+    }
+
+    return folder;
+}
+
+/// @brief Finds a tool's last session file in the state folder.
+/// @return The path, or NULL if there is no state folder. Free it with SDL_free.
+static char *ECSI_LastSessionPath(const char *stateFolder, const char *appId)
+{
+    char *path = NULL;
+
+    if (stateFolder != NULL && SDL_asprintf(&path, "%s%s/%s", stateFolder, appId, OPENECS_LAST_SESSION_FILE) < 0)
+    {
+        path = NULL;
+    }
+
+    return path;
 }
 
 /// @brief Stops the program if a start-up step failed. The details are already in the log.
@@ -118,7 +169,34 @@ int main(int argc, char **argv)
     ECSI_PresetInfo preset;
     ECSI_CheckStart(ECSI_SessionFindPreset(&presetPath, arguments.preset), "finding the preset");
     ECSI_CheckStart(ECSI_SessionReadInfo(presetPath, &preset), "reading the preset");
-    ECSI_CheckStart(ECSI_SettingsInitialize(preset.settings, presetPath, preset.appId), "reading the settings");
+
+    // the tool's last session replaces the preset, unless the command line names a session or asks for a fresh start
+    char *configFolder = ECSI_XdgFolder("XDG_CONFIG_HOME", ".config");
+    char *stateFolder = ECSI_XdgFolder("XDG_STATE_HOME", ".local/state");
+    char *lastSession = ECSI_LastSessionPath(stateFolder, preset.appId);
+    char *sessionPath = NULL;
+
+    if (arguments.session != NULL)
+    {
+        sessionPath = SDL_strdup(arguments.session);
+    }
+    else if (!arguments.fresh && lastSession != NULL && SDL_GetPathInfo(lastSession, NULL))
+    {
+        sessionPath = SDL_strdup(lastSession);
+    }
+
+    if (sessionPath != NULL)
+    {
+        // the session's identity wins; it may name another tool, whose last session it then replaces
+        ECSI_SessionFreeInfo(&preset);
+        ECSI_CheckStart(ECSI_SessionReadInfo(sessionPath, &preset), "reading the session");
+        SDL_free(lastSession);
+        lastSession = ECSI_LastSessionPath(stateFolder, preset.appId);
+    }
+
+    const char *sourcePath = sessionPath != NULL ? sessionPath : presetPath;
+
+    ECSI_CheckStart(ECSI_SettingsInitialize(ECSValue_GetField(preset.file, "settings"), sourcePath, preset.appId, configFolder), "reading the settings");
 
     SDL_SetAppMetadata(preset.appName, NULL, preset.appId);
 
@@ -135,7 +213,7 @@ int main(int argc, char **argv)
     SDL_free(fontPath);
 
     ECSI_LoadPlugins(&preset);
-    ECSI_CheckStart(ECSI_SessionApply(presetPath), "building the layout");
+    ECSI_CheckStart(ECSI_SessionApply(sourcePath), "building the layout");
 
     // event-driven loop: it waits for input, the next timer or queued events, unless a frame is needed
     bool running = true;
@@ -167,6 +245,11 @@ int main(int argc, char **argv)
         }
     }
 
+    if (lastSession != NULL && ECSI_SessionSave(lastSession, &preset) == SHUResult_Ok)
+    {
+        SDL_Log("Session saved to '%s'.", lastSession);
+    }
+
     // panels are destroyed before their types, and their types before their plugins are unloaded
     ECSI_LayoutTerminate();
     ECSI_PanelsTerminate();
@@ -175,6 +258,10 @@ int main(int argc, char **argv)
     ECSI_SettingsTerminate();
     ECSI_SessionFreeInfo(&preset);
     SDL_free(presetPath);
+    SDL_free(sessionPath);
+    SDL_free(lastSession);
+    SDL_free(configFolder);
+    SDL_free(stateFolder);
     SDL_Quit();
     ECSI_LuaTerminate();
 

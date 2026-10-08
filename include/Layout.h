@@ -41,19 +41,32 @@ void ECSI_LayoutSplitAdd(ECSI_Node *split, ECSI_Node *child, f32 fixedSize, f32 
 /// @param panel Panel to add. The group owns it from now on.
 void ECSI_LayoutGroupAdd(ECSI_Node *group, ECSPanel panel);
 
+/// @brief Chooses the panel a group shows.
+/// @param group The group.
+/// @param index Position of the panel, starting at 0. Ignored if the group has no such panel.
+void ECSI_LayoutGroupShow(ECSI_Node *group, usz index);
+
 /// @brief Destroys a node, its children and their panels, and sets the handle to NULL.
 /// @param node Node to destroy. Must not be part of a workspace.
 void ECSI_LayoutNodeDestroy(ECSI_Node **node);
 
 /// @brief Adds a workspace.
 /// @param name Name of the workspace.
-/// @param tree Layout tree of the main OS window. The workspace owns it from now on.
+/// @param tree Layout tree of the main OS window, or NULL. The workspace owns it from now on.
+/// @param focus Panel of the tree to focus, or NULL for the first panel.
+/// @param maximized Group of the tree that fills the window, or NULL.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree);
+SHUWUR SHUResult ECSI_LayoutWorkspaceAdd(const char *name, ECSI_Node *tree, ECSPanel focus, ECSI_Node *maximized);
 
 /// @brief Switches to a workspace.
 /// @param index Position of the workspace, starting at 0. Ignored if there is no such workspace.
-void ECSI_LayoutWorkspaceSwitch(u32 index);
+void ECSI_LayoutWorkspaceSwitch(usz index);
+
+/// @brief Describes every workspace for a session: its name, its layout tree with each panel's saved state, the focused panel and the maximized group.
+/// @param retWorkspaces The value to set to a list of workspaces.
+/// @param retCurrent Position of the current workspace, starting at 0.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_LayoutSave(ECSValue *retWorkspaces, usz *retCurrent);
 
 /// @brief Asks for the window to be drawn again.
 void ECSI_LayoutRequestFrame(void);

@@ -60,6 +60,17 @@ void ECSI_PanelClose(ECSPanel *panel);
 /// @brief Destroys the closed panels. Call it after the queued events are delivered, so no handler meets a destroyed panel.
 void ECSI_PanelsDestroyClosed(void);
 
+/// @brief Gives a panel the id it had in a saved session. Later panels get higher ids.
+/// @param panel The panel.
+/// @param id The saved id. 0 keeps the panel's new id.
+void ECSI_PanelSetId(ECSPanel panel, u32 id);
+
+/// @brief Describes a panel for a session: its id, type, saved state and the state's version. A working panel saves its state through its type; a placeholder writes back the state it kept.
+/// @param panel The panel.
+/// @param retPanel The value to set to a table.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation. A type that fails to save its state is reported, and the last saved state is written.
+SHUWUR SHUResult ECSI_PanelSave(ECSPanel panel, ECSValue *retPanel);
+
 /// @brief Places a panel. The panel is drawn again if its size changes.
 /// @param panel Panel to place.
 /// @param x Left edge in layout units.

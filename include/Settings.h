@@ -22,8 +22,9 @@ typedef enum ECSI_SettingsLayer
 /// @param presetSettings The preset's settings table, or NULL.
 /// @param presetPath Path of the preset, named where its settings are explained.
 /// @param appId The tool's app id, which chooses the tool's own part of the user's files.
+/// @param configFolder The user's configuration folder, ending with a separator, or NULL if there is none.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation. A user file that cannot be read is reported and skipped.
-SHUWUR SHUResult ECSI_SettingsInitialize(const ECSValue *presetSettings, const char *presetPath, const char *appId);
+SHUWUR SHUResult ECSI_SettingsInitialize(const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder);
 
 /// @brief Frees every declaration and layer.
 void ECSI_SettingsTerminate(void);

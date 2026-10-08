@@ -176,6 +176,67 @@ void ECSI_PanelsDestroyClosed(void)
     arrfree(PANELS.closed);
 }
 
+void ECSI_PanelSetId(ECSPanel panel, u32 id)
+{
+    SDL_assert(panel != NULL);
+
+    if (id != 0)
+    {
+        panel->id = id;
+        PANELS.nextPanelId = SDL_max(PANELS.nextPanelId, id);
+    }
+}
+
+SHUResult ECSI_PanelSave(ECSPanel panel, ECSValue *retPanel)
+{
+    SDL_assert(panel != NULL);
+    SDL_assert(retPanel != NULL);
+
+    ECSValue *field = NULL;
+    ECSValue_SetTable(retPanel);
+    SHU_ReturnResult(ECSValue_SetField(retPanel, "id", &field));
+    ECSValue_SetInteger(field, panel->id);
+    SHU_ReturnResult(ECSValue_SetField(retPanel, "type", &field));
+    SHU_ReturnResult(ECSValue_SetString(field, panel->typeName));
+
+    const ECSValue *state = panel->savedState;
+    u32 version = panel->stateVersion;
+    ECSValue *saved = NULL;
+
+    if (panel->type != NULL && panel->type->desc.SaveState != NULL)
+    {
+        SHU_ReturnResult(ECSI_ValueCreate(&saved));
+
+        if (panel->type->desc.SaveState(panel->state, saved))
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' failed to save a panel's state; its last saved state is kept.", panel->typeName);
+        }
+        else
+        {
+            state = saved;
+            version = panel->type->desc.stateVersion;
+        }
+    }
+
+    SHUResult result = SHUResult_Ok;
+
+    if (state != NULL)
+    {
+        result = ECSValue_SetField(retPanel, "state_version", &field);
+
+        if (!result)
+        {
+            ECSValue_SetInteger(field, version);
+            result = ECSValue_SetField(retPanel, "state", &field);
+        }
+
+        result = result ? result : ECSI_ValueCopy(field, state);
+    }
+
+    ECSI_ValueDestroy(&saved);
+    return result;
+}
+
 void ECSI_PanelSetRect(ECSPanel panel, f32 x, f32 y, f32 width, f32 height)
 {
     SDL_assert(panel != NULL);

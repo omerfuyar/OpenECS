@@ -14,8 +14,8 @@ typedef struct ECSI_PresetInfo
     char *appId;
     char *appName;
     char *pluginsDirectory; // NULL if the preset names none; ends with a separator
-    char **plugins;     // stb_ds array
-    ECSValue *settings; // the preset's settings table; nil if it has none
+    char **plugins; // stb_ds array
+    ECSValue *file; // the whole file
 } ECSI_PresetInfo;
 
 /// @brief Finds a preset's file.
@@ -34,9 +34,15 @@ SHUWUR SHUResult ECSI_SessionReadInfo(const char *path, ECSI_PresetInfo *retInfo
 /// @param info What the preset said.
 void ECSI_SessionFreeInfo(ECSI_PresetInfo *info);
 
-/// @brief Builds the workspaces that a preset or session describes, and creates their panels.
+/// @brief Builds the workspaces that a preset or session describes, creates their panels, and shows the current workspace.
 /// @param path Path of the preset or session.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the file has no workspaces, or the error of the Lua or layout module.
 SHUWUR SHUResult ECSI_SessionApply(const char *path);
+
+/// @brief Writes a session: the file it came from, with the current workspaces, panels and their saved state.
+/// @param path Path of the session file.
+/// @param info What the preset or session that started this tool said.
+/// @return SHUResult_Ok, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSI_SessionSave(const char *path, const ECSI_PresetInfo *info);
 
 #pragma endregion Declarations

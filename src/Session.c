@@ -10,6 +10,17 @@
 
 #pragma region Source Only
 
+/// @brief Version of the preset and session format that this core writes.
+#define OPENECS_SESSION_FORMAT 1
+
+/// @brief What a workspace's tree says about its focus and maximized group, found while the tree is built.
+typedef struct ECSI_SessionWorkspace
+{
+    i64 focusId;
+    ECSPanel focus;
+    ECSI_Node *maximized;
+} ECSI_SessionWorkspace;
+
 static void ECSI_SessionAddPlugin(const char *key, const char *value, void *userData)
 {
     (void)value;
@@ -23,7 +34,7 @@ static void ECSI_SessionAddPlugin(const char *key, const char *value, void *user
 }
 
 /// @brief Builds the layout node described by the current table: a split if it has "split", a group otherwise.
-static SHUResult ECSI_SessionReadNode(ECSI_Node **retNode)
+static SHUResult ECSI_SessionReadNode(ECSI_SessionWorkspace *workspace, ECSI_Node **retNode)
 {
     if (ECSI_LuaDataHas("split"))
     {
@@ -38,7 +49,7 @@ static SHUResult ECSI_SessionReadNode(ECSI_Node **retNode)
             }
 
             ECSI_Node *child = NULL;
-            SHUResult result = ECSI_SessionReadNode(&child);
+            SHUResult result = ECSI_SessionReadNode(workspace, &child);
 
             if (!result)
             {
@@ -53,6 +64,13 @@ static SHUResult ECSI_SessionReadNode(ECSI_Node **retNode)
     }
 
     SHU_ReturnResult(ECSI_LayoutGroupCreate(retNode));
+
+    if (ECSI_LuaDataHas("maximized"))
+    {
+        workspace->maximized = *retNode;
+    }
+
+    usz shown = (usz)SDL_max(1.0, ECSI_LuaDataGetNumber("shown", 1.0)) - 1;
 
     if (!ECSI_LuaDataEnterField("panels"))
     {
@@ -81,7 +99,14 @@ static SHUResult ECSI_SessionReadNode(ECSI_Node **retNode)
 
         if (!result)
         {
+            i64 id = (i64)ECSI_LuaDataGetNumber("id", 0.0);
+            ECSI_PanelSetId(panel, id > 0 && id <= SDL_MAX_UINT32 ? (u32)id : 0);
             ECSI_LayoutGroupAdd(*retNode, panel);
+
+            if (id != 0 && id == workspace->focusId)
+            {
+                workspace->focus = panel;
+            }
         }
 
         ECSI_LuaDataLeave();
@@ -89,6 +114,7 @@ static SHUResult ECSI_SessionReadNode(ECSI_Node **retNode)
     }
 
     ECSI_LuaDataLeave();
+    ECSI_LayoutGroupShow(*retNode, shown);
     return SHUResult_Ok;
 }
 
@@ -96,6 +122,7 @@ static SHUResult ECSI_SessionReadNode(ECSI_Node **retNode)
 static SHUResult ECSI_SessionReadWorkspace(void)
 {
     ECSI_Node *tree = NULL;
+    ECSI_SessionWorkspace workspace = {.focusId = (i64)ECSI_LuaDataGetNumber("focus", 0.0)};
 
     if (ECSI_LuaDataEnterField("windows"))
     {
@@ -108,7 +135,7 @@ static SHUResult ECSI_SessionReadWorkspace(void)
 
         if (ECSI_LuaDataEnterIndex(1))
         {
-            result = ECSI_SessionReadNode(&tree);
+            result = ECSI_SessionReadNode(&workspace, &tree);
             ECSI_LuaDataLeave();
         }
 
@@ -116,7 +143,7 @@ static SHUResult ECSI_SessionReadWorkspace(void)
         SHU_ReturnResult(result);
     }
 
-    SHU_ReturnResult(ECSI_LayoutWorkspaceAdd(ECSI_LuaDataGetText("name", "workspace"), tree),
+    SHU_ReturnResult(ECSI_LayoutWorkspaceAdd(ECSI_LuaDataGetText("name", "workspace"), tree, workspace.focus, workspace.maximized),
                      if (tree != NULL) { ECSI_LayoutNodeDestroy(&tree); });
     return SHUResult_Ok;
 }
@@ -171,9 +198,9 @@ SHUResult ECSI_SessionReadInfo(const char *path, ECSI_PresetInfo *retInfo)
 
     if (pluginsDirectory != NULL)
     {
-        // relative to the preset's folder
+        // relative to the preset's folder, unless it is absolute
         const char *slash = SDL_strrchr(path, '/');
-        int folderLength = slash == NULL ? 0 : (int)(slash - path + 1);
+        int folderLength = slash == NULL || pluginsDirectory[0] == '/' ? 0 : (int)(slash - path + 1);
         SDL_asprintf(&retInfo->pluginsDirectory, "%.*s%s/", folderLength, path, pluginsDirectory);
     }
 
@@ -183,8 +210,8 @@ SHUResult ECSI_SessionReadInfo(const char *path, ECSI_PresetInfo *retInfo)
         ECSI_LuaDataLeave();
     }
 
-    SHUResult result = ECSI_ValueCreate(&retInfo->settings);
-    result = result ? result : ECSI_LuaDataGetValue("settings", retInfo->settings);
+    SHUResult result = ECSI_ValueCreate(&retInfo->file);
+    result = result ? result : ECSI_LuaDataGetValue(NULL, retInfo->file);
     ECSI_LuaDataClose();
     SHU_ReturnResult(result);
 
@@ -211,7 +238,7 @@ void ECSI_SessionFreeInfo(ECSI_PresetInfo *info)
     }
 
     arrfree(info->plugins);
-    ECSI_ValueDestroy(&info->settings);
+    ECSI_ValueDestroy(&info->file);
     SDL_zerop(info);
 }
 
@@ -239,6 +266,47 @@ SHUResult ECSI_SessionApply(const char *path)
         }
     }
 
+    ECSI_LuaDataLeave();
+    ECSI_LayoutWorkspaceSwitch((usz)SDL_max(1.0, ECSI_LuaDataGetNumber("current_workspace", 1.0)) - 1);
     ECSI_LuaDataClose();
+    return result;
+}
+
+SHUResult ECSI_SessionSave(const char *path, const ECSI_PresetInfo *info)
+{
+    SDL_assert(path != NULL);
+    SDL_assert(info != NULL);
+
+    // a copy of the file the session came from, so fields the core does not use are kept
+    ECSValue *session = NULL;
+    ECSValue *field = NULL;
+    usz current = 0;
+    SHU_ReturnResult(ECSI_ValueCreate(&session));
+    SHUResult result = ECSI_ValueCopy(session, info->file);
+    result = result ? result : ECSValue_SetField(session, "format", &field);
+
+    if (!result)
+    {
+        ECSValue_SetInteger(field, OPENECS_SESSION_FORMAT);
+    }
+
+    // the plugin directory is written resolved, because the session lives in another folder
+    if (!result && info->pluginsDirectory != NULL)
+    {
+        result = ECSValue_SetField(session, "plugins_dir", &field);
+        result = result ? result : ECSValue_SetString(field, info->pluginsDirectory);
+    }
+
+    result = result ? result : ECSValue_SetField(session, "workspaces", &field);
+    result = result ? result : ECSI_LayoutSave(field, &current);
+    result = result ? result : ECSValue_SetField(session, "current_workspace", &field);
+
+    if (!result)
+    {
+        ECSValue_SetInteger(field, (i64)current + 1);
+        result = ECSI_LuaWriteData(path, session);
+    }
+
+    ECSI_ValueDestroy(&session);
     return result;
 }

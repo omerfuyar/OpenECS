@@ -306,34 +306,9 @@ static SHUResult ECSI_SettingsReadFile(ECSI_SettingsLayer layer, const char *fol
     return result;
 }
 
-/// @brief Finds the user's configuration folder: $XDG_CONFIG_HOME/openecs/, by default ~/.config/openecs/.
-static SHUResult ECSI_SettingsConfigFolder(char **retFolder)
-{
-    const char *config = SDL_getenv("XDG_CONFIG_HOME");
-    const char *home = SDL_getenv("HOME");
-    int length = -1;
-
-    if (config != NULL && config[0] != '\0')
-    {
-        length = SDL_asprintf(retFolder, "%s/openecs/", config);
-    }
-    else if (home != NULL)
-    {
-        length = SDL_asprintf(retFolder, "%s/.config/openecs/", home);
-    }
-    else
-    {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Neither XDG_CONFIG_HOME nor HOME is set; the user's settings are not read.");
-        *retFolder = NULL;
-        return SHUResult_ErrNotFound;
-    }
-
-    return length < 0 ? SHUResult_ErrAllocation : SHUResult_Ok;
-}
-
 #pragma endregion Source Only
 
-SHUResult ECSI_SettingsInitialize(const ECSValue *presetSettings, const char *presetPath, const char *appId)
+SHUResult ECSI_SettingsInitialize(const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder)
 {
     SDL_assert(presetPath != NULL);
     SDL_assert(appId != NULL);
@@ -347,18 +322,13 @@ SHUResult ECSI_SettingsInitialize(const ECSValue *presetSettings, const char *pr
         return SHUResult_ErrAllocation;
     }
 
-    char *folder = NULL;
-    SHUResult result = ECSI_SettingsConfigFolder(&folder);
-
-    if (result == SHUResult_ErrNotFound)
+    if (configFolder == NULL)
     {
         return SHUResult_Ok;
     }
 
-    result = result ? result : ECSI_SettingsReadFile(ECSI_SettingsLayer_Window, folder, OPENECS_SETTINGS_WINDOW_FILE, appId);
-    result = result ? result : ECSI_SettingsReadFile(ECSI_SettingsLayer_User, folder, OPENECS_SETTINGS_USER_FILE, appId);
-    SDL_free(folder);
-    return result;
+    SHU_ReturnResult(ECSI_SettingsReadFile(ECSI_SettingsLayer_Window, configFolder, OPENECS_SETTINGS_WINDOW_FILE, appId));
+    return ECSI_SettingsReadFile(ECSI_SettingsLayer_User, configFolder, OPENECS_SETTINGS_USER_FILE, appId);
 }
 
 void ECSI_SettingsTerminate(void)
