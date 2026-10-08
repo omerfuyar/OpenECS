@@ -1,5 +1,6 @@
 -- the group's menu and the panel's menu run their entries
 return {
+  preset = "presets/sketch.lua",
   run = function(test)
     test.call("ecs.workspace_3")
     local clocks = test.session().workspaces[3].windows[1][2].panels
