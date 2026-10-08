@@ -56,6 +56,10 @@ ecs.panel.register_type({
   event = function(state, event)
     if event.type == "pointer_down" then
       next_color(state)
+    elseif event.type == "shown" or event.type == "resized" then
+      ecs.log.debug(("Stripes %s at %dx%d."):format(event.type, event.width, event.height))
+    elseif event.type == "hidden" then
+      ecs.log.debug("Stripes hidden.")
     end
   end,
 

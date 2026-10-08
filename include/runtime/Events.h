@@ -7,7 +7,7 @@
 #pragma region Declarations
 
 /// @brief Function that delivers a queued event to its target.
-typedef void (*ECSI_EventDeliverFunction)(void *target, const ECSEvent *event);
+typedef void (*ECSI_EventDeliverFunction)(void *target, const ECSPanelEvent *event);
 
 /// @brief Prepares the lock and condition of the worker threads, which start when background work first comes.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
@@ -17,7 +17,7 @@ SHUWUR SHUResult ECSI_EventsInitialize(void);
 /// @param deliver Function that delivers the event.
 /// @param target Passed to the function.
 /// @param event The event. The queue keeps a copy.
-void ECSI_EventsPost(ECSI_EventDeliverFunction deliver, void *target, const ECSEvent *event);
+void ECSI_EventsPost(ECSI_EventDeliverFunction deliver, void *target, const ECSPanelEvent *event);
 
 /// @brief Delivers the queued events in order, and the events queued while they are delivered, until the queue is empty.
 void ECSI_EventsDeliver(void);

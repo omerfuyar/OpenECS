@@ -62,8 +62,8 @@ static struct
     ECSI_LuaListener **listeners; // stb_ds array
 } BINDINGS = {0};
 
-/// @brief Names of the event types in Lua, in the order of ECSEventType.
-static const char *const ECSI_BINDINGS_EVENT_TYPES[] = {"pointer_down", "pointer_up", "pointer_move", "wheel", "key_down", "key_up", "focused", "unfocused"};
+/// @brief Names of the event types in Lua, in the order of ECSPanelEventType.
+static const char *const ECSI_BINDINGS_EVENT_TYPES[] = {"pointer_down", "pointer_up", "pointer_move", "wheel", "key_down", "key_up", "focused", "unfocused", "shown", "hidden", "resized"};
 
 /// @brief Names of the setting types in Lua, in the order of ECSSettingType.
 static const char *const ECSI_BINDINGS_SETTING_TYPES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", NULL};
@@ -944,7 +944,7 @@ static void ECSI_BindingsPanelDraw(void *data, ECSSurface *surface, f64 seconds)
     *handle = NULL;
 }
 
-static void ECSI_BindingsPushEvent(lua_State *state, const ECSEvent *event)
+static void ECSI_BindingsPushEvent(lua_State *state, const ECSPanelEvent *event)
 {
     lua_createtable(state, 0, 8);
     lua_pushstring(state, ECSI_BINDINGS_EVENT_TYPES[event->type]);
@@ -952,18 +952,18 @@ static void ECSI_BindingsPushEvent(lua_State *state, const ECSEvent *event)
 
     switch (event->type)
     {
-    case ECSEventType_PointerDown:
-    case ECSEventType_PointerUp:
+    case ECSPanelEventType_PointerDown:
+    case ECSPanelEventType_PointerUp:
         lua_pushinteger(state, event->pointer.button);
         lua_setfield(state, -2, "button");
         // fall through
-    case ECSEventType_PointerMove:
+    case ECSPanelEventType_PointerMove:
         lua_pushnumber(state, (lua_Number)event->pointer.x);
         lua_setfield(state, -2, "x");
         lua_pushnumber(state, (lua_Number)event->pointer.y);
         lua_setfield(state, -2, "y");
         break;
-    case ECSEventType_Wheel:
+    case ECSPanelEventType_Wheel:
         lua_pushnumber(state, (lua_Number)event->wheel.x);
         lua_setfield(state, -2, "x");
         lua_pushnumber(state, (lua_Number)event->wheel.y);
@@ -973,10 +973,17 @@ static void ECSI_BindingsPushEvent(lua_State *state, const ECSEvent *event)
         lua_pushnumber(state, (lua_Number)event->wheel.amountY);
         lua_setfield(state, -2, "wheel_y");
         break;
-    case ECSEventType_KeyDown:
-    case ECSEventType_KeyUp:
+    case ECSPanelEventType_KeyDown:
+    case ECSPanelEventType_KeyUp:
         lua_pushstring(state, SDL_GetKeyName(event->key.code));
         lua_setfield(state, -2, "key");
+        break;
+    case ECSPanelEventType_Shown:
+    case ECSPanelEventType_Resized:
+        lua_pushnumber(state, (lua_Number)event->size.width);
+        lua_setfield(state, -2, "width");
+        lua_pushnumber(state, (lua_Number)event->size.height);
+        lua_setfield(state, -2, "height");
         break;
     default:
         break;
@@ -992,7 +999,7 @@ static void ECSI_BindingsPushEvent(lua_State *state, const ECSEvent *event)
     lua_setfield(state, -2, "super");
 }
 
-static void ECSI_BindingsPanelEvent(void *data, const ECSEvent *event)
+static void ECSI_BindingsPanelEvent(void *data, const ECSPanelEvent *event)
 {
     ECSI_LuaPanel *luaPanel = data;
     lua_State *state = ECSI_LuaGetState();

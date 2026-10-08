@@ -56,7 +56,7 @@ static bool ECSI_PanelResizePixels(ECSPanel panel)
     return panel->pixels != NULL;
 }
 
-static void ECSI_PanelDeliverEvent(void *target, const ECSEvent *event)
+static void ECSI_PanelDeliverEvent(void *target, const ECSPanelEvent *event)
 {
     ECSPanel panel = target;
 
@@ -337,7 +337,30 @@ void ECSI_PanelShow(ECSPanel panel, SDL_Renderer *renderer)
     }
 }
 
-void ECSI_PanelPostEvent(ECSPanel panel, const ECSEvent *event)
+void ECSI_PanelSetVisible(ECSPanel panel, bool visible)
+{
+    SDL_assert(panel != NULL);
+
+    if (visible != panel->visible)
+    {
+        panel->visible = visible;
+        ECSPanelEvent event = {.type = visible ? ECSPanelEventType_Shown : ECSPanelEventType_Hidden, .size = {panel->width, panel->height}};
+        ECSI_PanelPostEvent(panel, &event);
+    }
+    else if (visible && (panel->width != panel->toldWidth || panel->height != panel->toldHeight))
+    {
+        ECSPanelEvent event = {.type = ECSPanelEventType_Resized, .size = {panel->width, panel->height}};
+        ECSI_PanelPostEvent(panel, &event);
+    }
+
+    if (visible)
+    {
+        panel->toldWidth = panel->width;
+        panel->toldHeight = panel->height;
+    }
+}
+
+void ECSI_PanelPostEvent(ECSPanel panel, const ECSPanelEvent *event)
 {
     SDL_assert(panel != NULL);
     SDL_assert(event != NULL);

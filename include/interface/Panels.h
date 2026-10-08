@@ -39,6 +39,9 @@ struct ECSI_Panel
     u64 lastDrawTicks;
     u64 focusTicks; // when the panel last got focus, for placing new panels of its type; 0 if never
     bool closed; // out of the layout, waiting for ECSI_PanelsDestroyClosed; it gets no more events
+    bool visible;    // what the panel was last told: shown or hidden
+    f32 toldWidth;   // the size the panel was last told
+    f32 toldHeight;
     char *fault; // the error of a callback, or NULL; a faulted panel shows it and its type is not called again, except Destroy
 };
 
@@ -127,9 +130,14 @@ void ECSI_PanelDraw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks);
 /// @param renderer Renderer of the OS window that shows the panel.
 void ECSI_PanelShow(ECSPanel panel, SDL_Renderer *renderer);
 
+/// @brief Tells a panel whether it is visible, and its size. Queues Shown, Hidden or Resized when they changed since the last call.
+/// @param panel The panel.
+/// @param visible true if the panel is shown in the current workspace.
+void ECSI_PanelSetVisible(ECSPanel panel, bool visible);
+
 /// @brief Queues an event for a panel's type.
 /// @param panel Panel that receives the event.
 /// @param event The event.
-void ECSI_PanelPostEvent(ECSPanel panel, const ECSEvent *event);
+void ECSI_PanelPostEvent(ECSPanel panel, const ECSPanelEvent *event);
 
 #pragma endregion Declarations

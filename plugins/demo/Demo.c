@@ -98,17 +98,17 @@ static SHUResult DemoColorSave(void *state)
     return SHUResult_Ok;
 }
 
-static void DemoColorEvent(void *state, const ECSEvent *event)
+static void DemoColorEvent(void *state, const ECSPanelEvent *event)
 {
     DemoPanel *demo = state;
 
-    if (event->type == ECSEventType_PointerDown)
+    if (event->type == ECSPanelEventType_PointerDown)
     {
         // a changed colour is unsaved work, to show the question before closing
         demo->color = (demo->color + 1) % (sizeof(DEMO_COLORS) / sizeof(*DEMO_COLORS));
         ECSPanel_SetUnsaved(demo->panel, true);
     }
-    else if (event->type == ECSEventType_PointerMove)
+    else if (event->type == ECSPanelEventType_PointerMove)
     {
         demo->pointerX = event->pointer.x;
         demo->pointerY = event->pointer.y;

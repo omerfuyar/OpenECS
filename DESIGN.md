@@ -59,7 +59,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 | File-level state                        | one `static` struct, UPPER_CASE| `LAYOUT`, `RENDERER`                                    |
 
 - `main.c` and Lua files, such as `manifest.lua` and presets, keep lowercase names.
-- A type that tells variants apart ends with `Type`, never `Kind`: `ECSSurfaceType`, `ECSEventType`. Its field is named `type`.
+- A type that tells variants apart ends with `Type`, never `Kind`: `ECSSurfaceType`, `ECSPanelEventType`. Its field is named `type`.
 - Lua names use snake_case: `ecs.panel.register_type`, `save_state`. The core's Lua names live under the global table `ecs`. The core's own settings, events and bindable functions start with `ecs.`, for example the setting `ecs.focus`.
 
 ### 1.3 Types and results
@@ -217,7 +217,7 @@ typedef struct ECSPanelTypeDesc
 
     // optional, NULL if unused
     void (*Draw)(void *state, ECSSurface *surface, f64 seconds);
-    void (*Event)(void *state, const ECSEvent *event);
+    void (*Event)(void *state, const ECSPanelEvent *event);
     SHUResult (*SaveState)(void *state, ECSValue *retState);
     SHUResult (*Save)(void *state); // saves unsaved work
 } ECSPanelTypeDesc;
@@ -341,7 +341,7 @@ After every operation:
 - Workspaces are numbered from 1, in C and in Lua: `ECSWorkspace_Switch(10)` switches to workspace 10.
 - Closing a panel from code still asks about unsaved work. Focusing a panel shows its workspace and its tab.
 - Locks (6.4) stop the user, not code.
-- Every change of focus tells the panel that loses it and the panel that gets it (`ECSEventType_Unfocused`, `ECSEventType_Focused`).
+- Every change of focus tells the panel that loses it and the panel that gets it (`ECSPanelEventType_Unfocused`, `ECSPanelEventType_Focused`).
 
 ### 6.6 Placement of new panels
 
@@ -454,7 +454,8 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Core events: panel opened, closed, resized, scale changed, shown, hidden, focused, unfocused, moved, popped out, grouped, maximized; workspace switched. Input events (key, pointer, text, drag and drop) go to the panel concerned.
 - Plugin events carry a value (10.3).
 - Events are notifications. Handlers return nothing and cannot cancel anything.
-- A panel's event is a tagged union, `ECSEvent`: its type chooses which member is set, `pointer`, `wheel` or `key`. Every input event carries the modifiers held when it happened. A wheel amount is positive away from the user, even when the system flips the wheel.
+- A panel gets `Shown` when it becomes visible and `Hidden` when another tab, workspace or maximized group hides it, and `Resized` when its size changes while it is visible. `Shown` and `Resized` carry the size in layout units. The layout checks after each pass, so a panel that was never visible gets no `Hidden`.
+- A panel's event is a tagged union, `ECSPanelEvent`: its type chooses which member is set, `pointer`, `wheel`, `key` or `size`. Every input event carries the modifiers held when it happened. A wheel amount is positive away from the user, even when the system flips the wheel.
 
 ### 8.2 Delivery
 
@@ -670,7 +671,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 - A Lua panel type is a table (4.1). The core registers C callbacks that call its Lua functions in protected calls.
 - Panels are handles with methods: `panel:redraw()`, `panel:get_title()`, `panel:set_title(text)` and `panel:start_timer(seconds, repeat, fn)`. A handle of a destroyed panel raises an error when it is used.
 - `draw(state, surface, seconds)` gets a surface with `width`, `height` and `scale`, and the methods `set_pixel(x, y, color)`, `get_pixel(x, y)` and `set_row(y, bytes, x)`. Colours are ARGB integers; `set_row` takes the row's pixels as a string in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
-- `event(state, event)` gets a table: `type` (such as `"pointer_down"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheel_x` and `wheel_y` for the wheel, and `key` (SDL's key name) for keys.
+- `event(state, event)` gets a table: `type` (such as `"pointer_down"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheel_x` and `wheel_y` for the wheel, `key` (SDL's key name) for keys, and `width` and `height` for `shown` and `resized`.
 
 ### 11.5 Parity
 

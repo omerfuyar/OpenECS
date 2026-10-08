@@ -23,7 +23,7 @@ typedef struct ECSI_QueuedEvent
 {
     ECSI_EventDeliverFunction Deliver;
     void *target;
-    ECSEvent event;
+    ECSPanelEvent event;
 } ECSI_QueuedEvent;
 
 /// @brief Work for a worker thread.
@@ -141,7 +141,7 @@ static void SDLCALL ECSI_EventsRunMainTask(void *data)
 }
 
 /// @brief Runs a task that the main thread queued for itself, after the current callback.
-static void ECSI_EventsDeliverMainTask(void *target, const ECSEvent *event)
+static void ECSI_EventsDeliverMainTask(void *target, const ECSPanelEvent *event)
 {
     (void)event;
     ECSI_EventsRunMainTask(target);
@@ -211,7 +211,7 @@ SHUResult ECSI_EventsInitialize(void)
     return WORKERS.lock == NULL || WORKERS.ready == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
 }
 
-void ECSI_EventsPost(ECSI_EventDeliverFunction deliver, void *target, const ECSEvent *event)
+void ECSI_EventsPost(ECSI_EventDeliverFunction deliver, void *target, const ECSPanelEvent *event)
 {
     SDL_assert(deliver != NULL);
     SDL_assert(event != NULL);
@@ -449,7 +449,7 @@ SHUResult ECS_RunOnMainThread(ECSTaskFunction function, void *data)
     // SDL would run it at once on the main thread, inside the caller's callback; the event queue runs it after
     if (SDL_IsMainThread())
     {
-        ECSEvent event = {0};
+        ECSPanelEvent event = {0};
         ECSI_EventsPost(ECSI_EventsDeliverMainTask, task, &event);
         return SHUResult_Ok;
     }

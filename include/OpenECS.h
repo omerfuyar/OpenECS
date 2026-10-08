@@ -96,22 +96,25 @@ typedef enum ECSModifier
 } ECSModifier;
 
 /// @brief Type of an event.
-typedef enum ECSEventType
+typedef enum ECSPanelEventType
 {
-    ECSEventType_PointerDown = 0,
-    ECSEventType_PointerUp,
-    ECSEventType_PointerMove,
-    ECSEventType_Wheel,
-    ECSEventType_KeyDown,
-    ECSEventType_KeyUp,
-    ECSEventType_Focused,
-    ECSEventType_Unfocused,
-} ECSEventType;
+    ECSPanelEventType_PointerDown = 0,
+    ECSPanelEventType_PointerUp,
+    ECSPanelEventType_PointerMove,
+    ECSPanelEventType_Wheel,
+    ECSPanelEventType_KeyDown,
+    ECSPanelEventType_KeyUp,
+    ECSPanelEventType_Focused,
+    ECSPanelEventType_Unfocused,
+    ECSPanelEventType_Shown,   // the panel became visible
+    ECSPanelEventType_Hidden,  // the panel is no longer visible: another tab, workspace or maximized group is shown
+    ECSPanelEventType_Resized, // the panel's size changed while it is visible
+} ECSPanelEventType;
 
 /// @brief An event sent to a panel. Its type chooses the member of the union that is set.
-typedef struct ECSEvent
+typedef struct ECSPanelEvent
 {
-    ECSEventType type;
+    ECSPanelEventType type;
     u32 modifiers; // ECSModifier bits held when the event happened
 
     union
@@ -138,8 +141,15 @@ typedef struct ECSEvent
         {
             u32 code; // SDL key code
         } key;
+
+        // Shown and Resized
+        struct
+        {
+            f32 width;  // in layout units
+            f32 height; // in layout units
+        } size;
     };
-} ECSEvent;
+} ECSPanelEvent;
 
 /// @brief Describes a panel type. Passed to ECSPanelType_Register.
 typedef struct ECSPanelTypeDesc
@@ -158,7 +168,7 @@ typedef struct ECSPanelTypeDesc
 
     // optional, NULL if unused
     void (*Draw)(void *state, ECSSurface *surface, f64 seconds);
-    void (*Event)(void *state, const ECSEvent *event);
+    void (*Event)(void *state, const ECSPanelEvent *event);
     SHUResult (*SaveState)(void *state, ECSValue *retState);
     SHUResult (*Save)(void *state); // saves unsaved work
 } ECSPanelTypeDesc;

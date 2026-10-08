@@ -322,7 +322,19 @@ static void ECSI_LayoutForEachGroup(ECSI_GroupFunction function, void *userData)
     }
 }
 
-/// @brief Computes every rectangle of the current workspace for the window's current size.
+/// @brief Tells each panel of a group whether it is visible. userData points to the group whose panel is shown, or to NULL for every group of the current workspace.
+static void ECSI_LayoutTellVisible(ECSI_Node *group, void *userData)
+{
+    ECSI_Node *const *only = userData;
+
+    for (usz i = 0; i < arrlenu(group->panels); i++)
+    {
+        bool visible = only != NULL && (*only == NULL || *only == group) && i == group->shown;
+        ECSI_PanelSetVisible(group->panels[i], visible);
+    }
+}
+
+/// @brief Computes every rectangle of the current workspace for the window's current size, and tells the panels that became visible or hidden, or changed size.
 static void ECSI_LayoutUpdate(void)
 {
     ECSI_LayoutReadSize();
@@ -341,6 +353,13 @@ static void ECSI_LayoutUpdate(void)
     else if (workspace->tree != NULL)
     {
         ECSI_LayoutPlace(workspace->tree, 0.0f, 0.0f, LAYOUT.width, LAYOUT.height);
+    }
+
+    // panels of other workspaces are hidden; in this one, a maximized group hides the others
+    for (usz i = 0; i < arrlenu(LAYOUT.workspaces); i++)
+    {
+        ECSI_Node *only = LAYOUT.workspaces[i].maximized;
+        ECSI_LayoutForEachGroupIn(LAYOUT.workspaces[i].tree, ECSI_LayoutTellVisible, &LAYOUT.workspaces[i] == workspace ? &only : NULL);
     }
 }
 
@@ -420,7 +439,7 @@ static void ECSI_LayoutChangeFocus(ECSI_Workspace *workspace, ECSPanel panel)
         return;
     }
 
-    ECSEvent event = {.type = ECSEventType_Unfocused};
+    ECSPanelEvent event = {.type = ECSPanelEventType_Unfocused};
 
     if (old != NULL)
     {
@@ -429,7 +448,7 @@ static void ECSI_LayoutChangeFocus(ECSI_Workspace *workspace, ECSPanel panel)
 
     if (panel != NULL)
     {
-        event.type = ECSEventType_Focused;
+        event.type = ECSPanelEventType_Focused;
         ECSI_PanelPostEvent(panel, &event);
     }
 }
@@ -1796,7 +1815,7 @@ void ECSI_LayoutWorkspaceSwitch(usz index)
     // the focus moves to the other workspace's focused panel
     ECSPanel old = LAYOUT.workspaces[LAYOUT.current].focus;
     ECSPanel focus = LAYOUT.workspaces[index].focus;
-    ECSEvent event = {.type = ECSEventType_Unfocused};
+    ECSPanelEvent event = {.type = ECSPanelEventType_Unfocused};
 
     if (old != NULL)
     {
@@ -1805,7 +1824,7 @@ void ECSI_LayoutWorkspaceSwitch(usz index)
 
     if (focus != NULL)
     {
-        event.type = ECSEventType_Focused;
+        event.type = ECSPanelEventType_Focused;
         ECSI_PanelPostEvent(focus, &event);
     }
 
