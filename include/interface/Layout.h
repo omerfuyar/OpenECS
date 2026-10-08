@@ -88,6 +88,11 @@ i32 ECSI_LayoutGetFrameWait(void);
 /// @param nowTicks Current time in nanoseconds.
 void ECSI_LayoutRender(u64 nowTicks);
 
+/// @brief Draws a frame and saves it as a PNG file, for tests.
+/// @param path Path of the file.
+/// @return SHUResult_Ok, or SHUResult_ErrFile if the picture cannot be read or saved.
+SHUWUR SHUResult ECSI_LayoutScreenshot(const char *path);
+
 /// @brief Finds the visible panel under a point.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.

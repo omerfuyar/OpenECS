@@ -90,6 +90,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 - Headers start with `#pragma once` and group their contents with `#pragma region`. A source file keeps its internal elements in a `Source Only` region.
 - Functions used by only one source file are `static`.
 - First-party plugins are in `plugins/<name>/`, and first-party presets in `presets/`.
+- Tests are in `tests/` (17.5).
 - `sketch_c` and `sketch_lua` are example plugins with the same canvases, clock, settings, services, keys, events and state, one native and one in Lua. They use every part of the plugin interface, and draw the same strokes into the same pixels.
 
 ### 1.6 Style
@@ -128,6 +129,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Input    | SDL's input events, focus, pointer routing, key dispatch, text input, the clipboard, dialogs.                       |
 | app       | Session  | Reading presets and sessions, applying them, writing them.                                                          |
 |           | Bindings | The `ecs` table: the plugin interface for Lua plugins (11.3).                                                       |
+|           | Test     | Runs a test in Debug builds (17.5).                                                                                 |
 |           | App      | Start-up, the main loop and shutdown (2.3, 3.1, 2.4).                                                               |
 
 ### 2.2 The boundary
@@ -808,10 +810,11 @@ The core converts only layout data.
 ### 13.5 Command line
 
 ```
-openecs [--preset NAME|FILE] [--session FILE] [--fresh] [FILE...]
+openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [FILE...]
 ```
 
 - `--fresh` starts from the preset instead of the tool's last session.
+- `--test` runs a test (17.5).
 - A session's identity wins over the preset's, so the session is saved again as the last session of its own tool.
 - Files are passed to the function that the preset names in `open`.
 - A tool's `.desktop` file runs, for example, `openecs --preset paint %F`.
@@ -911,6 +914,33 @@ OpenECS follows the XDG Base Directory specification:
 
 Every dependency is a git submodule pinned to a release tag, not to a development commit.
 
+### 17.5 Tests
+
+- A test is a Lua file in `tests/`. Debug builds run it with `openecs --test FILE`; other builds refuse the option.
+- The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `default` if left out), and `run`, a function that gets the `test` table.
+- A test starts from its preset alone. It reads none of the user's settings, plugins or sessions, and writes no session and no log file. SDL's offscreen video driver and software renderer are the defaults, so a test needs no display; the variables `SDL_VIDEO_DRIVER` and `SDL_RENDER_DRIVER` choose others, for example to watch a test.
+- `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).
+- The `test` table:
+
+  | Function                                       | Does                                                                                                     |
+  | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+  | `key(combination)`                             | Presses and releases a key combination, such as `"Alt+W"` (7.3).                                         |
+  | `move(x, y)`                                   | Moves the pointer. Positions are in layout units of the OS window.                                       |
+  | `press(x, y, button)`, `release(x, y, button)` | Presses or releases a button: 1 left (the default), 2 middle, 3 right.                                   |
+  | `click(x, y, button)`                          | Presses and releases a button.                                                                           |
+  | `drag(x, y, toX, toY)`                         | Presses the left button, moves in steps and releases it.                                                 |
+  | `wheel(x, y, amount)`                          | Turns the wheel; a positive amount is away from the user.                                                |
+  | `call(name)`                                   | Runs a bound function (7.8), such as `"ecs.maximize"`, as a key would.                                   |
+  | `wait(seconds)`                                | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                        |
+  | `session()`                                    | The session that quitting would save now, as a Lua table (13.2).                                         |
+  | `rect(id)`                                     | The rectangle of the shown panel with that id: `x`, `y`, `width` and `height`.                           |
+  | `screenshot(path)`                             | Draws a frame and saves it as a PNG file.                                                                |
+  | `match(actual, expected, message)`             | Checks that `actual` has the same number of list items as `expected`, and each item and field it names. |
+
+- `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
+- A Lua error fails the test and logs it with its stack trace. When `run` returns, the program quits without asking about unsaved work.
+- The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
+
 ## 18. Platform notes
 
 - OpenECS supports X11 and Wayland, through SDL3.
@@ -941,6 +971,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 
 **Compositor.** On Wayland, the program that draws all windows on screen and decides where they go and which one has focus.
 
+**Coroutine (Lua).** A Lua function that can pause and later go on from where it paused.
+
 **Destructor.** A function that releases an object when it is no longer needed.
 
 **Environment (Lua).** The table of global names that a piece of Lua code sees.
@@ -964,6 +996,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 **Opaque handle.** A pointer to a structure whose fields are hidden, so only the functions that own it can change it.
 
 **Offscreen renderer.** A 2D renderer that draws into a texture instead of a window.
+
+**Offscreen video driver.** An SDL video driver that draws OS windows into memory instead of onto a display.
 
 **Premultiplied alpha.** A way of storing transparent pixels in which the colour is already multiplied by the opacity. Blending is faster and has no edge artifacts.
 

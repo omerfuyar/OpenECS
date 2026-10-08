@@ -26,9 +26,13 @@ static ECSI_Arguments ECSI_ReadArguments(int argc, char **argv)
         {
             arguments.fresh = true;
         }
+        else if (SDL_strcmp(argv[i], "--test") == 0 && i + 1 < argc)
+        {
+            arguments.test = argv[++i];
+        }
         else
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Unknown argument '%s'. Usage: openecs [--preset NAME|FILE] [--session FILE] [--fresh]", argv[i]);
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Unknown argument '%s'. Usage: openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE]", argv[i]);
         }
     }
 
@@ -43,8 +47,8 @@ int main(int argc, char **argv)
     ECSI_Arguments arguments = ECSI_ReadArguments(argc, argv);
 
     ECSI_AppStart(&arguments);
-    ECSI_AppRun();
+    int status = ECSI_AppRun();
     ECSI_AppStop();
 
-    return 0;
+    return status;
 }
