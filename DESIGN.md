@@ -950,7 +950,8 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.4 Dependency versions
 
-Every dependency is a git submodule pinned to a release tag, not to a development commit.
+- Every dependency is a git submodule pinned to a release tag, not to a development commit: SDL 3.4.18, SDL_ttf 3.2.2 (with the FreeType, HarfBuzz and PlutoSVG versions it pins), Lua 5.5.1 and libffi 3.8.0.
+- A dependency without a release that OpenECS can use is pinned to a commit: Clay, whose last release lacks the element API that OpenECS uses, stb, shu and shuild.
 
 ### 17.5 Tests
 

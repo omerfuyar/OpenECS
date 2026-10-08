@@ -16,4 +16,4 @@ What is not decided yet, and work that is waiting. When an item is settled, writ
 - **Link SDL as shared libraries.** DESIGN 17.2 ships SDL3 and SDL3_ttf as shared libraries next to the executable; the default build links them statically.
 - **Rendering prototype.** The main window draws with a 2D GPU renderer. Still to confirm: one GPU device for several OS windows, a panel's GPU texture shown in any window, and an offscreen renderer drawing into that texture (DESIGN 5.3, 5.4).
 - **Wayland test on Hyprland.** Dragging a panel out of its window, popups, and moving focus between OS windows (DESIGN 7.1, 7.2, 18).
-- **Pin submodules to release tags** (DESIGN 17.4). They point to development snapshots: SDL 3.5.0-dev, SDL_ttf 3.3.0-dev, Lua v5.5.1 plus 6 commits, Clay v0.14 plus 99 commits. The design needs SDL 3.4.0 or later.
+- **Pin Clay to a release** (DESIGN 17.4) once Clay releases a version with the element API that OpenECS uses; v0.14 lacks it.
