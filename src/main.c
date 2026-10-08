@@ -5,6 +5,7 @@
 #include "Lua.h"
 #include "Panels.h"
 #include "Plugins.h"
+#include "Services.h"
 #include "Session.h"
 #include "Settings.h"
 
@@ -256,6 +257,7 @@ int main(int argc, char **argv)
     ECSI_LayoutTerminate();
     ECSI_PanelsTerminate();
     ECSI_EventsTerminate();
+    ECSI_ServicesTerminate();
     ECSI_PluginsUnload();
     ECSI_SettingsTerminate();
     ECSI_BindingsTerminate();

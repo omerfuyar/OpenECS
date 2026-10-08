@@ -30,6 +30,9 @@ typedef struct ECSI_Panel *ECSPanel;
 /// @brief Handle of a timer.
 typedef struct ECSI_Timer *ECSTimer;
 
+/// @brief A function of a service, of any signature. Cast it to its real type before calling it.
+typedef void (*ECSFunction)(void);
+
 /// @brief Function that a timer calls.
 /// @param data The data given when the timer started.
 typedef void (*ECSTimerFunction)(void *data);
@@ -289,6 +292,23 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Declare(ECSPlugin plugin, const ECSSe
 /// @param name Name of the setting, such as "canvas.grid" or "ecs.focus".
 /// @return The value, or NULL if no setting has the name. Valid until the setting changes.
 OPENECS_EXPORT const ECSValue *ECSSetting_Get(const char *name);
+
+/// @brief Registers a function of a plugin's service, so other plugins and Lua can call it. Main thread only.
+/// @param plugin The plugin that provides the function.
+/// @param name Name of the function. It must start with the plugin's name and a dot, such as "audio.play".
+/// @param function The function, cast to ECSFunction. Its real type must match the signature; the core cannot check that.
+/// @param signature The function's signature, such as "int(string, float)". Types: void (result only), bool, int, int64, float, double, string.
+/// @param description One line that says what the function does.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the name or signature is invalid or the name is taken, or SHUResult_ErrAllocation.
+OPENECS_EXPORT SHUWUR SHUResult ECSService_RegisterFunction(ECSPlugin plugin, const char *name, ECSFunction function, const char *signature, const char *description);
+
+/// @brief Looks up a function of a service. Lua functions come as C function pointers too. Main thread only.
+/// @param plugin The plugin that asks. It may look up its own functions and those of the plugins its manifest depends on.
+/// @param retFunction The function, to be cast to its real type. Valid until the program exits.
+/// @param name Name of the function, such as "audio.play".
+/// @param signature The signature the caller expects. It must match the registered one.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, SHUResult_ErrPrivileges if the plugin does not depend on the provider, or SHUResult_ErrBadData if the signature is invalid or does not match.
+OPENECS_EXPORT SHUWUR SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, const char *name, const char *signature);
 
 /// @brief Starts a timer that calls a function on the main thread, once or repeatedly. Main thread only.
 /// @param plugin The plugin that owns the timer.

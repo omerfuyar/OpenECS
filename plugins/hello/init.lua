@@ -56,3 +56,8 @@ ecs.panel.register_type({
     return { color = state.color }
   end,
 })
+
+-- C functions of a service that the manifest depends on
+local add = assert(ecs.service.get("demo.add", "int(int, int)"))
+local repeat_text = assert(ecs.service.get("demo.repeat"))
+ecs.log.info("demo.add(2, 3) = " .. add(2, 3) .. ", demo.repeat = " .. repeat_text("ab", 3))

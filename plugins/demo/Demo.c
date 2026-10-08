@@ -205,6 +205,30 @@ static void DemoBlinkDraw(void *state, ECSSurface *surface, f64 seconds)
 
 #pragma endregion Blink
 
+#pragma region Service
+
+/// @brief Adds two numbers; registered as demo.add, to show a C function called from Lua.
+static i32 DemoAdd(i32 first, i32 second)
+{
+    return first + second;
+}
+
+/// @brief Repeats a text; registered as demo.repeat. The result is valid until the next call.
+static const char *DemoRepeat(const char *text, i32 count)
+{
+    static char buffer[256];
+    buffer[0] = '\0';
+
+    for (i32 i = 0; i < count && strlen(buffer) + strlen(text) < sizeof(buffer); i++)
+    {
+        strcat(buffer, text);
+    }
+
+    return buffer;
+}
+
+#pragma endregion Service
+
 #pragma endregion Source Only
 
 SHUResult ECSPlugin_Init(ECSPlugin plugin)
@@ -253,6 +277,8 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
     };
 
     SHU_ReturnResult(ECSSetting_Declare(plugin, &blinkSeconds));
+    SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.add", (ECSFunction)DemoAdd, "int(int, int)", "Adds two numbers"));
+    SHU_ReturnResult(ECSService_RegisterFunction(plugin, "demo.repeat", (ECSFunction)DemoRepeat, "string(string, int)", "Repeats a text"));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &color));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &gradient));
     SHU_ReturnResult(ECSPanelType_Register(plugin, &checker));

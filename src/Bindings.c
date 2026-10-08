@@ -3,6 +3,7 @@
 #include "Events.h"
 #include "Lua.h"
 #include "Panels.h"
+#include "Services.h"
 #include "Settings.h"
 
 #include "lua/lauxlib.h"
@@ -293,6 +294,32 @@ static const luaL_Reg ECSI_BINDINGS_TIMER_METHODS[] = {
 };
 
 #pragma endregion Timers
+
+#pragma region Services
+
+static int ECSI_BindingsServiceGet(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+    const char *signature = luaL_optstring(state, 2, NULL);
+    SHUResult result = ECSI_ServicesPushFunction(ECSI_BindingsPlugin(state), name, signature);
+
+    // a missing function is an expected failure: nil and a message
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "function '%s' is not available (%s)", name, SHUResult_String(result));
+        return 2;
+    }
+
+    return 1;
+}
+
+static const luaL_Reg ECSI_BINDINGS_SERVICE[] = {
+    {"get", ECSI_BindingsServiceGet},
+    {NULL, NULL},
+};
+
+#pragma endregion Services
 
 #pragma region Panels
 
@@ -789,6 +816,7 @@ static void ECSI_BindingsPushEcs(lua_State *state, ECSPlugin plugin)
     ECSI_BindingsAddTable(state, plugin, "settings", ECSI_BINDINGS_SETTINGS);
     ECSI_BindingsAddTable(state, plugin, "timer", ECSI_BINDINGS_TIMER);
     ECSI_BindingsAddTable(state, plugin, "panel", ECSI_BINDINGS_PANEL);
+    ECSI_BindingsAddTable(state, plugin, "service", ECSI_BINDINGS_SERVICE);
 
     lua_newtable(state);
     lua_pushstring(state, ECSI_PluginGetName(plugin));
