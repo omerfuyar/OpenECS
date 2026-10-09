@@ -284,11 +284,12 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 
     SDL_SetAppMetadata(APP.preset.appName, NULL, APP.preset.appId);
 
-    // a test, and writing definitions, need no display; the environment variables still choose other drivers
+    // a test, and writing definitions, need no display and make no sound; the environment variables still choose other drivers
     if (APP.test || APP.definitions)
     {
         SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
         SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
+        SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
     }
 
     if (!SDL_Init(SDL_INIT_VIDEO))

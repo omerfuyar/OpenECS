@@ -20,7 +20,7 @@ gcc shuild.c -o shuild.ignore -O3
 
 # dependencies are compiled without OpenECS's warnings, so only the problems in its own files count, named from the repository's root or by their full path
 root=$(pwd)
-if grep -E "^(\./|$root/)?(src|include|std|examples|tests)/[^:]*:[0-9]+:[0-9]+: (error|warning):" build/shuild.log; then
+if grep -E "^(\./|$root/)?(src|include|std|examples|tests)/[^:]*:[0-9]+:[0-9]+: (fatal error|error|warning):|^gcc: fatal error" build/shuild.log; then
     echo "The build has errors or warnings; build/shuild.log has the details."
     exit 1
 fi

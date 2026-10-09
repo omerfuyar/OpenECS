@@ -224,7 +224,7 @@ static void Shuild_SDL(void)
     SHUI_SFormat(&outputPrefixDir, "%s%s", root, OUTPUT_DIRECTORY.data);
 
     SHU_UtilRun(
-        "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_CONFIG.type=%s "
+        "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
         "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
         "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
         "-DSDL_SHARED=ON -DSDL_STATIC=OFF "                          // link type
@@ -259,7 +259,7 @@ static void Shuild_SDL_ttf(void)
     SHUI_SFormat(&outputPrefixDir, "%s%s/", root, OUTPUT_DIRECTORY.data);
 
     SHU_UtilRun(
-        "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_CONFIG.type=%s "
+        "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
         "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
         "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
         "-DBUILD_SHARED_LIBS=ON "                    // link type
