@@ -31,7 +31,7 @@ function ecs.log.error(text) end
 
 -- Settings
 
----@alias ecs.SettingType "bool"|"integer"|"number"|"string"|"choice"|"key"|"list"|"table"
+---@alias ecs.SettingType "bool"|"integer"|"number"|"string"|"choice"|"key"|"list"|"table"|"color"
 
 ---@class ecs.SettingDesc
 ---@field name string The plugin's name, a dot and the setting's name, such as "canvas.grid".
@@ -55,7 +55,7 @@ function ecs.settings.declare(desc) end
 ---@return any value
 function ecs.settings.get(name) end
 
----Sets a setting in the settings window's layer, and writes that layer's file. A higher layer may still override it.
+---Sets a setting in the user's settings file, the highest layer, and writes the file.
 ---@param name string
 ---@param value any
 ---@return true|nil ok
@@ -73,10 +73,10 @@ function ecs.settings.list() end
 ---@field description string
 ---@field owner string The plugin that declared the setting.
 ---@field value any The value in effect.
----@field layer string The layer the value comes from.
+---@field layer "default"|"preset"|"user" The layer the value comes from.
 ---@field file? string The file of that layer; missing for defaults.
 ---@field choices? string[]
----@field layers { default: any, preset: any, window: any, user: any } The value of each layer that sets it.
+---@field layers { default: any, preset: any, user: any } The value of each layer that sets it.
 
 ---Explains a setting: its value in effect, the layer it comes from, and what each layer says.
 ---@param name string
@@ -519,13 +519,13 @@ function ecs.session.sessions() end
 ---@class ecs.input
 ecs.input = {}
 
----Binds a key setting of the plugin to a function, for the panels of a type.
+---Gives a function a default key for one of the plugin's panel types. Presets and the user's settings can change it.
 ---@param panelType string
----@param settingName string A setting of type "key".
+---@param key string A key combination, such as "Ctrl+E".
 ---@param functionName string A service function, such as "canvas.clear".
 ---@return true|nil ok
 ---@return string? message
-function ecs.input.bind(panelType, settingName, functionName) end
+function ecs.input.bind(panelType, key, functionName) end
 
 -- Events
 
@@ -711,11 +711,17 @@ function ecs.dialog.message(title, text, buttons) end
 ---@field width? number A pop-out window's width, in layout units.
 ---@field height? number A pop-out window's height, in layout units.
 
+---A keys table: a key combination runs the function it names, and false removes a key that a lower layer binds.
+---prefix holds the keys after the core prefix, and a field named after a panel type the keys that work while such a panel has focus.
+---@class ecs.Keys
+---@field prefix? table<string, string|false>
+---@field [string] string|false|table<string, string|false>
+
 ---A workspace of a preset or session.
 ---@class ecs.WorkspaceDesc
 ---@field name string
 ---@field windows ecs.LayoutNode[] One layout tree for each OS window: the main window first, then the pop-out windows.
----@field keys? table<string, string> Keys for this workspace and the functions they run.
+---@field keys? ecs.Keys Keys for this workspace.
 ---@field focus? integer The id of the focused panel.
 
 ---A preset, which describes a tool.
@@ -728,7 +734,7 @@ function ecs.dialog.message(title, text, buttons) end
 ---@field pluginsDir? string A folder looked in for plugins first, relative to the preset.
 ---@field open? string The function that files from the command line go to; its signature is void(string).
 ---@field settings? table<string, any> Values of settings, over the plugins' defaults.
----@field keys? table<string, string> Keys for the whole tool and the functions they run.
+---@field keys? ecs.Keys Keys for the whole tool.
 ---@field listed? boolean false leaves the preset out of the list of presets.
 ---@field workspaces ecs.WorkspaceDesc[]
 
@@ -737,10 +743,10 @@ function ecs.dialog.message(title, text, buttons) end
 ---@field currentWorkspace? integer
 ---@field pluginState? table<string, { state: any, stateVersion: integer }> Each plugin's own state.
 
----The user's settings file, the settings window's file, or the core's settings file. A field whose name has a dot is a setting.
+---The user's settings file, or the core's settings file. A field whose name has a dot is a setting.
 ---@class ecs.SettingsFile
 ---@field [string] any
----@field keys? table<string, string> Keys for every tool and the functions they run.
+---@field keys? ecs.Keys Keys for every tool.
 ---@field plugins? string[] Plugins that every tool loads.
 ---@field tools? table<string, table<string, any>> Settings for one tool, by its app id.
 

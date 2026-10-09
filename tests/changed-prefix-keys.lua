@@ -1,4 +1,4 @@
--- a preset's ecs.prefixKeys adds to the keys of the core's settings file, and false removes one
+-- a preset's prefix keys add to the keys of the core's settings file, and false removes one
 return {
   preset = "presets/changed-keys.lua",
   run = function(test)

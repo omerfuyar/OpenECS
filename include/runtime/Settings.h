@@ -13,8 +13,7 @@ typedef enum ECSISettingsLayer
     ECSISettingsLayer_Core = 0, // defaults of the core's settings
     ECSISettingsLayer_Plugin,   // defaults of plugins' settings
     ECSISettingsLayer_Preset,
-    ECSISettingsLayer_Window, // the file that the settings window writes
-    ECSISettingsLayer_User,   // the user's hand-edited file
+    ECSISettingsLayer_User, // the user's settings file, which ECSSetting_Set writes
     ECSISettingsLayer_Count,
 } ECSISettingsLayer;
 
@@ -37,6 +36,20 @@ SHUWUR SHUResult ECSISettings_SetPreset(const ECSValue *presetSettings, const ch
 /// @return The value, or fallback if no layer sets it.
 bool ECSISettings_PeekBool(const char *name, bool fallback);
 
+/// @brief Reads a key combination written as text, such as "Ctrl+Shift+P". Key names are SDL's.
+/// @param text The text.
+/// @param report true to report a text that is not a key combination.
+/// @param retKey The SDL key code.
+/// @param retModifiers The ECSModifier bits.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the text is not a key combination, or SHUResult_ErrAllocation.
+SHUResult ECSISettings_ParseKey(const char *text, bool report, u32 *retKey, u32 *retModifiers);
+
+/// @brief Reads a colour written as "#RRGGBB" or "#RRGGBBAA".
+/// @param text The text.
+/// @param retColor The colour as ARGB.
+/// @return true if the text is a colour.
+bool ECSISettings_ParseColor(const char *text, u32 *retColor);
+
 /// @brief Frees every declaration and layer.
 void ECSISettings_Terminate(void);
 
@@ -57,9 +70,9 @@ SHUWUR SHUResult ECSISettings_DeclarePlugin(ECSPlugin plugin, const ECSSettingDe
 /// @return The default, or NULL if no setting has the name. Valid while the setting is declared.
 const ECSValue *ECSISettings_GetDefault(const char *name);
 
-/// @brief Gets the key bindings of a user file: its keys table for every tool, with the tool's own keys, which win.
-/// @param layer ECSISettingsLayer_Window or ECSISettingsLayer_User.
-/// @return A table of key texts and function names, or NULL. Valid until ECSISettings_Terminate.
+/// @brief Gets the keys table of a settings file (DESIGN 7.8): the core's, or the user's for every tool with the tool's own keys merged in, which win.
+/// @param layer ECSISettingsLayer_Core or ECSISettingsLayer_User.
+/// @return The keys table, or NULL. Valid until ECSISettings_Terminate.
 const ECSValue *ECSISettings_GetKeys(ECSISettingsLayer layer);
 
 /// @brief Describes a declared setting.

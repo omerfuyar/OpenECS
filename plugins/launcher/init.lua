@@ -229,9 +229,7 @@ assert(ecs.service.register("launcher", {
   open = { sig = "void(handle<ecs.panel>)", doc = "Open the chosen preset or session", fn = services.open },
 }))
 
--- keys are settings, so the user can change them
-for setting, key in pairs({ upKey = "Up", downKey = "Down", openKey = "Return" }) do
-  local service = setting:sub(1, -4)
-  assert(ecs.settings.declare({ name = name(setting), type = "key", description = "Key that runs " .. name(service), default = key }))
-  assert(ecs.input.bind(name("list"), name(setting), name(service)))
+-- default keys for the list; presets and the user's settings can change them
+for service, key in pairs({ up = "Up", down = "Down", open = "Return" }) do
+  assert(ecs.input.bind(name("list"), key, name(service)))
 end

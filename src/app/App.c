@@ -297,7 +297,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 
     ECSIApp_CheckStart(ECSILayout_Initialize(), "declaring the layout settings", NULL);
     ECSIApp_CheckStart(ECSIWindow_Initialize(APP.preset.appName), "opening the window", NULL);
-    ECSIApp_CheckStart(ECSIKeys_Initialize(), "declaring the key settings", NULL);
+    ECSIApp_CheckStart(ECSIKeys_Initialize(), "reading the keys", NULL);
     ECSIApp_CheckStart(ECSIMenus_Initialize(), "registering the core's functions", NULL);
     ECSIApp_CheckStart(ECSIInput_Initialize(), "declaring the input settings", NULL);
 

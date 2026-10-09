@@ -7,7 +7,13 @@ return {
   app = { id = "openecs.example.keys", name = "Keys" },
   depends = { stepper = "0.1" },
   pluginsDir = ".",
-  keys = { ["Ctrl+0"] = "stepper.resetAll" }, -- a preset binds keys for the whole tool, to any function by name
+  -- a keys table: keys for the whole tool run any function by name; prefix adds keys after the core prefix (Alt+W),
+  -- and a panel type's table changes its keys, winning over the plugin's defaults
+  keys = {
+    ["Ctrl+0"] = "stepper.resetAll",
+    prefix = { Z = "stepper.resetAll" },
+    ["stepper.panel"] = { ["Shift+Up"] = "stepper.up" },
+  },
   workspaces = {
     { name = "Main",
       windows = {

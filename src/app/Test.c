@@ -1,10 +1,10 @@
 #include "app/Test.h"
 #include "base/Lua.h"
-#include "interface/Keys.h"
 #include "interface/Layout.h"
 #include "interface/Panels.h"
 #include "interface/Window.h"
 #include "runtime/Services.h"
+#include "runtime/Settings.h"
 
 #include "lua/lauxlib.h"
 #include "lua/lua.h"
@@ -204,7 +204,7 @@ static int ECSITest_Key(lua_State *state)
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSIKeys_Parse(text, false, &key, &modifiers))
+    if (ECSISettings_ParseKey(text, false, &key, &modifiers))
     {
         return luaL_error(state, "'%s' is not a key combination", text);
     }

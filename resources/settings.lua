@@ -1,5 +1,5 @@
--- The core's own settings: OpenECS reads them at start, and they are the lowest settings layer.
--- Plugins' defaults, the preset, the settings window and the user's settings file override them.
+-- The core's own settings and keys: OpenECS reads them at start, and they are defaults, the lowest settings layer.
+-- The preset and the user's settings file override them.
 ---@type ecs.SettingsFile
 return {
   -- plugins that every tool loads: the settings window
@@ -8,38 +8,41 @@ return {
   -- the key combination before a core action
   ["ecs.prefix"] = "Alt+W",
 
-  -- the keys after the prefix and the functions they run; other layers add to them, and false removes a key
-  ["ecs.prefixKeys"] = {
-    ["Left"] = "ecs.layout.focusLeft",
-    ["Right"] = "ecs.layout.focusRight",
-    ["Up"] = "ecs.layout.focusUp",
-    ["Down"] = "ecs.layout.focusDown",
-    ["Shift+Left"] = "ecs.layout.moveLeft",
-    ["Shift+Right"] = "ecs.layout.moveRight",
-    ["Shift+Up"] = "ecs.layout.moveUp",
-    ["Shift+Down"] = "ecs.layout.moveDown",
-    ["Tab"] = "ecs.layout.nextTab",
-    ["M"] = "ecs.layout.maximize",
-    ["P"] = "ecs.layout.popOut",
-    ["X"] = "ecs.layout.close",
-    ["Shift+X"] = "ecs.layout.closeGroup",
-    ["L"] = "ecs.layout.lock",
-    ["T"] = "ecs.layout.reopen",
-    ["R"] = "ecs.panel.restart",
-    ["S"] = "ecs.session.save",
-    ["O"] = "ecs.session.open",
-    [","] = "settings.open",
-    ["1"] = "ecs.workspace.switch1",
-    ["2"] = "ecs.workspace.switch2",
-    ["3"] = "ecs.workspace.switch3",
-    ["4"] = "ecs.workspace.switch4",
-    ["5"] = "ecs.workspace.switch5",
-    ["6"] = "ecs.workspace.switch6",
-    ["7"] = "ecs.workspace.switch7",
-    ["8"] = "ecs.workspace.switch8",
-    ["9"] = "ecs.workspace.switch9",
-    ["0"] = "ecs.workspace.switch10",
-    ["W"] = "ecs.workspace.menu",
+  -- the core's keys: prefix holds the keys after the prefix and the functions they run (DESIGN 7.8)
+  -- presets and the user's settings add to them, and false removes a key
+  keys = {
+    prefix = {
+      ["Left"] = "ecs.layout.focusLeft",
+      ["Right"] = "ecs.layout.focusRight",
+      ["Up"] = "ecs.layout.focusUp",
+      ["Down"] = "ecs.layout.focusDown",
+      ["Shift+Left"] = "ecs.layout.moveLeft",
+      ["Shift+Right"] = "ecs.layout.moveRight",
+      ["Shift+Up"] = "ecs.layout.moveUp",
+      ["Shift+Down"] = "ecs.layout.moveDown",
+      ["Tab"] = "ecs.layout.nextTab",
+      ["M"] = "ecs.layout.maximize",
+      ["P"] = "ecs.layout.popOut",
+      ["X"] = "ecs.layout.close",
+      ["Shift+X"] = "ecs.layout.closeGroup",
+      ["L"] = "ecs.layout.lock",
+      ["T"] = "ecs.layout.reopen",
+      ["R"] = "ecs.panel.restart",
+      ["S"] = "ecs.session.save",
+      ["O"] = "ecs.session.open",
+      [","] = "settings.open",
+      ["1"] = "ecs.workspace.switch1",
+      ["2"] = "ecs.workspace.switch2",
+      ["3"] = "ecs.workspace.switch3",
+      ["4"] = "ecs.workspace.switch4",
+      ["5"] = "ecs.workspace.switch5",
+      ["6"] = "ecs.workspace.switch6",
+      ["7"] = "ecs.workspace.switch7",
+      ["8"] = "ecs.workspace.switch8",
+      ["9"] = "ecs.workspace.switch9",
+      ["0"] = "ecs.workspace.switch10",
+      ["W"] = "ecs.workspace.menu",
+    },
   },
 
   -- save the tool's session when it quits, and start from it the next time; --fresh still starts from the preset

@@ -1,4 +1,4 @@
--- The settings window: lists every setting with its value and the layer it comes from, and changes it (DESIGN 12.4).
+-- The settings window: lists every setting with its value, and changes it in the user's settings file (DESIGN 12.4).
 -- It draws with the ui standard plugin.
 
 local ecs = require("ecs")
@@ -135,12 +135,8 @@ local function read(setting, typed)
   return typed
 end
 
--- what the second line of a setting says: where its value comes from, or what it does
+-- what the second line of a setting says
 local function note(setting)
-  if setting.layer == "user" then
-    return "Set in " .. (setting.file or "the user's settings") .. ", which wins over this window"
-  end
-
   return setting.description
 end
 
@@ -270,7 +266,7 @@ local function set(window, setting, value)
   refresh(window)
 end
 
--- changes the chosen setting one step, in the settings window's layer
+-- changes the chosen setting one step, in the user's settings file
 local function change(window, direction)
   cancel(window)
   local setting = window.settings[window.selected]
@@ -357,11 +353,6 @@ local function drawRow(window, surface, row)
     window.panel:setTextInput(true, cursor * scale, top * scale, 2 * scale, height * scale)
   else
     field(surface, show(setting.value), x, top, width, height, false)
-  end
-
-  -- a value that the user's own file sets wins over this window, so it is faded
-  if setting.layer == "user" then
-    fill(surface, x, top, width, height, color("background") & 0x00FFFFFF | 0xA0000000)
   end
 end
 
@@ -558,9 +549,7 @@ assert(ecs.service.register("settings", {
   edit = { sig = "void(handle<ecs.panel>)", doc = "Toggle or cycle the chosen setting, or type its value, or save the value typed", fn = services.edit },
 }))
 
--- keys are settings, so the user can change them
-for setting, key in pairs({ upKey = "Up", downKey = "Down", previousKey = "Left", nextKey = "Right", editKey = "Return" }) do
-  local service = setting:sub(1, -4)
-  assert(ecs.settings.declare({ name = name(setting), type = "key", description = "Key that runs " .. name(service), default = key }))
-  assert(ecs.input.bind(name("window"), name(setting), name(service)))
+-- default keys for the window; presets and the user's settings can change them
+for service, key in pairs({ up = "Up", down = "Down", previous = "Left", next = "Right", edit = "Return" }) do
+  assert(ecs.input.bind(name("window"), key, name(service)))
 end

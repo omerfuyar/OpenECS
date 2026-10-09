@@ -65,7 +65,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 - Internal names follow the public ones with `ECSI` in place of `ECS`. An internal enumeration value is `<Type>_<Value>` too: `ECSINodeType_Split`.
 - `main.c` and Lua files, such as `manifest.lua` and presets, keep lowercase names.
 - A type that tells variants apart ends with `Type`, never `Kind`: `ECSSurfaceType`, `ECSPanelEventType`. Its field is named `type`.
-- Lua names use camelCase: `ecs.panel.registerType`, `saveState`, the setting `ecs.prefixKeys` and the event type `pointerDown`. The core's Lua names live in the `ecs` module (9.6). The core's own settings, events and bindable functions start with `ecs.`, for example the setting `ecs.focus`.
+- Lua names use camelCase: `ecs.panel.registerType`, `saveState`, the setting `ecs.keepSession` and the event type `pointerDown`. The core's Lua names live in the `ecs` module (9.6). The core's own settings, events and bindable functions start with `ecs.`, for example the setting `ecs.focus`.
 
 ### 1.3 Types and results
 
@@ -460,11 +460,11 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 7.5 The core prefix
 
 - The prefix is the setting `ecs.prefix`. It is one key combination, never a whole modifier.
-- The keys after the prefix are the setting `ecs.prefixKeys`: a table of key combinations and the names of the functions they run. Its entries are added to its value in the core's settings file (12.1), and `false` removes a key. So presets and the user can add entries that run service functions.
+- The keys after the prefix are the `prefix` tables of the keys tables (7.8). Each layer adds to the keys of the layers below, and `false` removes a key. So presets and the user can add keys that run service functions.
 - While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's other functions) and More (service functions). Within a section, the keys follow the order of the core's functions below. Like the menus (6.8), the list leaves out what cannot be done now.
 - Keys of one kind share a line. The keys that switch workspaces show the first workspace's key to the last one's: `1...0`. Focus and move show `Arrows` and `Shift+Arrows` when their four functions are on the four arrows with the same modifiers.
 - The prefix and the key after it are the only key sequence the core handles.
-- The core's functions after the prefix, in the order the list shows them. Their keys are the value of `ecs.prefixKeys` in the core's settings file (12.1).
+- The core's functions after the prefix, in the order the list shows them. Their keys are in the `prefix` table of the core's settings file (12.1).
 
   | Function                                            | Action                                                                                                   |
   | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -497,13 +497,29 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 7.8 Binding keys
 
-- Keybindings are settings of type `key`.
-- Plugins have no function for workspace or global bindings.
-- `ECSKey_Bind(plugin, panelType, settingName, functionName)`, and in Lua `ecs.input.bind(panelType, settingName, functionName)`: the plugin's key setting holds the key, and the key runs a registered function (10). The binding counts in the layer that sets the key setting (OVERVIEW 7.3).
-- Presets bind keys with `keys` tables for the whole tool and for each workspace (13.2); the user's files with `keys` tables for every tool and for one tool (12.3). The tables map key combinations to function names.
-- Once the session is built, a key of these tables or of `ecs.prefixKeys` that runs a function its owner does not have is reported, if the owner runs (12.1).
+- Keys are bound in keys tables (OVERVIEW 7.2). A field whose value is the name of a function binds a key combination to it, and `false` removes the key from the layers below. A field named `prefix` holds the keys after the core prefix (7.5). A field named after a panel type holds the keys that work while a panel of that type has focus.
+
+  ```lua
+  keys = {
+    ["Ctrl+N"] = "canvas.new",                     -- for the whole tool
+    prefix = { G = "canvas.grid" },                -- after the core prefix
+    ["canvas.view"] = { Delete = "canvas.clear" }, -- while a canvas has focus
+  }
+  ```
+
+- The keys tables, from the lowest layer to the highest:
+
+  | Layer    | Keys tables                                                                                                   |
+  | -------- | ------------------------------------------------------------------------------------------------------------- |
+  | Defaults | The core's settings file (12.1), and the keys that plugins bind for their panel types                         |
+  | Preset   | The preset's `keys`, and each workspace's `keys` (13.2)                                                       |
+  | User     | The user's settings file: its `keys` for every tool, and its `keys` for the tool, whose fields win (12.3)    |
+
+- A key press runs the binding of the highest layer that binds it. Within a layer, a panel type's keys win over a workspace's, and a workspace's over the whole tool's. A key that the winning binding removes goes to the focused panel.
+- `ECSKey_Bind(plugin, panelType, key, function)`, and in Lua `ecs.input.bind(panelType, key, function)`, give a default key to a function for one of the plugin's own panel types. Plugins have no function for other keys.
+- A key text that is not a key combination, or a table named neither `prefix` nor like a panel type, is reported. Once the session is built, a key that runs a function its owner does not have is reported, if the owner runs (12.1).
 - A function bound by name takes no arguments, or one argument: the focused panel. Its signature is `void()` or `void(handle<ecs.panel>)`.
-- The core registers its own bindable actions as functions under `ecs`, for example `ecs.layout.focusLeft` and `ecs.layout.maximize`. So settings name them like any plugin function.
+- The core registers its own bindable actions as functions under `ecs`, for example `ecs.layout.focusLeft` and `ecs.layout.maximize`. So keys tables name them like any plugin function.
 - Each of them is also a function of the `ecs` module with the same name, such as `ecs.layout.maximize()`. A key calls it with no arguments, which is the user's action: it acts on the focused panel, and locks stop it (6.4). Some also take arguments, such as `ecs.layout.close(panel)` and `ecs.session.save(path)`.
 - C runs them by name with `ECSService_GetFunction`.
 
@@ -786,31 +802,30 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 ### 12.1 Declaring
 
 - Plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. The core declares its own with a name, a type and a description; their defaults are in the core's settings file. Owners are told when their settings change: the description's `Changed` function runs after the queued events (3.1, step 4), and only when the value in effect really changed.
-- Types: `bool`, `integer`, `number`, `string`, `choice` (one of a list), `key` (a key combination), `list` and `table`.
-- The core's settings hold the core's choices of look and behaviour: the keys, focus and vsync, the window's size, font and colours, the sizes of tab rows, dividers and grips, the distances that start drags and drops, and the reopen limit.
-- The core's settings file is `resources/settings.lua` next to the executable, in the format of the user's file (12.3). It is the core layer, and the only place that gives the core's settings their defaults. OpenECS does not start if the file cannot be read, or if it gives a core setting no value of its type. Its `ecs.prefix` must be a key combination, because a prefix that cannot be read falls back to it.
+- Types: `bool`, `integer`, `number`, `string`, `choice` (one of a list), `key` (a key combination, 7.3), `color` (`"#RRGGBB"` or `"#RRGGBBAA"`), `list` and `table`. A value must have its setting's type: a `key` must read as a key combination, and a `color` as a colour.
+- The core's settings hold the core's choices of look and behaviour: the prefix, focus and vsync, the window's size, font and colours, the sizes of tab rows, dividers and grips, the distances that start drags and drops, and the reopen limit.
+- The core's settings file is `resources/settings.lua` next to the executable, in the format of the user's file (12.3). It is part of the defaults layer (OVERVIEW 10.4), the only place that gives the core's settings their defaults, and holds the core's default keys (7.8). OpenECS does not start if the file cannot be read, or if it gives a core setting no value of its type. Its `ecs.prefix` must be a key combination, because a prefix that cannot be read falls back to it.
 - `ECSSetting_Get(name)` returns the value in effect as a value (10.3). It comes from the highest layer that sets the setting with a value of its type; otherwise it is the default. A value of another type is reported with its file and skipped.
-- The core reads a key combination when it uses it. A key text that cannot be read is reported, and the default is used.
 - A name's owner is the text before its first dot: `ecs` for the core, or a plugin. Once the plugins are loaded, a setting in a file that is not declared is reported with its file if its owner runs: the core, or a plugin that loaded and did not fail. So a misspelt name is noticed. The setting is kept (OVERVIEW 12).
 
 ### 12.2 Interface
 
-- `get(name)`, `set(name, value)` (writes the settings window's file), `list()` (every declared setting) and `explain(name)`: the value in effect, the layer it came from, and what each layer says. In C: `ECSSetting_Get`, `ECSSetting_Set`, `ECSSetting_List` and `ECSSetting_Explain`; lists and explanations are values.
-- `set` changes the tool's own part of the settings window's file if that part already has the setting; otherwise it changes the part for every tool.
+- `get(name)`, `set(name, value)` (writes the user's settings file), `list()` (every declared setting) and `explain(name)`: the value in effect, the layer it came from (`default`, `preset` or `user`), and what each layer says. In C: `ECSSetting_Get`, `ECSSetting_Set`, `ECSSetting_List` and `ECSSetting_Explain`; lists and explanations are values.
+- `set` changes the tool's own part of the user's settings file if that part already has the setting; otherwise it changes the part for every tool. It rewrites the whole file (13.4), so comments in it are not kept. Without a configuration folder, as in a test, the change lasts until the program exits.
 - The settings window uses `list`, `explain` and `set` (12.4).
 
 ### 12.3 User files
 
-The part for one tool is keyed by the tool's app id and wins over the general part of the same file. A field whose name has a dot is a setting. The settings window's file has the same shape.
+The user's settings file is `settings.lua` in the configuration folder (16). The part for one tool is keyed by the tool's app id and wins over the general part of the same file. A field whose name has a dot is a setting.
 
 ```lua
 -- ~/.config/openecs/settings.lua
 return {
   ["ecs.focus"] = "hover",
-  keys = { ["Ctrl+Alt+T"] = "terminal.open" },   -- bindings for every tool
-  plugins = { "my-scripts" },                     -- extra plugins for every tool
+  keys = { ["Ctrl+Alt+T"] = "terminal.open", prefix = { Q = false } }, -- keys for every tool (7.8)
+  plugins = { "my-scripts" },                                         -- extra plugins for every tool
   tools = {
-    ["org.example.Paint"] = { ["canvas.grid"] = false },
+    ["org.example.Paint"] = { ["canvas.grid"] = false, keys = { ["canvas.view"] = { G = "canvas.grid" } } },
   },
 }
 ```
@@ -819,13 +834,12 @@ return {
 
 ### 12.4 The settings window
 
-- The first-party Lua plugin `settings` draws with the ui plugin (20.2). The core's settings file loads it in every tool (12.3), and binds `,` after the prefix to `settings.open`, which opens the window as a panel of type `settings.window`, or shows the one that is open.
+- The first-party Lua plugin `settings` draws with the ui plugin (20.2). The core's settings file loads it in every tool (12.3), and binds `,` after the prefix to `settings.open` (7.8), which opens the window as a panel of type `settings.window`, or shows the one that is open.
 - The window lists every declared setting under a title for its owner: the core's first, then each plugin's, each by name. A row shows the setting's name, a control with its value in effect, and its description.
 - The control depends on the type: a check box for a `bool`, a button for a `choice`, and a text field for the other types. A `list` or a `table` shows as a Lua table, such as `{ 1, 2 }`.
-- A value that the user's own file sets wins over the window's layer, so its control is faded, and its row names that file.
-- The window changes values in its layer (12.2): a step back or forward toggles a `bool`, cycles a `choice`, and adds or takes 1 from an `integer` or a `number`.
+- The window changes values in the user's settings file (12.2): a step back or forward toggles a `bool`, cycles a `choice`, and adds or takes 1 from an `integer` or a `number`.
 - `settings.edit` toggles a `bool` and cycles a `choice` forward. For the other types it types the value with text input (4.6): it starts typing, and saves the value typed. A number must read as one, and a `list` or a `table` as a Lua table, which is read with no access to anything. A value that cannot be read is reported, and typing goes on. Backspace deletes the last character, and Escape, or choosing another setting, drops what was typed.
-- The functions `settings.up`, `settings.down`, `settings.previous`, `settings.next` and `settings.edit` choose a setting and change it. Their keys are the settings `settings.upKey` (Up), `settings.downKey` (Down), `settings.previousKey` (Left), `settings.nextKey` (Right) and `settings.editKey` (Return), bound for the panel type (7.8).
+- The functions `settings.up`, `settings.down`, `settings.previous`, `settings.next` and `settings.edit` choose a setting and change it. The plugin binds them for its panel type (7.8) to Up, Down, Left, Right and Return.
 - The list scrolls under the window's title, with a scrollbar when it is longer than the window. The wheel scrolls it, and so does dragging the scrollbar's thumb; a press beside the thumb moves the thumb there. Choosing a setting with the keys scrolls it into view.
 - A click chooses the setting under it. A click on its control also runs `settings.edit`.
 - The panel's saved state is the chosen setting.
@@ -848,7 +862,7 @@ return {
   pluginsDir = "plugins",                    -- optional extra plugin directory
   open = "canvas.open",                      -- receives files from the command line
   settings = { ["canvas.grid"] = true },
-  keys = { ["Ctrl+N"] = "canvas.new" },      -- bindings for the whole tool
+  keys = { ["Ctrl+N"] = "canvas.new" },      -- keys for the whole tool (7.8)
   workspaces = {
     { name = "drawing",
       windows = {                            -- one layout tree per OS window: the main window first, then pop-out windows
@@ -864,7 +878,7 @@ return {
 ```
 
 - A layout node is a split (`split` plus its children) or a group (`panels`, and optionally `shown` and `locked`). A split's child has a fixed `size` in layout units or a `share`.
-- A workspace can have its own `keys`.
+- A workspace can have its own `keys`, a keys table (7.8).
 - A panel's saved state is its `state` field, and the state's version is `stateVersion`.
 - Sessions also store each panel's `id`, each workspace's `focus` (a panel id), each group's `shown` panel and `maximized` mark, the `currentWorkspace`, and `pluginState`: for each plugin's name, its `state` and `stateVersion`.
 - A plugin saves state of its own, apart from its panels', with `ECSPlugin_RegisterState(plugin, &desc)`: a version and `Save` and `Restore` functions. Lua: `ecs.plugin.registerState({ version = 1, save = fn, restore = fn })`. The state of a plugin that is not loaded stays in the session.
@@ -940,7 +954,7 @@ openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE
 - The panel type `launcher.list` lists the presets, then the saved sessions (13.7). Presets whose tool has a last session come first, the most recently used first; the others follow by name. Sessions are listed newest first.
 - An entry shows the tool's name. A session's entry also shows the file's name and when it was saved.
 - The panel reads both lists when it is created and each time it is shown again.
-- The functions `launcher.up`, `launcher.down` and `launcher.open` choose an entry and open it. Their keys are the settings `launcher.upKey` (Up), `launcher.downKey` (Down) and `launcher.openKey` (Return), bound for the panel type (7.8). The wheel chooses too, and a click on an entry opens it.
+- The functions `launcher.up`, `launcher.down` and `launcher.open` choose an entry and open it. The plugin binds them for its panel type (7.8) to Up, Down and Return. The wheel chooses too, and a click on an entry opens it.
 - The panel's saved state is the chosen entry, so the launcher chooses it again at the next start.
 - It draws with the ui plugin (20.2).
 - A preset opens with `ecs.session.openPreset`, a session with `ecs.session.open` (13.5).
@@ -993,8 +1007,7 @@ OpenECS follows the XDG Base Directory specification:
 
 | What                            | Where                                                                     |
 | ------------------------------- | ------------------------------------------------------------------------- |
-| The user's hand-edited settings | `$XDG_CONFIG_HOME/openecs/settings.lua` (default `~/.config`)             |
-| The settings window's file      | `$XDG_CONFIG_HOME/openecs/settings-window.lua`                            |
+| The user's settings             | `$XDG_CONFIG_HOME/openecs/settings.lua` (default `~/.config`)             |
 | The user's presets              | `$XDG_CONFIG_HOME/openecs/presets/`                                       |
 | The user's plugins              | `$XDG_DATA_HOME/openecs/plugins/` (default `~/.local/share`)              |
 | Saved sessions (default folder) | `$XDG_DATA_HOME/openecs/sessions/`                                        |
