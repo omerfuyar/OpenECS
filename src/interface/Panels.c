@@ -81,6 +81,13 @@ struct ECSIDropData
     ECSValue *value; // a nil value if the drag gave none
 };
 
+/// @brief Delivers a Text event, then frees its copy of the text.
+static void ECSIPanel_DeliverText(void *target, const ECSPanelEvent *event)
+{
+    ECSIPanel_DeliverEvent(*(ECSPanel *)target, event);
+    SDL_free(target);
+}
+
 /// @brief Frees a panel's list of accepted types.
 static void ECSIPanel_ClearAccepts(ECSPanel panel)
 {
@@ -490,6 +497,37 @@ void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const EC
     ECSIEvents_Post(ECSIPanel_DeliverDrop, data, &event);
 }
 
+void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers)
+{
+    SDL_assert(panel != NULL);
+    SDL_assert(text != NULL);
+
+    // the panel and the text are kept in one block: the panel first, then the text
+    usz length = SDL_strlen(text);
+    ECSPanel *target = SDL_malloc(sizeof(ECSPanel) + length + 1);
+
+    if (target == NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Typed text is lost: out of memory.");
+        return;
+    }
+
+    char *copy = (char *)(target + 1);
+    *target = panel;
+    SDL_memcpy(copy, text, length + 1);
+
+    ECSPanelEvent event = {.type = ECSPanelEventType_Text, .modifiers = modifiers, .text = {.text = copy}};
+    ECSIEvents_Post(ECSIPanel_DeliverText, target, &event);
+}
+
+void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f32 y, f32 width, f32 height)
+{
+    SDL_assert(panel != NULL);
+
+    panel->textInput = accept;
+    panel->textArea = (SDL_FRect){x, y, width, height};
+}
+
 SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char *const *types, usz count)
 {
     SDL_assert(panel != NULL);
@@ -667,6 +705,7 @@ bool ECSIPanel_Restart(ECSPanel panel)
     // the new state says again which data it accepts
     ECSIEvents_StopTimersOf(panel);
     ECSIPanel_ClearAccepts(panel);
+    panel->textInput = false;
     SDL_free(panel->fault);
     panel->fault = NULL;
     panel->state = NULL;

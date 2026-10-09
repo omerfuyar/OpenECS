@@ -22,8 +22,9 @@ local ROW_PADDING = 6
 -- version of a window's saved state: the setting that was chosen
 local STATE_VERSION = 1
 
--- the types whose values the window changes: a step changes them
-local EDITABLE = { bool = true, choice = true, integer = true, number = true }
+-- the types whose values a step changes, and the types whose values the user types
+local STEPPED = { bool = true, choice = true, integer = true, number = true }
+local TYPED = { string = true, key = true }
 
 local windows = {} -- every open window's state, by its panel handle
 
@@ -64,7 +65,7 @@ end
 local function note(setting)
   if setting.layer == "user" then
     return "set in " .. (setting.file or "the user's settings") .. ", which wins over this window"
-  elseif not EDITABLE[setting.type] then
+  elseif not STEPPED[setting.type] and not TYPED[setting.type] then
     return setting.description .. "; change it in your settings file"
   end
 
@@ -129,8 +130,21 @@ local function findWindow(panel)
   return window
 end
 
+-- ends typing a value without saving it
+local function cancel(window)
+  if window.editing then
+    window.editing = nil
+    window.panel:setTextInput(false)
+    window.panel:redraw()
+  end
+end
+
 local function move(panel, rows)
   local window = findWindow(panel)
+
+  if window then
+    cancel(window)
+  end
 
   if window and #window.settings > 0 then
     window.selected = math.min(math.max(window.selected + rows, 1), #window.settings)
@@ -141,6 +155,11 @@ end
 -- changes the chosen setting one step, in the settings window's layer
 local function change(panel, direction)
   local window = findWindow(panel)
+
+  if window then
+    cancel(window)
+  end
+
   local setting = window and window.settings[window.selected]
   local value = setting and step(setting, direction)
 
@@ -154,6 +173,32 @@ local function change(panel, direction)
     ecs.log.warn(message or ("'%s' is not changed."):format(setting.name))
   end
 
+  refresh(window)
+end
+
+-- starts typing the chosen setting's value, or saves the value typed
+local function edit(panel)
+  local window = findWindow(panel)
+  local setting = window and window.settings[window.selected]
+
+  if not setting or not TYPED[setting.type] then
+    return
+  end
+
+  if not window.editing then
+    window.editing = { text = tostring(setting.value or "") }
+    panel:setTextInput(true)
+    panel:redraw()
+    return
+  end
+
+  local ok, message = ecs.settings.set(setting.name, window.editing.text)
+
+  if not ok then
+    ecs.log.warn(message or ("'%s' is not changed."):format(setting.name))
+  end
+
+  cancel(window)
   refresh(window)
 end
 
@@ -212,18 +257,38 @@ ecs.panel.registerType({
       end
 
       text(surface, setting.name, MARGIN, y + ROW_PADDING, NAME_SIZE, textColor)
-      text(surface, show(setting.value), valueX, y + ROW_PADDING, NAME_SIZE, valueColor)
-      text(surface, note(setting), MARGIN, y + ROW_PADDING + nameLine, NOTE_SIZE, dimColor)
+
+      if i == window.selected and window.editing then
+        -- the value being typed, with its cursor, where the input method shows its window
+        local typed = text(surface, window.editing.text, valueX, y + ROW_PADDING, NAME_SIZE, textColor)
+        fill(surface, valueX + typed + 1, y + ROW_PADDING, 2, nameLine, color("accent"))
+        window.panel:setTextInput(true, (valueX + typed) * surface.scale, (y + ROW_PADDING) * surface.scale, 2 * surface.scale, nameLine * surface.scale)
+        text(surface, "Return saves, Escape cancels", MARGIN, y + ROW_PADDING + nameLine, NOTE_SIZE, dimColor)
+      else
+        text(surface, show(setting.value), valueX, y + ROW_PADDING, NAME_SIZE, valueColor)
+        text(surface, note(setting), MARGIN, y + ROW_PADDING + nameLine, NOTE_SIZE, dimColor)
+      end
       y = y + row
     end
   end,
   event = function(window, event)
-    if event.type == "shown" then
+    if event.type == "text" and window.editing then
+      window.editing.text = window.editing.text .. event.text
+      window.panel:redraw()
+    elseif event.type == "keyDown" and window.editing and event.key == "Backspace" then
+      -- the last character, which may take several bytes
+      local last = utf8.offset(window.editing.text, -1)
+      window.editing.text = last and window.editing.text:sub(1, last - 1) or ""
+      window.panel:redraw()
+    elseif event.type == "keyDown" and window.editing and event.key == "Escape" then
+      cancel(window)
+    elseif event.type == "shown" then
       refresh(window)
     elseif event.type == "pointerDown" and event.button == 1 and event.y >= rowsTop() then
       local index = window.scroll + math.floor((event.y - rowsTop()) / rowHeight()) + 1
 
       if window.settings[index] then
+        cancel(window)
         window.selected = index
         window.panel:redraw()
       end
@@ -267,16 +332,21 @@ function services.next(panel)
   change(panel, 1)
 end
 
+function services.edit(panel)
+  edit(panel)
+end
+
 assert(ecs.service.register("settings", {
   open = { sig = "void()", doc = "Open the settings window", fn = services.open },
   up = { sig = "void(handle<ecs.panel>)", doc = "Choose the setting above", fn = services.up },
   down = { sig = "void(handle<ecs.panel>)", doc = "Choose the setting below", fn = services.down },
   previous = { sig = "void(handle<ecs.panel>)", doc = "Change the chosen setting one step back", fn = services.previous },
   next = { sig = "void(handle<ecs.panel>)", doc = "Change the chosen setting one step forward", fn = services.next },
+  edit = { sig = "void(handle<ecs.panel>)", doc = "Type the chosen setting's value, or save the value typed", fn = services.edit },
 }))
 
 -- keys are settings, so the user can change them
-for setting, key in pairs({ upKey = "Up", downKey = "Down", previousKey = "Left", nextKey = "Right" }) do
+for setting, key in pairs({ upKey = "Up", downKey = "Down", previousKey = "Left", nextKey = "Right", editKey = "Return" }) do
   local service = setting:sub(1, -4)
   assert(ecs.settings.declare({ name = name(setting), type = "key", description = "Key that runs " .. name(service), default = key }))
   assert(ecs.input.bind(name("window"), name(setting), name(service)))

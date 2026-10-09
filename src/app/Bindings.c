@@ -81,7 +81,7 @@ static struct
 } BINDINGS = {0};
 
 /// @brief Names of the event types in Lua, in the order of ECSPanelEventType.
-static const char *const OPENECS_BINDINGS_EVENT_TYPES[] = {"pointerDown", "pointerUp", "pointerMove", "wheel", "keyDown", "keyUp", "focused", "unfocused", "shown", "hidden", "resized", "drop"};
+static const char *const OPENECS_BINDINGS_EVENT_TYPES[] = {"pointerDown", "pointerUp", "pointerMove", "wheel", "keyDown", "keyUp", "focused", "unfocused", "shown", "hidden", "resized", "drop", "text"};
 
 /// @brief Names of the setting types in Lua, in the order of ECSSettingType.
 static const char *const OPENECS_BINDINGS_SETTING_TYPES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", NULL};
@@ -1366,6 +1366,10 @@ static void ECSIBindings_PushEvent(lua_State *state, const ECSPanelEvent *event)
         ECSILua_PushValue(ECSDropData_GetValue(event->drop.data));
         lua_setfield(state, -2, "value");
         break;
+    case ECSPanelEventType_Text:
+        lua_pushstring(state, event->text.text);
+        lua_setfield(state, -2, "text");
+        break;
     default:
         break;
     }
@@ -1591,6 +1595,18 @@ static int ECSIBindings_PanelAcceptDrops(lua_State *state)
     return 0;
 }
 
+static int ECSIBindings_PanelSetTextInput(lua_State *state)
+{
+    ECSPanel panel = ECSIBindings_CheckPanel(state, 1);
+    bool accept = lua_toboolean(state, 2);
+    f32 x = (f32)luaL_optnumber(state, 3, 0.0);
+    f32 y = (f32)luaL_optnumber(state, 4, 0.0);
+    f32 width = (f32)luaL_optnumber(state, 5, 0.0);
+    f32 height = (f32)luaL_optnumber(state, 6, 0.0);
+    ECSPanel_SetTextInput(panel, accept, x, y, width, height);
+    return 0;
+}
+
 static int ECSIBindings_PanelStartDrag(lua_State *state)
 {
     ECSPanel panel = ECSIBindings_CheckPanel(state, 1);
@@ -1613,6 +1629,7 @@ static int ECSIBindings_PanelStartDrag(lua_State *state)
 }
 
 static const luaL_Reg OPENECS_BINDINGS_PANEL_METHODS[] = {
+    {"setTextInput", ECSIBindings_PanelSetTextInput},
     {"acceptDrops", ECSIBindings_PanelAcceptDrops},
     {"startDrag", ECSIBindings_PanelStartDrag},
     {"redraw", ECSIBindings_PanelRedraw},
@@ -1645,6 +1662,7 @@ static int ECSIBindings_PanelAddMenuEntry(lua_State *state)
 static const luaL_Reg OPENECS_BINDINGS_PANEL[] = {
     {"registerType", ECSIBindings_PanelRegisterType},
     {"addMenuEntry", ECSIBindings_PanelAddMenuEntry},
+    {"setTextInput", ECSIBindings_PanelSetTextInput},
     {"acceptDrops", ECSIBindings_PanelAcceptDrops},
     {"startDrag", ECSIBindings_PanelStartDrag},
     {"redraw", ECSIBindings_PanelRedraw},

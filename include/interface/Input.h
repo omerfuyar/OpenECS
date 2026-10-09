@@ -24,6 +24,9 @@ bool ECSIInput_Handle(const SDL_Event *event);
 /// @param plugin The plugin that asks, or NULL for the core.
 /// @param desc Description of the dialog.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @brief Turns the system's text input on while the focused panel accepts text, and tells the input method where its text cursor is. Call it once each pass of the loop, after events are delivered.
+void ECSIInput_UpdateTextInput(void);
+
 SHUWUR SHUResult ECSIInput_ShowDialog(ECSPlugin plugin, const ECSDialogDesc *desc);
 
 #pragma endregion Declarations

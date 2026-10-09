@@ -37,7 +37,7 @@ static struct
     f32 pointerY;
     SDL_MouseButtonFlags buttons; // the buttons held
     char **files;                 // stb_ds array of the paths that the test's files field names
-    char **dropped;               // stb_ds array of the files and texts the test drops, kept until it ends because their events point to them
+    char **dropped;               // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
     char *sessions;               // the folder that the test's sessions field names, ending with a separator, or NULL
 } TEST = {0};
 
@@ -92,6 +92,9 @@ static void ECSITest_Send(SDL_Event event)
         break;
     case SDL_EVENT_MOUSE_WHEEL:
         event.wheel.windowID = id;
+        break;
+    case SDL_EVENT_TEXT_INPUT:
+        event.text.windowID = id;
         break;
     case SDL_EVENT_DROP_BEGIN:
     case SDL_EVENT_DROP_FILE:
@@ -339,6 +342,24 @@ static void ECSITest_SendDrop(f32 x, f32 y, Uint32 type, const char *const *text
     ECSITest_Send(event);
 }
 
+/// @brief test.text(text): types text, as an input method gives it, to the focused panel.
+static int ECSITest_Text(lua_State *state)
+{
+    char *copy = SDL_strdup(luaL_checkstring(state, 1));
+
+    if (copy == NULL)
+    {
+        return luaL_error(state, "out of memory");
+    }
+
+    // the event points to the text, so the test keeps it until it ends
+    arrput(TEST.dropped, copy);
+    SDL_Event event = {.type = SDL_EVENT_TEXT_INPUT};
+    event.text.text = copy;
+    ECSITest_Send(event);
+    return lua_yield(state, 0);
+}
+
 /// @brief test.dropFiles(x, y, paths): drops files from another application at a position.
 static int ECSITest_DropFiles(lua_State *state)
 {
@@ -464,6 +485,7 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"click", ECSITest_Click},
     {"drag", ECSITest_Drag},
     {"wheel", ECSITest_Wheel},
+    {"text", ECSITest_Text},
     {"dropFiles", ECSITest_DropFiles},
     {"dropText", ECSITest_DropText},
     {"call", ECSITest_Call},

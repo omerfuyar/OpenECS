@@ -45,6 +45,10 @@ static struct
     ECSValue *dragValue;      // the dragged data
     char **droppedFiles;      // stb_ds array of the files another application drops, until the drop completes
     char *droppedText;        // the text another application drops, until the drop completes, or NULL
+    bool swallowText;         // the last key press ran a binding or the core's keys, so the text it types is dropped
+    bool textOn;              // text input is on, for the panel below
+    ECSPanel textPanel;
+    SDL_Rect textArea; // where the input method shows its window, in the OS window
 } INPUT = {0};
 
 /// @brief A file dialog waiting for its answer, with copies of everything SDL reads until it answers.
@@ -768,6 +772,9 @@ bool ECSIInput_Handle(const SDL_Event *event)
     {
         const SDL_KeyboardEvent *key = &event->key;
 
+        // a key that the core or a binding uses types no text; only a key the focused panel gets does
+        INPUT.swallowText = true;
+
         if (INPUT.prefixActive)
         {
             bool modifierKey = (key->key >= SDLK_LCTRL && key->key <= SDLK_RGUI) || key->key == SDLK_MODE;
@@ -810,9 +817,23 @@ bool ECSIInput_Handle(const SDL_Event *event)
         }
         else if (focus != NULL)
         {
+            INPUT.swallowText = false;
             ECSIInput_SendKey(focus, ECSPanelEventType_KeyDown, key);
         }
 
+        break;
+    }
+
+    case SDL_EVENT_TEXT_INPUT:
+    {
+        ECSPanel focus = ECSILayout_GetFocus();
+
+        if (!INPUT.swallowText && focus != NULL && focus->textInput && event->text.text != NULL)
+        {
+            ECSIPanel_PostText(focus, event->text.text, ECSIInput_Modifiers(SDL_GetModState()));
+        }
+
+        INPUT.swallowText = false;
         break;
     }
 
@@ -859,6 +880,48 @@ bool ECSIInput_Handle(const SDL_Event *event)
     }
 
     return true;
+}
+
+void ECSIInput_UpdateTextInput(void)
+{
+    ECSPanel focus = ECSILayout_GetFocus();
+    SDL_Window *window = ECSIWindow_GetMain();
+    bool on = focus != NULL && focus->textInput && focus->fault == NULL;
+    SDL_Rect area = {0};
+
+    if (window == NULL)
+    {
+        return;
+    }
+
+    // the cursor is in the panel's surface pixels, and a surface has one pixel for each layout unit
+    if (on)
+    {
+        area = (SDL_Rect){(int)SDL_roundf(focus->x + focus->textArea.x), (int)SDL_roundf(focus->y + focus->textArea.y), (int)SDL_roundf(focus->textArea.w), (int)SDL_roundf(focus->textArea.h)};
+    }
+
+    if (on == INPUT.textOn && (!on || (focus == INPUT.textPanel && SDL_RectsEqual(&area, &INPUT.textArea))))
+    {
+        return;
+    }
+
+    if (on)
+    {
+        SDL_SetTextInputArea(window, &area, 0);
+
+        if (!INPUT.textOn)
+        {
+            SDL_StartTextInput(window);
+        }
+    }
+    else
+    {
+        SDL_StopTextInput(window);
+    }
+
+    INPUT.textOn = on;
+    INPUT.textPanel = on ? focus : NULL;
+    INPUT.textArea = area;
 }
 
 SHUResult ECSPanel_StartDrag(ECSPanel panel, const char *type, const ECSValue *value)

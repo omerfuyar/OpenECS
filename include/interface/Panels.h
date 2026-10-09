@@ -45,6 +45,8 @@ struct ECSIPanel
     f32 toldHeight;
     char *fault;    // the error of a callback, or NULL; a faulted panel shows it and its type is not called again, except Destroy
     char **accepts; // stb_ds array of the types of data the panel accepts when data is dropped on it
+    bool textInput;     // the panel accepts typed text
+    SDL_FRect textArea; // its text cursor, in surface pixels
 };
 
 /// @brief Registers a panel type like ECSPanelType_Register, with data for the Bindings module.
@@ -166,6 +168,12 @@ void ECSIPanel_PostEvent(ECSPanel panel, const ECSPanelEvent *event);
 /// @param type The data's type.
 /// @return true if the panel accepts it.
 bool ECSIPanel_Accepts(ECSPanel panel, const char *type);
+
+/// @brief Queues a Text event for a panel's type, with a copy of the text, which stays valid until the event is delivered.
+/// @param panel Panel that receives the event.
+/// @param text The text, UTF-8.
+/// @param modifiers ECSModifier bits held when it was typed.
+void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers);
 
 /// @brief Queues a Drop event for a panel's type, with copies of the data, which stay valid until the event is delivered.
 /// @param panel Panel that receives the event.
