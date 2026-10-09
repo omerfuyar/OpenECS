@@ -1,4 +1,4 @@
--- the ui standard plugin draws rectangles and text into another plugin's panel, and reads colours
+-- the ui standard plugin draws rectangles, text, images and elements into another plugin's panel, and reads colours
 
 return {
   preset = "presets/painter.lua",
@@ -17,6 +17,18 @@ return {
     test.match(results.measured, true, "measure gives the drawn width and a line height")
     test.match(results.inked, true, "the text's pixels")
     test.match(results.outside, 0, "pixels beside the text")
+
+    -- the other shapes, the plugin's image and the elements
+    test.match(results.edge, 0xFFFFFFFF, "an outline's edge")
+    test.match(results.middle, 0xFF000000, "inside an outline")
+    test.match(results.imageDrawn, true, "an image is drawn")
+    test.match(results.green, 0xFF00FF00, "an image's pixels")
+    test.match(results.missing, false, "a missing image")
+    test.match(results.size, { true, 4.0, 4.0 }, "an image's size")
+    test.match(results.checked, true, "a check box that is on")
+    test.match(results.cursor, true, "a field's cursor")
+    test.match(results.thumb, true, "a scrollbar's thumb and track")
+    test.match(results.thumbPlace, { 75.0, 25.0 }, "a thumb at the end")
 
     test.match(results.kept, false, "a surface handle after draw")
 

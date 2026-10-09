@@ -408,6 +408,12 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 
 #pragma region Core Functions
 
+/// @brief Gives the folder a plugin was loaded from, such as for its images. Main thread only.
+/// @param plugin The plugin.
+/// @return The folder, ending with a separator. The core owns it while the plugin is loaded.
+/// @lua none: the field ecs.plugin.folder
+OPENECS_EXPORT const char *ECSPlugin_GetFolder(ECSPlugin plugin);
+
 /// @brief Registers how a plugin saves and restores its own state in sessions. Call it from ECSPlugin_Init. Main thread only.
 /// @param plugin The plugin.
 /// @param desc Description of the state. The core copies it.

@@ -1,12 +1,21 @@
--- The settings window: lists every setting with its value and the layer it comes from, and changes the values it can (DESIGN 12.4).
+-- The settings window: lists every setting with its value and the layer it comes from, and changes it (DESIGN 12.4).
 -- It draws with the ui standard plugin.
 
 local ecs = require("ecs")
 
-local fill = assert(ecs.service.get("ui.fill", "void(handle<ecs.surface>, float, float, float, float, int64)"))
-local text = assert(ecs.service.get("ui.text", "float(handle<ecs.surface>, string, float, float, float, int64)"))
-local measure = assert(ecs.service.get("ui.measure", "void(string, float, out float, out float)"))
-local color = assert(ecs.service.get("ui.color", "int64(string)"))
+local function ui(localName, signature)
+  return assert(ecs.service.get("ui." .. localName, signature))
+end
+
+local fill = ui("fill", "void(handle<ecs.surface>, float, float, float, float, int64)")
+local text = ui("text", "float(handle<ecs.surface>, string, float, float, float, int64)")
+local measure = ui("measure", "void(string, float, out float, out float)")
+local color = ui("color", "int64(string)")
+local button = ui("button", "void(handle<ecs.surface>, string, float, float, float, float, int)")
+local check = ui("check", "void(handle<ecs.surface>, float, float, float, bool)")
+local field = ui("field", "float(handle<ecs.surface>, string, float, float, float, float, bool)")
+local scrollbar = ui("scrollbar", "void(handle<ecs.surface>, float, float, float, float, float, float, float)")
+local thumb = ui("thumb", "void(float, float, float, float, out float, out float)")
 
 local function name(localName)
   return "settings." .. localName
@@ -15,16 +24,21 @@ end
 -- sizes in layout units
 local MARGIN = 24
 local TITLE_SIZE = 22
+local SECTION_SIZE = 13
 local NAME_SIZE = 15
 local NOTE_SIZE = 12
-local ROW_PADDING = 6
+local ROW_PADDING = 8
+local CONTROL_HEIGHT = 24
+local CHECK_SIZE = 18
+local VALUE_WIDTH = 260
+local SCROLLBAR_WIDTH = 8
+local WHEEL_STEP = 48
 
 -- version of a window's saved state: the setting that was chosen
 local STATE_VERSION = 1
 
--- the types whose values a step changes, and the types whose values the user types
+-- the types whose values a step changes; every other type is typed
 local STEPPED = { bool = true, choice = true, integer = true, number = true }
-local TYPED = { string = true, key = true }
 
 local windows = {} -- every open window's state, by its panel handle
 
@@ -48,12 +62,44 @@ local function readSettings()
   return settings
 end
 
--- a value as one line of text
+-- a list or table as a Lua literal, which the user can type back
+local function literal(value)
+  if type(value) == "string" then
+    return ("%q"):format(value)
+  elseif type(value) ~= "table" then
+    return tostring(value)
+  end
+
+  local parts = {}
+
+  for _, item in ipairs(value) do
+    parts[#parts + 1] = literal(item)
+  end
+
+  local keys = {}
+
+  for key in pairs(value) do
+    if math.type(key) ~= "integer" or key < 1 or key > #value then
+      keys[#keys + 1] = key
+    end
+  end
+
+  table.sort(keys, function(a, b)
+    return tostring(a) < tostring(b)
+  end)
+
+  for _, key in ipairs(keys) do
+    local shown = type(key) == "string" and key:match("^[%a_][%w_]*$") and key or ("[%s]"):format(literal(key))
+    parts[#parts + 1] = shown .. " = " .. literal(value[key])
+  end
+
+  return #parts == 0 and "{}" or "{ " .. table.concat(parts, ", ") .. " }"
+end
+
+-- a value as the text of its control
 local function show(value)
-  if type(value) == "boolean" then
-    return value and "on" or "off"
-  elseif type(value) == "table" then
-    return ("%d entries"):format(#value)
+  if type(value) == "table" then
+    return literal(value)
   elseif math.type(value) == "float" then
     return ("%g"):format(value)
   end
@@ -61,15 +107,77 @@ local function show(value)
   return tostring(value)
 end
 
--- what the second line of a setting says: where its value comes from, and whether the window can change it
+-- reads typed text as a value of a setting's type
+-- returns the value, or nil and why it is not one
+local function read(setting, typed)
+  if setting.type == "integer" then
+    local value = math.tointeger(tonumber(typed))
+    return value, value == nil and "a whole number" or nil
+  elseif setting.type == "number" then
+    local value = tonumber(typed)
+    return value, value == nil and "a number" or nil
+  elseif setting.type == "list" or setting.type == "table" then
+    -- a Lua literal, read without access to anything
+    local chunk = load("return " .. typed, "=" .. setting.name, "t", {})
+    local ok, value = false, nil
+
+    if chunk then
+      ok, value = pcall(chunk)
+    end
+
+    if ok and type(value) == "table" then
+      return value
+    end
+
+    return nil, "a Lua table, such as { 1, 2 }"
+  end
+
+  return typed
+end
+
+-- what the second line of a setting says: where its value comes from, or what it does
 local function note(setting)
   if setting.layer == "user" then
-    return "set in " .. (setting.file or "the user's settings") .. ", which wins over this window"
-  elseif not STEPPED[setting.type] and not TYPED[setting.type] then
-    return setting.description .. "; change it in your settings file"
+    return "Set in " .. (setting.file or "the user's settings") .. ", which wins over this window"
   end
 
   return setting.description
+end
+
+local function lineHeight(size)
+  local _, line = measure("Ag", size)
+  return line
+end
+
+local function headerHeight()
+  return MARGIN + lineHeight(TITLE_SIZE) + MARGIN / 2
+end
+
+local function rowHeight()
+  return ROW_PADDING + CONTROL_HEIGHT + lineHeight(NOTE_SIZE) + ROW_PADDING
+end
+
+local function sectionHeight()
+  return MARGIN / 2 + lineHeight(SECTION_SIZE) + 4
+end
+
+-- places every section title and row below the header: window.rows holds their tops and the setting they show
+local function place(window)
+  local rows, y, owner = {}, 0, nil
+
+  for i, setting in ipairs(window.settings) do
+    if setting.owner ~= owner then
+      owner = setting.owner
+      rows[#rows + 1] = { top = y, section = owner == "ecs" and "Core" or owner }
+      y = y + sectionHeight()
+    end
+
+    rows[#rows + 1] = { top = y, index = i }
+    y = y + rowHeight()
+  end
+
+  window.rows = rows
+  window.total = y + MARGIN
 end
 
 local function refresh(window)
@@ -83,21 +191,27 @@ local function refresh(window)
     end
   end
 
+  place(window)
   window.panel:redraw()
 end
 
-local function rowHeight()
-  local _, nameLine = measure("Ag", NAME_SIZE)
-  local _, noteLine = measure("Ag", NOTE_SIZE)
-  return nameLine + noteLine + 2 * ROW_PADDING
+-- the scroll offset within its bounds
+local function clamp(window)
+  window.offset = math.max(0, math.min(window.offset, window.total - window.shown))
 end
 
-local function rowsTop()
-  local _, title = measure("Ag", TITLE_SIZE)
-  return MARGIN + title + MARGIN
+-- scrolls so the chosen setting is in view
+local function reveal(window)
+  for _, row in ipairs(window.rows) do
+    if row.index == window.selected then
+      window.offset = math.min(math.max(window.offset, row.top + rowHeight() - window.shown), row.top)
+    end
+  end
+
+  clamp(window)
 end
 
--- the next value of a setting one step forward or back, or nil if the window does not change its type
+-- the next value of a setting one step forward or back, or nil if the window does not step its type
 local function step(setting, direction)
   local value = setting.value
 
@@ -139,34 +253,14 @@ local function cancel(window)
   end
 end
 
-local function move(panel, rows)
-  local window = findWindow(panel)
-
-  if window then
-    cancel(window)
-  end
-
-  if window and #window.settings > 0 then
-    window.selected = math.min(math.max(window.selected + rows, 1), #window.settings)
-    panel:redraw()
-  end
+local function choose(window, index)
+  cancel(window)
+  window.selected = math.min(math.max(index, 1), #window.settings)
+  reveal(window)
+  window.panel:redraw()
 end
 
--- changes the chosen setting one step, in the settings window's layer
-local function change(panel, direction)
-  local window = findWindow(panel)
-
-  if window then
-    cancel(window)
-  end
-
-  local setting = window and window.settings[window.selected]
-  local value = setting and step(setting, direction)
-
-  if value == nil then
-    return
-  end
-
+local function set(window, setting, value)
   local ok, message = ecs.settings.set(setting.name, value)
 
   if not ok then
@@ -176,30 +270,182 @@ local function change(panel, direction)
   refresh(window)
 end
 
--- starts typing the chosen setting's value, or saves the value typed
-local function edit(panel)
-  local window = findWindow(panel)
-  local setting = window and window.settings[window.selected]
+-- changes the chosen setting one step, in the settings window's layer
+local function change(window, direction)
+  cancel(window)
+  local setting = window.settings[window.selected]
+  local value = setting and step(setting, direction)
 
-  if not setting or not TYPED[setting.type] then
+  if value ~= nil then
+    set(window, setting, value)
+  end
+end
+
+-- toggles or cycles the chosen setting, or starts typing its value, or saves the value typed
+local function edit(window)
+  local setting = window.settings[window.selected]
+
+  if not setting then
+    return
+  elseif setting.type == "bool" or setting.type == "choice" then
+    change(window, 1)
+    return
+  elseif not window.editing then
+    window.editing = { text = show(setting.value) }
+    window.panel:setTextInput(true)
+    window.panel:redraw()
     return
   end
 
-  if not window.editing then
-    window.editing = { text = tostring(setting.value or "") }
-    panel:setTextInput(true)
-    panel:redraw()
+  local value, expected = read(setting, window.editing.text)
+
+  if value == nil then
+    ecs.log.warn(("'%s' needs %s."):format(setting.name, expected))
     return
-  end
-
-  local ok, message = ecs.settings.set(setting.name, window.editing.text)
-
-  if not ok then
-    ecs.log.warn(message or ("'%s' is not changed."):format(setting.name))
   end
 
   cancel(window)
-  refresh(window)
+  set(window, setting, value)
+end
+
+-- the rectangle of a row's control, in the panel
+local function controlRect(window, row, setting)
+  local x = window.width - MARGIN - SCROLLBAR_WIDTH - window.valueWidth
+  local y = window.top + row.top - window.offset + ROW_PADDING
+
+  if setting.type == "bool" then
+    return x, y + (CONTROL_HEIGHT - CHECK_SIZE) / 2, CHECK_SIZE, CHECK_SIZE
+  end
+
+  return x, y, window.valueWidth, CONTROL_HEIGHT
+end
+
+-- the row under a point in the panel, if any
+local function rowAt(window, y)
+  local inside = y - window.top + window.offset
+
+  for _, row in ipairs(window.rows) do
+    if row.index and inside >= row.top and inside < row.top + rowHeight() then
+      return row
+    end
+  end
+end
+
+local function drawRow(window, surface, row)
+  local setting = window.settings[row.index]
+  local y = window.top + row.top - window.offset
+  local chosen = row.index == window.selected
+
+  if chosen then
+    fill(surface, MARGIN / 2, y, window.width - MARGIN - SCROLLBAR_WIDTH, rowHeight(), color("selected"))
+  end
+
+  local nameY = y + ROW_PADDING + (CONTROL_HEIGHT - lineHeight(NAME_SIZE)) / 2
+  text(surface, setting.name, MARGIN, nameY, NAME_SIZE, color("text"))
+  text(surface, note(setting), MARGIN, y + ROW_PADDING + CONTROL_HEIGHT, NOTE_SIZE, color("textDim"))
+
+  local x, top, width, height = controlRect(window, row, setting)
+
+  if setting.type == "bool" then
+    check(surface, x, top, width, setting.value == true)
+  elseif setting.type == "choice" then
+    button(surface, show(setting.value), x, top, width, height, chosen and 1 or 0)
+  elseif chosen and window.editing then
+    -- the cursor is where the input method shows its window
+    local cursor = field(surface, window.editing.text, x, top, width, height, true)
+    local scale = surface.scale
+    window.panel:setTextInput(true, cursor * scale, top * scale, 2 * scale, height * scale)
+  else
+    field(surface, show(setting.value), x, top, width, height, false)
+  end
+
+  -- a value that the user's own file sets wins over this window, so it is faded
+  if setting.layer == "user" then
+    fill(surface, x, top, width, height, color("background") & 0x00FFFFFF | 0xA0000000)
+  end
+end
+
+local function draw(window, surface)
+  window.width, window.height = surface.width / surface.scale, surface.height / surface.scale
+  window.top = headerHeight()
+  window.shown = window.height - window.top
+  window.valueWidth = math.min(VALUE_WIDTH, window.width * 0.4)
+  clamp(window)
+
+  fill(surface, 0, 0, window.width, window.height, color("background"))
+
+  for _, row in ipairs(window.rows) do
+    local y = window.top + row.top - window.offset
+
+    if y + rowHeight() > window.top and y < window.height then
+      if row.section then
+        text(surface, row.section, MARGIN, y + MARGIN / 2, SECTION_SIZE, color("accent"))
+      else
+        drawRow(window, surface, row)
+      end
+    end
+  end
+
+  -- the header covers the rows scrolled under it
+  fill(surface, 0, 0, window.width, window.top, color("background"))
+  text(surface, "Settings", MARGIN, MARGIN, TITLE_SIZE, color("text"))
+  scrollbar(surface, window.width - SCROLLBAR_WIDTH - 4, window.top, SCROLLBAR_WIDTH, window.shown, window.total, window.shown, window.offset)
+end
+
+-- a press: on the scrollbar, it grabs the thumb or jumps there; on a row, it chooses the setting and uses its control
+local function press(window, x, y)
+  if y < window.top then
+    return
+  end
+
+  if x >= window.width - SCROLLBAR_WIDTH - 8 and window.total > window.shown then
+    local start, length = thumb(window.shown, window.total, window.shown, window.offset)
+    local along = y - window.top
+
+    -- a press beside the thumb centres the thumb there
+    if along < start or along > start + length then
+      local travel = window.shown - length
+      window.offset = travel > 0 and (along - length / 2) / travel * (window.total - window.shown) or 0
+      clamp(window)
+      start = thumb(window.shown, window.total, window.shown, window.offset)
+    end
+
+    window.dragging = along - start
+    window.panel:redraw()
+    return
+  end
+
+  local row = rowAt(window, y)
+
+  if not row then
+    return
+  end
+
+  local left, top, width, height = controlRect(window, row, window.settings[row.index])
+  local onControl = x >= left and x < left + width and y >= top and y < top + height
+
+  -- a press on the field being typed in keeps typing
+  if onControl and window.editing and row.index == window.selected then
+    return
+  end
+
+  choose(window, row.index)
+
+  if onControl then
+    edit(window)
+  end
+end
+
+-- a pointer move while the thumb is held scrolls the content with it
+local function drag(window, y)
+  local _, length = thumb(window.shown, window.total, window.shown, window.offset)
+  local travel = window.shown - length
+
+  if travel > 0 then
+    window.offset = (y - window.top - window.dragging) / travel * (window.total - window.shown)
+    clamp(window)
+    window.panel:redraw()
+  end
 end
 
 ecs.panel.registerType({
@@ -207,7 +453,7 @@ ecs.panel.registerType({
   title = "Settings",
   stateVersion = STATE_VERSION,
   create = function(panel, saved, version)
-    local window = { panel = panel, settings = {}, selected = 1, scroll = 0 }
+    local window = { panel = panel, settings = {}, rows = {}, selected = 1, offset = 0, total = 0, shown = 0, top = 0, width = 0, height = 0, valueWidth = 0 }
     windows[panel] = window
     refresh(window)
 
@@ -228,49 +474,7 @@ ecs.panel.registerType({
     local chosen = window.settings[window.selected]
     return { selected = chosen and chosen.name or nil }
   end,
-  draw = function(window, surface)
-    local width, height = surface.width / surface.scale, surface.height / surface.scale
-    local textColor, dimColor = color("text"), color("textDim")
-
-    fill(surface, 0, 0, width, height, color("background"))
-    text(surface, "Settings", MARGIN, MARGIN, TITLE_SIZE, textColor)
-
-    local row = rowHeight()
-    local top = rowsTop()
-    local _, nameLine = measure("Ag", NAME_SIZE)
-
-    -- the chosen setting stays in view
-    local visible = math.max(1, math.floor((height - top) / row))
-    window.scroll = math.min(math.max(window.scroll, window.selected - visible), window.selected - 1)
-
-    local valueX = math.max(MARGIN + 220, width * 0.5)
-    local y = top
-
-    for i = window.scroll + 1, math.min(#window.settings, window.scroll + visible) do
-      local setting = window.settings[i]
-
-      -- a value that the user's own file sets wins over this window, so it is faded
-      local valueColor = setting.layer == "user" and dimColor or textColor
-
-      if i == window.selected then
-        fill(surface, MARGIN / 2, y, width - MARGIN, row, color("selected"))
-      end
-
-      text(surface, setting.name, MARGIN, y + ROW_PADDING, NAME_SIZE, textColor)
-
-      if i == window.selected and window.editing then
-        -- the value being typed, with its cursor, where the input method shows its window
-        local typed = text(surface, window.editing.text, valueX, y + ROW_PADDING, NAME_SIZE, textColor)
-        fill(surface, valueX + typed + 1, y + ROW_PADDING, 2, nameLine, color("accent"))
-        window.panel:setTextInput(true, (valueX + typed) * surface.scale, (y + ROW_PADDING) * surface.scale, 2 * surface.scale, nameLine * surface.scale)
-        text(surface, "Return saves, Escape cancels", MARGIN, y + ROW_PADDING + nameLine, NOTE_SIZE, dimColor)
-      else
-        text(surface, show(setting.value), valueX, y + ROW_PADDING, NAME_SIZE, valueColor)
-        text(surface, note(setting), MARGIN, y + ROW_PADDING + nameLine, NOTE_SIZE, dimColor)
-      end
-      y = y + row
-    end
-  end,
+  draw = draw,
   event = function(window, event)
     if event.type == "text" and window.editing then
       window.editing.text = window.editing.text .. event.text
@@ -284,16 +488,16 @@ ecs.panel.registerType({
       cancel(window)
     elseif event.type == "shown" then
       refresh(window)
-    elseif event.type == "pointerDown" and event.button == 1 and event.y >= rowsTop() then
-      local index = window.scroll + math.floor((event.y - rowsTop()) / rowHeight()) + 1
-
-      if window.settings[index] then
-        cancel(window)
-        window.selected = index
-        window.panel:redraw()
-      end
+    elseif event.type == "pointerDown" and event.button == 1 then
+      press(window, event.x, event.y)
+    elseif event.type == "pointerMove" and window.dragging then
+      drag(window, event.y)
+    elseif event.type == "pointerUp" then
+      window.dragging = nil
     elseif event.type == "wheel" then
-      move(window.panel, event.wheelY > 0 and -1 or 1)
+      window.offset = window.offset - event.wheelY * WHEEL_STEP
+      clamp(window)
+      window.panel:redraw()
     end
   end,
 })
@@ -316,25 +520,34 @@ function services.open()
   end
 end
 
-function services.up(panel)
-  move(panel, -1)
+-- each function acts on the settings window it gets
+local function forWindow(act)
+  return function(panel)
+    local window = findWindow(panel)
+
+    if window and #window.settings > 0 then
+      act(window)
+    end
+  end
 end
 
-function services.down(panel)
-  move(panel, 1)
-end
+services.up = forWindow(function(window)
+  choose(window, window.selected - 1)
+end)
 
-function services.previous(panel)
-  change(panel, -1)
-end
+services.down = forWindow(function(window)
+  choose(window, window.selected + 1)
+end)
 
-function services.next(panel)
-  change(panel, 1)
-end
+services.previous = forWindow(function(window)
+  change(window, -1)
+end)
 
-function services.edit(panel)
-  edit(panel)
-end
+services.next = forWindow(function(window)
+  change(window, 1)
+end)
+
+services.edit = forWindow(edit)
 
 assert(ecs.service.register("settings", {
   open = { sig = "void()", doc = "Open the settings window", fn = services.open },
@@ -342,7 +555,7 @@ assert(ecs.service.register("settings", {
   down = { sig = "void(handle<ecs.panel>)", doc = "Choose the setting below", fn = services.down },
   previous = { sig = "void(handle<ecs.panel>)", doc = "Change the chosen setting one step back", fn = services.previous },
   next = { sig = "void(handle<ecs.panel>)", doc = "Change the chosen setting one step forward", fn = services.next },
-  edit = { sig = "void(handle<ecs.panel>)", doc = "Type the chosen setting's value, or save the value typed", fn = services.edit },
+  edit = { sig = "void(handle<ecs.panel>)", doc = "Toggle or cycle the chosen setting, or type its value, or save the value typed", fn = services.edit },
 }))
 
 -- keys are settings, so the user can change them

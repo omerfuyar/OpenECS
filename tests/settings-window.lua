@@ -92,5 +92,30 @@ return {
     test.key("Return")
     test.key("Return")
     test.match(test.session().pluginState.probe.state.accent, "#112233", "ecs.colorAccent after Escape")
+
+    -- a number is typed too, and must be one
+    choose(test, "ecs.reopenLimit")
+    test.key("Return")
+    test.key("Backspace")
+    test.key("Backspace")
+    type("x")
+    test.key("Return")
+    test.match(test.session().pluginState.probe.state.reopenLimit, 19, "ecs.reopenLimit after typing a word")
+    test.key("Backspace")
+    type("7")
+    test.key("Return")
+    test.match(test.session().pluginState.probe.state.reopenLimit, 7, "ecs.reopenLimit after typing it")
+
+    -- a list is typed as a Lua table
+    choose(test, "probe.sizes")
+    test.key("Return")
+
+    for _ = 1, #"{ 1, 2 }" do
+      test.key("Backspace")
+    end
+
+    type("{ 3, 4.5 }")
+    test.key("Return")
+    test.match(test.session().pluginState.probe.state.sizes, { 3, 4.5 }, "probe.sizes after typing it")
   end,
 }
