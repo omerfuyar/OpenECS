@@ -1004,11 +1004,12 @@ bool ECSIInput_Handle(const SDL_Event *event)
             break;
         }
 
-        // a binding wins over the focused panel's own handling of the key
+        // a binding wins over the focused panel's own handling of the key, except while the panel takes text input: then a key without Ctrl, Alt or Super is the panel's, so typing never runs a binding
         ECSPanel focus = ECSILayout_GetFocus();
         bool modifierKey = (key->key >= SDLK_LCTRL && key->key <= SDLK_RGUI) || key->key == SDLK_MODE;
         u32 modifiers = ECSIInput_Modifiers(key->mod);
-        const char *function = modifierKey || (modifiers & ECSModifier_AltGr) != 0 ? NULL : ECSIKeys_Find(key->key, modifiers, focus);
+        bool typing = focus != NULL && focus->textInput && (modifiers & (ECSModifier_Ctrl | ECSModifier_Alt | ECSModifier_Super)) == 0;
+        const char *function = modifierKey || typing || (modifiers & ECSModifier_AltGr) != 0 ? NULL : ECSIKeys_Find(key->key, modifiers, focus);
 
         if (function != NULL)
         {

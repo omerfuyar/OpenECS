@@ -81,7 +81,8 @@ Everything else. If the core's own machinery needs it, it is core; if only some 
 Some plugins are made and shipped together with OpenECS because the product needs them:
 
 - **sdl:** built into the executable. Gives native plugins the core's SDL objects (section 4).
-- **ui:** a **standard plugin**: drawing (shapes, text, images) and user-interface elements, offered as a service to other plugins.
+- **draw:** a **standard plugin**: drawing shapes, text and images into panels, offered as a service to other plugins.
+- **ui:** a standard plugin: user-interface elements with layout, which call back when the user clicks or types.
 - **settings:** the settings window, built on ui.
 - **launcher:** picks a preset or session when OpenECS starts without one, built on ui.
 
@@ -241,7 +242,7 @@ Keys are bound in **keys tables**. A keys table maps key combinations to the fun
 
 When several bindings match a key press, the binding set in the highest settings layer wins: the user's over the preset's over the defaults, which the core and the plugins give. Within one layer, the most specific binding wins: a panel type, then a workspace, then the whole tool. If no binding matches, the key goes to the focused panel, so a panel can run its own key logic, such as modal editing.
 
-A key press that triggers a binding types no text.
+A key press that triggers a binding types no text. While the focused panel takes text, keys pressed without Ctrl, Alt or Super go to it, so typing never runs a binding.
 
 ### 7.4 The core's keys
 
@@ -428,7 +429,7 @@ The settings window changes the user's settings file, and the user can also edit
 
 **Plugin API.** The functions and types through which plugins use the core.
 
-**Standard plugin.** A first-party plugin whose services other plugins build on, such as ui.
+**Standard plugin.** A first-party plugin whose services other plugins build on, such as draw and ui.
 
 **Pop-out.** Moving a panel into a new OS window.
 
