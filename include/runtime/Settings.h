@@ -70,12 +70,9 @@ void ECSISettings_RemovePlugin(ECSPlugin plugin);
 /// @brief Reports the settings of the files that are not declared, though their owner runs (ECSIPlugins_OwnerRuns), so a misspelt name is noticed. They are kept. Call it once the plugins are loaded.
 void ECSISettings_ReportUndeclared(void);
 
-/// @brief Gets the plugins that the user's files name for every tool and for this tool.
+/// @brief Gets the plugins that the settings files name: the core's file, and the user's files for every tool and for this tool.
 /// @return A list of plugin names, for ECSIPlugins_Load. Valid until ECSISettings_Terminate.
 const ECSValue *ECSISettings_GetPlugins(void);
 
-/// @brief Gets the path of the user's settings file, which may not exist.
-/// @return The path, or NULL if there is no config folder. Valid until ECSISettings_Terminate.
-const char *ECSISettings_GetUserPath(void);
 
 #pragma endregion Declarations

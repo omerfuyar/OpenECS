@@ -135,7 +135,6 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
     // reports name the file that asks for a plugin
     bool lastSession = APP.sessionPath != NULL && APP.lastSession != NULL && SDL_strcmp(APP.sessionPath, APP.lastSession) == 0;
     char *neededBy = NULL;
-    char *userNeededBy = NULL;
 
     if (SDL_asprintf(&neededBy, "%s '%s'", lastSession ? "the tool's last session" : APP.sessionPath != NULL ? "the session"
                                                                                                              : "the preset",
@@ -144,14 +143,9 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
         neededBy = NULL;
     }
 
-    if (SDL_asprintf(&userNeededBy, "the user's settings '%s'", ECSISettings_GetUserPath() != NULL ? ECSISettings_GetUserPath() : "") < 0)
-    {
-        userNeededBy = NULL;
-    }
-
-    // the preset's plugins first, then the extra plugins that the user's settings name
+    // the preset's plugins first, then the plugins that the settings files name for every tool
     SHUResult result = ECSIPlugins_Load(directories, directoryCount, ECSValue_GetTableField(preset->file, "depends"), neededBy != NULL ? neededBy : "the preset");
-    SHUResult extraResult = ECSIPlugins_Load(directories, directoryCount, ECSISettings_GetPlugins(), userNeededBy != NULL ? userNeededBy : "the user's settings");
+    SHUResult extraResult = ECSIPlugins_Load(directories, directoryCount, ECSISettings_GetPlugins(), "the settings files");
 
     if (result || extraResult)
     {
@@ -165,7 +159,6 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
     }
 
     SDL_free(neededBy);
-    SDL_free(userNeededBy);
 
     SDL_free(userData);
     SDL_free(userPlugins);

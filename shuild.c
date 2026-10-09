@@ -34,7 +34,7 @@ static SHUModuleType LINK_TYPE = SHUModuleType_LibraryStatic;
 static SHUI_String BUILD_DIRECTORY = {0};
 static SHUI_String OUTPUT_DIRECTORY = {0};
 
-static const char *const PLUGINS[] = {"ui", "launcher", "sketch_c", "sketch_lua"};
+static const char *const PLUGINS[] = {"ui", "launcher", "settings", "sketch_c", "sketch_lua"};
 
 #pragma endregion Setup
 
