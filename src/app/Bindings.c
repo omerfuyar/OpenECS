@@ -44,9 +44,8 @@ typedef struct ECSILuaPanel
 {
     ECSILuaPanelType *type;
     ECSPanel panel;
-    int state;   // registry reference of the value that create returned
-    int handle;  // registry reference of the panel's handle, which keeps it the same while the panel lives
-    int surface; // registry reference of the surface handle given to draw
+    int state;  // registry reference of the value that create returned
+    int handle; // registry reference of the panel's handle, which keeps it the same while the panel lives
 } ECSILuaPanel;
 
 /// @brief A timer started from Lua.
@@ -1197,16 +1196,10 @@ static const luaL_Reg OPENECS_BINDINGS_SERVICE[] = {
 
 #pragma region Panels
 
-static ECSSurface *ECSIBindings_CheckSurface(lua_State *state, int index)
+/// @brief Reads a surface handle; one that its Draw gave is gone once Draw returns.
+static ECSSurface *ECSIBindings_CheckSurface(int index)
 {
-    ECSSurface **handle = luaL_checkudata(state, index, OPENECS_LUA_SURFACE);
-
-    if (*handle == NULL)
-    {
-        luaL_error(state, "a surface is valid only while draw runs");
-    }
-
-    return *handle;
+    return ECSIServices_CheckHandle(index, OPENECS_LUA_SURFACE);
 }
 
 /// @brief Pushes a callback of a Lua panel type.
@@ -1239,7 +1232,6 @@ static void ECSIBindings_PanelFree(lua_State *state, ECSILuaPanel *luaPanel)
     ECSIServices_ForgetHandle(luaPanel->panel);
     luaL_unref(state, LUA_REGISTRYINDEX, luaPanel->state);
     luaL_unref(state, LUA_REGISTRYINDEX, luaPanel->handle);
-    luaL_unref(state, LUA_REGISTRYINDEX, luaPanel->surface);
     SDL_free(luaPanel);
 }
 
@@ -1259,11 +1251,6 @@ static SHUResult ECSIBindings_PanelCreate(ECSPanel panel, const ECSValue *savedS
 
     ECSIServices_PushHandle(OPENECS_LUA_PANEL, panel);
     luaPanel->handle = luaL_ref(state, LUA_REGISTRYINDEX);
-
-    ECSSurface **surface = lua_newuserdatauv(state, sizeof(ECSSurface *), 0);
-    *surface = NULL;
-    luaL_setmetatable(state, OPENECS_LUA_SURFACE);
-    luaPanel->surface = luaL_ref(state, LUA_REGISTRYINDEX);
 
     if (!ECSIBindings_PushCallback(state, luaPanel->type, "create"))
     {
@@ -1317,18 +1304,15 @@ static void ECSIBindings_PanelDraw(void *data, ECSSurface *surface, f64 seconds)
         return;
     }
 
+    // the core forgets the surface's handle once Draw returns
     lua_rawgeti(state, LUA_REGISTRYINDEX, luaPanel->state);
-    lua_rawgeti(state, LUA_REGISTRYINDEX, luaPanel->surface);
-    ECSSurface **handle = lua_touserdata(state, -1);
-    *handle = surface;
+    ECSIServices_PushHandle(OPENECS_LUA_SURFACE, surface);
     lua_pushnumber(state, (lua_Number)seconds);
 
     if (ECSILua_Call(3, 0))
     {
         ECSIBindings_PanelFailed(state, luaPanel);
     }
-
-    *handle = NULL;
 }
 
 static void ECSIBindings_PushEvent(lua_State *state, const ECSPanelEvent *event)
@@ -1690,7 +1674,7 @@ static u32 *ECSIBindings_Pixel(ECSSurface *surface, lua_Integer x, lua_Integer y
 
 static int ECSIBindings_SurfaceSetPixel(lua_State *state)
 {
-    ECSSurface *surface = ECSIBindings_CheckSurface(state, 1);
+    ECSSurface *surface = ECSIBindings_CheckSurface(1);
     u32 *pixel = ECSIBindings_Pixel(surface, luaL_checkinteger(state, 2), luaL_checkinteger(state, 3));
 
     // pixels outside the surface are clipped
@@ -1704,7 +1688,7 @@ static int ECSIBindings_SurfaceSetPixel(lua_State *state)
 
 static int ECSIBindings_SurfaceGetPixel(lua_State *state)
 {
-    ECSSurface *surface = ECSIBindings_CheckSurface(state, 1);
+    ECSSurface *surface = ECSIBindings_CheckSurface(1);
     u32 *pixel = ECSIBindings_Pixel(surface, luaL_checkinteger(state, 2), luaL_checkinteger(state, 3));
 
     if (pixel == NULL)
@@ -1718,7 +1702,7 @@ static int ECSIBindings_SurfaceGetPixel(lua_State *state)
 
 static int ECSIBindings_SurfaceSetRow(lua_State *state)
 {
-    ECSSurface *surface = ECSIBindings_CheckSurface(state, 1);
+    ECSSurface *surface = ECSIBindings_CheckSurface(1);
     lua_Integer y = luaL_checkinteger(state, 2);
     usz length = 0;
     const char *bytes = luaL_checklstring(state, 3, &length);
@@ -1745,7 +1729,7 @@ static int ECSIBindings_SurfaceSetRow(lua_State *state)
 
 static int ECSIBindings_SurfaceIndex(lua_State *state)
 {
-    ECSSurface *surface = ECSIBindings_CheckSurface(state, 1);
+    ECSSurface *surface = ECSIBindings_CheckSurface(1);
     const char *key = luaL_checkstring(state, 2);
 
     if (SDL_strcmp(key, "width") == 0)
@@ -1946,7 +1930,7 @@ void ECSIBindings_Initialize(void)
     lua_setfield(state, -2, "__index");
     lua_pop(state, 1);
 
-    luaL_newmetatable(state, OPENECS_LUA_SURFACE);
+    ECSIServices_PushHandleMetatable(OPENECS_LUA_SURFACE);
     luaL_newlib(state, OPENECS_BINDINGS_SURFACE_METHODS);
     lua_pushcclosure(state, ECSIBindings_SurfaceIndex, 1);
     lua_setfield(state, -2, "__index");

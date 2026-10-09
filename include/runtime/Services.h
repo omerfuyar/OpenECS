@@ -6,7 +6,7 @@
 
 #pragma region Declarations
 
-/// @brief Prepares the table that gives each object one Lua handle, and registers the core's handle type ecs.panel.
+/// @brief Prepares the table that gives each object one Lua handle, and registers the core's handle types ecs.panel and ecs.surface.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIServices_Initialize(void);
 

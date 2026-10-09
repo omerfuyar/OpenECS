@@ -78,7 +78,7 @@ typedef enum ECSSurfaceType
     ECSSurfaceType_Gpu,
 } ECSSurfaceType;
 
-/// @brief The picture a panel draws into. Valid only during the Draw call.
+/// @brief The picture a panel draws into. Valid only during the Draw call. Services take it as handle<ecs.surface>, so a panel can pass it to a service that draws.
 typedef struct ECSSurface
 {
     ECSSurfaceType type;
