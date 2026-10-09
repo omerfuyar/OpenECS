@@ -95,8 +95,8 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 - Headers hold declarations only: types, function declarations and macros. Function and variable definitions, including `static inline` functions, are in source files.
 - Headers start with `#pragma once` and group their contents with `#pragma region`. A source file keeps its internal elements in a `Source Only` region.
 - Functions used by only one source file are `static`.
-- First-party plugins are in `plugins/<name>/`, and first-party presets in `presets/`. `plugins/` holds the standard plugins only (20).
-- Examples are in `examples/` (17.6), and tests in `tests/` (17.5).
+- First-party plugins and presets are in OpenECS-std, in `std/` (17.7).
+- Examples are in OpenECS-examples, in `examples/` (17.6), and tests in `tests/` (17.5).
 
 ### 1.6 Style
 
@@ -325,7 +325,7 @@ typedef struct ECSSurface
 - GPU panels get the GPU device and their texture through the **sdl** plugin (9.8) and draw with SDL's GPU API.
 - Plugins that compute their own pixels use pixels surfaces. C writes the pixels directly; Lua uses the surface's methods (11.4).
 - `ECSSurface_Fill(surface, x, y, width, height, color)` fills a rectangle of a pixels surface with one colour, in pixels and clipped, such as to clear it. Lua: `surface:fill(x, y, width, height, color)`.
-- The **ui** plugin draws into pixels surfaces, with SDL's surface functions and SDL3_ttf (20.2).
+- The **ui** plugin draws into pixels surfaces, with SDL's surface functions and SDL3_ttf (20).
 
 ## 6. Layout
 
@@ -732,7 +732,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - A handle stands for an object owned by its provider: a pointer plus a type name and a destructor, registered with `ECSHandle_RegisterType(plugin, "audio.sound", Destroy)`. In C, a `handle<audio.sound>` is the object's pointer.
 - In Lua, a handle is a userdata whose metatable names its type. A handle of the wrong type is rejected with a clear error. When Lua no longer uses a handle, its garbage collector calls the destructor.
 - The same object always has the same Lua handle. A provider that still uses an object after giving it to Lua counts references, and its destructor drops one.
-- The core's own handle types are `ecs.panel`, Lua's panel handles (11.4), and `ecs.surface`, the surface a panel draws into. A surface handle is valid only during the `Draw` call that gives it, so a panel can pass its surface to a service that draws, such as the ui plugin's (20.2).
+- The core's own handle types are `ecs.panel`, Lua's panel handles (11.4), and `ecs.surface`, the surface a panel draws into. A surface handle is valid only during the `Draw` call that gives it, so a panel can pass its surface to a service that draws, such as the ui plugin's (20).
 - A Lua plugin provides a handle type too: `ecs.handle.registerType(name)`, `ecs.handle.new(name, value)` for a handle that stands for a Lua value, and `ecs.handle.value(handle, name)`, which gives the value back to the plugin that owns the type. Users see such a handle like any other. The core keeps the value until the handle is collected.
 - Handles that wait for their finalizer at exit are collected before the handle types are freed.
 - A failed plugin's handles become invalid without their destructor. On exit, the objects of handles that Lua still holds are destroyed before plugins shut down.
@@ -846,15 +846,7 @@ return {
 
 ### 12.4 The settings window
 
-- The first-party Lua plugin `settings` draws with the ui plugin (20.2). The core's settings file loads it in every tool (12.3), and binds `,` after the prefix to `settings.open` (7.8), which opens the window as a panel of type `settings.window`, or shows the one that is open.
-- The window lists every declared setting under a title for its owner: the core's first, then each plugin's, each by name. A row shows the setting's name, a control with its value in effect, and its description.
-- The control depends on the type: a check box for a `bool`, a button for a `choice`, and a text field for the other types. A `list` or a `table` shows as a Lua table, such as `{ 1, 2 }`.
-- The window changes values in the user's settings file (12.2): a step back or forward toggles a `bool`, cycles a `choice`, and adds or takes 1 from an `integer` or a `number`.
-- `settings.edit` toggles a `bool` and cycles a `choice` forward. For the other types it types the value with text input (4.6): it starts typing, and saves the value typed. A number must read as one, and a `list` or a `table` as a Lua table, which is read with no access to anything. A value that cannot be read is reported, and typing goes on. Backspace deletes the last character, and Escape, or choosing another setting, drops what was typed.
-- The functions `settings.up`, `settings.down`, `settings.previous`, `settings.next` and `settings.edit` choose a setting and change it. The plugin binds them for its panel type (7.8) to Up, Down, Left, Right and Return.
-- The list scrolls under the window's title, with a scrollbar when it is longer than the window. The wheel scrolls it, and so does dragging the scrollbar's thumb; a press beside the thumb moves the thumb there. Choosing a setting with the keys scrolls it into view.
-- A click chooses the setting under it. A click on its control also runs `settings.edit`.
-- The panel's saved state is the chosen setting.
+The settings window is the first-party Lua plugin `settings`, in OpenECS-std (17.7). Its design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), section 3.
 
 ## 13. Presets and sessions
 
@@ -963,14 +955,7 @@ openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE
 
 ### 13.8 The launcher
 
-- When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. Its app id is `openecs.launcher`, it sets `listed = false`, and it shows one panel of the first-party Lua plugin `launcher`.
-- The panel type `launcher.list` lists the presets, then the saved sessions (13.7). Presets whose tool has a last session come first, the most recently used first; the others follow by name. Sessions are listed newest first.
-- An entry shows the tool's name. A session's entry also shows the file's name and when it was saved.
-- The panel reads both lists when it is created and each time it is shown again.
-- The functions `launcher.up`, `launcher.down` and `launcher.open` choose an entry and open it. The plugin binds them for its panel type (7.8) to Up, Down and Return. The wheel chooses too, and a click on an entry opens it.
-- The panel's saved state is the chosen entry, so the launcher chooses it again at the next start.
-- It draws with the ui plugin (20.2).
-- A preset opens with `ecs.session.openPreset`, a session with `ecs.session.open` (13.5).
+When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. The preset and its plugin `launcher` are in OpenECS-std (17.7); their design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), section 4.
 
 ## 14. Errors and logging
 
@@ -1056,7 +1041,7 @@ OpenECS follows the XDG Base Directory specification:
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.
 - Native plugins are shared libraries, built against the plugin header only. They do not link against the core; their calls to it are resolved when they are loaded.
 - First-party native plugins may call SDL3 and SDL3_ttf. Like their calls to the core, these calls are resolved when the plugin is loaded, against the libraries the executable loaded, so every plugin uses the executable's copy of SDL.
-- Every folder in `plugins/` is a first-party plugin. It is built from every C file in its folder, so the build needs no settings for each plugin. Its Lua files and its folders, which hold its Lua modules (9.6), are copied.
+- A first-party plugin is built from every C file in its folder, so the build needs no settings for each plugin. Its Lua files and its folders, which hold its Lua modules (9.6), are copied. `std/build.c` names the folders (17.7).
 - The plugins of the examples (17.6) and of the tests (17.5) are built the same way, into the build's copies of their folders.
 
 ### 17.3 Compiler
@@ -1077,7 +1062,7 @@ OpenECS follows the XDG Base Directory specification:
 
 - A test is a Lua file in `tests/`. Debug builds run it with `openecs --test FILE`; other builds refuse the option.
 - The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `launcher` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.6), `presets` and `sessions`, folders relative to the test file that stand for the user's presets and the saved sessions (16), and `run`, a function that gets the `test` table.
-- Tests keep their presets and test plugins in `tests/presets/` and `tests/plugins/`, so a change to a first-party preset or an example does not change a test. The test plugins `boxes`, in Lua, and `cboxes`, in C, give tests panels to arrange.
+- Tests keep their presets and test plugins in `tests/presets/` and `tests/plugins/`, so a change to a first-party preset or an example does not change a test. OpenECS-std's tests join them in the build (17.7). The test plugins `boxes`, in Lua, and `cboxes`, in C, give tests panels to arrange.
 - With the flag `--tests`, the build copies `tests/` to `build/<TYPE>/tests/`, beside `bin/`, and builds the native test plugins there. Tests run from that copy, so a test reads the build's copies of the plugin header, `ecs.lua` and the core's settings file.
 - A test starts from its preset alone. It reads none of the user's settings, plugins or sessions, and writes no session and no log file. SDL's offscreen video driver and software renderer are the defaults, so a test needs no display; the variables `SDL_VIDEO_DRIVER` and `SDL_RENDER_DRIVER` choose others, for example to watch a test.
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).
@@ -1109,12 +1094,25 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.6 Examples
 
-- An example is a folder in `examples/` that shows plugin authors one part of the plugin interface. Its number orders the examples from the first steps to the complex ones, so they are read in order: `1_hello`, `2_native`, and so on.
+- The examples are in OpenECS-examples (17.7). An example is a folder that shows plugin authors one part of the plugin interface. Its number orders the examples from the first steps to the complex ones, so they are read in order: `1_hello`, `2_native`, and so on.
 - An example holds a preset, `preset.lua`, the folders of its plugins, and its tests, the files whose names start with `test`. The preset names the folder in `pluginsDir`, so the example needs nothing else but the standard plugins.
-- Its comments say what a statement does and when it may be called, not what the functions' documentation already says.
-- `12_sketch` holds `sketch_c` and `sketch_lua`, the same plugin in C and in Lua: canvases and a clock with settings, services, keys, events and state. They use the plugin interface the same way in both languages, and draw the same strokes into the same pixels.
-- With the flag `--examples`, the build copies `examples/` whole, sources too, to `bin/examples/`, and builds each example's native plugins there.
+- Its comments explain how the core behaves: what a statement makes the core do, when it may be called, and a concept the first time it appears. They do not explain the example's own logic or repeat the functions' documentation.
+- With the flag `--examples`, the build copies the numbered folders of `examples/`, sources too, to `bin/examples/`, and builds each example's native plugins there.
 - A change between releases may break an example. Before a release, the examples are brought up to date, so their tests pass (19.4).
+
+### 17.7 Repositories
+
+- OpenECS holds the core. Two more repositories hold what ships with it:
+
+  | Repository         | Holds                                                                                                                     | Folder in OpenECS |
+  | ------------------ | ------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+  | `OpenECS-std`      | The standard plugins, the first-party plugins `settings` and `launcher`, the preset `launcher`, and their tests and design | `std/`            |
+  | `OpenECS-examples` | The examples (17.6)                                                                                                       | `examples/`       |
+
+- Both are git submodules of OpenECS, so one build and one release hold all three (19.4). A submodule names one commit of its repository's `dev`; OpenECS moves it forward in a pull request.
+- The build includes `std/build.c` when it is there. That file builds the standard plugins into `bin/plugins/`, copies their presets into `bin/presets/`, and, with `--tests`, copies their tests beside OpenECS's own, so one test run covers both.
+- Each repository has its own checks (19.3). They check out OpenECS's `dev` with its submodules and put the repository's own commit in its folder.
+- Each repository follows OpenECS's conventions and rules for contributors; its `AGENTS.md` and `DESIGN.md` name what is its own.
 
 ## 18. Platform notes
 
@@ -1182,36 +1180,13 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 20.1 Rules
 
-- A standard plugin is a first-party plugin whose services other plugins build on (OVERVIEW 3.3). It is built and loaded like a third-party plugin: from its folder in `plugins/`, against the plugin interface only (2.2), with a manifest and a version of its own.
+- A standard plugin is a first-party plugin whose services other plugins build on (OVERVIEW 3.3). It is built and loaded like a third-party plugin: from its folder in OpenECS-std (17.7), against the plugin interface only (2.2), with a manifest and a version of its own.
 - The core never refers to a standard plugin, and a user's plugin of the same name replaces it (9.3, 9.9).
 - Plugins that use a standard plugin name it in their manifest's `depends`, and look up its functions with the signatures it documents (10.5).
 
-### 20.2 ui
+### 20.2 OpenECS-std
 
-- The `ui` plugin draws shapes, text, images and user-interface elements into the pixels surface of another plugin's panel. A panel's `Draw` passes its surface handle (10.6) to ui's functions.
-- Positions and sizes are in layout units; ui multiplies them by the surface's scale. Colours are ARGB integers.
-- It is a native plugin. It calls SDL3 and SDL3_ttf itself (17.2): it wraps the surface's pixels in an SDL surface for each call, and draws text with one SDL3_ttf surface text engine, which keeps the glyphs it has drawn.
-- Its font is the core's `ecs.font`, at the size the caller asks for; a relative path starts at the executable's folder. The labels of its elements are in the core's `ecs.fontSize`.
-- It reads image files, PNG, JPG or BMP, with SDL, the first time they are drawn, and keeps them until it shuts down. A relative path starts at the executable's folder; a plugin draws its own images by its folder (11.3). A file that cannot be read is reported once.
-- Its elements are drawn in the colours of the core's theme. They are only drawn: the caller handles the input and keeps the state, such as whether a check box is on.
-- Its functions:
-
-  | Function       | Signature                                                                    | Does                                                                                                                                                                                 |
-  | -------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-  | `ui.fill`      | `void(handle<ecs.surface>, float, float, float, float, int64)`               | Fills a rectangle `x, y, width, height` with a colour, blending by its alpha.                                                                                                        |
-  | `ui.text`      | `float(handle<ecs.surface>, string, float, float, float, int64)`             | Draws text at `x, y`, the top left of its line, in a size and a colour, and gives its width.                                                                                         |
-  | `ui.measure`   | `void(string, float, out float, out float)`                                  | Gives the width and the line height of a text in a size, without drawing it.                                                                                                         |
-  | `ui.color`     | `int64(string)`                                                              | Reads a colour: `"#RRGGBB"`, `"#RRGGBBAA"`, or the name of a colour of the core's theme, such as `"text"` for `ecs.colorText`.                                                       |
-  | `ui.outline`   | `void(handle<ecs.surface>, float, float, float, float, float, int64)`        | Draws the edge of a rectangle `x, y, width, height`, in a thickness and a colour.                                                                                                    |
-  | `ui.image`     | `bool(handle<ecs.surface>, string, float, float, float, float)`              | Draws an image file stretched to a rectangle `x, y, width, height`. Gives false if the file cannot be read.                                                                          |
-  | `ui.imageSize` | `bool(string, out float, out float)`                                         | Gives an image file's width and height in pixels. Gives false if the file cannot be read.                                                                                            |
-  | `ui.button`    | `void(handle<ecs.surface>, string, float, float, float, float, int)`         | Draws a button with a label in a rectangle. The state is 0 for normal, 1 for under the pointer or chosen, and 2 for pressed.                                                         |
-  | `ui.check`     | `void(handle<ecs.surface>, float, float, float, bool)`                       | Draws a check box at `x, y` in a size, filled when it is on.                                                                                                                         |
-  | `ui.field`     | `float(handle<ecs.surface>, string, float, float, float, float, bool)`       | Draws a text field with a line of text in a rectangle. A focused field has a cursor after its text and keeps the cursor in view. Gives the cursor's x, such as for text input (4.6). |
-  | `ui.scrollbar` | `void(handle<ecs.surface>, float, float, float, float, float, float, float)` | Draws a vertical scrollbar in a rectangle, for content of a total length, of which a length is shown, scrolled by an offset. It draws nothing when all the content is shown.         |
-  | `ui.thumb`     | `void(float, float, float, float, out float, out float)`                     | Gives where a scrollbar's thumb starts and how long it is, from the bar's length and the content's total, shown length and offset, so the caller can tell a press on it.             |
-
-- A colour that cannot be read is reported, and gives opaque magenta, so the mistake shows.
+The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md).
 
 ---
 
@@ -1308,8 +1283,6 @@ OpenECS follows the XDG Base Directory specification:
 **Tag (git).** A name for one commit, such as `v0.1.0`.
 
 **Texture.** An image stored on the graphics card.
-
-**Thumb (scrollbar).** The part of a scrollbar that shows which part of the content is in view, and that the user drags to scroll.
 
 **Topological order.** An order in which every item comes after the items it depends on.
 

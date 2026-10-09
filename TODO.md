@@ -2,11 +2,6 @@
 
 What is not decided yet, and work that is waiting. When an item is settled, write the decision into [OVERVIEW.md](OVERVIEW.md) or [DESIGN.md](DESIGN.md) and remove it from here.
 
-## Open questions
-
-- **Other first-party plugins.** Which other plugins ship with OpenECS? (OVERVIEW 3.3)
-- **Domain plugins.** Should plugins for specific domains, such as glTF models, audio or networking, live in their own repositories instead of being first-party? (OVERVIEW 3.3)
-
 ## Tasks
 
 - **Implement the rest of DESIGN.md.** Not done yet: GPU surfaces.
