@@ -125,13 +125,13 @@ Without a preset, OpenECS shows the launcher: it lists the presets and saved ses
 
 ### Examples
 
-The examples in `examples/` show how to write plugins, one part at a time. Read them in the order of their numbers, from `1_hello` to `11_sketch`. Each holds a preset, its plugins and a test:
+The examples in `examples/` show how to write plugins, one part at a time. Read them in the order of their numbers, from `1_hello` to `12_sketch`. Each holds a preset, its plugins and a test:
 
 ``` shell
 ./build/Static/Release/bin/OpenECS --preset build/Static/Release/bin/examples/1_hello/preset.lua
 ```
 
-The last one, `11_sketch`, shows two plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Shift and a drag carry a canvas's strokes to another canvas, and a canvas takes strokes files dropped from a file manager. Ctrl+Tab switches workspace.
+The last one, `12_sketch`, shows two plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Shift and a drag carry a canvas's strokes to another canvas, and a canvas takes strokes files dropped from a file manager. Ctrl+Tab switches workspace.
 
 ### Testing
 

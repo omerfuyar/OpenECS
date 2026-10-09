@@ -2,7 +2,7 @@
 
 // Window: the OS windows and their renderers, frame pacing, and the core's own interface: tab rows, grips, the focus border, dragging, menus and the list of prefix keys. The only module that calls Clay.
 
-#include "interface/Layout.h"
+#include "interface/Popups.h"
 
 #pragma region Declarations
 
@@ -40,6 +40,29 @@ ECSIRoot *ECSIWindow_GetRoot(SDL_WindowID id, bool *retMain);
 /// @brief Chooses the OS window of the pointer event being handled. The pointer functions below and ECSIWindow_PanelAt take positions in its layout units.
 /// @param id SDL's id of the window; an unknown id chooses the main window.
 void ECSIWindow_SetEventWindow(SDL_WindowID id);
+
+/// @brief Finds the popup under a point of the event window: the popup whose SDL popup window it is, or the newest popup drawn inside it that holds the point.
+/// @param x Horizontal position in layout units.
+/// @param y Vertical position in layout units.
+/// @param retX Gets the point's position in the popup's surface.
+/// @param retY Gets the point's position in the popup's surface.
+/// @return The popup, or NULL.
+ECSPopup ECSIWindow_PopupAt(f32 x, f32 y, f32 *retX, f32 *retY);
+
+/// @brief Converts a point of the event window to a popup's surface pixels, for the popup that got a press, also outside it.
+/// @param popup The popup.
+/// @param x Horizontal position in layout units.
+/// @param y Vertical position in layout units.
+/// @param retX Gets the position in the popup's surface.
+/// @param retY Gets the position in the popup's surface.
+void ECSIWindow_ToPopup(ECSPopup popup, f32 x, f32 y, f32 *retX, f32 *retY);
+
+/// @brief Gets where a popup shows, for tests.
+/// @param popup The popup.
+/// @param retRect Gets its rectangle in the layout units of its panel's OS window.
+/// @param retWindow Gets the number of that OS window, as ECSIWindow_Get counts them.
+/// @return false if it has not been shown yet.
+bool ECSIWindow_PopupRect(ECSPopup popup, SDL_FRect *retRect, usz *retWindow);
 
 /// @brief Finds the visible panel under a point of the event window, or of another OS window that the point falls in on the screen.
 /// @param x Horizontal position in layout units.

@@ -508,6 +508,34 @@ static int ECSITest_Panel(lua_State *state)
     return 1;
 }
 
+/// @brief test.popup(number): the rectangle of an open popup, the oldest first, in its OS window, and the number of that window.
+static int ECSITest_Popup(lua_State *state)
+{
+    lua_Integer number = luaL_checkinteger(state, 1);
+    usz count = 0;
+    ECSPopup *popups = ECSIPopups_GetOpen(&count);
+    SDL_FRect rect = {0};
+    usz window = 0;
+
+    if (number < 1 || (usz)number > count || !ECSIWindow_PopupRect(popups[number - 1], &rect, &window))
+    {
+        return luaL_error(state, "there is no shown popup %d", (int)number);
+    }
+
+    lua_createtable(state, 0, 5);
+    lua_pushinteger(state, (lua_Integer)window);
+    lua_setfield(state, -2, "window");
+    lua_pushnumber(state, (lua_Number)rect.x);
+    lua_setfield(state, -2, "x");
+    lua_pushnumber(state, (lua_Number)rect.y);
+    lua_setfield(state, -2, "y");
+    lua_pushnumber(state, (lua_Number)rect.w);
+    lua_setfield(state, -2, "width");
+    lua_pushnumber(state, (lua_Number)rect.h);
+    lua_setfield(state, -2, "height");
+    return 1;
+}
+
 /// @brief test.window(number): chooses the OS window that later input events go to, and that test.screenshot saves: 1 for the main window, then the pop-out windows. Gives the window's position on the screen.
 static int ECSITest_Window(lua_State *state)
 {
@@ -557,6 +585,7 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"session", ECSITest_Session},
     {"rect", ECSITest_Rect},
     {"panel", ECSITest_Panel},
+    {"popup", ECSITest_Popup},
     {"window", ECSITest_Window},
     {"close", ECSITest_Close},
     {"screenshot", ECSITest_Screenshot},
