@@ -157,6 +157,7 @@ static void ECSIMenus_BuildPanelMenu(ECSIMenuEntry **entries, ECSPanel panel)
     ECSIMenus_AddFunction(entries, "ecs.layout.close", NULL, panel);
     ECSIMenus_AddFunction(entries, "ecs.panel.restart", NULL, panel);
     ECSIMenus_AddFunction(entries, "ecs.layout.maximize", NULL, panel);
+    ECSIMenus_AddFunction(entries, "ecs.layout.popOut", NULL, panel);
     ECSIMenus_AddFunction(entries, "ecs.layout.lock", NULL, panel);
     ECSIMenus_AddFunction(entries, "ecs.layout.reopen", NULL, panel);
 
@@ -304,6 +305,11 @@ static void ECSIMenus_Maximize(void)
     ECSILayout_ToggleMaximize();
 }
 
+static void ECSIMenus_PopOut(void)
+{
+    ECSILayout_PopOut();
+}
+
 static void ECSIMenus_Close(void)
 {
     ECSLayout_Close(NULL);
@@ -433,6 +439,7 @@ static const struct
     {"ecs.layout.moveDown", ECSIMenus_MoveDown, "Move the panel down"},
     {"ecs.layout.nextTab", ECSIMenus_NextTab, "Show the next tab"},
     {"ecs.layout.maximize", ECSIMenus_Maximize, "Maximize or restore the group"},
+    {"ecs.layout.popOut", ECSIMenus_PopOut, "Pop the panel out into a new window"},
     {"ecs.layout.close", ECSIMenus_Close, "Close the panel"},
     {"ecs.layout.closeGroup", ECSIMenus_CloseGroup, "Close the group's panels"},
     {"ecs.layout.lock", ECSIMenus_Lock, "Lock or unlock the group"},
@@ -487,6 +494,12 @@ bool ECSIMenus_Offers(const char *function, ECSPanel panel)
     if (SDL_strncmp(function, "ecs.layout.split", SDL_strlen("ecs.layout.split")) == 0)
     {
         return panel != NULL && panel->type != NULL;
+    }
+
+    // a panel alone in its OS window stays, and so does a locked one
+    if (SDL_strcmp(function, "ecs.layout.popOut") == 0)
+    {
+        return panel != NULL && ECSILayout_CanPopOut(panel);
     }
 
     // the functions that move or close panels; the user cannot do that to a locked group

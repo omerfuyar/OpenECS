@@ -19,6 +19,9 @@
 /// @brief Longest path to a part of a file that a problem report names.
 #define OPENECS_SESSION_PATH_SIZE 256
 
+/// @brief Size of a pop-out window whose session gives none, in layout units.
+#define OPENECS_SESSION_POP_OUT_SIZE 400.0f
+
 /// @brief A tool's last session, in its folder in the state folder.
 #define OPENECS_LAST_SESSION_FILE "session.lua"
 
@@ -207,40 +210,62 @@ static SHUResult ECSISession_ReadNode(ECSISessionReader *reader, const ECSValue 
     return SHUResult_Ok;
 }
 
-/// @brief Builds the workspace that a table describes.
+/// @brief Builds the workspace that a table describes: the main window's tree, then a tree for each pop-out window.
 static SHUResult ECSISession_ReadWorkspace(ECSISessionReader *reader, const ECSValue *saved)
 {
     const ECSValue *windows = ECSValue_GetTableField(saved, "windows");
-    const ECSValue *tree = ECSValue_GetListItem(windows, 0);
-    ECSINode *root = NULL;
+    usz count = SDL_max(1, ECSValue_GetListCount(windows));
+    ECSIRootDesc *roots = SDL_calloc(count, sizeof(ECSIRootDesc));
+    SHUResult result = roots == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
 
     reader->focusId = ECSValue_GetInteger(ECSValue_GetTableField(saved, "focus"), 0);
     reader->focus = NULL;
-    reader->maximized = NULL;
 
-    if (ECSValue_GetListCount(windows) > 1)
+    for (usz i = 0; !result && i < ECSValue_GetListCount(windows); i++)
     {
-        ECSISession_Report(reader, "pop-out windows are not implemented yet; only the first window is used.");
-    }
-
-    if (tree != NULL)
-    {
+        const ECSValue *tree = ECSValue_GetListItem(windows, i);
         usz length = ECSISession_Enter(reader, "windows", 0);
-        ECSISession_Enter(reader, NULL, 0);
+        ECSISession_Enter(reader, NULL, i);
+        reader->maximized = NULL;
 
         if (ECSValue_GetType(tree) != ECSValueType_Table)
         {
-            ECSISession_Report(reader, "a window must be a table; the workspace is left empty.");
+            ECSISession_Report(reader, "a window must be a table; it is left empty.");
         }
         else
         {
-            SHU_ReturnResult(ECSISession_ReadNode(reader, tree, &root));
+            result = ECSISession_ReadNode(reader, tree, &roots[i].tree);
+            roots[i].maximized = reader->maximized;
+
+            // a pop-out window opens with the size it had
+            if (i > 0)
+            {
+                roots[i].width = ECSISession_GetSize(reader, tree, "width", OPENECS_SESSION_POP_OUT_SIZE);
+                roots[i].height = ECSISession_GetSize(reader, tree, "height", OPENECS_SESSION_POP_OUT_SIZE);
+            }
         }
 
         ECSISession_Leave(reader, length);
     }
 
-    SHU_ReturnResult(ECSILayout_WorkspaceAdd(ECSValue_GetString(ECSValue_GetTableField(saved, "name"), "workspace"), root, reader->focus, reader->maximized), if (root != NULL) { ECSILayout_NodeDestroy(&root); });
+    // the workspace takes the trees, also when it fails
+    if (!result)
+    {
+        result = ECSILayout_WorkspaceAdd(ECSValue_GetString(ECSValue_GetTableField(saved, "name"), "workspace"), roots, count, reader->focus);
+    }
+    else
+    {
+        for (usz i = 0; roots != NULL && i < count; i++)
+        {
+            if (roots[i].tree != NULL)
+            {
+                ECSILayout_NodeDestroy(&roots[i].tree);
+            }
+        }
+    }
+
+    SDL_free(roots);
+    SHU_ReturnResult(result);
 
     // the keys go with the workspace just added, so their positions match
     return ECSIKeys_AddWorkspace(ECSValue_GetTableField(saved, "keys"));

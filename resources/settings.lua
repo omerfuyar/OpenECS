@@ -19,6 +19,7 @@ return {
     ["Shift+Down"] = "ecs.layout.moveDown",
     ["Tab"] = "ecs.layout.nextTab",
     ["M"] = "ecs.layout.maximize",
+    ["P"] = "ecs.layout.popOut",
     ["X"] = "ecs.layout.close",
     ["Shift+X"] = "ecs.layout.closeGroup",
     ["L"] = "ecs.layout.lock",

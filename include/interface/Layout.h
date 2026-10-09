@@ -40,6 +40,25 @@ struct ECSINode
     ECSPanel scrolledTo; // the shown panel whose tab was last scrolled into view
 };
 
+/// @brief The layout of one OS window: the main window, or a pop-out window (DESIGN 6.1).
+typedef struct ECSIRoot
+{
+    u32 id;              // unique while the program runs; the window finds its root by it
+    ECSINode *tree;      // NULL when the root has no panels; only a workspace's main root is ever empty
+    ECSINode *maximized; // group that fills the OS window, or NULL
+    f32 width;           // size of the OS window, in layout units
+    f32 height;
+} ECSIRoot;
+
+/// @brief Describes a root for ECSILayout_WorkspaceAdd.
+typedef struct ECSIRootDesc
+{
+    ECSINode *tree;      // the layout tree, or NULL
+    ECSINode *maximized; // group of the tree that fills the OS window, or NULL
+    f32 width;           // a pop-out window's size, in layout units
+    f32 height;
+} ECSIRootDesc;
+
 /// @brief Where a moved panel lands.
 typedef enum ECSIZone
 {
@@ -54,14 +73,18 @@ typedef enum ECSIZone
     ECSIZone_WindowRight,
     ECSIZone_WindowTop,
     ECSIZone_WindowBottom,
+    ECSIZone_PopOut, // a new pop-out window
 } ECSIZone;
 
 /// @brief A place to drop a panel.
 typedef struct ECSIDrop
 {
     ECSIZone zone;
-    ECSINode *group; // the target group; NULL for the window's edges
-    usz index;        // tabs: the gap between tabs, starting at 0
+    ECSIRoot *root;  // the root it lands in; NULL for a pop-out
+    ECSINode *group; // the target group; NULL for the window's edges and a pop-out
+    usz index;       // tabs: the gap between tabs, starting at 0
+    f32 width;       // pop-out: the new window's size in layout units; 0 for the panel's size
+    f32 height;
 } ECSIDrop;
 
 /// @brief Function called for each visible group.
@@ -122,13 +145,13 @@ void ECSILayout_GroupSetLocked(ECSINode *group, bool locked);
 /// @param node Node to destroy. Must not be part of a workspace.
 void ECSILayout_NodeDestroy(ECSINode **node);
 
-/// @brief Adds a workspace.
+/// @brief Adds a workspace. Its trees are tidied, and a pop-out root without panels is left out.
 /// @param name Name of the workspace.
-/// @param tree Layout tree of the main OS window, or NULL. The workspace owns it from now on.
-/// @param focus Panel of the tree to focus, or NULL for the first panel.
-/// @param maximized Group of the tree that fills the window, or NULL.
+/// @param roots The main window's root, then one for each pop-out window. The workspace owns their trees from now on, also when it fails.
+/// @param count Number of roots, at least 1.
+/// @param focus Panel of the trees to focus, or NULL for the first panel.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSILayout_WorkspaceAdd(const char *name, ECSINode *tree, ECSPanel focus, ECSINode *maximized);
+SHUWUR SHUResult ECSILayout_WorkspaceAdd(const char *name, const ECSIRootDesc *roots, usz count, ECSPanel focus);
 
 /// @brief Switches to a workspace.
 /// @param index Position of the workspace, starting at 0. Ignored if there is no such workspace.
@@ -144,44 +167,79 @@ SHUWUR SHUResult ECSILayout_Save(ECSValue *retWorkspaces, usz *retCurrent);
 /// @return Its position, starting at 0.
 usz ECSILayout_GetCurrentWorkspace(void);
 
+/// @brief Gets the roots of the current workspace: the main window's, then the pop-out windows', in the order they were made.
+/// @param retCount Gets the number of roots; 0 if there is no workspace.
+/// @return The roots, valid until the layout changes.
+ECSIRoot *const *ECSILayout_GetRoots(usz *retCount);
+
+/// @brief Finds a root of any workspace by its id.
+/// @param id The root's id.
+/// @param retShown Gets whether the root belongs to the current workspace, or NULL.
+/// @return The root, or NULL if it is gone.
+ECSIRoot *ECSILayout_FindRoot(u32 id, bool *retShown);
+
+/// @brief Finds the root that holds a panel, in any workspace.
+/// @param panel The panel, or NULL.
+/// @return The root, or NULL.
+ECSIRoot *ECSILayout_RootOf(ECSPanel panel);
+
+/// @brief Sets the size of a root's OS window, which ECSILayout_Update lays the root out in.
+/// @param root The root.
+/// @param width Width in layout units.
+/// @param height Height in layout units.
+void ECSILayout_SetRootSize(ECSIRoot *root, f32 width, f32 height);
+
+/// @brief Gets every panel of a root, for closing them.
+/// @param root The root.
+/// @return stb_ds array of the panels. Free it with arrfree.
+ECSPanel *ECSILayout_GetRootPanels(const ECSIRoot *root);
+
+/// @brief Gives the focus to the panel of a root that had it last, when the root's OS window gets the system's focus. Nothing changes if the focused panel is in the root.
+/// @param root The root.
+void ECSILayout_FocusRoot(ECSIRoot *root);
+
+/// @brief Checks whether the user can pop a panel out: its group is not locked, and it is not alone in its OS window.
+/// @param panel The panel.
+bool ECSILayout_CanPopOut(ECSPanel panel);
+
+/// @brief Pops the focused panel out into a new OS window, as the user does. Locks stop it, and a panel alone in its OS window stays.
+void ECSILayout_PopOut(void);
+
 /// @brief Asks for the window to be drawn again.
 void ECSILayout_RequestFrame(void);
 
 /// @brief Checks whether the window needs a frame: one was asked for, or a visible panel draws continuously.
 bool ECSILayout_WantsFrame(void);
 
-/// @brief Computes every rectangle of the current workspace for the OS window's size, and tells the panels that became visible or hidden, or changed size. A frame starts with it, so it clears the request for one.
-/// @param width Width of the OS window in layout units.
-/// @param height Height of the OS window in layout units.
-void ECSILayout_Update(f32 width, f32 height);
+/// @brief Computes every rectangle of the current workspace's roots for their sizes, and tells the panels that became visible or hidden, or changed size. A frame starts with it, so it clears the request for one.
+void ECSILayout_Update(void);
 
-/// @brief Calls a function for every visible group of the current workspace.
+/// @brief Calls a function for every visible group of a root.
+/// @param root The root, or NULL for none.
 /// @param function The function.
 /// @param userData Passed to the function.
-void ECSILayout_ForEachGroup(ECSILayoutGroupFunction function, void *userData);
+void ECSILayout_ForEachGroup(const ECSIRoot *root, ECSILayoutGroupFunction function, void *userData);
 
 /// @brief Finds the group that holds a panel in the current workspace.
 /// @param panel The panel, or NULL.
 /// @return The group, or NULL.
 ECSINode *ECSILayout_GroupOf(ECSPanel panel);
 
-/// @brief Gets the current workspace's tree.
-/// @return The tree, or NULL if the workspace has no panels.
-ECSINode *ECSILayout_GetTree(void);
-
-/// @brief Finds the visible group at a point.
+/// @brief Finds the visible group of a root at a point.
+/// @param root The root, or NULL for none.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
 /// @return The group, or NULL.
-ECSINode *ECSILayout_GroupAt(f32 x, f32 y);
+ECSINode *ECSILayout_GroupAt(const ECSIRoot *root, f32 x, f32 y);
 
-/// @brief Finds the divider at a point, between two children of a split. A maximized group hides the dividers.
+/// @brief Finds the divider of a root at a point, between two children of a split. A maximized group hides the dividers.
+/// @param root The root, or NULL for none.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
 /// @param retSplit Gets the split.
 /// @param retDivider Gets the position of the child before the divider.
 /// @return true if there is a divider at the point.
-bool ECSILayout_DividerAt(f32 x, f32 y, ECSINode **retSplit, usz *retDivider);
+bool ECSILayout_DividerAt(const ECSIRoot *root, f32 x, f32 y, ECSINode **retSplit, usz *retDivider);
 
 /// @brief Moves a divider to a point. Fixed children keep fixed sizes; shared children turn their sizes into shares.
 /// @param split The split.
@@ -190,17 +248,18 @@ bool ECSILayout_DividerAt(f32 x, f32 y, ECSINode **retSplit, usz *retDivider);
 /// @param y Vertical position in layout units.
 void ECSILayout_MoveDivider(ECSINode *split, usz divider, f32 x, f32 y);
 
-/// @brief Moves a panel, or its whole group, to a drop place in the current workspace, as the user does. Locks stop it. The panel, or the group's shown panel, gets the focus.
+/// @brief Moves a panel, or its whole group, to a drop place in the current workspace, as the user does: within its OS window, into another one, or out into a new one. Locks stop it. The panel, or the group's shown panel, gets the focus.
 /// @param panel The panel.
 /// @param group true to move the panel's whole group.
 /// @param drop Where it lands.
 void ECSILayout_Drop(ECSPanel panel, bool group, const ECSIDrop *drop);
 
-/// @brief Finds the visible panel under a point.
+/// @brief Finds the visible panel of a root under a point.
+/// @param root The root, or NULL for none.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
 /// @return The panel, or NULL.
-ECSPanel ECSILayout_PanelAt(f32 x, f32 y);
+ECSPanel ECSILayout_PanelAt(const ECSIRoot *root, f32 x, f32 y);
 
 /// @brief Gets the focused panel of the current workspace.
 /// @return The panel, or NULL if the workspace has no panels.
@@ -210,13 +269,13 @@ ECSPanel ECSILayout_GetFocus(void);
 /// @param panel Panel to focus.
 void ECSILayout_SetFocus(ECSPanel panel);
 
-/// @brief Finds the nearest panel in a direction from the focused panel.
+/// @brief Finds the nearest panel in a direction from the focused panel, in its OS window.
 /// @param dx -1 for left, 1 for right, 0 otherwise.
 /// @param dy -1 for up, 1 for down, 0 otherwise.
 /// @return The panel, or NULL if there is none in that direction.
 ECSPanel ECSILayout_FindNeighbour(i32 dx, i32 dy);
 
-/// @brief Moves the focused panel into the group of the nearest panel in a direction, or docks it along that edge of the OS window if there is none.
+/// @brief Moves the focused panel into the group of the nearest panel in a direction, or docks it along that edge of its OS window if there is none.
 /// @param dx -1 for left, 1 for right, 0 otherwise.
 /// @param dy -1 for up, 1 for down, 0 otherwise.
 void ECSILayout_MoveFocus(i32 dx, i32 dy);

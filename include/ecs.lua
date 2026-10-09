@@ -285,7 +285,8 @@ function ecs.panel.restart() end
 
 -- Layout and workspaces
 
----@alias ecs.Zone "default"|"center"|"left"|"right"|"top"|"bottom"
+---"window" is a new pop-out window, which needs no target.
+---@alias ecs.Zone "default"|"center"|"left"|"right"|"top"|"bottom"|"window"
 
 ---@class ecs.layout
 ---@field moveToWorkspace1 fun() Moves the focused panel into workspace 1's focused group. Keys can run it.
@@ -314,9 +315,9 @@ function ecs.layout.find(id) end
 ---@return string? message Why the panel is not opened.
 function ecs.layout.open(type, saved, target, zone) end
 
----Moves a panel next to another one in the same workspace.
+---Moves a panel next to another one, also from another workspace or OS window; or out into a new pop-out window with the zone "window". A panel alone in its OS window stays.
 ---@param panel ecs.Panel
----@param target ecs.Panel
+---@param target? ecs.Panel Needed, except with the zone "window".
 ---@param zone? ecs.Zone "center" if missing.
 ---@return true|nil ok
 ---@return string? message
@@ -363,6 +364,9 @@ function ecs.layout.nextTab() end
 
 ---Maximizes the focused panel's group, or restores it. Keys can run it.
 function ecs.layout.maximize() end
+
+---Pops the focused panel out into a new OS window, unless it is locked or alone in its OS window. Keys can run it.
+function ecs.layout.popOut() end
 
 ---Closes the panels of the focused panel's group, unless it is locked. Keys can run it.
 function ecs.layout.closeGroup() end
