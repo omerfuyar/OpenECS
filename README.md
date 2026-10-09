@@ -46,7 +46,7 @@ The `examples/` folder shows how to write plugins, one part at a time. Read the 
 
 ### Writing plugins
 
-The archive holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`.
+The archive holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`. `ecs.lua` also describes manifests, presets and settings files: write `---@type ecs.Manifest` or `---@type ecs.Preset` above the file's `return` to get completion and checks, as the examples do.
 
 ## Development
 

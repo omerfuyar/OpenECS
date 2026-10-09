@@ -1,4 +1,5 @@
 -- Run it with: OpenECS --preset examples/6_keys/preset.lua
+---@type ecs.Preset
 return {
   format = 1,
   name = "keys",

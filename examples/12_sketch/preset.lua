@@ -1,5 +1,6 @@
 -- The sketch example's preset: three workspaces with the canvases and clocks of sketch_c and sketch_lua.
 -- Its plugins are in this folder, so pluginsDir names it.
+---@type ecs.Preset
 return {
   format = 1,
   name = "sketch",

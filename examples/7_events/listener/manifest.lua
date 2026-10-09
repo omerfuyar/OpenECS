@@ -1,3 +1,4 @@
+---@type ecs.Manifest
 return {
   name = "listener",
   version = "0.1.0",

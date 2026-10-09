@@ -271,19 +271,28 @@ static SHUResult ECSISession_ReadWorkspace(ECSISessionReader *reader, const ECSV
     return ECSIKeys_AddWorkspace(ECSValue_GetTableField(saved, "keys"));
 }
 
-/// @brief Saves the session to the file the user chose; a cancelled dialog gives no file.
+/// @brief Saves the session to the file the user chose, adding ".lua" if the name has no such ending; a cancelled dialog gives no file.
 static void ECSISession_SaveChosen(void *data, const char *const *files, usz count)
 {
     (void)data;
+    usz length = count > 0 ? SDL_strlen(files[0]) : 0;
+    char *path = NULL;
 
-    if (count > 0 && ECSSession_Save(files[0]) == SHUResult_Ok)
+    if (count == 0 || SDL_asprintf(&path, "%s%s", files[0], length >= 4 && SDL_strcmp(files[0] + length - 4, ".lua") == 0 ? "" : ".lua") < 0)
     {
-        SDL_Log("Session saved to '%s'.", files[0]);
+        return;
     }
-    else if (count > 0)
+
+    if (ECSSession_Save(path) == SHUResult_Ok)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot save the session to '%s'.", files[0]);
+        SDL_Log("Session saved to '%s'.", path);
     }
+    else
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot save the session to '%s'.", path);
+    }
+
+    SDL_free(path);
 }
 
 /// @brief Opens the session the user chose; a cancelled dialog gives no file. ECSSession_Open reports the other reasons a file is not opened.
@@ -297,7 +306,7 @@ static void ECSISession_OpenChosen(void *data, const char *const *files, usz cou
     }
 }
 
-/// @brief Shows a dialog of saved sessions, which starts in the sessions folder.
+/// @brief Shows a dialog of saved sessions and presets, which starts in the sessions folder. A save dialog suggests a file named after the preset, so a new file is made by pressing Save.
 static SHUResult ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunction Done)
 {
     if (SESSION.folder != NULL && !SDL_CreateDirectory(SESSION.folder))
@@ -305,9 +314,18 @@ static SHUResult ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunctio
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot make the sessions folder '%s': %s", SESSION.folder, SDL_GetError());
     }
 
-    ECSDialogFilter filter = {"OpenECS sessions", "lua"};
-    ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = SESSION.folder, .Done = Done};
-    return ECSIInput_ShowDialog(NULL, &desc);
+    char *location = NULL;
+
+    if (type == ECSDialogType_SaveFile && SESSION.folder != NULL && SDL_asprintf(&location, "%s%s.lua", SESSION.folder, SESSION.info->name != NULL ? SESSION.info->name : "session") < 0)
+    {
+        location = NULL;
+    }
+
+    ECSDialogFilter filter = {"OpenECS sessions and presets", "lua"};
+    ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = location != NULL ? location : SESSION.folder, .Done = Done};
+    SHUResult result = ECSIInput_ShowDialog(NULL, &desc);
+    SDL_free(location);
+    return result;
 }
 
 /// @brief What keys and menus run as ecs.session.save: saving without a path, which asks for the file.
@@ -728,7 +746,7 @@ SHUResult ECSISession_Initialize(const ECSISessionFolders *folders, bool canOpen
 
     // keys run the same names as the Lua functions, which ask for the file when they get no path
     SHU_ReturnResult(ECSIServices_RegisterCore("ecs.session.save", (ECSFunction)ECSISession_SaveBound, "void()", "Save the session to a file"));
-    return ECSIServices_RegisterCore("ecs.session.open", (ECSFunction)ECSISession_OpenBound, "void()", "Open a saved session");
+    return ECSIServices_RegisterCore("ecs.session.open", (ECSFunction)ECSISession_OpenBound, "void()", "Open a session or a preset");
 }
 
 const char *ECSISession_GetNext(const char **retOption)

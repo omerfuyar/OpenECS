@@ -1,4 +1,5 @@
 -- Panels that keep the dots clicked on them. Sessions save each panel's dots, and the plugin's count of every dot placed.
+-- A session is a tool as it was left: OpenECS saves it when the tool quits and builds the tool from it next time.
 
 local ecs = require("ecs")
 

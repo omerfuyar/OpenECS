@@ -1,4 +1,5 @@
 -- what OpenECS starts with when the command line names no preset and no session: a list of presets and saved sessions
+---@type ecs.Preset
 return {
   format = 1,
   name = "launcher",

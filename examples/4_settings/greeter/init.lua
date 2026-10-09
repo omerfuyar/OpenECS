@@ -23,6 +23,8 @@ local function changed()
 end
 
 -- declare settings while the plugin loads; a setting's name starts with the plugin's name
+-- the type says what values it takes: bool, integer, number, string, choice (one of choices), key, list or table
+-- the value in effect comes from the highest layer that sets it: the default, the preset, the settings window, then the user's file
 ecs.settings.declare({ name = "greeter.name", type = "string", description = "Who to greet", default = "world", changed = changed })
 ecs.settings.declare({ name = "greeter.color", type = "choice", description = "Colour of the greeting", default = "blue", choices = { "blue", "green", "red" }, changed = changed })
 ecs.settings.declare({ name = "greeter.size", type = "integer", description = "Size of the greeting; the wheel changes it", default = 32, changed = changed })

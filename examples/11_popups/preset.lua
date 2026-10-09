@@ -1,5 +1,6 @@
 -- Run it with: OpenECS --preset examples/11_popups/preset.lua
 -- Right-click the panel to choose its colour from a menu.
+---@type ecs.Preset
 return {
   format = 1,
   name = "popups",

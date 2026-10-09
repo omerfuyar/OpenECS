@@ -1,4 +1,5 @@
 // Named counters, in C. Other plugins, in any language, call its functions by name and signature.
+// A function registered by name is a service: keys, menus, presets and other plugins can run it.
 
 #include "OpenECS.h"
 
@@ -58,6 +59,7 @@ static i32 CounterGet(const char *name)
 SHUResult ECSPlugin_Init(ECSPlugin plugin)
 {
     // the signature tells the core how to pass the arguments; callers must ask for the same signature
+    // the function is cast to ECSFunction, the type of any function; the signature says its real type
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "counter.add", (ECSFunction)CounterAdd, "int(string, int)", "Adds to a named counter, and gives its new value"));
     SHU_ReturnResult(ECSService_RegisterFunction(plugin, "counter.get", (ECSFunction)CounterGet, "int(string)", "Gives a named counter's value"));
     return SHUResult_Ok;

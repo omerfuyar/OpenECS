@@ -1,5 +1,6 @@
 -- Run it with: OpenECS --preset examples/9_drag_drop/preset.lua
 -- Drag a colour from the palette to the sample, or drop files on the sample from a file manager.
+---@type ecs.Preset
 return {
   format = 1,
   name = "dragdrop",

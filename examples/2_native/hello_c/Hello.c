@@ -1,6 +1,7 @@
 // The smallest native plugin: one panel type that fills itself with one colour. 1_hello does the same in Lua.
 
 #include "OpenECS.h" // the only header a plugin includes; it declares everything the core gives plugins
+                     // types such as u32, f64 and SHUResult come from shu.h, which it includes
 
 #include <stdlib.h>
 
@@ -10,6 +11,8 @@ typedef struct Greeting
     ECSPanel panel;
 } Greeting;
 
+// gets the new panel, the state a session saved for it (NULL for a new panel) and that state's version; gives back the panel's state
+// SHUResult is the interface's result: SHUResult_Ok, or an error
 static SHUResult GreetingCreate(ECSPanel panel, const ECSValue *savedState, u32 version, void **retState)
 {
     (void)savedState;

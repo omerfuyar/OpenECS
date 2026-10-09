@@ -1,3 +1,4 @@
+---@type ecs.Manifest
 return {
   name = "ui",
   version = "0.1.0",

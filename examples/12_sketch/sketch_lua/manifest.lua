@@ -1,3 +1,4 @@
+---@type ecs.Manifest
 return {
   name = "sketch_lua",
   version = "0.1.0",

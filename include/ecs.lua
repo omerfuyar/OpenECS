@@ -447,6 +447,7 @@ function ecs.layout.splitDown() end
 ---@field switch8 fun() Switches to workspace 8. Keys can run it.
 ---@field switch9 fun() Switches to workspace 9. Keys can run it.
 ---@field switch10 fun() Switches to workspace 10. Keys can run it.
+---@field menu fun() Shows the menu of workspaces, by number and name; an entry switches to its workspace. Keys can run it.
 ecs.workspace = {}
 
 ---@return integer count
@@ -474,9 +475,9 @@ ecs.session = {}
 ---@return string? message Why the session is not saved.
 function ecs.session.save(path) end
 
----Opens a session in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
+---Opens a session, or a preset, in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
 ---Without a path, it asks for the file with an open dialog. Keys can run it.
----@param path? string
+---@param path? string A session or a preset file.
 ---@return true|nil ok
 ---@return string? message Why the session is not opened: the file is not a session, the user keeps the unsaved work, or a test runs.
 function ecs.session.open(path) end
@@ -662,5 +663,76 @@ function ecs.dialog.show(desc, done) end
 ---@param buttons? string[] { "OK" } if missing.
 ---@return integer? button The pressed button's position, from 1.
 function ecs.dialog.message(title, text, buttons) end
+
+-- Files: the shapes of manifests, presets, sessions and settings files, for editors. Write ---@type ecs.Manifest, for example, above the file's return.
+
+---A plugin's manifest.lua.
+---@class ecs.Manifest
+---@field name string The plugin's name, which everything it registers starts with.
+---@field version string Its version, such as "1.2.0".
+---@field api integer The plugin API version it was written for.
+---@field description? string
+---@field depends? table<string, string> The plugins it needs, each with the lowest version it accepts, such as { ui = "0.1" }.
+---@field native? string Its native library, such as "libcanvas.so".
+---@field lua? string The Lua file that runs when it loads, such as "init.lua".
+
+---What a tool is called and how the desktop knows it.
+---@class ecs.AppDesc
+---@field id string Names the tool's last session and its .desktop file, such as "org.example.Paint".
+---@field name string
+---@field icon? string
+
+---A panel in a preset or session.
+---@class ecs.PanelDesc
+---@field type string The panel type, such as "canvas.view".
+---@field state? any The saved state it starts from.
+---@field stateVersion? integer The version of the state.
+---@field id? integer The panel's id, which sessions keep.
+
+---A node of a layout tree: a split, with its children as list items, or a group, with its panels.
+---@class ecs.LayoutNode
+---@field [integer] ecs.LayoutNode A split's children, in order.
+---@field split? "horizontal"|"vertical" Makes the node a split.
+---@field size? number A fixed size in layout units, along the parent split.
+---@field share? number A share of the parent split's remaining space.
+---@field panels? ecs.PanelDesc[] Makes the node a group.
+---@field shown? integer The group's shown panel, from 1.
+---@field locked? boolean The user cannot move or close the group's panels.
+---@field maximized? boolean The group fills its OS window.
+---@field width? number A pop-out window's width, in layout units.
+---@field height? number A pop-out window's height, in layout units.
+
+---A workspace of a preset or session.
+---@class ecs.WorkspaceDesc
+---@field name string
+---@field windows ecs.LayoutNode[] One layout tree for each OS window: the main window first, then the pop-out windows.
+---@field keys? table<string, string> Keys for this workspace and the functions they run.
+---@field focus? integer The id of the focused panel.
+
+---A preset, which describes a tool.
+---@class ecs.Preset
+---@field format integer The version of the file format.
+---@field name string
+---@field version string
+---@field app ecs.AppDesc
+---@field depends? table<string, string> The plugins the tool needs, each with the lowest version it accepts.
+---@field pluginsDir? string A folder looked in for plugins first, relative to the preset.
+---@field open? string The function that files from the command line go to; its signature is void(string).
+---@field settings? table<string, any> Values of settings, over the plugins' defaults.
+---@field keys? table<string, string> Keys for the whole tool and the functions they run.
+---@field listed? boolean false leaves the preset out of the list of presets.
+---@field workspaces ecs.WorkspaceDesc[]
+
+---A session, which OpenECS writes: a preset with the state it was saved in.
+---@class ecs.Session: ecs.Preset
+---@field currentWorkspace? integer
+---@field pluginState? table<string, { state: any, stateVersion: integer }> Each plugin's own state.
+
+---The user's settings file, the settings window's file, or the core's settings file. A field whose name has a dot is a setting.
+---@class ecs.SettingsFile
+---@field [string] any
+---@field keys? table<string, string> Keys for every tool and the functions they run.
+---@field plugins? string[] Plugins that every tool loads.
+---@field tools? table<string, table<string, any>> Settings for one tool, by its app id.
 
 return ecs
