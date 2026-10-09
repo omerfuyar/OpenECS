@@ -97,10 +97,22 @@ typedef struct ECSIOSWindow
     ECSITabRef *tabs; // stb_ds array of the tabs drawn in its last frame
 } ECSIOSWindow;
 
+/// @brief How a popup is shown: in an SDL popup window, or inside its panel's OS window when the video driver has no popup windows.
+typedef struct ECSIPopupView
+{
+    u32 rootId;             // the root of the OS window it belongs to; it is made again if its panel moves to another one
+    SDL_Window *window;     // SDL's popup window, or NULL when it is drawn inside the OS window
+    SDL_Renderer *renderer; // the popup window's
+    SDL_Texture *texture;   // its pixels, made by the renderer that shows them
+    SDL_FRect rect;         // where it shows, in the layout units of its panel's OS window
+} ECSIPopupView;
+
 static struct
 {
     ECSIOSWindow **windows; // stb_ds array: the main window, then the pop-out windows
     ECSIOSWindow *event;    // the OS window of the pointer event being handled; positions are in its layout units
+    ECSPopup eventPopup;    // the popup whose SDL popup window has the pointer event being handled, or NULL
+    bool noPopupWindows;    // the video driver has no popup windows, so popups are drawn inside the OS windows
     ECSIOSWindow *gripWindow;
     ECSIOSWindow *dropWindow; // the OS window where the dragged panel lands, or NULL for a pop-out
     ECSIOSWindow *dataWindow; // the OS window under the pointer while data is dragged
@@ -1127,6 +1139,217 @@ static void ECSIWindow_Sync(void)
     WINDOW.focusRoot = focusId;
 }
 
+#pragma region Popups
+
+/// @brief Frees what a popup is shown with; the Popups module calls it before it frees the popup.
+static void ECSIWindow_ReleasePopup(ECSPopup popup)
+{
+    ECSIPopupView *view = popup->window;
+
+    if (view == NULL)
+    {
+        return;
+    }
+
+    WINDOW.eventPopup = WINDOW.eventPopup == popup ? NULL : WINDOW.eventPopup;
+
+    if (view->texture != NULL)
+    {
+        SDL_DestroyTexture(view->texture);
+    }
+
+    if (view->renderer != NULL)
+    {
+        SDL_DestroyRenderer(view->renderer);
+    }
+
+    if (view->window != NULL)
+    {
+        SDL_DestroyWindow(view->window);
+    }
+
+    SDL_free(view);
+    popup->window = NULL;
+}
+
+/// @brief Finds where a popup shows in its panel's OS window: below its anchor, or above it if there is no room below. Drawn inside the OS window, it is also kept inside it.
+static SDL_FRect ECSIWindow_PlacePopup(ECSPopup popup, const ECSIOSWindow *os, bool inside)
+{
+    ECSPanel panel = popup->panel;
+    const ECSPopupDesc *desc = &popup->desc;
+    SDL_FRect rect = {panel->x + desc->anchorX, panel->y + desc->anchorY + desc->anchorHeight, desc->width, desc->height};
+    f32 above = panel->y + desc->anchorY - desc->height;
+
+    if (rect.y + rect.h > os->height && above >= 0.0f)
+    {
+        rect.y = above;
+    }
+
+    if (inside)
+    {
+        rect.x = SDL_max(0.0f, SDL_min(rect.x, os->width - rect.w));
+        rect.y = SDL_max(0.0f, SDL_min(rect.y, os->height - rect.h));
+    }
+
+    return rect;
+}
+
+/// @brief Makes how a popup is shown: an SDL popup window with its renderer, or nothing more when the video driver has none.
+static ECSIPopupView *ECSIWindow_MakePopupView(ECSPopup popup, const ECSIOSWindow *os, SDL_FRect rect)
+{
+    ECSIPopupView *view = SDL_calloc(1, sizeof(ECSIPopupView));
+
+    if (view == NULL)
+    {
+        return NULL;
+    }
+
+    view->rootId = os->rootId;
+    popup->window = view;
+
+    if (WINDOW.noPopupWindows)
+    {
+        return view;
+    }
+
+    SDL_WindowFlags flags = popup->desc.kind == ECSPopupKind_Menu ? SDL_WINDOW_POPUP_MENU : SDL_WINDOW_TOOLTIP;
+    view->window = SDL_CreatePopupWindow(os->window, (int)rect.x, (int)rect.y, (int)rect.w, (int)rect.h, flags | SDL_WINDOW_TRANSPARENT);
+    view->renderer = view->window == NULL ? NULL : SDL_CreateRenderer(view->window, NULL);
+
+    // a driver without popup windows, such as the offscreen driver, gets them drawn inside the OS windows from now on
+    if (view->renderer == NULL)
+    {
+        SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "Popups are drawn inside the OS windows: %s", SDL_GetError());
+        WINDOW.noPopupWindows = view->window == NULL;
+
+        if (view->window != NULL)
+        {
+            SDL_DestroyWindow(view->window);
+            view->window = NULL;
+        }
+    }
+    else
+    {
+        SDL_SetRenderVSync(view->renderer, SDL_RENDERER_VSYNC_DISABLED);
+    }
+
+    return view;
+}
+
+/// @brief Places each open popup, draws its pixels if it needs it, and puts them in its texture. A popup window is drawn and presented with ECSIWindow_PresentPopups.
+static void ECSIWindow_UpdatePopups(void)
+{
+    // a popup's Draw may open or close popups, so the list is read again for each one
+    for (usz i = 0;; i++)
+    {
+        usz count = 0;
+        ECSPopup *popups = ECSIPopups_GetOpen(&count);
+
+        if (i >= count)
+        {
+            break;
+        }
+
+        ECSPopup popup = popups[i];
+        ECSIOSWindow *os = ECSIWindow_OfRoot(ECSILayout_RootOf(popup->panel));
+        ECSIPopupView *view = popup->window;
+
+        if (os == NULL)
+        {
+            continue;
+        }
+
+        // a popup whose panel moved to another OS window is shown there anew
+        if (view != NULL && view->rootId != os->rootId)
+        {
+            ECSIWindow_ReleasePopup(popup);
+            view = NULL;
+        }
+
+        SDL_FRect rect = ECSIWindow_PlacePopup(popup, os, view == NULL ? WINDOW.noPopupWindows : view->window == NULL);
+        view = view != NULL ? view : ECSIWindow_MakePopupView(popup, os, rect);
+
+        if (view == NULL)
+        {
+            continue;
+        }
+
+        if (view->window != NULL && (rect.x != view->rect.x || rect.y != view->rect.y || rect.w != view->rect.w || rect.h != view->rect.h))
+        {
+            SDL_SetWindowPosition(view->window, (int)rect.x, (int)rect.y);
+            SDL_SetWindowSize(view->window, (int)rect.w, (int)rect.h);
+        }
+
+        view->rect = rect;
+        SDL_Renderer *renderer = view->renderer != NULL ? view->renderer : os->renderer;
+        bool drawn = ECSIPopup_Draw(popup);
+        SDL_Surface *pixels = popup->pixels;
+
+        if (pixels == NULL)
+        {
+            continue;
+        }
+
+        if (view->texture != NULL && (view->texture->w != pixels->w || view->texture->h != pixels->h || SDL_GetRendererFromTexture(view->texture) != renderer))
+        {
+            SDL_DestroyTexture(view->texture);
+            view->texture = NULL;
+        }
+
+        if (view->texture == NULL)
+        {
+            // a popup's pixels have premultiplied alpha, so what it leaves out shows what is below
+            view->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, pixels->w, pixels->h);
+            SDL_SetTextureBlendMode(view->texture, SDL_BLENDMODE_BLEND_PREMULTIPLIED);
+            drawn = true;
+        }
+
+        if (drawn && view->texture != NULL)
+        {
+            SDL_UpdateTexture(view->texture, NULL, pixels->pixels, pixels->pitch);
+        }
+    }
+}
+
+/// @brief Draws the popups that are drawn inside an OS window, over everything else, the oldest first.
+static void ECSIWindow_ShowPopupsIn(const ECSIOSWindow *os)
+{
+    usz count = 0;
+    ECSPopup *popups = ECSIPopups_GetOpen(&count);
+
+    for (usz i = 0; i < count; i++)
+    {
+        ECSIPopupView *view = popups[i]->window;
+
+        if (view != NULL && view->window == NULL && view->texture != NULL && view->rootId == os->rootId && ECSIWindow_OfRoot(ECSILayout_RootOf(popups[i]->panel)) == os)
+        {
+            SDL_RenderTexture(os->renderer, view->texture, NULL, &view->rect);
+        }
+    }
+}
+
+/// @brief Draws and presents the SDL popup windows.
+static void ECSIWindow_PresentPopups(void)
+{
+    usz count = 0;
+    ECSPopup *popups = ECSIPopups_GetOpen(&count);
+
+    for (usz i = 0; i < count; i++)
+    {
+        ECSIPopupView *view = popups[i]->window;
+
+        if (view != NULL && view->renderer != NULL)
+        {
+            SDL_SetRenderDrawColor(view->renderer, 0, 0, 0, 0);
+            SDL_RenderClear(view->renderer);
+            SDL_RenderTexture(view->renderer, view->texture, NULL, NULL);
+            SDL_RenderPresent(view->renderer);
+        }
+    }
+}
+
+#pragma endregion Popups
+
 #pragma endregion OS Windows
 
 /// @brief Reads a colour written as "#RRGGBB" or "#RRGGBBAA".
@@ -1258,6 +1481,7 @@ static void ECSIWindow_DrawFrame(ECSIOSWindow *os, u64 nowTicks)
     }
 
     SDL_Clay_RenderClayCommands(&os->clayRenderer, &commands);
+    ECSIWindow_ShowPopupsIn(os);
 }
 
 /// @brief Updates the layout and draws a frame of every shown OS window, without presenting them.
@@ -1271,6 +1495,7 @@ static void ECSIWindow_DrawFrames(u64 nowTicks)
     WINDOW.lastFrameTicks = nowTicks;
     ECSIWindow_Sync();
     ECSILayout_Update();
+    ECSIWindow_UpdatePopups();
 
     for (usz i = 0; i < arrlenu(WINDOW.windows); i++)
     {
@@ -1281,9 +1506,11 @@ static void ECSIWindow_DrawFrames(u64 nowTicks)
     }
 }
 
-/// @brief Presents the frame of every shown OS window.
+/// @brief Presents the frame of every shown OS window and popup window.
 static void ECSIWindow_Present(void)
 {
+    ECSIWindow_PresentPopups();
+
     for (usz i = 0; i < arrlenu(WINDOW.windows); i++)
     {
         if (ECSIWindow_IsShown(WINDOW.windows[i]))
@@ -1324,12 +1551,14 @@ SHUResult ECSIWindow_Initialize(const char *title)
     SHU_ReturnResult(ECSISettings_DeclareCore(&vsync), ECSIWindow_Terminate(););
     ECSIWindow_ReadVsync(NULL);
     ECSILayout_SetForget(ECSIWindow_Forget);
+    ECSIPopups_SetRelease(ECSIWindow_ReleasePopup);
     return SHUResult_Ok;
 }
 
 void ECSIWindow_Terminate(void)
 {
     ECSILayout_SetForget(NULL);
+    ECSIPopups_SetRelease(NULL);
 
     // pop-out windows close before the main window
     while (arrlenu(WINDOW.windows) > 0)
@@ -1411,6 +1640,85 @@ ECSIRoot *ECSIWindow_GetRoot(SDL_WindowID id, bool *retMain)
 void ECSIWindow_SetEventWindow(SDL_WindowID id)
 {
     WINDOW.event = ECSIWindow_Find(id);
+    WINDOW.eventPopup = NULL;
+
+    // an SDL popup window's events go to its popup, with positions in it
+    usz count = 0;
+    ECSPopup *popups = ECSIPopups_GetOpen(&count);
+
+    for (usz i = 0; i < count; i++)
+    {
+        ECSIPopupView *view = popups[i]->window;
+
+        if (view != NULL && view->window != NULL && SDL_GetWindowID(view->window) == id)
+        {
+            WINDOW.eventPopup = popups[i];
+        }
+    }
+}
+
+ECSPopup ECSIWindow_PopupAt(f32 x, f32 y, f32 *retX, f32 *retY)
+{
+    SDL_assert(retX != NULL);
+    SDL_assert(retY != NULL);
+
+    *retX = x;
+    *retY = y;
+
+    if (WINDOW.eventPopup != NULL)
+    {
+        return WINDOW.eventPopup;
+    }
+
+    // the newest popup drawn inside the event window that holds the point
+    usz count = 0;
+    ECSPopup *popups = ECSIPopups_GetOpen(&count);
+
+    for (usz i = count; i > 0; i--)
+    {
+        ECSIPopupView *view = popups[i - 1]->window;
+
+        if (view != NULL && view->window == NULL && WINDOW.event != NULL && view->rootId == WINDOW.event->rootId &&
+            ECSIWindow_Contains(x, y, view->rect.x, view->rect.y, view->rect.w, view->rect.h))
+        {
+            *retX = x - view->rect.x;
+            *retY = y - view->rect.y;
+            return popups[i - 1];
+        }
+    }
+
+    return NULL;
+}
+
+void ECSIWindow_ToPopup(ECSPopup popup, f32 x, f32 y, f32 *retX, f32 *retY)
+{
+    SDL_assert(popup != NULL);
+    SDL_assert(retX != NULL);
+    SDL_assert(retY != NULL);
+
+    // an SDL popup window's own events are in its positions already
+    ECSIPopupView *view = popup->window;
+    bool inside = view != NULL && view->window == NULL && popup != WINDOW.eventPopup;
+    *retX = inside ? x - view->rect.x : x;
+    *retY = inside ? y - view->rect.y : y;
+}
+
+bool ECSIWindow_PopupRect(ECSPopup popup, SDL_FRect *retRect, usz *retWindow)
+{
+    SDL_assert(popup != NULL);
+    SDL_assert(retRect != NULL);
+    SDL_assert(retWindow != NULL);
+
+    ECSIPopupView *view = popup->window;
+
+    if (view == NULL)
+    {
+        return false;
+    }
+
+    *retRect = view->rect;
+    *retWindow = ECSIWindow_NumberOf(popup->panel);
+    return true;
 }
 
 ECSPanel ECSIWindow_PanelAt(f32 x, f32 y, f32 *retX, f32 *retY)
@@ -1432,7 +1740,7 @@ i32 ECSIWindow_GetFrameWait(void)
         visible = visible || (SDL_GetWindowFlags(WINDOW.windows[i]->window) & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED)) == 0;
     }
 
-    if (!visible || !ECSILayout_WantsFrame())
+    if (!visible || (!ECSILayout_WantsFrame() && !ECSIPopups_WantsFrame()))
     {
         return -1;
     }

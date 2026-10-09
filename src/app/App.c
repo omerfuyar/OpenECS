@@ -10,6 +10,7 @@
 #include "interface/Layout.h"
 #include "interface/Menus.h"
 #include "interface/Panels.h"
+#include "interface/Popups.h"
 #include "interface/Window.h"
 #include "runtime/Events.h"
 #include "runtime/Plugins.h"
@@ -354,7 +355,12 @@ int ECSIApp_Run(void)
         ECSIEvents_RunTimers();
         ECSIEvents_Deliver();
         ECSISettings_DeliverChanges();
+
+        // popups of closed or hidden panels close, and their Closed functions run before the panels are destroyed
+        ECSIPopups_CloseHidden();
+        ECSIEvents_Deliver();
         ECSIPanels_DestroyClosed();
+        ECSIPopups_DestroyClosed();
         ECSIInput_UpdateTextInput();
 
         // while a test runs, frames are not paced, so each step of the test sees a drawn window
@@ -384,10 +390,11 @@ char *ECSIApp_Stop(const char **retOption)
         SDL_Log("Session saved to '%s'.", APP.lastSession);
     }
 
-    // panels are destroyed before the renderer that made their textures and before their types, handles' objects before their plugins shut down, and plugins before they are unloaded
+    // popups close before their panels; panels are destroyed before the renderer that made their textures and before their types, handles' objects before their plugins shut down, and plugins before they are unloaded
     ECSIInput_Terminate();
     ECSIMenus_Terminate();
     ECSIKeys_Terminate();
+    ECSIPopups_Terminate();
     ECSILayout_Terminate();
     ECSIWindow_Terminate();
     ECSIPanels_Terminate();

@@ -4,6 +4,7 @@
 #include "interface/Layout.h"
 #include "interface/Menus.h"
 #include "interface/Panels.h"
+#include "interface/Popups.h"
 #include "interface/Window.h"
 #include "runtime/Services.h"
 #include "runtime/Settings.h"
@@ -38,6 +39,7 @@ static struct
     const char **prefixLines; // stb_ds array of the lines shown after the prefix: key text, description, and so on; a NULL key text makes a heading
     char **prefixTexts;       // stb_ds array of the key texts made for the lines, such as "1...0"
     ECSPanel pointerPanel;    // panel that got the press; it gets pointer events until the release
+    ECSPopup pointerPopup;    // popup that got the press; it gets pointer events until the release
     f32 pointerX;             // the pointer's last position in the OS window, in layout units
     f32 pointerY;
     void *clipboard;          // what a clipboard getter returned last, freed by the next call
@@ -169,6 +171,145 @@ static ECSPanel ECSIInput_PointerPanel(void)
     }
 
     return INPUT.pointerPanel;
+}
+
+/// @brief Gets the popup that got the pointer press, unless it has closed since. It compares pointers only, so the popup may already be freed.
+static ECSPopup ECSIInput_PointerPopup(void)
+{
+    usz count = 0;
+    ECSPopup *popups = ECSIPopups_GetOpen(&count);
+    bool open = false;
+
+    for (usz i = 0; i < count; i++)
+    {
+        open = open || popups[i] == INPUT.pointerPopup;
+    }
+
+    INPUT.pointerPopup = open ? INPUT.pointerPopup : NULL;
+    return INPUT.pointerPopup;
+}
+
+/// @brief Sends a pointer event to a popup, at a position in its surface.
+static void ECSIInput_SendPopupPointer(ECSPopup popup, ECSPanelEventType type, f32 x, f32 y, i32 button)
+{
+    ECSPanelEvent event = {
+        .type = type,
+        .modifiers = ECSIInput_Modifiers(SDL_GetModState()),
+        .pointer = {.x = x, .y = y, .button = button},
+    };
+
+    ECSIPopup_PostEvent(popup, &event);
+}
+
+/// @brief Handles a pointer event for the popups: one under the pointer, or the one that got the press, gets it. A press outside every popup closes them and does nothing else.
+/// @return true if the popups used the event.
+static bool ECSIInput_HandlePopups(const SDL_Event *event)
+{
+    usz count = 0;
+    ECSIPopups_GetOpen(&count);
+    f32 x = 0.0f;
+    f32 y = 0.0f;
+
+    switch (event->type)
+    {
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    {
+        ECSPopup popup = count == 0 ? NULL : ECSIWindow_PopupAt(event->button.x, event->button.y, &x, &y);
+
+        if (popup != NULL)
+        {
+            INPUT.pointerPopup = popup;
+            ECSIInput_SendPopupPointer(popup, ECSPanelEventType_PointerDown, x, y, event->button.button);
+        }
+        else if (count > 0)
+        {
+            ECSIPopups_CloseAll();
+        }
+
+        return count > 0;
+    }
+
+    case SDL_EVENT_MOUSE_MOTION:
+    {
+        // the popup that got the press gets the moves, also outside it
+        ECSPopup pressed = ECSIInput_PointerPopup();
+        ECSPopup popup = count == 0 ? NULL : ECSIWindow_PopupAt(event->motion.x, event->motion.y, &x, &y);
+
+        if (pressed != NULL)
+        {
+            ECSIWindow_ToPopup(pressed, event->motion.x, event->motion.y, &x, &y);
+            ECSIInput_SendPopupPointer(pressed, ECSPanelEventType_PointerMove, x, y, 0);
+            return true;
+        }
+
+        if (popup != NULL)
+        {
+            ECSIInput_SendPopupPointer(popup, ECSPanelEventType_PointerMove, x, y, 0);
+        }
+
+        return popup != NULL;
+    }
+
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+    {
+        ECSPopup pressed = ECSIInput_PointerPopup();
+        INPUT.pointerPopup = NULL;
+
+        if (pressed != NULL)
+        {
+            ECSIWindow_ToPopup(pressed, event->button.x, event->button.y, &x, &y);
+            ECSIInput_SendPopupPointer(pressed, ECSPanelEventType_PointerUp, x, y, event->button.button);
+        }
+
+        return pressed != NULL;
+    }
+
+    case SDL_EVENT_MOUSE_WHEEL:
+    {
+        ECSPopup popup = count == 0 ? NULL : ECSIWindow_PopupAt(event->wheel.mouse_x, event->wheel.mouse_y, &x, &y);
+        f32 direction = event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
+        ECSPanelEvent wheel = {
+            .type = ECSPanelEventType_Wheel,
+            .modifiers = ECSIInput_Modifiers(SDL_GetModState()),
+            .wheel = {.x = x, .y = y, .amountX = event->wheel.x * direction, .amountY = event->wheel.y * direction},
+        };
+
+        if (popup != NULL)
+        {
+            ECSIPopup_PostEvent(popup, &wheel);
+        }
+
+        return popup != NULL;
+    }
+
+    // while a menu is open, key presses go to the newest menu; Escape closes it
+    case SDL_EVENT_KEY_DOWN:
+    case SDL_EVENT_KEY_UP:
+    {
+        ECSPopup menu = ECSIPopups_GetMenu();
+        ECSPanelEvent key = {
+            .type = event->type == SDL_EVENT_KEY_DOWN ? ECSPanelEventType_KeyDown : ECSPanelEventType_KeyUp,
+            .modifiers = ECSIInput_Modifiers(event->key.mod),
+            .key = {.code = event->key.key},
+        };
+
+        if (menu != NULL && event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_ESCAPE)
+        {
+            ECSPopup_Close(menu);
+        }
+        else if (menu != NULL)
+        {
+            ECSIPopup_PostEvent(menu, &key);
+        }
+
+        // a key that goes to a menu types no text
+        INPUT.swallowText = INPUT.swallowText || menu != NULL;
+        return menu != NULL;
+    }
+
+    default:
+        return false;
+    }
 }
 
 /// @brief Ends dragging data, with or without dropping it.
@@ -623,7 +764,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
         ECSIWindow_SetEventWindow(SDL_GetWindowID(window));
     }
 
-    if (ECSIMenus_Handle(event))
+    if (ECSIMenus_Handle(event) || ECSIInput_HandlePopups(event))
     {
         return true;
     }

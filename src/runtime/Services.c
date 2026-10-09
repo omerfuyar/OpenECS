@@ -1162,8 +1162,9 @@ SHUResult ECSIServices_Initialize(void)
     lua_setmetatable(state, -2);
     SERVICES.handles = luaL_ref(state, LUA_REGISTRYINDEX);
 
-    // the core's handle types: panels, and the surface a panel draws into, valid during Draw
+    // the core's handle types: panels, popups, and the surface a panel or popup draws into, valid during Draw
     SHU_ReturnResult(ECSIServices_RegisterHandleType(NULL, "ecs.panel", NULL));
+    SHU_ReturnResult(ECSIServices_RegisterHandleType(NULL, "ecs.popup", NULL));
     return ECSIServices_RegisterHandleType(NULL, "ecs.surface", NULL);
 }
 

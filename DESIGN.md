@@ -131,6 +131,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Services | Function registry, signatures, calls between C and Lua. The only module that calls libffi.                          |
 | interface | Panels   | Panel types, panels, and the pixels each panel draws.                                                               |
 |           | Layout   | Workspaces and their layout trees: operations, tidying, sizes, focus, closed panels and saving.                     |
+|           | Popups   | Popups, the pixels each popup draws, and its events (4.6).                                                          |
 |           | Window   | OS windows and their renderers, frame pacing, and the core's own interface: tab rows, grips, menus, dragging and hit testing. The only module that calls Clay. |
 |           | Keys     | Key combinations, the core prefix and the keys after it, and every key binding (7.3 to 7.5, 7.8).                  |
 |           | Menus    | The core's bindable functions, and the panel and group menus that offer them (6.8).                                 |
@@ -268,8 +269,16 @@ typedef struct ECSPanelTypeDesc
 
 ### 4.6 Popups, pointer and text input
 
-- **Popups.** A panel opens a popup anchored to a rectangle in its own area. A popup has its own surface and closes on Escape, on a click outside it, or when its panel closes.
-  - Popups are SDL popup windows (`SDL_CreatePopupWindow`). SDL keeps them inside the display and hides them with their parent. Menus take keyboard focus; tooltips do not.
+- **Popups.** A panel opens a popup anchored to a rectangle in its own area: `ECSPopup_Open(panel, &desc, &popup)`, and in Lua `panel:openPopup(desc)`, which gives the popup. The description holds:
+  - `kind`: a menu, which takes the keys, or a tooltip, which does not (`ECSPopupKind_Menu`, `ECSPopupKind_Tooltip`; in Lua `"menu"` and `"tooltip"`).
+  - The anchor, a rectangle in the panel's surface pixels: `anchorX`, `anchorY`, `anchorWidth` and `anchorHeight`; in Lua `anchor = { x = 0, y = 0, width = 0, height = 0 }`.
+  - The popup's `width` and `height`, in layout units.
+  - Its functions, which get the description's `data`: `Draw` draws its pixels surface, as a panel's `Draw` does; `Event` gets its pointer, wheel and key events, with positions in its surface pixels; `Closed` says it has closed. Only `Draw` is required. In Lua: `draw(surface)`, `event(event)` and `closed()`.
+  - The popup opens below the anchor, with its left edge at the anchor's, or above the anchor if there is no room below.
+  - `ECSPopup_Redraw(popup)` asks for it to be drawn again, and `ECSPopup_SetSize(popup, width, height)` resizes it. In Lua: `popup:redraw()` and `popup:setSize(width, height)`.
+  - A popup closes when code closes it (`ECSPopup_Close(popup)`, `popup:close()`); on a press outside every popup, which does nothing else; on Escape, if it is a menu; and when its panel closes, fails or is hidden. Its `Closed` function runs then, and the popup is invalid afterwards.
+  - While a menu is open, key presses go to the newest menu. A popup's events wait, like a panel's, until the current callback returns (8.2).
+  - Popups are SDL popup windows (`SDL_CreatePopupWindow`), each with its own renderer. SDL keeps them inside the display and hides them with their parent. A video driver without popup windows, such as the offscreen driver of the tests, gets them drawn inside the panel's OS window instead, above everything else and kept inside the window.
 - **Pointer.** The pointer's shape is a system shape or an image. The pointer lock uses `SDL_SetWindowRelativeMouseMode`; pressing the core prefix also ends it.
 - **Text input.** A panel says whether it accepts text and where its text cursor is, in its surface pixels: `ECSPanel_SetTextInput(panel, accept, x, y, width, height)`, and in Lua `panel:setTextInput(accept, x, y, width, height)`. The core turns text input on while the focused panel accepts text, and tells the input method where to show its window (`SDL_StartTextInput`, `SDL_SetTextInputArea`).
   - The focused panel gets the typed text as `Text` events, in UTF-8; the text is valid during the event.

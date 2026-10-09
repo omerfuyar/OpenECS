@@ -155,6 +155,13 @@ function Panel:acceptDrops(types) end
 ---@return string? message Why no drag starts: no pointer button that was pressed on the panel is held.
 function Panel:startDrag(type, value) end
 
+---Opens a popup next to a rectangle of the shown panel: below it, or above it if there is no room below.
+---It closes when code closes it, on a press outside every popup, on Escape if it is a menu, and when the panel closes, fails or is hidden.
+---@param desc ecs.PopupDesc
+---@return ecs.Popup? popup
+---@return string? message Why the popup is not opened.
+function Panel:openPopup(desc) end
+
 ---The pixels a panel draws into: a handle of type ecs.surface, which a panel can pass to a service that draws. It is valid only while draw runs.
 ---@class ecs.Surface
 ---@field width integer
@@ -181,6 +188,30 @@ function Surface:getPixel(x, y) end
 function Surface:setRow(y, bytes, x) end
 
 ---@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"|"drop"|"text"
+
+---@class ecs.PopupDesc
+---@field kind? "menu"|"tooltip" A menu takes the key presses while it is open, and Escape closes it; a tooltip takes none. "menu" if missing.
+---@field anchor? { x: number, y: number, width: number, height: number } The rectangle of the panel it opens next to, in the panel's surface pixels.
+---@field width number In layout units.
+---@field height number In layout units.
+---@field draw fun(surface: ecs.Surface) Draws the popup; what it leaves out is transparent.
+---@field event? fun(event: ecs.PanelEvent) Gets pointer, wheel and key events, with positions in the popup's surface pixels.
+---@field closed? fun() Says the popup has closed; it is invalid afterwards.
+
+---A popup of a panel: a handle of type ecs.popup.
+---@class ecs.Popup
+local Popup = {}
+
+---Closes the popup. Its closed function runs after the current callback returns.
+function Popup:close() end
+
+---Asks for the popup to be drawn again.
+function Popup:redraw() end
+
+---Changes the popup's size, in layout units, and draws it again.
+---@param width number
+---@param height number
+function Popup:setSize(width, height) end
 
 ---@class ecs.PanelEvent
 ---@field type ecs.PanelEventType
@@ -280,8 +311,30 @@ function ecs.panel.acceptDrops(panel, types) end
 ---@return string? message
 function ecs.panel.startDrag(panel, type, value) end
 
+---@param panel ecs.Panel
+---@param desc ecs.PopupDesc
+---@return ecs.Popup? popup
+---@return string? message
+function ecs.panel.openPopup(panel, desc) end
+
 ---Restarts the focused panel from its last saved state, if it failed. Keys can run it.
 function ecs.panel.restart() end
+
+-- Popups
+
+---@class ecs.popup
+ecs.popup = {}
+
+---@param popup ecs.Popup
+function ecs.popup.close(popup) end
+
+---@param popup ecs.Popup
+function ecs.popup.redraw(popup) end
+
+---@param popup ecs.Popup
+---@param width number
+---@param height number
+function ecs.popup.setSize(popup, width, height) end
 
 -- Layout and workspaces
 

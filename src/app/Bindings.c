@@ -23,6 +23,8 @@
 #define OPENECS_LUA_PANEL "ecs.panel"
 /// @brief Name of the metatable of surfaces given to draw.
 #define OPENECS_LUA_SURFACE "ecs.surface"
+/// @brief Name of the handle type of popups.
+#define OPENECS_LUA_POPUP "ecs.popup"
 
 /// @brief A Lua function that a setting's owner gave to be told about changes.
 typedef struct ECSILuaListener
@@ -47,6 +49,14 @@ typedef struct ECSILuaPanel
     int state;  // registry reference of the value that create returned
     int handle; // registry reference of the panel's handle, which keeps it the same while the panel lives
 } ECSILuaPanel;
+
+/// @brief A popup opened from Lua.
+typedef struct ECSILuaPopup
+{
+    ECSPlugin plugin; // the plugin of its panel's type
+    ECSPopup popup;
+    int desc; // registry reference of the description table, which holds the functions
+} ECSILuaPopup;
 
 /// @brief A timer started from Lua.
 typedef struct ECSILuaTimer
@@ -1634,7 +1644,198 @@ static int ECSIBindings_PanelStartDrag(lua_State *state)
     return 1;
 }
 
+#pragma region Popups
+
+/// @brief Names of the kinds of popups in Lua, in the order of ECSPopupKind.
+static const char *const OPENECS_BINDINGS_POPUP_KINDS[] = {"menu", "tooltip", NULL};
+
+/// @brief Reads a popup handle. Raises a Lua error if it is not one, or its popup has closed.
+static ECSPopup ECSIBindings_CheckPopup(int index)
+{
+    return ECSIServices_CheckHandle(index, OPENECS_LUA_POPUP);
+}
+
+/// @brief Pushes a function of a Lua popup's description.
+/// @return true if it has the function; nothing is pushed otherwise.
+static bool ECSIBindings_PushPopupFunction(lua_State *state, const ECSILuaPopup *luaPopup, const char *name)
+{
+    lua_rawgeti(state, LUA_REGISTRYINDEX, luaPopup->desc);
+    bool found = lua_getfield(state, -1, name) == LUA_TFUNCTION;
+    lua_remove(state, -2);
+
+    if (!found)
+    {
+        lua_pop(state, 1);
+    }
+
+    return found;
+}
+
+/// @brief Reports the error on top of the stack, pops it, and closes the popup.
+static void ECSIBindings_PopupFailed(lua_State *state, const ECSILuaPopup *luaPopup)
+{
+    ECSIPlugin_ReportError(luaPopup->plugin, lua_tostring(state, -1));
+    lua_pop(state, 1);
+    ECSPopup_Close(luaPopup->popup);
+}
+
+static void ECSIBindings_PopupDraw(void *data, ECSSurface *surface)
+{
+    ECSILuaPopup *luaPopup = data;
+    lua_State *state = ECSILua_GetState();
+
+    if (!ECSIBindings_PushPopupFunction(state, luaPopup, "draw"))
+    {
+        return;
+    }
+
+    // the core forgets the surface's handle once Draw returns
+    ECSIServices_PushHandle(OPENECS_LUA_SURFACE, surface);
+
+    if (ECSILua_Call(1, 0))
+    {
+        ECSIBindings_PopupFailed(state, luaPopup);
+    }
+}
+
+static void ECSIBindings_PopupEvent(void *data, const ECSPanelEvent *event)
+{
+    ECSILuaPopup *luaPopup = data;
+    lua_State *state = ECSILua_GetState();
+
+    if (!ECSIBindings_PushPopupFunction(state, luaPopup, "event"))
+    {
+        return;
+    }
+
+    ECSIBindings_PushEvent(state, event);
+
+    if (ECSILua_Call(1, 0))
+    {
+        ECSIBindings_PopupFailed(state, luaPopup);
+    }
+}
+
+/// @brief Runs a Lua popup's closed function, then forgets the popup.
+static void ECSIBindings_PopupClosed(void *data)
+{
+    ECSILuaPopup *luaPopup = data;
+    lua_State *state = ECSILua_GetState();
+
+    if (ECSIBindings_PushPopupFunction(state, luaPopup, "closed") && ECSILua_Call(0, 0))
+    {
+        ECSIPlugin_ReportError(luaPopup->plugin, lua_tostring(state, -1));
+        lua_pop(state, 1);
+    }
+
+    ECSIServices_ForgetHandle(luaPopup->popup);
+    luaL_unref(state, LUA_REGISTRYINDEX, luaPopup->desc);
+    SDL_free(luaPopup);
+}
+
+/// @brief Reads a number field of the table at an index, or a default if it is missing.
+static f32 ECSIBindings_OptNumberField(lua_State *state, int index, const char *name, f32 fallback)
+{
+    lua_getfield(state, index, name);
+    f32 number = lua_isnil(state, -1) ? fallback : (f32)luaL_checknumber(state, -1);
+    lua_pop(state, 1);
+    return number;
+}
+
+static int ECSIBindings_PanelOpenPopup(lua_State *state)
+{
+    ECSPanel panel = ECSIBindings_CheckPanel(state, 1);
+    luaL_argcheck(state, panel->type != NULL, 1, "the panel has no type");
+    luaL_checktype(state, 2, LUA_TTABLE);
+
+    lua_getfield(state, 2, "kind");
+    ECSPopupKind kind = (ECSPopupKind)luaL_checkoption(state, -1, "menu", OPENECS_BINDINGS_POPUP_KINDS);
+    lua_pop(state, 1);
+
+    ECSPopupDesc desc = {
+        .kind = kind,
+        .width = ECSIBindings_OptNumberField(state, 2, "width", 0.0f),
+        .height = ECSIBindings_OptNumberField(state, 2, "height", 0.0f),
+        .Draw = ECSIBindings_PopupDraw,
+        .Event = ECSIBindings_PopupEvent,
+        .Closed = ECSIBindings_PopupClosed,
+    };
+
+    if (lua_getfield(state, 2, "anchor") == LUA_TTABLE)
+    {
+        int anchor = lua_gettop(state);
+        desc.anchorX = ECSIBindings_OptNumberField(state, anchor, "x", 0.0f);
+        desc.anchorY = ECSIBindings_OptNumberField(state, anchor, "y", 0.0f);
+        desc.anchorWidth = ECSIBindings_OptNumberField(state, anchor, "width", 0.0f);
+        desc.anchorHeight = ECSIBindings_OptNumberField(state, anchor, "height", 0.0f);
+    }
+
+    lua_pop(state, 1);
+    lua_getfield(state, 2, "draw");
+    luaL_argcheck(state, lua_isfunction(state, -1), 2, "the popup needs a draw function");
+    lua_pop(state, 1);
+
+    ECSILuaPopup *luaPopup = SDL_calloc(1, sizeof(ECSILuaPopup));
+
+    if (luaPopup == NULL)
+    {
+        return luaL_error(state, "out of memory");
+    }
+
+    lua_pushvalue(state, 2);
+    luaPopup->desc = luaL_ref(state, LUA_REGISTRYINDEX);
+    luaPopup->plugin = panel->type->plugin;
+    desc.data = luaPopup;
+    SHUResult result = ECSPopup_Open(panel, &desc, &luaPopup->popup);
+
+    if (result)
+    {
+        luaL_unref(state, LUA_REGISTRYINDEX, luaPopup->desc);
+        SDL_free(luaPopup);
+        lua_pushnil(state);
+        lua_pushfstring(state, "the popup is not opened (%s)", result == SHUResult_ErrNotFound ? "the panel is not shown" : result == SHUResult_ErrBadData ? "it needs a width and a height above 0" : SHUResult_String(result));
+        return 2;
+    }
+
+    ECSIServices_PushHandle(OPENECS_LUA_POPUP, luaPopup->popup);
+    return 1;
+}
+
+static int ECSIBindings_PopupClose(lua_State *state)
+{
+    (void)state;
+    ECSPopup_Close(ECSIBindings_CheckPopup(1));
+    return 0;
+}
+
+static int ECSIBindings_PopupRedraw(lua_State *state)
+{
+    (void)state;
+    ECSPopup_Redraw(ECSIBindings_CheckPopup(1));
+    return 0;
+}
+
+static int ECSIBindings_PopupSetSize(lua_State *state)
+{
+    ECSPopup popup = ECSIBindings_CheckPopup(1);
+    f32 width = (f32)luaL_checknumber(state, 2);
+    f32 height = (f32)luaL_checknumber(state, 3);
+    luaL_argcheck(state, width > 0.0f && height > 0.0f, 2, "the size must be above 0");
+    ECSPopup_SetSize(popup, width, height);
+    return 0;
+}
+
+static const luaL_Reg OPENECS_BINDINGS_POPUP[] = {
+    {"close", ECSIBindings_PopupClose},
+    {"redraw", ECSIBindings_PopupRedraw},
+    {"setSize", ECSIBindings_PopupSetSize},
+    {NULL, NULL},
+};
+
+#pragma endregion Popups
+
 static const luaL_Reg OPENECS_BINDINGS_PANEL_METHODS[] = {
+    {"openPopup", ECSIBindings_PanelOpenPopup},
     {"setTextInput", ECSIBindings_PanelSetTextInput},
     {"acceptDrops", ECSIBindings_PanelAcceptDrops},
     {"startDrag", ECSIBindings_PanelStartDrag},
@@ -1668,6 +1869,7 @@ static int ECSIBindings_PanelAddMenuEntry(lua_State *state)
 static const luaL_Reg OPENECS_BINDINGS_PANEL[] = {
     {"registerType", ECSIBindings_PanelRegisterType},
     {"addMenuEntry", ECSIBindings_PanelAddMenuEntry},
+    {"openPopup", ECSIBindings_PanelOpenPopup},
     {"setTextInput", ECSIBindings_PanelSetTextInput},
     {"acceptDrops", ECSIBindings_PanelAcceptDrops},
     {"startDrag", ECSIBindings_PanelStartDrag},
@@ -1846,6 +2048,7 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIBindings_AddTable(state, plugin, "settings", OPENECS_BINDINGS_SETTINGS);
     ECSIBindings_AddTable(state, plugin, "timer", OPENECS_BINDINGS_TIMER);
     ECSIBindings_AddTable(state, plugin, "panel", OPENECS_BINDINGS_PANEL);
+    ECSIBindings_AddTable(state, plugin, "popup", OPENECS_BINDINGS_POPUP);
     ECSIBindings_AddTable(state, plugin, "service", OPENECS_BINDINGS_SERVICE);
     ECSIBindings_AddTable(state, plugin, "input", OPENECS_BINDINGS_INPUT);
     ECSIBindings_AddTable(state, plugin, "layout", OPENECS_BINDINGS_LAYOUT);
@@ -1951,6 +2154,11 @@ void ECSIBindings_Initialize(void)
 
     ECSIServices_PushHandleMetatable(OPENECS_LUA_PANEL);
     luaL_newlib(state, OPENECS_BINDINGS_PANEL_METHODS);
+    lua_setfield(state, -2, "__index");
+    lua_pop(state, 1);
+
+    ECSIServices_PushHandleMetatable(OPENECS_LUA_POPUP);
+    luaL_newlib(state, OPENECS_BINDINGS_POPUP);
     lua_setfield(state, -2, "__index");
     lua_pop(state, 1);
 

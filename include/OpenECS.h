@@ -36,6 +36,9 @@ typedef struct ECSITimer *ECSTimer;
 /// @brief A plugin's subscription to a named event.
 typedef struct ECSISubscription *ECSSubscription;
 
+/// @brief Handle of a popup. Services take it as handle<ecs.popup>.
+typedef struct ECSIPopup *ECSPopup;
+
 /// @brief A function of a service, of any signature. Cast it to its real type before calling it.
 typedef void (*ECSFunction)(void);
 
@@ -220,6 +223,48 @@ typedef SHUResult (*ECSPanelSaveStateFunction)(void *state, ECSValue *retState);
 /// @param state The panel's state.
 /// @return SHUResult_Ok, or an error, which cancels closing the panel.
 typedef SHUResult (*ECSPanelSaveFunction)(void *state);
+
+/// @brief What a popup is.
+typedef enum ECSPopupKind
+{
+    ECSPopupKind_Menu = 0, // takes the key presses while it is open; Escape closes it
+    ECSPopupKind_Tooltip,  // takes no key presses
+} ECSPopupKind;
+
+/// @brief Draws a popup into its surface.
+/// @param data The data of the popup's description.
+/// @param surface The surface, valid only during the call.
+typedef void (*ECSPopupDrawFunction)(void *data, ECSSurface *surface);
+
+/// @brief Tells a popup about a pointer, wheel or key event. Positions are in the popup's surface pixels.
+/// @param data The data of the popup's description.
+/// @param event The event, valid only during the call.
+typedef void (*ECSPopupEventFunction)(void *data, const ECSPanelEvent *event);
+
+/// @brief Tells a popup's owner that it has closed. The popup is invalid afterwards.
+/// @param data The data of the popup's description.
+typedef void (*ECSPopupClosedFunction)(void *data);
+
+/// @brief Describes a popup. Passed to ECSPopup_Open.
+typedef struct ECSPopupDesc
+{
+    ECSPopupKind kind;
+    f32 anchorX;      // the rectangle of the panel the popup opens next to, in the panel's surface pixels
+    f32 anchorY;
+    f32 anchorWidth;
+    f32 anchorHeight;
+    f32 width;        // the popup's size, in layout units
+    f32 height;
+
+    // required
+    ECSPopupDrawFunction Draw;
+
+    // optional, NULL if unused
+    ECSPopupEventFunction Event;
+    ECSPopupClosedFunction Closed;
+
+    void *data; // passed to the functions
+} ECSPopupDesc;
 
 /// @brief Describes a panel type. Passed to ECSPanelType_Register.
 typedef struct ECSPanelTypeDesc
@@ -827,6 +872,31 @@ OPENECS_EXPORT SHUWUR SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char 
 /// @return SHUResult_Ok, SHUResult_Err if no pointer button that was pressed on the panel is held, or SHUResult_ErrAllocation.
 /// @lua ecs.panel.startDrag, panel:startDrag
 OPENECS_EXPORT SHUWUR SHUResult ECSPanel_StartDrag(ECSPanel panel, const char *type, const ECSValue *value);
+
+/// @brief Opens a popup next to a rectangle of a shown panel: below it, or above it if there is no room below. It closes when code closes it, on a press outside every popup, on Escape if it is a menu, and when its panel closes, fails or is hidden. Main thread only.
+/// @param panel The panel the popup belongs to.
+/// @param desc Description of the popup. The core copies it.
+/// @param retPopup The new popup.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the description has no Draw function or no size, SHUResult_ErrNotFound if the panel is not shown, or SHUResult_ErrAllocation.
+/// @lua ecs.panel.openPopup, panel:openPopup
+OPENECS_EXPORT SHUWUR SHUResult ECSPopup_Open(ECSPanel panel, const ECSPopupDesc *desc, ECSPopup *retPopup);
+
+/// @brief Closes a popup. Its Closed function runs after the current callback returns. Main thread only.
+/// @param popup The popup. A popup that has already closed is ignored.
+/// @lua ecs.popup.close, popup:close
+OPENECS_EXPORT void ECSPopup_Close(ECSPopup popup);
+
+/// @brief Asks for a popup to be drawn again. Main thread only.
+/// @param popup The popup.
+/// @lua ecs.popup.redraw, popup:redraw
+OPENECS_EXPORT void ECSPopup_Redraw(ECSPopup popup);
+
+/// @brief Changes a popup's size. It is drawn again. Main thread only.
+/// @param popup The popup.
+/// @param width Width in layout units, more than 0.
+/// @param height Height in layout units, more than 0.
+/// @lua ecs.popup.setSize, popup:setSize
+OPENECS_EXPORT void ECSPopup_SetSize(ECSPopup popup, f32 width, f32 height);
 
 /// @brief Gets the type of dropped data.
 /// @param data The data of a Drop event.
