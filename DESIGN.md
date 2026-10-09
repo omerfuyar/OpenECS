@@ -145,7 +145,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 
 - No header that plugins include, and no function that plugins call, exposes a type from SDL, Lua, Clay or libffi.
 - `shu.h` is the exception; it is part of the plugin interface (1.3).
-- Native plugins get the core's SDL objects only through the built-in **sdl** plugin (9.8). A native plugin may link SDL's shared libraries itself (17.2), as the standard plugins do (20). Inside the core, every module calls SDL directly (1.7).
+- Native plugins get the core's SDL objects only through the built-in **sdl** plugin (9.8). A native plugin may call SDL itself, using the executable's copy (17.2), as the standard plugins do (20). Inside the core, every module calls SDL directly (1.7).
 - Plugins can call only the core functions marked `OPENECS_EXPORT`. Every other function of the core is hidden from them (17.2).
 
 ### 2.3 Start-up
@@ -990,7 +990,7 @@ OpenECS follows the XDG Base Directory specification:
 - libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.
 - Native plugins are shared libraries, built against the plugin header only. They do not link against the core; their calls to it are resolved when they are loaded.
-- First-party native plugins may use SDL3 and SDL3_ttf: the build links them with the libraries they use (`--as-needed`), and they find them next to the executable.
+- First-party native plugins may call SDL3 and SDL3_ttf. Like their calls to the core, these calls are resolved when the plugin is loaded, against the libraries the executable loaded, so every plugin uses the executable's copy of SDL.
 - A first-party plugin is built from every C file in its folder, `plugins/<name>/`, so the build needs no settings for each plugin. Its Lua files and its folders, which hold its Lua modules (9.6), are copied.
 
 ### 17.3 Compiler
@@ -1110,7 +1110,7 @@ OpenECS follows the XDG Base Directory specification:
 
 - The `ui` plugin draws into the pixels surface of another plugin's panel. A panel's `Draw` passes its surface handle (10.6) to ui's functions.
 - Positions and sizes are in layout units; ui multiplies them by the surface's scale. Colours are ARGB integers.
-- It is a native plugin. It links SDL3 and SDL3_ttf itself: it wraps the surface's pixels in an SDL surface for each call, and draws text with one SDL3_ttf surface text engine, which keeps the glyphs it has drawn.
+- It is a native plugin. It calls SDL3 and SDL3_ttf itself (17.2): it wraps the surface's pixels in an SDL surface for each call, and draws text with one SDL3_ttf surface text engine, which keeps the glyphs it has drawn.
 - Its font is the core's `ecs.font`, at the size the caller asks for; a relative path starts at the executable's folder.
 - Its functions:
 
