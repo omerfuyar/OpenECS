@@ -1076,7 +1076,7 @@ OpenECS follows the XDG Base Directory specification:
 - An example is a folder in `examples/` that shows plugin authors one part of the plugin interface. Its number orders the examples from the first steps to the complex ones, so they are read in order: `1_hello`, `2_native`, and so on.
 - An example holds a preset, `preset.lua`, the folders of its plugins, and its tests, the files whose names start with `test`. The preset names the folder in `pluginsDir`, so the example needs nothing else but the standard plugins.
 - Its comments say what a statement does and when it may be called, not what the functions' documentation already says.
-- `11_sketch` holds `sketch_c` and `sketch_lua`, the same plugin in C and in Lua: canvases and a clock with settings, services, keys, events and state. They use the plugin interface the same way in both languages, and draw the same strokes into the same pixels.
+- `12_sketch` holds `sketch_c` and `sketch_lua`, the same plugin in C and in Lua: canvases and a clock with settings, services, keys, events and state. They use the plugin interface the same way in both languages, and draw the same strokes into the same pixels.
 - The build copies `examples/` whole, sources too, to `bin/examples/`, and builds each example's native plugins there.
 - A change between releases may break an example. Before a release, the examples are brought up to date, so their tests pass (19.4).
 
