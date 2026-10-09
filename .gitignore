@@ -1,6 +1,7 @@
 .vscode
 *.exe
 *.old
+ignore/
 ignore.*
 *.ignore
 shuild

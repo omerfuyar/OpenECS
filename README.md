@@ -108,7 +108,7 @@ gcc shuild.c -o shuild.ignore -O3
 
 Dependencies are built the first time only. To build one again, delete its library from `build/<LINK>/<TYPE>/lib/` and the `.shu/` folder; shuild does not make a library again while its compiled files are unchanged.
 
-Shuild compiles again only the files that changed. After changing compiler flags in `shuild.c`, delete `.shu/` to compile everything again.
+Shuild compiles again only the files that changed. After changing compiler flags in `shuild.c`, delete `.shu/` (or run `sudo git clean -Xfd` to delete all ignored files) to compile everything again.
 
 Debug builds run the static analyzer while compiling, and the sanitizers while the program runs. A sanitizer prints its report to standard error, and the program exits with an error.
 
@@ -131,7 +131,7 @@ The examples in `examples/` show how to write plugins, one part at a time. Read 
 ./build/Static/Release/bin/OpenECS --preset build/Static/Release/bin/examples/1_hello/preset.lua
 ```
 
-The last one, `12_sketch`, shows two plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Shift and a drag carry a canvas's strokes to another canvas, and a canvas takes strokes files dropped from a file manager. Ctrl+Tab switches workspace.
+`12_sketch` shows two plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Shift and a drag carry a canvas's strokes to another canvas, and a canvas takes strokes files dropped from a file manager. Ctrl+Tab switches workspace.
 
 ### Testing
 
