@@ -169,6 +169,14 @@ function Panel:openPopup(desc) end
 ---@field scale number Pixels per layout unit.
 local Surface = {}
 
+---Fills a rectangle with one colour, such as to clear the surface. The rectangle is in pixels, and clipped to the surface.
+---@param x integer
+---@param y integer
+---@param width integer
+---@param height integer
+---@param color integer ARGB, such as 0xFFFF0000; it replaces the pixels.
+function Surface:fill(x, y, width, height, color) end
+
 ---Sets a pixel. Pixels outside the surface are clipped. Lua only: C writes the surface's pixels directly.
 ---@param x integer
 ---@param y integer

@@ -6,7 +6,6 @@ What is not decided yet, and work that is waiting. When an item is settled, writ
 
 - **Other first-party plugins.** Which other plugins ship with OpenECS? (OVERVIEW 3.3)
 - **Domain plugins.** Should plugins for specific domains, such as glTF models, audio or networking, live in their own repositories instead of being first-party? (OVERVIEW 3.3)
-- **Build system.** The repository builds with shuild. Decide whether it stays, then add build and test commands to README.md.
 
 ## Tasks
 

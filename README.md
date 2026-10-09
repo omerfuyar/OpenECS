@@ -24,22 +24,22 @@ Starts the tool a preset describes, or the launcher without one. The preset's op
 opens each FILE.
 
 Options:
-  --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file
-  --session FILE      Open a saved session
-  --fresh             Start from the preset, not from the tool's last session
-  --test FILE         Run a test; Debug builds only
-  --version           Print the version and exit
-  --help              Print this help and exit
+  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file
+  -s, --session FILE      Open a saved session
+  -f, --fresh             Start from the preset, not from the tool's last session
+  -t, --test FILE         Run a test; Debug builds only
+  -v, --version           Print the version and exit
+  -h, --help              Print this help and exit
 ```
 
 Without a preset, OpenECS shows the launcher: it lists the presets and saved sessions, and Up, Down and Return or a click open one. Press Alt+W to see the core's keys; Alt+W then `,` opens the settings window.
 
 ### Examples
 
-The `examples/` folder shows how to write plugins, one part at a time. Read the examples in the order of their numbers, from `1_hello` to `12_sketch`. Each holds a preset, its plugins and a test:
+The `examples/` folder shows how to write plugins, one part at a time. Read the examples in the order of their numbers, from `1_hello` to `12_sketch`. Each holds a preset, its plugins and a test. Run them with `--fresh`, so each starts from its preset even if you keep sessions (`ecs.keepSession`):
 
 ``` shell
-./OpenECS --preset examples/1_hello/preset.lua
+./OpenECS --fresh --preset examples/1_hello/preset.lua
 ```
 
 `12_sketch` shows two plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Shift and a drag carry a canvas's strokes to another canvas, and a canvas takes strokes files dropped from a file manager. Ctrl+Tab switches workspace.

@@ -323,7 +323,7 @@ A preset is a complete application representation. That is why a preset may do t
 
 A **session** uses the same format as a preset, but OpenECS writes it.
 
-- When the user quits, OpenECS saves the session and restores it the next time the same tool starts. This is not automatic saving: nothing is saved while OpenECS runs.
+- A tool starts from its preset. With the setting that keeps sessions, which is off by default, OpenECS saves the session when the user quits and restores it the next time the same tool starts. Nothing is saved while OpenECS runs.
 - The user can save a session to a file at any time and open it later.
 - A session is a snapshot. It does not link back to the preset it started from.
 

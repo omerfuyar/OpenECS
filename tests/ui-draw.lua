@@ -30,6 +30,8 @@ return {
     test.match(results.thumb, true, "a scrollbar's thumb and track")
     test.match(results.thumbPlace, { 75.0, 25.0 }, "a thumb at the end")
 
+    test.match(results.surfaceFill, 0xFF0000FF, "the core's fill")
+
     test.match(results.kept, false, "a surface handle after draw")
 
     local r, g, b = results.background:match("#(%x%x)(%x%x)(%x%x)")

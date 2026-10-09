@@ -27,6 +27,16 @@ typedef enum ECSISettingsLayer
 /// @return SHUResult_Ok, SHUResult_ErrFile or SHUResult_ErrBadData if the core's settings file cannot be read, or SHUResult_ErrAllocation. A user file that cannot be read is reported and skipped.
 SHUWUR SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder);
 
+/// @brief Replaces the preset layer, such as with the settings of the session that replaces the preset. Call it before settings are declared.
+/// @param presetSettings The new layer's settings table, or NULL for none.
+/// @param presetPath The file they come from.
+/// @return SHUResult_Ok or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSISettings_SetPreset(const ECSValue *presetSettings, const char *presetPath);
+
+/// @brief Reads a bool setting from the highest layer that sets it with a bool, before it is declared.
+/// @return The value, or fallback if no layer sets it.
+bool ECSISettings_PeekBool(const char *name, bool fallback);
+
 /// @brief Frees every declaration and layer.
 void ECSISettings_Terminate(void);
 

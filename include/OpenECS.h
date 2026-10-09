@@ -829,6 +829,16 @@ OPENECS_EXPORT void ECSPanel_SetUnsaved(ECSPanel panel, bool unsaved);
 /// @lua ecs.panel.redraw, panel:redraw
 OPENECS_EXPORT void ECSPanel_Redraw(ECSPanel panel);
 
+/// @brief Fills a rectangle of a pixels surface with one colour, such as to clear it. Main thread only.
+/// @param surface Surface to fill, from a Draw function.
+/// @param x Left edge, in pixels. The rectangle is clipped to the surface.
+/// @param y Top edge, in pixels.
+/// @param width Width, in pixels.
+/// @param height Height, in pixels.
+/// @param color ARGB colour, such as 0xFFFF0000; it replaces the pixels.
+/// @lua surface:fill
+OPENECS_EXPORT void ECSSurface_Fill(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height, u32 color);
+
 /// @brief Gets the panel's title, shown in its tab.
 /// @param panel Panel to read.
 /// @return The title. Valid until the title changes.

@@ -155,7 +155,7 @@ static void SetupConfiguration(int argc, char **argv)
         }
         else
         {
-            Refuse("Unknown flag", flag);
+            Refuse(flag[0] == '-' ? "Unknown flag" : "Unknown argument", flag);
         }
     }
 

@@ -157,7 +157,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 5. Find plugins, read their manifests, resolve dependencies and compute the load order (9.3).
 6. Load each plugin in order and call its `Init`. Plugins register what they provide.
 7. Build the settings layers (OVERVIEW 10.4).
-8. Restore plugin state, then build the layout and panels, from this tool's last session or from the preset (OVERVIEW 10.2).
+8. Restore plugin state, then build the layout and panels, from the preset or, with `ecs.keepSession`, from this tool's last session (13.4).
 9. Report the settings and keys whose names nothing registered (7.8, 12.1).
 10. Pass the files of the command line to the `open` function (13.6).
 11. Enter the main loop.
@@ -323,7 +323,8 @@ typedef struct ECSSurface
 ### 5.4 How plugins draw
 
 - GPU panels get the GPU device and their texture through the **sdl** plugin (9.8) and draw with SDL's GPU API.
-- Plugins that compute their own pixels use pixels surfaces.
+- Plugins that compute their own pixels use pixels surfaces. C writes the pixels directly; Lua uses the surface's methods (11.4).
+- `ECSSurface_Fill(surface, x, y, width, height, color)` fills a rectangle of a pixels surface with one colour, in pixels and clipped, such as to clear it. Lua: `surface:fill(x, y, width, height, color)`.
 - The **ui** plugin draws into pixels surfaces, with SDL's surface functions and SDL3_ttf (20.2).
 
 ## 6. Layout
@@ -765,7 +766,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 
 - A Lua panel type is a table (4.1). The core registers C callbacks that call its Lua functions in protected calls.
 - Panels are handles with methods: `panel:redraw()`, `panel:getId()`, `panel:getType()`, `panel:getTitle()`, `panel:setTitle(text)`, `panel:setUnsaved(unsaved)` and `panel:startTimer(seconds, repeat, fn)`. Each is also a function of `ecs.panel` that takes the panel first, such as `ecs.panel.getTitle(panel)`. A handle of a destroyed panel raises an error when it is used.
-- `draw(state, surface, seconds)` gets a surface handle (10.6) with `width`, `height` and `scale`, and the methods `setPixel(x, y, color)`, `getPixel(x, y)` and `setRow(y, bytes, x)`. Colours are ARGB integers; `setRow` takes the row's pixels as a string in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
+- `draw(state, surface, seconds)` gets a surface handle (10.6) with `width`, `height` and `scale`, and the methods `fill(x, y, width, height, color)` (5.4), `setPixel(x, y, color)`, `getPixel(x, y)` and `setRow(y, bytes, x)`. Colours are ARGB integers; `setRow` takes the row's pixels as a string in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
 - `event(state, event)` gets a table: `type` (such as `"pointerDown"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheelX` and `wheelY` for the wheel, `key` (SDL's key name) for keys, `width` and `height` for `shown` and `resized`, `x`, `y`, `dataType` and `value` for `drop` (7.9), and `text` for `text` (4.6).
 
 ### 11.5 Parity
@@ -887,30 +888,32 @@ The core converts only layout data.
 - Named fields are read and written in the order of their names, so the same session always writes the same file.
 - A session is written from the file it came from, with the current workspaces. So fields that the core does not use are kept.
 - A file is written to a temporary file, then renamed over the old one, so it is never left half-written.
-- `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. Without a path, they ask for the file with a save dialog that starts in the folder of saved sessions (16) and suggests a file named after the preset. A chosen name without `.lua` gets it. Keys run `ecs.session.save` that way. Quitting still saves the tool's last session.
+- `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. Without a path, they ask for the file with a save dialog that starts in the folder of saved sessions (16) and suggests a file named after the preset. A chosen name without `.lua` gets it. Keys run `ecs.session.save` that way.
+- The core's setting `ecs.keepSession`, off by default, keeps the tool's session between runs: quitting saves it as the tool's last session, and the next start of the same tool opens it instead of the preset. The core reads the setting before it chooses what to open, and again when the tool quits.
 
 ### 13.5 Opening a session or a preset
 
 - `ECSSession_Open(path)`, and in Lua `ecs.session.open(path)`, open a session in place of the current one. Without a path, they ask for the file with an open dialog that starts in the folder of saved sessions (16). Keys run `ecs.session.open` that way.
-- `ECSSession_OpenPreset(nameOrPath)`, and in Lua `ecs.session.openPreset(nameOrPath)`, open a preset's tool in place of the current one. The name is looked up as `--preset` looks it up (13.6). The tool starts from its last session if it has one, as at a start from the desktop.
+- `ECSSession_OpenPreset(nameOrPath)`, and in Lua `ecs.session.openPreset(nameOrPath)`, open a preset's tool in place of the current one. The name is looked up as `--preset` looks it up (13.6). The tool starts as at a start from the desktop: from its last session if `ecs.keepSession` is on and it has one (13.4).
 - A file without a list of workspaces is reported, and nothing changes.
 - The core asks about unsaved work (4.5). When the dialog cannot be shown, the work is kept and nothing is opened.
-- When the current pass of the main loop ends, OpenECS shuts down from step 2 of 2.4, so the tool's last session is saved. Then the program replaces itself with `openecs --session FILE`, or `openecs --preset FILE` for a preset. So the identity, plugins and settings of the new tool apply as at a start.
+- When the current pass of the main loop ends, OpenECS shuts down from step 2 of 2.4, so the tool's last session is saved if `ecs.keepSession` is on. Then the program replaces itself with `openecs --session FILE`, or `openecs --preset FILE` for a preset. So the identity, plugins and settings of the new tool apply as at a start.
 - A test cannot open a session or a preset (17.5).
 
 ### 13.6 Command line
 
 ```
-openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [--version] [--help] [FILE...]
+openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE] [-v|--version] [-h|--help] [FILE...]
 ```
 
 - `--version` prints the version of OpenECS (19.1) and of the plugin API, and exits.
-- `--help` prints the options, and exits. An unknown option is reported and ignored.
-- `--fresh` starts from the preset instead of the tool's last session.
+- `--help` prints the options, and exits.
+- Each option has a short form of one letter. An argument that starts with `-` and is not an option, or an option without its value, is reported, and OpenECS exits with status 2.
+- `--fresh` starts from the preset even when `ecs.keepSession` is on (13.4).
 - `--test` runs a test (17.5).
 - Without `--preset` and `--session`, OpenECS starts with the preset `launcher` (13.8).
 - A preset's name is looked up in the user's presets, then in the first-party presets (16). A name that has a `/` or ends with `.lua` is a path.
-- A session's identity wins over the preset's, so the session is saved again as the last session of its own tool.
+- A session's identity wins over the preset's, so the session is saved again as the last session of its own tool, if `ecs.keepSession` is on.
 - Files are passed to the function that the preset or session names in `open`. Its signature is `void(string)`. It is called once for each file, in order, once the session is built (2.3). Without an `open` function, the files are reported and not opened.
 - A tool's `.desktop` file runs, for example, `openecs --preset paint %F`.
 
