@@ -620,7 +620,8 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 - The environment has its own `require`. For `"ecs"` it gives the plugin's own `ecs` table, whose functions carry the plugin, so the core knows which plugin made an `ecs` call.
 - For other names, `require` first looks in the plugin's folder: `require("parts.shapes")` finds `parts/shapes.lua`, or else `parts/shapes/init.lua`. It runs the module once, in the plugin's environment, so the module can also `require("ecs")`, and gives what the module returns, or `true` if it returns nothing. Each plugin has its own modules, so two plugins can have modules of the same name.
 - Names that the plugin's folder does not hold go to Lua's `require`.
-- `include/ecs.lua` describes the `ecs` module for editors: every function's parameters, results and documentation, in LuaLS annotations. It changes with the bindings. A plugin's author adds the build's `include/` folder to `workspace.library` in the plugin's `.luarc.json`.
+- `include/ecs.lua` describes the `ecs` module for editors: every function's parameters, results and documentation, in LuaLS annotations. It changes with the bindings.
+- It also describes the files plugin authors write: `ecs.Manifest`, `ecs.Preset`, `ecs.Session` and `ecs.SettingsFile`. `---@type ecs.Preset` above a file's `return` gives editors completion and checks for its fields. A plugin's author adds the build's `include/` folder to `workspace.library` in the plugin's `.luarc.json`.
 - The manifest's `lua` file runs once, in a protected call, after the native `ECSPlugin_Init`. An error fails the plugin.
 
 ### 9.7 Lifecycle
