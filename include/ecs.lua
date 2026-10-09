@@ -133,6 +133,15 @@ function Panel:setUnsaved(unsaved) end
 ---@return ecs.Timer
 function Panel:startTimer(seconds, repeat_, fn) end
 
+---Says whether the panel accepts typed text, and where its text cursor is. While the panel has focus and accepts text, it gets text events,
+---and the system's input method shows its window beside the cursor. A key that runs a binding types no text.
+---@param accept boolean
+---@param x? number The text cursor's rectangle, in surface pixels; 0 if missing.
+---@param y? number
+---@param width? number
+---@param height? number
+function Panel:setTextInput(accept, x, y, width, height) end
+
 ---Sets the types of data that the panel accepts when data is dropped on it, such as "color" or "file-list".
 ---Data from other applications is "file-list", a list of paths, or "text". A new call replaces the list.
 ---@param types string[]
@@ -171,7 +180,7 @@ function Surface:getPixel(x, y) end
 ---@param x? integer The first pixel's column; 0 if missing.
 function Surface:setRow(y, bytes, x) end
 
----@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"|"drop"
+---@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"|"drop"|"text"
 
 ---@class ecs.PanelEvent
 ---@field type ecs.PanelEventType
@@ -189,6 +198,7 @@ function Surface:setRow(y, bytes, x) end
 ---@field height? number For shown and resized.
 ---@field dataType? string For drop: the type of the dropped data, such as "color" or "file-list".
 ---@field value? any For drop: the dropped data.
+---@field text? string For text: the typed text, UTF-8.
 
 ---@class ecs.PanelTypeDesc
 ---@field name string The plugin's name, a dot and the type's name, such as "canvas.view".
@@ -250,6 +260,14 @@ function ecs.panel.setUnsaved(panel, unsaved) end
 ---@param fn fun()
 ---@return ecs.Timer
 function ecs.panel.startTimer(panel, seconds, repeat_, fn) end
+
+---@param panel ecs.Panel
+---@param accept boolean
+---@param x? number
+---@param y? number
+---@param width? number
+---@param height? number
+function ecs.panel.setTextInput(panel, accept, x, y, width, height) end
 
 ---@param panel ecs.Panel
 ---@param types string[]

@@ -60,5 +60,37 @@ return {
     -- opening it again shows the same window
     test.call("settings.open")
     test.match(window(test.session()).state.selected, "ecs.reopenLimit", "the open window, shown again")
+
+    -- Return types a text setting's value: a key the panel gets, then the text it types, as an input method gives them
+    local function type(text)
+      test.key("A")
+      test.text(text)
+    end
+
+    choose(test, "ecs.colorAccent")
+    test.key("Return")
+
+    for _ = 1, #"#4C8BF5" do
+      test.key("Backspace")
+    end
+
+    type("#1122")
+
+    -- the core's keys type nothing: the text of the prefix key is dropped
+    test.key("Alt+W")
+    test.text("w")
+    test.key("Escape")
+
+    type("33")
+    test.key("Return")
+    test.match(test.session().pluginState.probe.state.accent, "#112233", "ecs.colorAccent after typing it")
+
+    -- Escape drops what was typed
+    test.key("Return")
+    type("ff")
+    test.key("Escape")
+    test.key("Return")
+    test.key("Return")
+    test.match(test.session().pluginState.probe.state.accent, "#112233", "ecs.colorAccent after Escape")
   end,
 }

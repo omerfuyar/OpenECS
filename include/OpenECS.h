@@ -126,6 +126,7 @@ typedef enum ECSPanelEventType
     ECSPanelEventType_Hidden,  // the panel is no longer visible: another tab, workspace or maximized group is shown
     ECSPanelEventType_Resized, // the panel's size changed while it is visible
     ECSPanelEventType_Drop,    // data of a type the panel accepts was dropped on it
+    ECSPanelEventType_Text,    // text typed while the panel has focus and accepts text
 } ECSPanelEventType;
 
 /// @brief Handle of dropped data, valid only during the Drop event that carries it. ECSDropData_GetType and ECSDropData_GetValue read it.
@@ -176,6 +177,12 @@ typedef struct ECSPanelEvent
             f32 y;            // position in surface pixels
             ECSDropData data; // the dropped data
         } drop;
+
+        // Text
+        struct
+        {
+            const char *text; // UTF-8, valid during the event
+        } text;
     };
 } ECSPanelEvent;
 
@@ -793,6 +800,16 @@ OPENECS_EXPORT u32 ECSPanel_GetId(ECSPanel panel);
 /// @return The name. Valid while the panel exists.
 /// @lua ecs.panel.getType, panel:getType
 OPENECS_EXPORT const char *ECSPanel_GetType(ECSPanel panel);
+
+/// @brief Says whether a panel accepts typed text, and where its text cursor is. While the panel has focus and accepts text, it gets Text events, and the system's input method shows its window beside the cursor. A key that runs a binding types no text. Main thread only.
+/// @param panel The panel.
+/// @param accept true to accept text.
+/// @param x Horizontal position of the text cursor's rectangle, in surface pixels.
+/// @param y Vertical position of the rectangle, in surface pixels.
+/// @param width Width of the rectangle, in surface pixels.
+/// @param height Height of the rectangle, in surface pixels.
+/// @lua ecs.panel.setTextInput, panel:setTextInput
+OPENECS_EXPORT void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f32 y, f32 width, f32 height);
 
 /// @brief Sets the types of data that a panel accepts when data is dropped on it, such as "color" or "file-list". Data from other applications is "file-list", a list of paths, or "text". Main thread only.
 /// @param panel The panel.

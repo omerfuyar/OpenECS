@@ -97,7 +97,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 - Functions used by only one source file are `static`.
 - First-party plugins are in `plugins/<name>/`, and first-party presets in `presets/`.
 - Tests are in `tests/` (17.5).
-- `sketch_c` and `sketch_lua` are example plugins with the same canvases, clock, settings, services, keys, events and state, one native and one in Lua. They use every part of the plugin interface, and draw the same strokes into the same pixels.
+- `sketch_c` and `sketch_lua` are example plugins with the same canvases, clock, settings, services, keys, events and state, one native and one in Lua. They use the plugin interface the same way in both languages, and draw the same strokes into the same pixels. The launcher and the settings window (13.8, 12.4) use the parts they leave out, such as text input and the lists of presets and sessions.
 
 ### 1.6 Style
 
@@ -272,7 +272,9 @@ typedef struct ECSPanelTypeDesc
 - **Popups.** A panel opens a popup anchored to a rectangle in its own area. A popup has its own surface and closes on Escape, on a click outside it, or when its panel closes.
   - Popups are SDL popup windows (`SDL_CreatePopupWindow`). SDL keeps them inside the display and hides them with their parent. Menus take keyboard focus; tooltips do not.
 - **Pointer.** The pointer's shape is a system shape or an image. The pointer lock uses `SDL_SetWindowRelativeMouseMode`; pressing the core prefix also ends it.
-- **Text input.** A panel says whether it accepts text and where its text cursor is. The core turns text input on for the focused panel and tells the input method where to show its window (`SDL_StartTextInput`, `SDL_SetTextInputArea`).
+- **Text input.** A panel says whether it accepts text and where its text cursor is, in its surface pixels: `ECSPanel_SetTextInput(panel, accept, x, y, width, height)`, and in Lua `panel:setTextInput(accept, x, y, width, height)`. The core turns text input on while the focused panel accepts text, and tells the input method where to show its window (`SDL_StartTextInput`, `SDL_SetTextInputArea`).
+  - The focused panel gets the typed text as `Text` events, in UTF-8; the text is valid during the event.
+  - A key press that runs the core's keys or a binding types no text (OVERVIEW 7.3): the core drops the text that follows it.
 
 ## 5. Surfaces and rendering
 
@@ -509,7 +511,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Named events carry a value (10.3). The core emits its own (8.4), and plugins declare and emit theirs (8.3).
 - Events are notifications. Handlers return nothing and cannot cancel anything.
 - A panel gets `Shown` when it becomes visible and `Hidden` when another tab, workspace or maximized group hides it, and `Resized` when its size changes while it is visible. `Shown` and `Resized` carry the size in layout units. The layout checks after each pass, so a panel that was never visible gets no `Hidden`.
-- A panel's event is a tagged union, `ECSPanelEvent`: its type chooses which member is set, `pointer`, `wheel`, `key`, `size` or `drop`. Every input event carries the modifiers held when it happened. A wheel amount is positive away from the user, even when the system flips the wheel.
+- A panel's event is a tagged union, `ECSPanelEvent`: its type chooses which member is set, `pointer`, `wheel`, `key`, `size`, `drop` or `text`. Every input event carries the modifiers held when it happened. A wheel amount is positive away from the user, even when the system flips the wheel.
 
 ### 8.2 Delivery
 
@@ -751,7 +753,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 - A Lua panel type is a table (4.1). The core registers C callbacks that call its Lua functions in protected calls.
 - Panels are handles with methods: `panel:redraw()`, `panel:getId()`, `panel:getType()`, `panel:getTitle()`, `panel:setTitle(text)`, `panel:setUnsaved(unsaved)` and `panel:startTimer(seconds, repeat, fn)`. Each is also a function of `ecs.panel` that takes the panel first, such as `ecs.panel.getTitle(panel)`. A handle of a destroyed panel raises an error when it is used.
 - `draw(state, surface, seconds)` gets a surface handle (10.6) with `width`, `height` and `scale`, and the methods `setPixel(x, y, color)`, `getPixel(x, y)` and `setRow(y, bytes, x)`. Colours are ARGB integers; `setRow` takes the row's pixels as a string in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
-- `event(state, event)` gets a table: `type` (such as `"pointerDown"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheelX` and `wheelY` for the wheel, `key` (SDL's key name) for keys, `width` and `height` for `shown` and `resized`, and `x`, `y`, `dataType` and `value` for `drop` (7.9).
+- `event(state, event)` gets a table: `type` (such as `"pointerDown"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheelX` and `wheelY` for the wheel, `key` (SDL's key name) for keys, `width` and `height` for `shown` and `resized`, `x`, `y`, `dataType` and `value` for `drop` (7.9), and `text` for `text` (4.6).
 
 ### 11.5 Parity
 
@@ -806,8 +808,10 @@ return {
 - The first-party Lua plugin `settings` draws with the ui plugin (20.2). The core's settings file loads it in every tool (12.3), and binds `,` after the prefix to `settings.open`, which opens the window as a panel of type `settings.window`, or shows the one that is open.
 - The window lists every declared setting: the core's first, then the plugins', each by name. A row shows the setting's name, its value in effect and its description.
 - A value that the user's own file sets wins over the window's layer, so it is faded, and its row names that file.
-- The window changes values in its layer (12.2): a step back or forward toggles a `bool`, cycles a `choice`, and adds or takes 1 from an `integer` or a `number`. Other types are changed in a settings file, and their rows say so.
-- The functions `settings.up`, `settings.down`, `settings.previous` and `settings.next` choose a setting and change it. Their keys are the settings `settings.upKey` (Up), `settings.downKey` (Down), `settings.previousKey` (Left) and `settings.nextKey` (Right), bound for the panel type (7.8). The wheel chooses too, and a click chooses the setting under it.
+- The window changes values in its layer (12.2): a step back or forward toggles a `bool`, cycles a `choice`, and adds or takes 1 from an `integer` or a `number`.
+- `settings.edit` types the value of a `string` or `key` setting with text input (4.6): it starts typing, and saves the value typed. Backspace deletes the last character, and Escape, or choosing another setting, drops what was typed.
+- `list` and `table` settings are changed in a settings file, and their rows say so.
+- The functions `settings.up`, `settings.down`, `settings.previous`, `settings.next` and `settings.edit` choose a setting and change it. Their keys are the settings `settings.upKey` (Up), `settings.downKey` (Down), `settings.previousKey` (Left), `settings.nextKey` (Right) and `settings.editKey` (Return), bound for the panel type (7.8). The wheel chooses too, and a click chooses the setting under it.
 - The panel's saved state is the chosen setting.
 
 ## 13. Presets and sessions
@@ -1037,6 +1041,7 @@ OpenECS follows the XDG Base Directory specification:
   | `click(x, y, button, modifiers)`                                     | Presses and releases a button.                                                                                                 |
   | `drag(x, y, toX, toY, modifiers)`                                    | Presses the left button, moves in steps and releases it.                                                                       |
   | `wheel(x, y, amount)`                                                | Turns the wheel; a positive amount is away from the user.                                                                      |
+  | `text(text)`                                                         | Types text to the focused panel, as an input method gives it (4.6).                                                            |
   | `dropFiles(x, y, paths)`, `dropText(x, y, text)`                     | Drops files or text from another application at a position (7.9).                                                              |
   | `call(name)`                                                         | Runs a bound function (7.8), such as `"ecs.layout.maximize"`, as a key would.                                                  |
   | `wait(seconds)`                                                      | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                                              |

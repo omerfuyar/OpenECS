@@ -350,6 +350,7 @@ int ECSIApp_Run(void)
         ECSIEvents_Deliver();
         ECSISettings_DeliverChanges();
         ECSIPanels_DestroyClosed();
+        ECSIInput_UpdateTextInput();
 
         // while a test runs, frames are not paced, so each step of the test sees a drawn window
         i32 frameWait = ECSIWindow_GetFrameWait();
