@@ -68,6 +68,8 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 
 - Commit each finished piece of work. Do not leave changes uncommitted.
 - Branches follow DESIGN.md, section 19.2: start yours from `dev`, and it reaches `dev` through a pull request. Never push to `dev` or `main`.
+- Merge your own pull requests into `dev`, with a merge commit, once their checks pass and no review thread is open.
+- Never merge into `main`. The owner reviews and merges every pull request into `main`, for major, minor and patch releases alike, and pushes the release tags. Open the pull request from `dev` into `main` when a release is ready, and give the owner the commands to tag it.
 - Name the branch after the change: `feature/<feature>`, `fix/<bug>`, `refactor/<area>` or `docs/<area>`; never use a generated name.
 - Publish the branch at the start of the work, then push each commit to it.
 - Put small changes on the branch you work on; do not open a branch for each of them.
