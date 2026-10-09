@@ -40,7 +40,7 @@ static const char *const PLUGINS[] = {"sketch_c", "sketch_lua"};
 
 static void SetupConfiguration(int argc, char **argv);
 static void SetBuildFlags(bool ownCode);
-static bool IsBuilt(const char *library);
+static bool IsBuilt(const char *library, bool shared);
 
 static void Shuild_SDL(void);
 static void Shuild_SDL_ttf(void);
@@ -59,32 +59,33 @@ int main(int argc, char **argv)
     SetupConfiguration(argc, argv);
 
     // dependencies are built only once
-    if (!IsBuilt("SDL3"))
+    // SDL and SDL_ttf are always shared libraries, so the core and the plugins that link SDL share one copy
+    if (!IsBuilt("SDL3", true))
     {
         Shuild_SDL();
     }
 
-    if (!IsBuilt("SDL3_ttf"))
+    if (!IsBuilt("SDL3_ttf", true))
     {
         Shuild_SDL_ttf();
     }
 
-    if (!IsBuilt("lua"))
+    if (!IsBuilt("lua", LINK_TYPE == SHUModuleType_LibraryDynamic))
     {
         Shuild_lua();
     }
 
-    if (!IsBuilt("clay"))
+    if (!IsBuilt("clay", LINK_TYPE == SHUModuleType_LibraryDynamic))
     {
         Shuild_clay();
     }
 
-    if (!IsBuilt("ffi"))
+    if (!IsBuilt("ffi", LINK_TYPE == SHUModuleType_LibraryDynamic))
     {
         Shuild_libffi();
     }
 
-    if (!IsBuilt("stb"))
+    if (!IsBuilt("stb", LINK_TYPE == SHUModuleType_LibraryDynamic))
     {
         Shuild_stb();
     }
@@ -192,10 +193,10 @@ static void SetBuildFlags(bool ownCode)
     }
 }
 
-static bool IsBuilt(const char *library)
+static bool IsBuilt(const char *library, bool shared)
 {
     SHUI_String path;
-    SHUI_SFormat(&path, "%slib/lib%s.%s", OUTPUT_DIRECTORY.data, library, LINK_TYPE == SHUModuleType_LibraryDynamic ? "so" : "a");
+    SHUI_SFormat(&path, "%slib/lib%s.%s", OUTPUT_DIRECTORY.data, library, shared ? "so" : "a");
     return SHU_UtilFileExists(path.data) == SHUFileType_Regular;
 }
 
@@ -204,8 +205,6 @@ static void Shuild_SDL(void)
     SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'SDL3'") "...");
 
     const char *root = SHU_UtilGetExecutablePath();
-    const char *sharedOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "ON" : "OFF";
-    const char *staticOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "OFF" : "ON";
 
     SHUI_String sourceDir;
     SHUI_String buildDir;
@@ -217,13 +216,12 @@ static void Shuild_SDL(void)
     SHU_UtilRun(
         "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
         "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
-        "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=%s "
-        "-DSDL_SHARED=%s -DSDL_STATIC=%s "                           // link type
+        "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
+        "-DSDL_SHARED=ON -DSDL_STATIC=OFF "                          // link type
         "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF " // options
         "--log-level=WARNING",                                       // logs
         sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
-        outputPrefixDir.data, outputPrefixDir.data,
-        sharedOptStr, sharedOptStr, staticOptStr);
+        outputPrefixDir.data, outputPrefixDir.data);
 
     SHU_UtilRun(
         "cmake --build \"%s\" --parallel > %s",
@@ -241,7 +239,6 @@ static void Shuild_SDL_ttf(void)
     SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'SDL3_ttf'") "...");
 
     const char *root = SHU_UtilGetExecutablePath();
-    const char *sharedOptStr = LINK_TYPE == SHUModuleType_LibraryDynamic ? "ON" : "OFF";
 
     SHUI_String sourceDir;
     SHUI_String buildDir;
@@ -254,13 +251,12 @@ static void Shuild_SDL_ttf(void)
     SHU_UtilRun(
         "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
         "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
-        "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=%s "
-        "-DBUILD_SHARED_LIBS=%s "                    // link type
+        "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
+        "-DBUILD_SHARED_LIBS=ON "                    // link type
         "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF " // options
         "--log-level=WARNING",                       // logs
         sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
-        outputPrefixDir.data, outputPrefixDir.data,
-        sharedOptStr, sharedOptStr);
+        outputPrefixDir.data, outputPrefixDir.data);
 
     SHU_UtilRun(
         "cmake --build \"%s\" --parallel > %s",
@@ -497,7 +493,8 @@ static void Shuild_OpenECS(void)
     SetBuildFlags(true);
 
     // the executable exports only the plugin interface: the OPENECS_EXPORT functions, whose names start with ECS
-    SHU_CompilerAddFlags(" -fvisibility=hidden '-Wl,--export-dynamic-symbol=ECS*'");
+    // it finds the shared libraries of SDL and SDL_ttf in its own folder
+    SHU_CompilerAddFlags(" -fvisibility=hidden '-Wl,--export-dynamic-symbol=ECS*' '-Wl,-rpath,$ORIGIN'");
 
     // the sanitizers find their settings in src/base/Sanitizers.c by name
     if (BUILD_TYPE == BuildType_Debug)
@@ -525,6 +522,9 @@ static void Shuild_OpenECS(void)
 
     SHUI_SFormat(&tempStr, "%sbin/", OUTPUT_DIRECTORY.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_Executable);
+
+    // the shared libraries go next to the executable under the names it asks for, as files rather than links
+    SHU_UtilRun("cp -L %slib/libSDL3.so.0 %slib/libSDL3_ttf.so.0 %s", OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data, tempStr.data);
 
     SHUI_SFormat(&tempStr, "%sinclude/", OUTPUT_DIRECTORY.data);
     CopyFile("include/OpenECS.h", tempStr.data);
