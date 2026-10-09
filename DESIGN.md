@@ -759,7 +759,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 - The functions of values (10.3) have no `@lua` line, because Lua passes its own values.
 - A function of `ecs.lua` that C does not have says `Lua only:` and why in its documentation, or `Keys can run it.` when it is a core function that C runs by name (7.8).
 - A change that renames or changes anything plugins use changes both files, and every reference to it in code, presets, tests, settings files and documents, in the same commit.
-- The test `tests/parity.lua` checks both files: every public function has its line, every name it gives is in `ecs.lua`, and every function of `ecs.lua` is named or says why not. It also checks that every function the core's settings file binds to a key is in `ecs.lua` and says keys can run it.
+- The test `tests/parity.lua` checks both files: every public function has its line, every name it gives is in `ecs.lua`, and every function of `ecs.lua` is named or says why not. It also checks that every core function the core's settings file binds to a key is in `ecs.lua` and says keys can run it; a function of a plugin that the file loads is checked when the plugin runs (7.8).
 
 ### 11.6 Keeping Lua values
 
@@ -781,7 +781,7 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 
 - `get(name)`, `set(name, value)` (writes the settings window's file), `list()` (every declared setting) and `explain(name)`: the value in effect, the layer it came from, and what each layer says. In C: `ECSSetting_Get`, `ECSSetting_Set`, `ECSSetting_List` and `ECSSetting_Explain`; lists and explanations are values.
 - `set` changes the tool's own part of the settings window's file if that part already has the setting; otherwise it changes the part for every tool.
-- The settings window plugin uses `list` and `explain`.
+- The settings window uses `list`, `explain` and `set` (12.4).
 
 ### 12.3 User files
 
@@ -798,6 +798,17 @@ return {
   },
 }
 ```
+
+- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.4).
+
+### 12.4 The settings window
+
+- The first-party Lua plugin `settings` draws with the ui plugin (20.2). The core's settings file loads it in every tool (12.3), and binds `,` after the prefix to `settings.open`, which opens the window as a panel of type `settings.window`, or shows the one that is open.
+- The window lists every declared setting: the core's first, then the plugins', each by name. A row shows the setting's name, its value in effect and its description.
+- A value that the user's own file sets wins over the window's layer, so it is faded, and its row names that file.
+- The window changes values in its layer (12.2): a step back or forward toggles a `bool`, cycles a `choice`, and adds or takes 1 from an `integer` or a `number`. Other types are changed in a settings file, and their rows say so.
+- The functions `settings.up`, `settings.down`, `settings.previous` and `settings.next` choose a setting and change it. Their keys are the settings `settings.upKey` (Up), `settings.downKey` (Down), `settings.previousKey` (Left) and `settings.nextKey` (Right), bound for the panel type (7.8). The wheel chooses too, and a click chooses the setting under it.
+- The panel's saved state is the chosen setting.
 
 ## 13. Presets and sessions
 

@@ -447,9 +447,14 @@ SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSe
     ECSValue_SetTable(SETTINGS.layers[ECSISettingsLayer_Core]);
     SETTINGS.paths[ECSISettingsLayer_Core] = SDL_strdup(corePath);
 
+    SHU_ReturnResult(ECSValue_Create(&SETTINGS.plugins), ECSValue_Destroy(&coreFile););
+    ECSValue_SetTable(SETTINGS.plugins);
+
+    // like a user file, the core's file may name plugins that every tool loads
     ECSISettingsFileReader reader = {.layer = SETTINGS.layers[ECSISettingsLayer_Core], .result = SHUResult_Ok};
     reader.result = SETTINGS.paths[ECSISettingsLayer_Core] == NULL ? SHUResult_ErrAllocation : ECSILua_ReadData(corePath, coreFile);
     ECSIValue_TableForEachField(reader.result ? NULL : coreFile, ECSISettings_ReadField, &reader);
+    reader.result = reader.result ? reader.result : ECSISettings_ReadPlugins(coreFile);
     ECSValue_Destroy(&coreFile);
     SHU_ReturnResult(reader.result);
 
@@ -461,9 +466,6 @@ SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSe
     {
         return SHUResult_ErrAllocation;
     }
-
-    SHU_ReturnResult(ECSValue_Create(&SETTINGS.plugins));
-    ECSValue_SetTable(SETTINGS.plugins);
 
     SETTINGS.appId = SDL_strdup(appId);
 
@@ -605,11 +607,6 @@ void ECSISettings_ReportUndeclared(void)
 const ECSValue *ECSISettings_GetPlugins(void)
 {
     return SETTINGS.plugins;
-}
-
-const char *ECSISettings_GetUserPath(void)
-{
-    return SETTINGS.paths[ECSISettingsLayer_User];
 }
 
 SHUResult ECSSetting_Declare(ECSPlugin plugin, const ECSSettingDesc *desc)

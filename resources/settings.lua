@@ -1,6 +1,9 @@
 -- The core's own settings: OpenECS reads them at start, and they are the lowest settings layer.
 -- Plugins' defaults, the preset, the settings window and the user's settings file override them.
 return {
+  -- plugins that every tool loads: the settings window
+  plugins = { "settings" },
+
   -- the key combination before a core action
   ["ecs.prefix"] = "Alt+W",
 
@@ -23,6 +26,7 @@ return {
     ["R"] = "ecs.panel.restart",
     ["S"] = "ecs.session.save",
     ["O"] = "ecs.session.open",
+    [","] = "settings.open",
     ["1"] = "ecs.workspace.switch1",
     ["2"] = "ecs.workspace.switch2",
     ["3"] = "ecs.workspace.switch3",
