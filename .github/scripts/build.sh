@@ -5,12 +5,12 @@ set -eu
 
 type="$1"
 case "$type" in
-D) folder=Debug flags="--debug --examples --tests" ;;
-R) folder=Release flags="--release --examples" ;;
+D) folder=Debug flags="-b debug -e -t" ;;
+R) folder=Release flags="-b release -e" ;;
 *) echo "Usage: build.sh D|R" && exit 2 ;;
 esac
 
-executable="build/Static/$folder/bin/OpenECS"
+executable="build/$folder/bin/OpenECS"
 rm -f "$executable"
 
 mkdir -p build

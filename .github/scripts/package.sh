@@ -11,9 +11,9 @@ folder="dist/$name"
 rm -rf "$folder"
 mkdir -p "$folder/include" "$folder/licenses"
 
-cp -r build/Static/Release/bin/. "$folder/"
+cp -r build/Release/bin/. "$folder/"
 cp include/OpenECS.h include/ecs.lua "$folder/include/"
-cp -r build/Static/Release/include/shu "$folder/include/"
+cp -r build/Release/include/shu "$folder/include/"
 cp LICENSE README.md "$folder/"
 
 # the libraries linked into the program, and the font it ships
