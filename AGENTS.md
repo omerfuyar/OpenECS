@@ -72,7 +72,8 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Never merge into `main`. The owner reviews and merges every pull request into `main`, for major, minor and patch releases alike, and pushes the release tags. Open the pull request from `dev` into `main` when a release is ready, and give the owner the commands to tag it.
 - Name the branch after the change: `feature/<feature>`, `fix/<bug>`, `refactor/<area>` or `docs/<area>`; never use a generated name.
 - Publish the branch at the start of the work, then push each commit to it.
-- Put small changes on the branch you work on; do not open a branch for each of them.
+- Put small changes on the branch you work on; do not open a branch for each of them. Keep few branches at a time, each a whole piece of work, so they do not conflict.
+- Write a release's description once, when the release is ready, before the pull request from `dev` into `main`; not with each change.
 - Commit messages have one line per change, starting with `-`. Details go on lines starting with `--`.
 
 ## Writing documents

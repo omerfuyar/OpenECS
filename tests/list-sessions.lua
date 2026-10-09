@@ -17,10 +17,13 @@ return {
     local results = test.session().pluginState.lister.state
 
     -- a test lists only the first-party presets, and finds no last session of their tools
-    local default = find(results.presets, "default")
-    test.match(default, { appId = "openecs.default", appName = "OpenECS" }, "the default preset")
-    assert(default.path:match("/presets/default%.lua$"), "the default preset's path: " .. default.path)
-    assert(default.lastUsed == nil, "a test has no last sessions")
+    local sketch = find(results.presets, "sketch")
+    test.match(sketch, { appId = "openecs.sketch", appName = "Sketch" }, "the sketch preset")
+    assert(sketch.path:match("/presets/sketch%.lua$"), "the sketch preset's path: " .. sketch.path)
+    assert(sketch.lastUsed == nil, "a test has no last sessions")
+
+    -- the launcher's own preset is not listed
+    test.match(find(results.presets, "launcher"), nil, "the launcher's preset")
 
     -- the sessions are sorted by name, and the file that cannot be read is left out
     test.match(results.sessions, {

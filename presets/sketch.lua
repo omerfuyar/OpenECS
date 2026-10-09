@@ -1,8 +1,8 @@
 return {
   format = 1,
-  name = "default",
+  name = "sketch",
   version = "0.1.0",
-  app = { id = "openecs.default", name = "OpenECS" },
+  app = { id = "openecs.sketch", name = "Sketch" },
   depends = { sketch_c = "0.1", sketch_lua = "0.1" },
   settings = { ["sketch_c.brushColor"] = "red", ["sketch_lua.brushColor"] = "green" },
   open = "sketch_c.open",

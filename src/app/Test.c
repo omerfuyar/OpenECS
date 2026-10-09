@@ -17,7 +17,7 @@
 #pragma region Source Only
 
 /// @brief Preset of a test that names none.
-#define OPENECS_TEST_PRESET "default"
+#define OPENECS_TEST_PRESET "launcher"
 /// @brief Pointer moves that test.drag makes between its press and its release.
 #define OPENECS_TEST_DRAG_STEPS 4
 

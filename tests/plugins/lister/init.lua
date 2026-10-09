@@ -7,7 +7,7 @@ local results = {}
 local function list()
   results.presets = ecs.session.presets()
   results.sessions = ecs.session.sessions()
-  results.opened, results.message = ecs.session.openPreset("default")
+  results.opened, results.message = ecs.session.openPreset("sketch")
   results.opened = results.opened or false
 end
 
