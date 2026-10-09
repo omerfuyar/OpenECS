@@ -455,6 +455,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 7.4 Dispatch
 
 - A key press goes to the core prefix (7.5) first, then to the bindings, chosen as in OVERVIEW 7.3, then to the focused panel as a raw key event.
+- While the focused panel takes text input (4.6), a key pressed without Ctrl, Alt or Super skips the bindings and goes to the panel, so typing never runs a binding.
 - A plugin binding that uses the prefix's combination is never triggered and is reported. After the prefix, the next key press goes to the core.
 
 ### 7.5 The core prefix

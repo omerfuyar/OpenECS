@@ -241,7 +241,7 @@ Keys are bound in **keys tables**. A keys table maps key combinations to the fun
 
 When several bindings match a key press, the binding set in the highest settings layer wins: the user's over the preset's over the defaults, which the core and the plugins give. Within one layer, the most specific binding wins: a panel type, then a workspace, then the whole tool. If no binding matches, the key goes to the focused panel, so a panel can run its own key logic, such as modal editing.
 
-A key press that triggers a binding types no text.
+A key press that triggers a binding types no text. While the focused panel takes text, keys pressed without Ctrl, Alt or Super go to it, so typing never runs a binding.
 
 ### 7.4 The core's keys
 
