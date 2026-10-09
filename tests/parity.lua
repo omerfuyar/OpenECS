@@ -83,7 +83,7 @@ return {
       loaded[plugin] = true
     end
 
-    for key, name in pairs(coreSettings["ecs.prefixKeys"]) do
+    for key, name in pairs(coreSettings.keys.prefix) do
       if not loaded[name:match("^[^.]+")] and not (functions[name] or ""):find("Keys can run it.", 1, true) then
         problems[#problems + 1] = "the key " .. key .. " runs " .. name .. ", which ecs.lua does not have as a function keys can run"
       end

@@ -94,7 +94,7 @@ static struct
 static const char *const OPENECS_BINDINGS_EVENT_TYPES[] = {"pointerDown", "pointerUp", "pointerMove", "wheel", "keyDown", "keyUp", "focused", "unfocused", "shown", "hidden", "resized", "drop", "text"};
 
 /// @brief Names of the setting types in Lua, in the order of ECSSettingType.
-static const char *const OPENECS_BINDINGS_SETTING_TYPES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", NULL};
+static const char *const OPENECS_BINDINGS_SETTING_TYPES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", "color", NULL};
 
 /// @brief Gets the plugin that owns the ecs table a function came from. Every function of a plugin's ecs table has the plugin as its upvalue.
 static ECSPlugin ECSIBindings_Plugin(lua_State *state)
@@ -1118,15 +1118,15 @@ static const luaL_Reg OPENECS_BINDINGS_DIALOG[] = {
 static int ECSIBindings_InputBind(lua_State *state)
 {
     const char *panelType = luaL_checkstring(state, 1);
-    const char *setting = luaL_checkstring(state, 2);
+    const char *key = luaL_checkstring(state, 2);
     const char *function = luaL_checkstring(state, 3);
-    SHUResult result = ECSKey_Bind(ECSIBindings_Plugin(state), panelType, setting, function);
+    SHUResult result = ECSKey_Bind(ECSIBindings_Plugin(state), panelType, key, function);
 
     // an invalid binding is reported and returned; the plugin continues
     if (result)
     {
         lua_pushnil(state);
-        lua_pushfstring(state, "the key of '%s' is not bound (%s)", setting, SHUResult_String(result));
+        lua_pushfstring(state, "'%s' is not bound to '%s' (%s)", key, function, SHUResult_String(result));
         return 2;
     }
 

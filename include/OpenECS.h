@@ -299,6 +299,7 @@ typedef enum ECSSettingType
     ECSSettingType_Key,    // a key combination, such as "Ctrl+Shift+P"
     ECSSettingType_List,   // a table with list items only
     ECSSettingType_Table,
+    ECSSettingType_Color, // "#RRGGBB" or "#RRGGBBAA"
 } ECSSettingType;
 
 /// @brief Tells a setting's owner that the value in effect changed. It runs after the queued events, outside other callbacks.
@@ -315,7 +316,7 @@ typedef struct ECSSettingDesc
     bool defaultBool;
     i64 defaultInteger;
     f64 defaultNumber;
-    const char *defaultString;  // string, choice and key settings
+    const char *defaultString;  // string, choice, key and color settings
     const char *const *choices; // choice settings: the allowed strings, ending with NULL
 
     // optional, NULL if unused
@@ -589,7 +590,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSService_RegisterFunction(ECSPlugin plugin, co
 /// @lua ecs.service.get
 OPENECS_EXPORT SHUWUR SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, const char *name, const char *signature);
 
-/// @brief Sets a setting in the settings window's layer, and writes that layer's file. A higher layer may still override it; ECSSetting_Explain tells. Main thread only.
+/// @brief Sets a setting in the user's settings file, the highest layer, and writes the file. Main thread only.
 /// @param name Name of the setting.
 /// @param value The new value. It must have the setting's type. The core copies it.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no setting has the name, SHUResult_ErrBadData if the value has the wrong type, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
@@ -617,14 +618,14 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Explain(const char *name, ECSValue *r
 /// @lua ecs.handle.registerType
 OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, ECSHandleDestroyFunction Destroy);
 
-/// @brief Binds a key to a function for one of the plugin's panel types: the key works while a panel of that type has focus. Main thread only.
-/// @param plugin The plugin. It owns the panel type and the setting.
+/// @brief Gives a function a default key for one of the plugin's panel types: the key works while a panel of that type has focus. Presets and the user's settings can change it. Main thread only.
+/// @param plugin The plugin. It owns the panel type.
 /// @param panelType Name of the panel type, such as "canvas.view".
-/// @param setting Name of the plugin's key setting that holds the key combination, so the user can change it.
+/// @param key The key combination, such as "Ctrl+E".
 /// @param function Name of the function the key runs. It takes no arguments, or the focused panel: void() or void(handle<ecs.panel>).
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the panel type or the setting is not the plugin's, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the panel type is not the plugin's or the key is not a key combination, or SHUResult_ErrAllocation.
 /// @lua ecs.input.bind
-OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *setting, const char *function);
+OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *key, const char *function);
 
 /// @brief Opens a panel in the current workspace and focuses it. Any plugin may open any panel type. Main thread only.
 /// @param plugin The plugin that opens the panel.

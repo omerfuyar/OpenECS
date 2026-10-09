@@ -216,37 +216,6 @@ ecs.settings.declare({
   "How often a canvas with unsaved strokes says so",
   default = 30.0
 })
-ecs.settings.declare({ name = name("clearKey"), type = "key", description = "Clears the canvas", default = "Delete" })
-ecs.settings.declare({
-  name = name("exportKey"),
-  type = "key",
-  description = "Exports the canvas as an image",
-  default =
-  "Ctrl+E"
-})
-ecs.settings.declare({
-  name = name("copyKey"),
-  type = "key",
-  description = "Copies the canvas's strokes",
-  default =
-  "Ctrl+C"
-})
-ecs.settings.declare({ name = name("pasteKey"), type = "key", description = "Pastes strokes", default = "Ctrl+V" })
-ecs.settings.declare({
-  name = name("besideKey"),
-  type = "key",
-  description = "Opens a canvas beside this one",
-  default =
-  "Ctrl+B"
-})
-ecs.settings.declare({
-  name = name("gatherKey"),
-  type = "key",
-  description = "Gathers every canvas into this group",
-  default =
-  "Ctrl+G"
-})
-
 ecs.panel.registerType({
   name = name("canvas"),
   title = "Lua canvas",
@@ -663,9 +632,9 @@ assert(ecs.service.register(NAME, {
   useBrush = { sig = "void(handle<sketch_lua.brush>, handle<ecs.panel>)", doc = "Makes a canvas draw with a brush", fn = services.useBrush },
 }))
 
--- keys work while a canvas has the focus, and the canvas's menu shows the same functions with their keys; the user changes the keys in the settings
-for setting, service in pairs({ clearKey = "clear", exportKey = "export", copyKey = "copy", pasteKey = "paste", besideKey = "openBeside", gatherKey = "gather" }) do
-  assert(ecs.input.bind(name("canvas"), name(setting), name(service)))
+-- default keys that work while a canvas has the focus; the canvas's menu shows the same functions with their keys
+for key, service in pairs({ Delete = "clear", ["Ctrl+E"] = "export", ["Ctrl+C"] = "copy", ["Ctrl+V"] = "paste", ["Ctrl+B"] = "openBeside", ["Ctrl+G"] = "gather" }) do
+  assert(ecs.input.bind(name("canvas"), key, name(service)))
   assert(ecs.panel.addMenuEntry(name("canvas"), name(service)))
 end
 

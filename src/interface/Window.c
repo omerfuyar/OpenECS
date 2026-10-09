@@ -43,17 +43,17 @@ typedef enum ECSIColor
 
 /// @brief The window's core settings; their values are in the core's settings file. The colours come first, in the order of ECSIColor.
 static const ECSSettingDesc OPENECS_WINDOW_SETTINGS[] = {
-    {.name = "ecs.colorBackground", .type = ECSSettingType_String, .description = "Colour between panels, such as \"#18191C\" or \"#18191CFF\""},
-    {.name = "ecs.colorTabRow", .type = ECSSettingType_String, .description = "Colour of tab rows"},
-    {.name = "ecs.colorTab", .type = ECSSettingType_String, .description = "Colour of tabs"},
-    {.name = "ecs.colorTabShown", .type = ECSSettingType_String, .description = "Colour of the shown tab"},
-    {.name = "ecs.colorText", .type = ECSSettingType_String, .description = "Colour of text"},
-    {.name = "ecs.colorTextDim", .type = ECSSettingType_String, .description = "Colour of dim text"},
-    {.name = "ecs.colorAccent", .type = ECSSettingType_String, .description = "Colour of the focus border, keys and highlights"},
-    {.name = "ecs.colorPlaceholder", .type = ECSSettingType_String, .description = "Colour of a placeholder panel"},
-    {.name = "ecs.colorOverlay", .type = ECSSettingType_String, .description = "Colour of menus, grips and the list of prefix keys"},
-    {.name = "ecs.colorDrop", .type = ECSSettingType_String, .description = "Colour of the place where a dragged panel lands"},
-    {.name = "ecs.colorSelected", .type = ECSSettingType_String, .description = "Colour of the selected menu entry"},
+    {.name = "ecs.colorBackground", .type = ECSSettingType_Color, .description = "Colour between panels, such as \"#18191C\" or \"#18191CFF\""},
+    {.name = "ecs.colorTabRow", .type = ECSSettingType_Color, .description = "Colour of tab rows"},
+    {.name = "ecs.colorTab", .type = ECSSettingType_Color, .description = "Colour of tabs"},
+    {.name = "ecs.colorTabShown", .type = ECSSettingType_Color, .description = "Colour of the shown tab"},
+    {.name = "ecs.colorText", .type = ECSSettingType_Color, .description = "Colour of text"},
+    {.name = "ecs.colorTextDim", .type = ECSSettingType_Color, .description = "Colour of dim text"},
+    {.name = "ecs.colorAccent", .type = ECSSettingType_Color, .description = "Colour of the focus border, keys and highlights"},
+    {.name = "ecs.colorPlaceholder", .type = ECSSettingType_Color, .description = "Colour of a placeholder panel"},
+    {.name = "ecs.colorOverlay", .type = ECSSettingType_Color, .description = "Colour of menus, grips and the list of prefix keys"},
+    {.name = "ecs.colorDrop", .type = ECSSettingType_Color, .description = "Colour of the place where a dragged panel lands"},
+    {.name = "ecs.colorSelected", .type = ECSSettingType_Color, .description = "Colour of the selected menu entry"},
     {.name = "ecs.windowWidth", .type = ECSSettingType_Integer, .description = "Width of the OS window when it opens, in layout units"},
     {.name = "ecs.windowHeight", .type = ECSSettingType_Integer, .description = "Height of the OS window when it opens, in layout units"},
     {.name = "ecs.font", .type = ECSSettingType_String, .description = "TrueType font of the core's interface, read when the window opens; a relative path starts at the executable's folder"},
@@ -1352,52 +1352,15 @@ static void ECSIWindow_PresentPopups(void)
 
 #pragma endregion OS Windows
 
-/// @brief Reads a colour written as "#RRGGBB" or "#RRGGBBAA".
-static bool ECSIWindow_ParseColor(const char *text, Clay_Color *retColor)
+/// @brief Reads a colour setting. Its value in effect is always a colour, because colour settings take nothing else.
+static void ECSIWindow_ReadColor(const char *name, Clay_Color *retColor)
 {
-    usz length = SDL_strlen(text);
-    u8 parts[4] = {0, 0, 0, 255};
+    u32 argb = 0;
+    bool parsed = ECSISettings_ParseColor(ECSValue_GetString(ECSSetting_Get(name), ""), &argb);
+    SDL_assert(parsed);
+    (void)parsed;
 
-    if ((length != 7 && length != 9) || text[0] != '#')
-    {
-        return false;
-    }
-
-    for (usz i = 1; i < length; i++)
-    {
-        if (!SDL_isxdigit((unsigned char)text[i]))
-        {
-            return false;
-        }
-    }
-
-    for (usz i = 0; 2 * i + 1 < length; i++)
-    {
-        char pair[3] = {text[2 * i + 1], text[2 * i + 2], '\0'};
-        parts[i] = (u8)SDL_strtoul(pair, NULL, 16);
-    }
-
-    *retColor = (Clay_Color){parts[0], parts[1], parts[2], parts[3]};
-    return true;
-}
-
-/// @brief Reads a colour setting. A value that is not a colour is reported, and the core's settings file's colour is used.
-/// @return false if neither is a colour.
-static bool ECSIWindow_ReadColor(const char *name, Clay_Color *retColor)
-{
-    if (ECSIWindow_ParseColor(ECSValue_GetString(ECSSetting_Get(name), ""), retColor))
-    {
-        return true;
-    }
-
-    if (ECSIWindow_ParseColor(ECSValue_GetString(ECSISettings_GetDefault(name), ""), retColor))
-    {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Setting '%s' must be a colour such as \"#18191C\" or \"#18191CFF\"; the default is used.", name);
-        return true;
-    }
-
-    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The core's settings file gives '%s' no colour such as \"#18191C\" or \"#18191CFF\".", name);
-    return false;
+    *retColor = (Clay_Color){(f32)((argb >> 16) & 0xFF), (f32)((argb >> 8) & 0xFF), (f32)(argb & 0xFF), (f32)(argb >> 24)};
 }
 
 /// @brief Reads a number setting of the window, in layout units; a negative value counts as 0.
@@ -1407,14 +1370,11 @@ static f32 ECSIWindow_ReadNumber(const char *name)
 }
 
 /// @brief Reads the window's settings, except ecs.vsync and the ones read when the window opens.
-/// @return false if a colour setting and its default are not colours.
-static bool ECSIWindow_Read(void)
+static void ECSIWindow_Read(void)
 {
-    bool valid = true;
-
     for (usz i = 0; i < ECSIColor_Count; i++)
     {
-        valid = ECSIWindow_ReadColor(OPENECS_WINDOW_SETTINGS[i].name, &WINDOW.colors[i]) && valid;
+        ECSIWindow_ReadColor(OPENECS_WINDOW_SETTINGS[i].name, &WINDOW.colors[i]);
     }
 
     WINDOW.fontSize = ECSIWindow_ReadNumber("ecs.fontSize");
@@ -1424,14 +1384,13 @@ static bool ECSIWindow_Read(void)
     WINDOW.dockEdge = ECSIWindow_ReadNumber("ecs.dockEdge");
     WINDOW.splitDepth = ECSIWindow_ReadNumber("ecs.splitDepth");
     WINDOW.tabScrollStep = ECSIWindow_ReadNumber("ecs.tabScrollStep");
-    return valid;
 }
 
 /// @brief The Changed function of the window's settings.
 static void ECSIWindow_ReadSettings(void *data)
 {
     (void)data;
-    (void)ECSIWindow_Read();
+    ECSIWindow_Read();
     ECSILayout_RequestFrame();
 }
 
@@ -1533,11 +1492,7 @@ SHUResult ECSIWindow_Initialize(const char *title)
         SHU_ReturnResult(ECSISettings_DeclareCore(&desc));
     }
 
-    // the core's settings file must give colours, because a colour that cannot be read falls back to it
-    if (!ECSIWindow_Read())
-    {
-        return SHUResult_ErrBadData;
-    }
+    ECSIWindow_Read();
 
     SHU_ReturnResult(ECSIWindow_Open(title), ECSIWindow_Terminate(););
 

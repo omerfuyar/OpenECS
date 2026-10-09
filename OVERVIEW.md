@@ -47,7 +47,7 @@ OpenECS is an executable, not a library.
 5. The user drags panels to split the window differently, groups them as tabs, maximizes one, or moves one into its own window, popping out from main window.
 6. The user switches between **workspaces**, for example "drawing" and "organizing". Switching is instant.
 7. The user presses keys. The focused panel's keys work, the core's own actions are always reachable, and the user's own keybindings win over everything else.
-8. The user opens the settings window. A setting that is overridden elsewhere is shown faded, with a hint that says where it is set.
+8. The user opens the settings window, sees every setting with its value and what it does, and changes it.
 9. When the user quits, OpenECS asks what to do with unsaved work, then remembers the arrangement for next time. The user can also save sessions to files and open them later.
 
 ## 3. Scope: core and plugins
@@ -230,16 +230,16 @@ Pointer events always go to the panel under the pointer, whatever has focus. Dur
 
 The default is *click*. In hover mode, only real pointer movement changes focus, not a layout change under a still pointer.
 
-### 7.2 Keybindings are settings
+### 7.2 Keys tables
 
-A keybinding is a setting whose value is a key combination. It follows the same layers as every other setting (section 10.4), so the user can change any binding.
+Keys are bound in **keys tables**. A keys table maps key combinations to the functions they run, and has the same shape wherever it is written: in the core's settings file, in a preset, and in the user's settings file. Keys tables follow the same layers as settings (section 10.4), so the user can change any key, and `false` removes a key that a lower layer binds.
 
 ### 7.3 Who may bind what
 
 - **Plugins** bind keys only for their own panel types. Those bindings work only while such a panel has focus.
 - **Presets** and the **user's settings** can also bind keys for a workspace or for the whole tool, to any registered service function, by name. For example, a paint preset binds Ctrl+N to `canvas.new`, so Ctrl+N creates a canvas even while the palette has focus.
 
-When several bindings match a key press, the binding set in the highest settings layer wins: the user's over the preset's over a plugin's. Within one layer, the most specific binding wins: one panel, then a panel type, then a workspace, then the whole tool. If no binding matches, the key goes to the focused panel, so a panel can run its own key logic, such as modal editing.
+When several bindings match a key press, the binding set in the highest settings layer wins: the user's over the preset's over the defaults, which the core and the plugins give. Within one layer, the most specific binding wins: a panel type, then a workspace, then the whole tool. If no binding matches, the key goes to the focused panel, so a panel can run its own key logic, such as modal editing.
 
 A key press that triggers a binding types no text.
 
@@ -334,17 +334,15 @@ A **session** uses the same format as a preset, but OpenECS writes it.
 
 ### 10.4 Settings
 
-Settings come in layers. A higher layer overrides the lower ones:
+Settings come in three layers. A higher layer overrides the lower ones:
 
-1. The core's settings, from a file shipped with OpenECS.
-2. Plugin defaults.
-3. The preset.
-4. Changes made in the settings window, kept in a file that OpenECS writes.
-5. The user's hand-edited settings file.
+1. Defaults: the core's settings file, shipped with OpenECS, and the defaults that plugins declare.
+2. The preset.
+3. The user's settings file.
 
-The user's hand-edited file is the top layer, and the core never rewrites it, so the user's comments and formatting stay. The settings window shows a setting that a higher layer overrides as faded, with a hint that names the file where it is set.
+The settings window changes the user's settings file, and the user can also edit it by hand. The window rewrites the file when it saves a change, so comments in the file are not kept.
 
-- Settings have types, so a wrong value in a hand-edited file produces a clear message.
+- Settings have types, so a wrong value in a file produces a clear message, and the default is used.
 - Settings of plugins that are not loaded are kept, not removed.
 - The user's files can hold settings for every tool and, in a separate section, settings for one tool only.
 - The user's settings can name extra plugins to load in every tool, for example the user's own Lua scripts.
@@ -400,7 +398,7 @@ The user's hand-edited file is the top layer, and the core never rewrites it, so
 
 **Group.** One or more panels that share one place in the layout; one of them is shown at a time.
 
-**Keybinding.** A link between a key combination and a function. It is a setting.
+**Keybinding.** A link between a key combination and a function, written in a keys table (7.2).
 
 **Launcher.** The tool that OpenECS shows when it starts without a preset. It lists presets and saved sessions, and opens the one the user chooses.
 

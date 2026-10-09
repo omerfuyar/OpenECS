@@ -1324,12 +1324,6 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
         {.name = SKETCH_NAME("brushSize"), .type = ECSSettingType_Integer, .description = "Size of the brush, in pixels; the wheel over a canvas changes it", .defaultInteger = 6, .Changed = SketchBrushChanged},
         {.name = SKETCH_NAME("brushColor"), .type = ECSSettingType_Choice, .description = "Colour of the brush", .defaultString = "white", .choices = SKETCH_COLOR_NAMES, .Changed = SketchBrushChanged},
         {.name = SKETCH_NAME("reminderSeconds"), .type = ECSSettingType_Number, .description = "How often a canvas with unsaved strokes says so", .defaultNumber = 30.0},
-        {.name = SKETCH_NAME("clearKey"), .type = ECSSettingType_Key, .description = "Clears the canvas", .defaultString = "Delete"},
-        {.name = SKETCH_NAME("exportKey"), .type = ECSSettingType_Key, .description = "Exports the canvas as an image", .defaultString = "Ctrl+E"},
-        {.name = SKETCH_NAME("copyKey"), .type = ECSSettingType_Key, .description = "Copies the canvas's strokes", .defaultString = "Ctrl+C"},
-        {.name = SKETCH_NAME("pasteKey"), .type = ECSSettingType_Key, .description = "Pastes strokes", .defaultString = "Ctrl+V"},
-        {.name = SKETCH_NAME("besideKey"), .type = ECSSettingType_Key, .description = "Opens a canvas beside this one", .defaultString = "Ctrl+B"},
-        {.name = SKETCH_NAME("gatherKey"), .type = ECSSettingType_Key, .description = "Gathers every canvas into this group", .defaultString = "Ctrl+G"},
     };
 
     for (usz i = 0; i < sizeof(settings) / sizeof(*settings); i++)
@@ -1393,14 +1387,14 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
         SHU_ReturnResult(ECSService_RegisterFunction(plugin, services[i].name, services[i].function, services[i].signature, services[i].description));
     }
 
-    // keys work while a canvas has the focus, and the canvas's menu shows the same functions with their keys; the user changes the keys in the settings
+    // default keys that work while a canvas has the focus; the canvas's menu shows the same functions with their keys
     const char *const bindings[][2] = {
-        {SKETCH_NAME("clearKey"), SKETCH_NAME("clear")},
-        {SKETCH_NAME("exportKey"), SKETCH_NAME("export")},
-        {SKETCH_NAME("copyKey"), SKETCH_NAME("copy")},
-        {SKETCH_NAME("pasteKey"), SKETCH_NAME("paste")},
-        {SKETCH_NAME("besideKey"), SKETCH_NAME("openBeside")},
-        {SKETCH_NAME("gatherKey"), SKETCH_NAME("gather")},
+        {"Delete", SKETCH_NAME("clear")},
+        {"Ctrl+E", SKETCH_NAME("export")},
+        {"Ctrl+C", SKETCH_NAME("copy")},
+        {"Ctrl+V", SKETCH_NAME("paste")},
+        {"Ctrl+B", SKETCH_NAME("openBeside")},
+        {"Ctrl+G", SKETCH_NAME("gather")},
     };
 
     for (usz i = 0; i < sizeof(bindings) / sizeof(*bindings); i++)

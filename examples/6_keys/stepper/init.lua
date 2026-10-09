@@ -61,12 +61,10 @@ assert(ecs.service.register("stepper", {
   },
 }))
 
--- a key is a setting of type "key", such as "Ctrl+Shift+P"; bind connects it to a function for the panels of a type
--- a preset's or the user's keys win over a plugin's, and keys of one panel type over keys of the whole tool
-ecs.settings.declare({ name = "stepper.upKey", type = "key", description = "Steps up", default = "Up" })
-ecs.settings.declare({ name = "stepper.downKey", type = "key", description = "Steps down", default = "Down" })
-assert(ecs.input.bind("stepper.panel", "stepper.upKey", "stepper.up")) -- the setting and the function must exist first
-assert(ecs.input.bind("stepper.panel", "stepper.downKey", "stepper.down"))
+-- bind gives a function a default key, working while a panel of the plugin's type has focus; the function must exist first
+-- the preset's keys and the user's settings win over these defaults, as preset.lua shows
+assert(ecs.input.bind("stepper.panel", "Up", "stepper.up"))
+assert(ecs.input.bind("stepper.panel", "Down", "stepper.down"))
 
 -- the panel's menu (a right click on its tab) shows these functions with their keys
 ecs.panel.addMenuEntry("stepper.panel", "stepper.up")

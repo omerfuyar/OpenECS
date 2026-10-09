@@ -52,7 +52,7 @@ ecs.panel.registerType({
 
   event = function(_, event)
     if event.type == "wheel" then
-      -- set writes the settings window's layer and its file; changed runs afterwards, not during this call
+      -- set writes the user's settings file; changed runs afterwards, not during this call
       local size = ecs.settings.get("greeter.size") + (event.wheelY > 0 and 2 or -2)
       ecs.settings.set("greeter.size", math.max(8, math.min(96, size)))
     elseif event.type == "pointerDown" then

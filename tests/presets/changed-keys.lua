@@ -6,7 +6,7 @@ return {
   app = { id = "openecs.test.changedKeys", name = "Changed keys" },
   pluginsDir = "../plugins",
   depends = { boxes = "0.1" },
-  settings = { ["ecs.prefixKeys"] = { K = "ecs.layout.close", X = false } },
+  keys = { prefix = { K = "ecs.layout.close", X = false } },
   workspaces = {
     { name = "Canvas",
       windows = {
