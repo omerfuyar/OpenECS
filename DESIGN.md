@@ -257,6 +257,7 @@ typedef struct ECSPanelTypeDesc
 
 ### 4.4 Placeholders
 
+- A panel whose type is missing is a placeholder that keeps its saved state (OVERVIEW 10.3).
 - A panel whose callback raised an error becomes a faulted placeholder (14.2).
 
 ### 4.5 Unsaved work
@@ -594,7 +595,9 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 
 - All Lua plugins share one Lua state. Each plugin's code runs in its own environment, which reads globals from the shared global table.
 - A plugin gets the core's Lua names from the `ecs` module: `local ecs = require("ecs")`. There is no global `ecs`.
-- The environment has its own `require`. For `"ecs"` it gives the plugin's own `ecs` table, whose functions carry the plugin, so the core knows which plugin made an `ecs` call. Other names go to Lua's `require`.
+- The environment has its own `require`. For `"ecs"` it gives the plugin's own `ecs` table, whose functions carry the plugin, so the core knows which plugin made an `ecs` call.
+- For other names, `require` first looks in the plugin's folder: `require("parts.shapes")` finds `parts/shapes.lua`, or else `parts/shapes/init.lua`. It runs the module once, in the plugin's environment, so the module can also `require("ecs")`, and gives what the module returns, or `true` if it returns nothing. Each plugin has its own modules, so two plugins can have modules of the same name.
+- Names that the plugin's folder does not hold go to Lua's `require`.
 - `include/ecs.lua` describes the `ecs` module for editors: every function's parameters, results and documentation, in LuaLS annotations. It changes with the bindings. A plugin's author adds the build's `include/` folder to `workspace.library` in the plugin's `.luarc.json`.
 - The manifest's `lua` file runs once, in a protected call, after the native `ECSPlugin_Init`. An error fails the plugin.
 
@@ -717,21 +720,21 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 
 ### 11.3 The `ecs` module
 
-| Table                         | Contents                            |
-| ----------------------------- | ----------------------------------- |
-| `ecs.panel`                   | panel types and panel functions     |
-| `ecs.layout`                  | layout operations                   |
-| `ecs.workspace`               | workspaces                          |
-| `ecs.input`                   | key bindings and focus              |
-| `ecs.event`                   | declare, emit and subscribe         |
-| `ecs.handle`                  | handle types of Lua plugins (10.6)  |
-| `ecs.timer`                   | timers                              |
-| `ecs.service`                 | register and look up functions      |
-| `ecs.settings`                | declare, get, set, list and explain |
-| `ecs.session`                 | saving and opening sessions         |
-| `ecs.plugin`                  | information about plugins           |
-| `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs               |
-| `ecs.log`                     | `debug`, `info`, `warn` and `error` |
+| Table                         | Contents                                         |
+| ----------------------------- | ------------------------------------------------ |
+| `ecs.panel`                   | panel types and panel functions                  |
+| `ecs.layout`                  | layout operations                                |
+| `ecs.workspace`               | workspaces                                       |
+| `ecs.input`                   | key bindings and focus                           |
+| `ecs.event`                   | declare, emit and subscribe                      |
+| `ecs.handle`                  | handle types of Lua plugins (10.6)               |
+| `ecs.timer`                   | timers                                           |
+| `ecs.service`                 | register and look up functions                   |
+| `ecs.settings`                | declare, get, set, list and explain              |
+| `ecs.session`                 | saving, opening and listing sessions and presets |
+| `ecs.plugin`                  | information about plugins                        |
+| `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs                            |
+| `ecs.log`                     | `debug`, `info`, `warn` and `error`              |
 
 - `ecs.plugin` holds the plugin's `name` and `version`, `registerState` (13.2), and `onShutdown(fn)`, the Lua counterpart of `ECSPlugin_Shutdown` (2.4).
 
@@ -826,6 +829,7 @@ return {
 - Sessions also store each panel's `id`, each workspace's `focus` (a panel id), each group's `shown` panel and `maximized` mark, the `currentWorkspace`, and `pluginState`: for each plugin's name, its `state` and `stateVersion`.
 - A plugin saves state of its own, apart from its panels', with `ECSPlugin_RegisterState(plugin, &desc)`: a version and `Save` and `Restore` functions. Lua: `ecs.plugin.registerState({ version = 1, save = fn, restore = fn })`. The state of a plugin that is not loaded stays in the session.
 - The app id matches the name of the tool's `.desktop` file.
+- A preset with `listed = false` is left out of the list of presets (13.7), as the launcher's own preset is.
 
 ### 13.3 Applying a session
 
@@ -846,13 +850,14 @@ The core converts only layout data.
 - A file is written to a temporary file, then renamed over the old one, so it is never left half-written.
 - `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. Without a path, they ask for the file with a save dialog that starts in the folder of saved sessions (16). Keys run `ecs.session.save` that way. Quitting still saves the tool's last session.
 
-### 13.5 Opening a session
+### 13.5 Opening a session or a preset
 
 - `ECSSession_Open(path)`, and in Lua `ecs.session.open(path)`, open a session in place of the current one. Without a path, they ask for the file with an open dialog that starts in the folder of saved sessions (16). Keys run `ecs.session.open` that way.
+- `ECSSession_OpenPreset(nameOrPath)`, and in Lua `ecs.session.openPreset(nameOrPath)`, open a preset's tool in place of the current one. The name is looked up as `--preset` looks it up (13.6). The tool starts from its last session if it has one, as at a start from the desktop.
 - A file without a list of workspaces is reported, and nothing changes.
-- The core asks about unsaved work (4.5). When the dialog cannot be shown, the work is kept and the session is not opened.
-- When the current pass of the main loop ends, OpenECS shuts down from step 2 of 2.4, so the tool's last session is saved. Then the program replaces itself with `openecs --session FILE`. So the session's identity, plugins and settings apply as at a start.
-- A test cannot open a session (17.5).
+- The core asks about unsaved work (4.5). When the dialog cannot be shown, the work is kept and nothing is opened.
+- When the current pass of the main loop ends, OpenECS shuts down from step 2 of 2.4, so the tool's last session is saved. Then the program replaces itself with `openecs --session FILE`, or `openecs --preset FILE` for a preset. So the identity, plugins and settings of the new tool apply as at a start.
+- A test cannot open a session or a preset (17.5).
 
 ### 13.6 Command line
 
@@ -863,16 +868,44 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [--version
 - `--version` prints the version of OpenECS (19.1) and of the plugin API, and exits.
 - `--fresh` starts from the preset instead of the tool's last session.
 - `--test` runs a test (17.5).
+- Without `--preset` and `--session`, OpenECS starts with the preset `launcher` (13.8).
+- A preset's name is looked up in the user's presets, then in the first-party presets (16). A name that has a `/` or ends with `.lua` is a path.
 - A session's identity wins over the preset's, so the session is saved again as the last session of its own tool.
 - Files are passed to the function that the preset or session names in `open`. Its signature is `void(string)`. It is called once for each file, in order, once the session is built (2.3). Without an `open` function, the files are reported and not opened.
 - A tool's `.desktop` file runs, for example, `openecs --preset paint %F`.
+
+### 13.7 Lists of presets and sessions
+
+- `ECSSession_ListPresets(&list)`, and in Lua `ecs.session.presets()`, list the presets that `--preset` finds by name (13.6). A name in both folders is listed once, from the user's presets.
+- `ECSSession_ListSessions(&list)`, and in Lua `ecs.session.sessions()`, list the `.lua` files in the folder of saved sessions (16).
+- Both lists are sorted by name. Each entry is a table:
+
+  | Field              | Holds                                                                                                  |
+  | ------------------ | ------------------------------------------------------------------------------------------------------ |
+  | `name`             | The file's name without `.lua`. For a preset, it is the name that `--preset` takes.                    |
+  | `path`             | The file's path.                                                                                       |
+  | `appId`, `appName` | The tool's identity (13.2).                                                                            |
+  | `lastUsed`         | Presets only: when the tool's last session was written, in seconds since 1970. Missing if it has none. |
+  | `saved`            | Sessions only: when the file was written, in seconds since 1970.                                       |
+
+- A file that cannot be read is reported and left out, and so is a preset with `listed = false`.
+- A test lists only the first-party presets, and the sessions in the folder that its `sessions` field names (17.5).
+
+### 13.8 The launcher
+
+- When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. Its app id is `openecs.launcher`, it sets `listed = false`, and it shows one panel of the first-party Lua plugin `launcher`.
+- The panel type `launcher.list` lists the presets, then the saved sessions (13.7). Presets whose tool has a last session come first, the most recently used first; the others follow by name. Sessions are listed newest first.
+- An entry shows the tool's name. A session's entry also shows the file's name and when it was saved.
+- The panel reads both lists when it is created and each time it is shown again.
+- The functions `launcher.up`, `launcher.down` and `launcher.open` choose an entry and open it. Their keys are the settings `launcher.upKey` (Up), `launcher.downKey` (Down) and `launcher.openKey` (Return), bound for the panel type (7.8). A click on an entry opens it.
+- A preset opens with `ecs.session.openPreset`, a session with `ecs.session.open` (13.5).
 
 ## 14. Errors and logging
 
 ### 14.1 Error reports
 
 - A native plugin that crashes takes the program down. This cannot be prevented and is accepted.
-- An error report holds the plugin, the type of error, a message and, for Lua, a stack trace. It goes to the log. The user sees it where it applies: a faulted panel shows it; plugin loading problems appear in the launcher and the log. A message dialog is used only when start-up fails.
+- An error report holds the plugin, the type of error, a message and, for Lua, a stack trace. It goes to the log. The user sees it where it applies: a faulted panel shows it; plugin loading problems appear in the log, and the panels of a plugin that did not load show placeholders (4.4). A message dialog is used only when start-up fails.
 
 ### 14.2 Policies
 
@@ -949,7 +982,7 @@ OpenECS follows the XDG Base Directory specification:
 - libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.
 - Native plugins are shared libraries, built against the plugin header only. They do not link against the core; their calls to it are resolved when they are loaded.
-- A first-party plugin is built from every C file in its folder, `plugins/<name>/`, so the build needs no settings for each plugin.
+- A first-party plugin is built from every C file in its folder, `plugins/<name>/`, so the build needs no settings for each plugin. Its Lua files and its folders, which hold its Lua modules (9.6), are copied.
 
 ### 17.3 Compiler
 
@@ -968,7 +1001,7 @@ OpenECS follows the XDG Base Directory specification:
 ### 17.5 Tests
 
 - A test is a Lua file in `tests/`. Debug builds run it with `openecs --test FILE`; other builds refuse the option.
-- The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `default` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.6), and `run`, a function that gets the `test` table.
+- The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `launcher` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.6), `sessions`, a folder relative to the test file that stands for the folder of saved sessions (16), and `run`, a function that gets the `test` table.
 - Tests keep their presets and test plugins in `tests/presets/` and `tests/plugins/`, so a change to a first-party preset does not change a test.
 - A test starts from its preset alone. It reads none of the user's settings, plugins or sessions, and writes no session and no log file. SDL's offscreen video driver and software renderer are the defaults, so a test needs no display; the variables `SDL_VIDEO_DRIVER` and `SDL_RENDER_DRIVER` choose others, for example to watch a test.
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).

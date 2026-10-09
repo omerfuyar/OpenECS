@@ -8,9 +8,10 @@
 
 /// @brief Runs a plugin's Lua code.
 /// @param plugin The plugin.
+/// @param folder The plugin's folder, ending with a separator, where its require finds its modules.
 /// @param path Path of its Lua file.
 /// @return SHUResult_Ok, or an error to mark the plugin failed.
-typedef SHUResult (*ECSIPluginStartLuaFunction)(ECSPlugin plugin, const char *path);
+typedef SHUResult (*ECSIPluginStartLuaFunction)(ECSPlugin plugin, const char *folder, const char *path);
 
 /// @brief Removes everything a failed plugin registered: panel types, settings, functions and timers.
 /// @param plugin The plugin.

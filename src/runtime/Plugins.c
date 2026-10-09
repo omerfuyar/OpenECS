@@ -302,7 +302,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
     if (lua != NULL)
     {
         char *path = NULL;
-        result = SDL_asprintf(&path, "%s%s", manifest->folder, lua) < 0 ? SHUResult_ErrAllocation : PLUGINS.hooks.StartLua(record, path);
+        result = SDL_asprintf(&path, "%s%s", manifest->folder, lua) < 0 ? SHUResult_ErrAllocation : PLUGINS.hooks.StartLua(record, manifest->folder, path);
         SDL_free(path);
 
         if (result)
