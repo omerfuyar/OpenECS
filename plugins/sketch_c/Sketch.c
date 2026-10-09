@@ -406,6 +406,14 @@ static SHUResult SketchCanvasCreate(ECSPanel panel, const ECSValue *savedState, 
     SKETCH.canvases[SKETCH.canvasCount++] = canvas;
     SketchCanvasTitle(canvas);
 
+    // a canvas takes strokes dragged from a canvas, text in their format, and files of it
+    const char *accepted[] = {SKETCH_CLIPBOARD_TYPE, "text", "file-list"};
+
+    if (ECSPanel_AcceptDrops(panel, accepted, sizeof(accepted) / sizeof(*accepted)))
+    {
+        ECS_Log(SKETCH.plugin, ECSLogLevel_Warning, "A canvas cannot take dropped strokes.");
+    }
+
     f64 seconds = ECSValue_GetNumber(ECSSetting_Get(SKETCH_NAME("reminderSeconds")), 30.0);
 
     if (ECSPanel_StartTimer(panel, &canvas->reminder, seconds > 1.0 ? seconds : 1.0, true, SketchCanvasRemind, canvas))
@@ -489,6 +497,81 @@ static void SketchEmitStroke(SketchCanvas *canvas)
     ECSValue_Destroy(&value);
 }
 
+/// @brief Reads a whole file, ending it with a zero, because strtol reads the strokes.
+/// @return The text, or NULL. Free it with free.
+static char *SketchReadFile(const char *path, usz *retSize)
+{
+    FILE *file = fopen(path, "rb");
+    char *text = NULL;
+    long size = -1;
+
+    if (file != NULL && fseek(file, 0, SEEK_END) == 0 && (size = ftell(file)) >= 0 && fseek(file, 0, SEEK_SET) == 0)
+    {
+        text = malloc((size_t)size + 1);
+        size = text != NULL ? (long)fread(text, 1, (size_t)size, file) : -1;
+    }
+
+    if (file != NULL)
+    {
+        fclose(file);
+    }
+
+    if (size < 0)
+    {
+        free(text);
+        return NULL;
+    }
+
+    text[size] = '\0';
+    *retSize = (usz)size;
+    return text;
+}
+
+/// @brief Starts dragging a canvas's strokes, in the text format of copy.
+static void SketchDragStrokes(SketchCanvas *canvas)
+{
+    char *text = SketchStrokesToText(canvas->strokes, canvas->strokeCount);
+    ECSValue *value = NULL;
+
+    if (text == NULL || ECSValue_Create(&value) || ECSValue_SetString(value, text) || ECSPanel_StartDrag(canvas->panel, SKETCH_CLIPBOARD_TYPE, value))
+    {
+        ECS_Log(SKETCH.plugin, ECSLogLevel_Warning, "Cannot drag the strokes.");
+    }
+
+    ECSValue_Destroy(&value);
+    free(text);
+}
+
+/// @brief Adds dropped strokes to a canvas: strokes or text in the format of copy, or the strokes of each dropped file.
+static void SketchCanvasDrop(SketchCanvas *canvas, ECSDropData data)
+{
+    const ECSValue *value = ECSDropData_GetValue(data);
+    usz added = 0;
+
+    if (strcmp(ECSDropData_GetType(data), "file-list") == 0)
+    {
+        for (usz i = 0; i < ECSValue_GetListCount(value); i++)
+        {
+            usz size = 0;
+            char *text = SketchReadFile(ECSValue_GetString(ECSValue_GetListItem(value, i), ""), &size);
+            added += text != NULL ? SketchStrokesFromText(canvas, (SHUSliceView){.data = text, .size = size}) : 0;
+            free(text);
+        }
+    }
+    else
+    {
+        const char *text = ECSValue_GetString(value, "");
+        added = SketchStrokesFromText(canvas, (SHUSliceView){.data = text, .size = strlen(text)});
+    }
+
+    ECS_Log(SKETCH.plugin, ECSLogLevel_Info, "Dropped %zu strokes.", added);
+
+    if (added > 0)
+    {
+        SketchCanvasChanged(canvas);
+    }
+}
+
 static void SketchCanvasEvent(void *state, const ECSPanelEvent *event)
 {
     SketchCanvas *canvas = state;
@@ -499,6 +582,13 @@ static void SketchCanvasEvent(void *state, const ECSPanelEvent *event)
     {
         if (event->pointer.button != 1)
         {
+            break;
+        }
+
+        // Shift and a press drag the canvas's strokes, in the text format of copy
+        if (event->modifiers & ECSModifier_Shift)
+        {
+            SketchDragStrokes(canvas);
             break;
         }
 
@@ -560,6 +650,10 @@ static void SketchCanvasEvent(void *state, const ECSPanelEvent *event)
 
     case ECSPanelEventType_Hidden:
         ECS_Log(SKETCH.plugin, ECSLogLevel_Debug, "%s is hidden.", ECSPanel_GetTitle(canvas->panel));
+        break;
+
+    case ECSPanelEventType_Drop:
+        SketchCanvasDrop(canvas, event->drop.data);
         break;
 
     default:
@@ -930,30 +1024,11 @@ static void SketchPaste(ECSPanel panel)
 /// @brief Opens a canvas with the strokes of a file in the text format of copy; the function a preset opens files with.
 static void SketchOpen(const char *path)
 {
-    FILE *file = fopen(path, "rb");
-    char *text = NULL;
-    long size = -1;
-
-    if (file != NULL && fseek(file, 0, SEEK_END) == 0 && (size = ftell(file)) >= 0 && fseek(file, 0, SEEK_SET) == 0)
-    {
-        text = malloc((size_t)size + 1);
-        size = text != NULL ? (long)fread(text, 1, (size_t)size, file) : -1;
-    }
-
-    // strtol reads the strokes, so the text ends with a zero
-    if (size >= 0)
-    {
-        text[size] = '\0';
-    }
-
-    if (file != NULL)
-    {
-        fclose(file);
-    }
-
+    usz size = 0;
+    char *text = SketchReadFile(path, &size);
     ECSPanel panel = NULL;
 
-    if (text == NULL || size < 0 || ECSLayout_Open(SKETCH.plugin, &panel, SKETCH_NAME("canvas"), NULL, NULL, ECSZone_Default))
+    if (text == NULL || ECSLayout_Open(SKETCH.plugin, &panel, SKETCH_NAME("canvas"), NULL, NULL, ECSZone_Default))
     {
         ECS_Log(SKETCH.plugin, ECSLogLevel_Warning, "Cannot open '%s'.", path);
         free(text);
@@ -961,7 +1036,7 @@ static void SketchOpen(const char *path)
     }
 
     SketchCanvas *canvas = SketchFindCanvas(panel);
-    usz added = canvas != NULL ? SketchStrokesFromText(canvas, (SHUSliceView){.data = text, .size = (usz)size}) : 0;
+    usz added = canvas != NULL ? SketchStrokesFromText(canvas, (SHUSliceView){.data = text, .size = size}) : 0;
     free(text);
 
     if (canvas == NULL)

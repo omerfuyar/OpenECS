@@ -72,6 +72,36 @@ static void ECSIPanel_DeliverEvent(void *target, const ECSPanelEvent *event)
     }
 }
 
+/// @brief Dropped data on its way to a panel; a Drop event's data points to it.
+struct ECSIDropData
+{
+    ECSPanel panel;
+    char *type;
+    ECSValue *value; // a nil value if the drag gave none
+};
+
+/// @brief Frees a panel's list of accepted types.
+static void ECSIPanel_ClearAccepts(ECSPanel panel)
+{
+    for (usz i = 0; i < arrlenu(panel->accepts); i++)
+    {
+        SDL_free(panel->accepts[i]);
+    }
+
+    arrfree(panel->accepts);
+}
+
+/// @brief Delivers a Drop event, then frees its data.
+static void ECSIPanel_DeliverDrop(void *target, const ECSPanelEvent *event)
+{
+    ECSDropData data = target;
+    ECSIPanel_DeliverEvent(data->panel, event);
+
+    SDL_free(data->type);
+    ECSValue_Destroy(&data->value);
+    SDL_free(data);
+}
+
 #pragma endregion Source Only
 
 void ECSIPanels_Terminate(void)
@@ -159,6 +189,7 @@ void ECSIPanel_Destroy(ECSPanel *panel)
     }
 
     SDL_DestroySurface(target->pixels);
+    ECSIPanel_ClearAccepts(target);
     ECSValue_Destroy(&target->savedState);
     SDL_free(target->fault);
     SDL_free(target->typeName);
@@ -404,6 +435,93 @@ void ECSIPanel_PostEvent(ECSPanel panel, const ECSPanelEvent *event)
     ECSIEvents_Post(ECSIPanel_DeliverEvent, panel, event);
 }
 
+bool ECSIPanel_Accepts(ECSPanel panel, const char *type)
+{
+    SDL_assert(panel != NULL);
+    SDL_assert(type != NULL);
+
+    for (usz i = 0; !panel->closed && panel->fault == NULL && i < arrlenu(panel->accepts); i++)
+    {
+        if (SDL_strcmp(panel->accepts[i], type) == 0)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const ECSValue *value, u32 modifiers)
+{
+    SDL_assert(panel != NULL);
+    SDL_assert(type != NULL);
+
+    ECSDropData data = SDL_calloc(1, sizeof(*data));
+    SHUResult result = data == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
+    result = result ? result : ECSValue_Create(&data->value);
+    result = result || value == NULL ? result : ECSIValue_Copy(data->value, value);
+
+    if (!result)
+    {
+        data->panel = panel;
+        data->type = SDL_strdup(type);
+        result = data->type == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
+    }
+
+    if (result)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Data of type '%s' is not dropped on '%s': out of memory.", type, panel->title);
+
+        if (data != NULL)
+        {
+            SDL_free(data->type);
+            ECSValue_Destroy(&data->value);
+            SDL_free(data);
+        }
+
+        return;
+    }
+
+    ECSPanelEvent event = {.type = ECSPanelEventType_Drop, .modifiers = modifiers, .drop = {.x = x, .y = y, .data = data}};
+    ECSIEvents_Post(ECSIPanel_DeliverDrop, data, &event);
+}
+
+SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char *const *types, usz count)
+{
+    SDL_assert(panel != NULL);
+    SDL_assert(types != NULL || count == 0);
+
+    ECSIPanel_ClearAccepts(panel);
+
+    for (usz i = 0; i < count; i++)
+    {
+        SDL_assert(types[i] != NULL);
+        char *copy = SDL_strdup(types[i]);
+
+        if (copy == NULL)
+        {
+            ECSIPanel_ClearAccepts(panel);
+            return SHUResult_ErrAllocation;
+        }
+
+        arrput(panel->accepts, copy);
+    }
+
+    return SHUResult_Ok;
+}
+
+const char *ECSDropData_GetType(ECSDropData data)
+{
+    SDL_assert(data != NULL);
+    return data->type;
+}
+
+const ECSValue *ECSDropData_GetValue(ECSDropData data)
+{
+    SDL_assert(data != NULL);
+    return data->value;
+}
+
 void ECSIPanels_RemovePlugin(ECSPlugin plugin)
 {
     SDL_assert(plugin != NULL);
@@ -542,7 +660,9 @@ bool ECSIPanel_Restart(ECSPanel panel)
         panel->type->desc.Destroy(panel->state);
     }
 
+    // the new state says again which data it accepts
     ECSIEvents_StopTimersOf(panel);
+    ECSIPanel_ClearAccepts(panel);
     SDL_free(panel->fault);
     panel->fault = NULL;
     panel->state = NULL;

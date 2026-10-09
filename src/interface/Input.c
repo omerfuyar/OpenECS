@@ -38,7 +38,13 @@ static struct
     const char **prefixLines; // stb_ds array of the lines shown after the prefix: key text, description, and so on; a NULL key text makes a heading
     char **prefixTexts;       // stb_ds array of the key texts made for the lines, such as "1...0"
     ECSPanel pointerPanel;    // panel that got the press; it gets pointer events until the release
+    f32 pointerX;             // the pointer's last position in the OS window, in layout units
+    f32 pointerY;
     void *clipboard;          // what a clipboard getter returned last, freed by the next call
+    char *dragType;           // type of the data a panel drags, or NULL
+    ECSValue *dragValue;      // the dragged data
+    char **droppedFiles;      // stb_ds array of the files another application drops, until the drop completes
+    char *droppedText;        // the text another application drops, until the drop completes, or NULL
 } INPUT = {0};
 
 /// @brief A file dialog waiting for its answer, with copies of everything SDL reads until it answers.
@@ -148,6 +154,81 @@ static ECSPanel ECSIInput_PointerPanel(void)
     }
 
     return INPUT.pointerPanel;
+}
+
+/// @brief Ends dragging data, with or without dropping it.
+static void ECSIInput_EndDataDrag(void)
+{
+    SDL_free(INPUT.dragType);
+    ECSValue_Destroy(&INPUT.dragValue);
+    INPUT.dragType = NULL;
+    ECSIWindow_ShowDataDrag(NULL, 0.0f, 0.0f);
+}
+
+/// @brief Drops data on the panel at a position, if the panel accepts its type.
+static void ECSIInput_Drop(f32 x, f32 y, const char *type, const ECSValue *value)
+{
+    ECSPanel panel = ECSILayout_PanelAt(x, y);
+
+    if (panel != NULL && ECSIPanel_Accepts(panel, type))
+    {
+        ECSIPanel_PostDrop(panel, x - panel->x, y - panel->y, type, value, ECSIInput_Modifiers(SDL_GetModState()));
+    }
+    else
+    {
+        SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "No panel takes the dropped data of type '%s'.", type);
+    }
+}
+
+/// @brief Forgets what another application dropped.
+static void ECSIInput_ForgetDropped(void)
+{
+    for (usz i = 0; i < arrlenu(INPUT.droppedFiles); i++)
+    {
+        SDL_free(INPUT.droppedFiles[i]);
+    }
+
+    arrfree(INPUT.droppedFiles);
+    SDL_free(INPUT.droppedText);
+    INPUT.droppedText = NULL;
+}
+
+/// @brief Delivers what another application dropped: its files as a file-list, and its text as text.
+static void ECSIInput_CompleteDrop(f32 x, f32 y)
+{
+    ECSValue *value = NULL;
+
+    if (arrlenu(INPUT.droppedFiles) > 0 && ECSValue_Create(&value) == SHUResult_Ok)
+    {
+        SHUResult result = SHUResult_Ok;
+        ECSValue_SetTable(value);
+
+        for (usz i = 0; !result && i < arrlenu(INPUT.droppedFiles); i++)
+        {
+            ECSValue *item = NULL;
+            result = ECSValue_ListAddItem(value, &item);
+            result = result ? result : ECSValue_SetString(item, INPUT.droppedFiles[i]);
+        }
+
+        if (!result)
+        {
+            ECSIInput_Drop(x, y, "file-list", value);
+        }
+
+        ECSValue_Destroy(&value);
+    }
+
+    if (INPUT.droppedText != NULL && ECSValue_Create(&value) == SHUResult_Ok)
+    {
+        if (ECSValue_SetString(value, INPUT.droppedText) == SHUResult_Ok)
+        {
+            ECSIInput_Drop(x, y, "text", value);
+        }
+
+        ECSValue_Destroy(&value);
+    }
+
+    ECSIInput_ForgetDropped();
 }
 
 /// @brief Finds the section of the list of prefix keys that a function is listed in.
@@ -510,6 +591,8 @@ void ECSIInput_Terminate(void)
     }
 
     arrfree(INPUT.prefixTexts);
+    ECSIInput_EndDataDrag();
+    ECSIInput_ForgetDropped();
     SDL_zero(INPUT);
 }
 
@@ -545,6 +628,8 @@ bool ECSIInput_Handle(const SDL_Event *event)
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
     {
         const SDL_MouseButtonEvent *button = &event->button;
+        INPUT.pointerX = button->x;
+        INPUT.pointerY = button->y;
 
         if (INPUT.prefixActive)
         {
@@ -596,6 +681,15 @@ bool ECSIInput_Handle(const SDL_Event *event)
     case SDL_EVENT_MOUSE_MOTION:
     {
         const SDL_MouseMotionEvent *motion = &event->motion;
+        INPUT.pointerX = motion->x;
+        INPUT.pointerY = motion->y;
+
+        // while a panel drags data, the core marks where it can land and the panel gets no moves
+        if (INPUT.dragType != NULL)
+        {
+            ECSIWindow_ShowDataDrag(INPUT.dragType, motion->x, motion->y);
+            break;
+        }
 
         if (ECSIWindow_PointerMove(motion->x, motion->y))
         {
@@ -623,6 +717,13 @@ bool ECSIInput_Handle(const SDL_Event *event)
     case SDL_EVENT_MOUSE_BUTTON_UP:
     {
         const SDL_MouseButtonEvent *button = &event->button;
+
+        // dragged data lands on the panel under the pointer; the panel it came from still gets its release
+        if (INPUT.dragType != NULL)
+        {
+            ECSIInput_Drop(button->x, button->y, INPUT.dragType, INPUT.dragValue);
+            ECSIInput_EndDataDrag();
+        }
 
         // a click on a grip opens the panel's menu
         ECSPanel clicked = button->button == SDL_BUTTON_LEFT ? ECSIWindow_PointerUp() : NULL;
@@ -679,6 +780,12 @@ bool ECSIInput_Handle(const SDL_Event *event)
             break;
         }
 
+        if (key->key == SDLK_ESCAPE && INPUT.dragType != NULL)
+        {
+            ECSIInput_EndDataDrag();
+            break;
+        }
+
         if (key->key == SDLK_ESCAPE && ECSIWindow_CancelDrag())
         {
             break;
@@ -709,6 +816,32 @@ bool ECSIInput_Handle(const SDL_Event *event)
         break;
     }
 
+    // files and text dropped from other applications; SDL gives each file, then completes the drop
+    case SDL_EVENT_DROP_BEGIN:
+        ECSIInput_ForgetDropped();
+        break;
+
+    case SDL_EVENT_DROP_FILE:
+    {
+        char *file = event->drop.data == NULL ? NULL : SDL_strdup(event->drop.data);
+
+        if (file != NULL)
+        {
+            arrput(INPUT.droppedFiles, file);
+        }
+
+        break;
+    }
+
+    case SDL_EVENT_DROP_TEXT:
+        SDL_free(INPUT.droppedText);
+        INPUT.droppedText = event->drop.data == NULL ? NULL : SDL_strdup(event->drop.data);
+        break;
+
+    case SDL_EVENT_DROP_COMPLETE:
+        ECSIInput_CompleteDrop(event->drop.x, event->drop.y);
+        break;
+
     case SDL_EVENT_KEY_UP:
     {
         ECSPanel focus = ECSILayout_GetFocus();
@@ -726,6 +859,32 @@ bool ECSIInput_Handle(const SDL_Event *event)
     }
 
     return true;
+}
+
+SHUResult ECSPanel_StartDrag(ECSPanel panel, const char *type, const ECSValue *value)
+{
+    SDL_assert(panel != NULL);
+    SDL_assert(type != NULL);
+
+    if (ECSIInput_PointerPanel() != panel)
+    {
+        return SHUResult_Err;
+    }
+
+    // a new drag replaces one the panel started before in the same press
+    ECSIInput_EndDataDrag();
+    INPUT.dragType = SDL_strdup(type);
+    SHUResult result = INPUT.dragType == NULL ? SHUResult_ErrAllocation : ECSValue_Create(&INPUT.dragValue);
+    result = result || value == NULL ? result : ECSIValue_Copy(INPUT.dragValue, value);
+
+    if (result)
+    {
+        ECSIInput_EndDataDrag();
+        return result;
+    }
+
+    ECSIWindow_ShowDataDrag(INPUT.dragType, INPUT.pointerX, INPUT.pointerY);
+    return SHUResult_Ok;
 }
 
 #pragma region Clipboard

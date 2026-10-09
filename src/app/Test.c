@@ -29,12 +29,15 @@ static struct
     bool failed;                  // true when the test failed
     const ECSIPresetInfo *info;  // what the preset said, for test.session
     SDL_Event *events;            // input events the test sent; one goes to the loop in each pass
+    SDL_Keymod *eventModifiers;   // stb_ds array of the modifiers held during each event, set before it goes to the loop
+    SDL_Keymod held;              // modifiers held during the pointer events being sent
     usz nextEvent;                // index of the next event to send
     u64 resumeTicks;              // when the test goes on after test.wait, in nanoseconds
     f32 pointerX;                 // the pointer's last position
     f32 pointerY;
     SDL_MouseButtonFlags buttons; // the buttons held
     char **files;                 // stb_ds array of the paths that the test's files field names
+    char **dropped;               // stb_ds array of the files and texts the test drops, kept until it ends because their events point to them
     char *sessions;               // the folder that the test's sessions field names, ending with a separator, or NULL
 } TEST = {0};
 
@@ -90,11 +93,45 @@ static void ECSITest_Send(SDL_Event event)
     case SDL_EVENT_MOUSE_WHEEL:
         event.wheel.windowID = id;
         break;
+    case SDL_EVENT_DROP_BEGIN:
+    case SDL_EVENT_DROP_FILE:
+    case SDL_EVENT_DROP_TEXT:
+    case SDL_EVENT_DROP_COMPLETE:
+        event.drop.windowID = id;
+        break;
     default:
         break;
     }
 
     arrput(TEST.events, event);
+    arrput(TEST.eventModifiers, event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP ? event.key.mod : TEST.held);
+}
+
+/// @brief Reads the modifiers held during pointer events from an optional Lua argument, such as "Shift" or "Ctrl+Shift".
+static SDL_Keymod ECSITest_CheckModifiers(lua_State *state, int index)
+{
+    const char *text = luaL_optstring(state, index, "");
+    const char *const names[] = {"Ctrl", "Shift", "Alt", "Super"};
+    const SDL_Keymod bits[] = {SDL_KMOD_LCTRL, SDL_KMOD_LSHIFT, SDL_KMOD_LALT, SDL_KMOD_LGUI};
+    SDL_Keymod modifiers = SDL_KMOD_NONE;
+
+    for (const char *part = text; *part != '\0';)
+    {
+        const char *plus = SDL_strchr(part, '+');
+        usz length = plus != NULL ? (usz)(plus - part) : SDL_strlen(part);
+        usz i = 0;
+
+        while (i < SDL_arraysize(names) && (SDL_strlen(names[i]) != length || SDL_strncasecmp(part, names[i], length) != 0))
+        {
+            i++;
+        }
+
+        luaL_argcheck(state, i < SDL_arraysize(names), index, "modifiers such as \"Shift\" or \"Ctrl+Shift\" expected");
+        modifiers |= bits[i];
+        part += length + (part[length] == '+' ? 1 : 0);
+    }
+
+    return modifiers;
 }
 
 /// @brief Adds a pointer move to a position.
@@ -193,39 +230,47 @@ static int ECSITest_Move(lua_State *state)
     return lua_yield(state, 0);
 }
 
-/// @brief test.press(x, y, button): presses a button.
+/// @brief test.press(x, y, button, modifiers): presses a button.
 static int ECSITest_Press(lua_State *state)
 {
     f32 x = 0.0f;
     f32 y = 0.0f;
     ECSITest_CheckPosition(state, 1, &x, &y);
-    ECSITest_SendButton(x, y, ECSITest_CheckButton(state, 3), true);
+    u8 button = ECSITest_CheckButton(state, 3);
+    TEST.held = ECSITest_CheckModifiers(state, 4);
+    ECSITest_SendButton(x, y, button, true);
+    TEST.held = SDL_KMOD_NONE;
     return lua_yield(state, 0);
 }
 
-/// @brief test.release(x, y, button): releases a button.
+/// @brief test.release(x, y, button, modifiers): releases a button.
 static int ECSITest_Release(lua_State *state)
 {
     f32 x = 0.0f;
     f32 y = 0.0f;
     ECSITest_CheckPosition(state, 1, &x, &y);
-    ECSITest_SendButton(x, y, ECSITest_CheckButton(state, 3), false);
+    u8 button = ECSITest_CheckButton(state, 3);
+    TEST.held = ECSITest_CheckModifiers(state, 4);
+    ECSITest_SendButton(x, y, button, false);
+    TEST.held = SDL_KMOD_NONE;
     return lua_yield(state, 0);
 }
 
-/// @brief test.click(x, y, button): presses and releases a button.
+/// @brief test.click(x, y, button, modifiers): presses and releases a button.
 static int ECSITest_Click(lua_State *state)
 {
     f32 x = 0.0f;
     f32 y = 0.0f;
     ECSITest_CheckPosition(state, 1, &x, &y);
     u8 button = ECSITest_CheckButton(state, 3);
+    TEST.held = ECSITest_CheckModifiers(state, 4);
     ECSITest_SendButton(x, y, button, true);
     ECSITest_SendButton(x, y, button, false);
+    TEST.held = SDL_KMOD_NONE;
     return lua_yield(state, 0);
 }
 
-/// @brief test.drag(x, y, toX, toY): presses the left button, moves in steps and releases it.
+/// @brief test.drag(x, y, toX, toY, modifiers): presses the left button, moves in steps and releases it.
 static int ECSITest_Drag(lua_State *state)
 {
     f32 x = 0.0f;
@@ -234,6 +279,7 @@ static int ECSITest_Drag(lua_State *state)
     f32 toY = 0.0f;
     ECSITest_CheckPosition(state, 1, &x, &y);
     ECSITest_CheckPosition(state, 3, &toX, &toY);
+    TEST.held = ECSITest_CheckModifiers(state, 5);
 
     ECSITest_SendMove(x, y);
     ECSITest_SendButton(x, y, SDL_BUTTON_LEFT, true);
@@ -245,6 +291,7 @@ static int ECSITest_Drag(lua_State *state)
     }
 
     ECSITest_SendButton(toX, toY, SDL_BUTTON_LEFT, false);
+    TEST.held = SDL_KMOD_NONE;
     return lua_yield(state, 0);
 }
 
@@ -262,6 +309,67 @@ static int ECSITest_Wheel(lua_State *state)
     event.wheel.mouse_y = y;
     ECSITest_Send(event);
 
+    return lua_yield(state, 0);
+}
+
+/// @brief Adds a drop from another application at a position: its begin, a file or text event for each string, and its end.
+static void ECSITest_SendDrop(f32 x, f32 y, Uint32 type, const char *const *texts, usz count)
+{
+    SDL_Event event = {.type = SDL_EVENT_DROP_BEGIN};
+    ECSITest_Send(event);
+
+    for (usz i = 0; i < count; i++)
+    {
+        char *copy = SDL_strdup(texts[i]);
+
+        if (copy != NULL)
+        {
+            arrput(TEST.dropped, copy);
+            event = (SDL_Event){.type = type};
+            event.drop.x = x;
+            event.drop.y = y;
+            event.drop.data = copy;
+            ECSITest_Send(event);
+        }
+    }
+
+    event = (SDL_Event){.type = SDL_EVENT_DROP_COMPLETE};
+    event.drop.x = x;
+    event.drop.y = y;
+    ECSITest_Send(event);
+}
+
+/// @brief test.dropFiles(x, y, paths): drops files from another application at a position.
+static int ECSITest_DropFiles(lua_State *state)
+{
+    f32 x = 0.0f;
+    f32 y = 0.0f;
+    ECSITest_CheckPosition(state, 1, &x, &y);
+    luaL_checktype(state, 3, LUA_TTABLE);
+
+    // the table keeps its strings alive while they are copied
+    const char **paths = NULL;
+
+    for (lua_Integer i = 1; lua_rawgeti(state, 3, i) == LUA_TSTRING; i++)
+    {
+        arrput(paths, lua_tostring(state, -1));
+        lua_pop(state, 1);
+    }
+
+    lua_pop(state, 1);
+    ECSITest_SendDrop(x, y, SDL_EVENT_DROP_FILE, paths, arrlenu(paths));
+    arrfree(paths);
+    return lua_yield(state, 0);
+}
+
+/// @brief test.dropText(x, y, text): drops text from another application at a position.
+static int ECSITest_DropText(lua_State *state)
+{
+    f32 x = 0.0f;
+    f32 y = 0.0f;
+    ECSITest_CheckPosition(state, 1, &x, &y);
+    const char *text = luaL_checkstring(state, 3);
+    ECSITest_SendDrop(x, y, SDL_EVENT_DROP_TEXT, &text, 1);
     return lua_yield(state, 0);
 }
 
@@ -356,6 +464,8 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"click", ECSITest_Click},
     {"drag", ECSITest_Drag},
     {"wheel", ECSITest_Wheel},
+    {"dropFiles", ECSITest_DropFiles},
+    {"dropText", ECSITest_DropText},
     {"call", ECSITest_Call},
     {"wait", ECSITest_Wait},
     {"session", ECSITest_Session},
@@ -390,6 +500,7 @@ static void ECSITest_Finish(void)
     }
 
     arrfree(TEST.events);
+    arrfree(TEST.eventModifiers);
     TEST.nextEvent = 0;
 }
 
@@ -529,6 +640,13 @@ void ECSITest_Terminate(void)
     }
 
     arrfree(TEST.files);
+
+    for (usz i = 0; i < arrlenu(TEST.dropped); i++)
+    {
+        SDL_free(TEST.dropped[i]);
+    }
+
+    arrfree(TEST.dropped);
     SDL_free(TEST.sessions);
     SDL_zero(TEST);
 }
@@ -559,11 +677,13 @@ bool ECSITest_Step(void)
     // each input event gets its own pass of the loop, so it is handled, its events delivered and the window drawn before the next
     if (TEST.nextEvent < arrlenu(TEST.events))
     {
+        SDL_SetModState(TEST.eventModifiers[TEST.nextEvent]);
         SDL_PushEvent(&TEST.events[TEST.nextEvent++]);
         return true;
     }
 
     arrfree(TEST.events);
+    arrfree(TEST.eventModifiers);
     TEST.nextEvent = 0;
 
     lua_State *state = ECSILua_GetState();

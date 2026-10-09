@@ -82,7 +82,7 @@ static struct
 } BINDINGS = {0};
 
 /// @brief Names of the event types in Lua, in the order of ECSPanelEventType.
-static const char *const OPENECS_BINDINGS_EVENT_TYPES[] = {"pointerDown", "pointerUp", "pointerMove", "wheel", "keyDown", "keyUp", "focused", "unfocused", "shown", "hidden", "resized"};
+static const char *const OPENECS_BINDINGS_EVENT_TYPES[] = {"pointerDown", "pointerUp", "pointerMove", "wheel", "keyDown", "keyUp", "focused", "unfocused", "shown", "hidden", "resized", "drop"};
 
 /// @brief Names of the setting types in Lua, in the order of ECSSettingType.
 static const char *const OPENECS_BINDINGS_SETTING_TYPES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", NULL};
@@ -1372,6 +1372,16 @@ static void ECSIBindings_PushEvent(lua_State *state, const ECSPanelEvent *event)
         lua_pushnumber(state, (lua_Number)event->size.height);
         lua_setfield(state, -2, "height");
         break;
+    case ECSPanelEventType_Drop:
+        lua_pushnumber(state, (lua_Number)event->drop.x);
+        lua_setfield(state, -2, "x");
+        lua_pushnumber(state, (lua_Number)event->drop.y);
+        lua_setfield(state, -2, "y");
+        lua_pushstring(state, ECSDropData_GetType(event->drop.data));
+        lua_setfield(state, -2, "dataType");
+        ECSILua_PushValue(ECSDropData_GetValue(event->drop.data));
+        lua_setfield(state, -2, "value");
+        break;
     default:
         break;
     }
@@ -1566,7 +1576,61 @@ static int ECSIBindings_PanelStartTimer(lua_State *state)
     return ECSIBindings_StartTimer(state, panel->type->plugin, panel, 2);
 }
 
+static int ECSIBindings_PanelAcceptDrops(lua_State *state)
+{
+    ECSPanel panel = ECSIBindings_CheckPanel(state, 1);
+    luaL_checktype(state, 2, LUA_TTABLE);
+
+    // the table keeps its strings alive while the core copies them
+    const char **types = NULL;
+
+    for (lua_Integer i = 1; lua_rawgeti(state, 2, i) != LUA_TNIL; i++)
+    {
+        if (lua_type(state, -1) != LUA_TSTRING)
+        {
+            arrfree(types);
+            return luaL_argerror(state, 2, "the types must be a list of strings");
+        }
+
+        arrput(types, lua_tostring(state, -1));
+        lua_pop(state, 1);
+    }
+
+    SHUResult result = ECSPanel_AcceptDrops(panel, types, arrlenu(types));
+    arrfree(types);
+
+    if (result)
+    {
+        return luaL_error(state, "the types are not set (%s)", SHUResult_String(result));
+    }
+
+    return 0;
+}
+
+static int ECSIBindings_PanelStartDrag(lua_State *state)
+{
+    ECSPanel panel = ECSIBindings_CheckPanel(state, 1);
+    const char *type = luaL_checkstring(state, 2);
+    ECSValue *value = NULL;
+    SHUResult result = ECSValue_Create(&value);
+    result = result ? result : ECSILua_GetValue(3, value);
+    result = result ? result : ECSPanel_StartDrag(panel, type, value);
+    ECSValue_Destroy(&value);
+
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "no drag of '%s' (%s)", type, result == SHUResult_Err ? "no pointer button pressed on the panel is held" : SHUResult_String(result));
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
 static const luaL_Reg OPENECS_BINDINGS_PANEL_METHODS[] = {
+    {"acceptDrops", ECSIBindings_PanelAcceptDrops},
+    {"startDrag", ECSIBindings_PanelStartDrag},
     {"redraw", ECSIBindings_PanelRedraw},
     {"getTitle", ECSIBindings_PanelGetTitle},
     {"setTitle", ECSIBindings_PanelSetTitle},
@@ -1597,6 +1661,8 @@ static int ECSIBindings_PanelAddMenuEntry(lua_State *state)
 static const luaL_Reg OPENECS_BINDINGS_PANEL[] = {
     {"registerType", ECSIBindings_PanelRegisterType},
     {"addMenuEntry", ECSIBindings_PanelAddMenuEntry},
+    {"acceptDrops", ECSIBindings_PanelAcceptDrops},
+    {"startDrag", ECSIBindings_PanelStartDrag},
     {"redraw", ECSIBindings_PanelRedraw},
     {"getTitle", ECSIBindings_PanelGetTitle},
     {"setTitle", ECSIBindings_PanelSetTitle},

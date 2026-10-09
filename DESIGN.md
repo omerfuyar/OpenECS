@@ -484,6 +484,15 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Each of them is also a function of the `ecs` module with the same name, such as `ecs.layout.maximize()`. A key calls it with no arguments, which is the user's action: it acts on the focused panel, and locks stop it (6.4). Some also take arguments, such as `ecs.layout.close(panel)` and `ecs.session.save(path)`.
 - C runs them by name with `ECSService_GetFunction`.
 
+### 7.9 Drag and drop of data
+
+- `ECSPanel_AcceptDrops(panel, types, count)`, and in Lua `panel:acceptDrops(types)`, set the types of data a panel accepts, such as `color`. A new call replaces the list. A faulted panel accepts nothing, and a restarted panel sets its list again.
+- `ECSPanel_StartDrag(panel, type, value)`, and in Lua `panel:startDrag(type, value)`, start dragging data while a pointer button that was pressed on the panel is held, usually from its `PointerDown` or `PointerMove` event. The core copies the value.
+- While data is dragged, the panel that started the drag gets no pointer moves. The core outlines every shown panel that accepts the type, and fills the one under the pointer. Escape cancels the drag.
+- On release, the panel under the pointer gets a `Drop` event if it accepts the type, even the panel that started the drag. The event holds the position and the data, which `ECSDropData_GetType` and `ECSDropData_GetValue` read during the event. A Lua panel's event has the fields `dataType` and `value`. The panel that started the drag still gets its `PointerUp`.
+- Files and text dropped from other applications arrive the same way: files as `file-list`, a list of paths, and text as `text`, a string. The core learns their type only when they are dropped, so it marks no panel before.
+- Data dropped on a panel that does not accept its type is dropped nowhere.
+
 ## 8. Events
 
 ### 8.1 Types
@@ -492,7 +501,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Named events carry a value (10.3). The core emits its own (8.4), and plugins declare and emit theirs (8.3).
 - Events are notifications. Handlers return nothing and cannot cancel anything.
 - A panel gets `Shown` when it becomes visible and `Hidden` when another tab, workspace or maximized group hides it, and `Resized` when its size changes while it is visible. `Shown` and `Resized` carry the size in layout units. The layout checks after each pass, so a panel that was never visible gets no `Hidden`.
-- A panel's event is a tagged union, `ECSPanelEvent`: its type chooses which member is set, `pointer`, `wheel`, `key` or `size`. Every input event carries the modifiers held when it happened. A wheel amount is positive away from the user, even when the system flips the wheel.
+- A panel's event is a tagged union, `ECSPanelEvent`: its type chooses which member is set, `pointer`, `wheel`, `key`, `size` or `drop`. Every input event carries the modifiers held when it happened. A wheel amount is positive away from the user, even when the system flips the wheel.
 
 ### 8.2 Delivery
 
@@ -734,7 +743,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 - A Lua panel type is a table (4.1). The core registers C callbacks that call its Lua functions in protected calls.
 - Panels are handles with methods: `panel:redraw()`, `panel:getId()`, `panel:getType()`, `panel:getTitle()`, `panel:setTitle(text)`, `panel:setUnsaved(unsaved)` and `panel:startTimer(seconds, repeat, fn)`. Each is also a function of `ecs.panel` that takes the panel first, such as `ecs.panel.getTitle(panel)`. A handle of a destroyed panel raises an error when it is used.
 - `draw(state, surface, seconds)` gets a surface with `width`, `height` and `scale`, and the methods `setPixel(x, y, color)`, `getPixel(x, y)` and `setRow(y, bytes, x)`. Colours are ARGB integers; `setRow` takes the row's pixels as a string in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
-- `event(state, event)` gets a table: `type` (such as `"pointerDown"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheelX` and `wheelY` for the wheel, `key` (SDL's key name) for keys, and `width` and `height` for `shown` and `resized`.
+- `event(state, event)` gets a table: `type` (such as `"pointerDown"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheelX` and `wheelY` for the wheel, `key` (SDL's key name) for keys, `width` and `height` for `shown` and `resized`, and `x`, `y`, `dataType` and `value` for `drop` (7.9).
 
 ### 11.5 Parity
 
@@ -998,20 +1007,21 @@ OpenECS follows the XDG Base Directory specification:
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).
 - The `test` table:
 
-  | Function                                       | Does                                                                                                    |
-  | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-  | `key(combination)`                             | Presses and releases a key combination, such as `"Alt+W"` (7.3).                                        |
-  | `move(x, y)`                                   | Moves the pointer. Positions are in layout units of the OS window.                                      |
-  | `press(x, y, button)`, `release(x, y, button)` | Presses or releases a button: 1 left (the default), 2 middle, 3 right.                                  |
-  | `click(x, y, button)`                          | Presses and releases a button.                                                                          |
-  | `drag(x, y, toX, toY)`                         | Presses the left button, moves in steps and releases it.                                                |
-  | `wheel(x, y, amount)`                          | Turns the wheel; a positive amount is away from the user.                                               |
-  | `call(name)`                                   | Runs a bound function (7.8), such as `"ecs.layout.maximize"`, as a key would.                           |
-  | `wait(seconds)`                                | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                       |
-  | `session()`                                    | The session that quitting would save now, as a Lua table (13.2).                                        |
-  | `rect(id)`                                     | The rectangle of the shown panel with that id: `x`, `y`, `width` and `height`.                          |
-  | `screenshot(path)`                             | Draws a frame and saves it as a PNG file.                                                               |
-  | `match(actual, expected, message)`             | Checks that `actual` has the same number of list items as `expected`, and each item and field it names. |
+  | Function                                                             | Does                                                                                                                           |
+  | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+  | `key(combination)`                                                   | Presses and releases a key combination, such as `"Alt+W"` (7.3).                                                               |
+  | `move(x, y)`                                                         | Moves the pointer. Positions are in layout units of the OS window.                                                             |
+  | `press(x, y, button, modifiers)`, `release(x, y, button, modifiers)` | Presses or releases a button: 1 left (the default), 2 middle, 3 right. The `modifiers`, such as `"Shift"`, are held during it. |
+  | `click(x, y, button, modifiers)`                                     | Presses and releases a button.                                                                                                 |
+  | `drag(x, y, toX, toY, modifiers)`                                    | Presses the left button, moves in steps and releases it.                                                                       |
+  | `wheel(x, y, amount)`                                                | Turns the wheel; a positive amount is away from the user.                                                                      |
+  | `dropFiles(x, y, paths)`, `dropText(x, y, text)`                     | Drops files or text from another application at a position (7.9).                                                              |
+  | `call(name)`                                                         | Runs a bound function (7.8), such as `"ecs.layout.maximize"`, as a key would.                                                  |
+  | `wait(seconds)`                                                      | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                                              |
+  | `session()`                                                          | The session that quitting would save now, as a Lua table (13.2).                                                               |
+  | `rect(id)`                                                           | The rectangle of the shown panel with that id: `x`, `y`, `width` and `height`.                                                 |
+  | `screenshot(path)`                                                   | Draws a frame and saves it as a PNG file.                                                                                      |
+  | `match(actual, expected, message)`                                   | Checks that `actual` has the same number of list items as `expected`, and each item and field it names.                        |
 
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
 - A Lua error fails the test and logs it with its stack trace. When `run` returns, the program quits without asking about unsaved work.
