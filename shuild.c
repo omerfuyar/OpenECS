@@ -663,17 +663,21 @@ static void Shuild_Example(const char *path, const char *name)
     ForEachFolder(root.data, Shuild_CopiedPlugin);
 }
 
+// OpenECS-std, checked out in std/, builds the standard plugins and adds their presets and tests (DESIGN 17.7)
+#if __has_include("std/build.c")
+#include "std/build.c"
+#define SHUILD_HAS_STD
+#endif
+
 static void Shuild_Plugins(void)
 {
-    ForEachFolder("plugins/", Shuild_Plugin);
-
     // examples and tests are built when the flags ask for them; a copy from an earlier build is removed otherwise
     SHU_UtilRun("rm -rf %sbin/examples %stests", OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data);
 
-    // examples are copied whole, their sources too, and each of their plugin folders is built in the copy
+    // the numbered folders of OpenECS-examples are copied whole, their sources too, and each of their plugin folders is built in the copy
     if (CONFIG.examples)
     {
-        SHU_UtilRun("cp -r examples %sbin/", OUTPUT_DIRECTORY.data);
+        SHU_UtilRun("mkdir -p %sbin/examples && cp -r examples/[0-9]* %sbin/examples/", OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data);
         ForEachFolder("examples/", Shuild_Example);
     }
 
@@ -683,6 +687,12 @@ static void Shuild_Plugins(void)
         SHU_UtilRun("cp -r tests %s", OUTPUT_DIRECTORY.data);
         ForEachFolder("tests/plugins/", Shuild_CopiedPlugin);
     }
+
+#ifdef SHUILD_HAS_STD
+    Shuild_Std();
+#else
+    SHU_LogWarning("std/ is not checked out, so the standard plugins are not built; clone with --recursive");
+#endif
 }
 
 static void Shuild_other(void)
@@ -697,6 +707,4 @@ static void Shuild_other(void)
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("resources/", tempStr.data);
 
-    SHU_UtilCreateDirectory(tempStr.data);
-    CopyFile("presets/", tempStr.data);
 }

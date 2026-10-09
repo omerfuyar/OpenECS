@@ -37,25 +37,30 @@ Without a preset, OpenECS shows the launcher: it lists the presets and saved ses
 
 ### Examples
 
-The `examples/` folder shows how to write plugins, one part at a time. Read the examples in the order of their numbers, from `1_hello` to `12_sketch`. Each holds a preset, its plugins and a test. Run them with `--fresh`, so each starts from its preset even if you keep sessions (`ecs.keepSession`):
+The `examples/` folder shows how to write plugins, one part at a time, from `1_hello` to `12_sketch`. Its [README](https://github.com/omerfuyar/OpenECS-examples) says how to read and run them:
 
 ``` shell
 ./OpenECS --fresh --preset examples/1_hello/preset.lua
 ```
 
-`12_sketch` shows two plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Shift and a drag carry a canvas's strokes to another canvas, and a canvas takes strokes files dropped from a file manager. Ctrl+Tab switches workspace.
-
 ### Writing plugins
 
-The archive holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`.
+The archive holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`. `ecs.lua` also describes manifests, presets and settings files: write `---@type ecs.Manifest` or `---@type ecs.Preset` above the file's `return` to get completion and checks, as the examples do.
 
 Plugins offer functions to each other. In Lua, `local ui = require("ui")` gives the functions of the plugin `ui`, if your manifest depends on it. For completion and checks of those functions, write their definition files and add the folder to `workspace.library` too; a C plugin includes the header of the same name:
 
 ``` shell
 ./OpenECS --preset paint --definitions definitions/
-``` `ecs.lua` also describes manifests, presets and settings files: write `---@type ecs.Manifest` or `---@type ecs.Preset` above the file's `return` to get completion and checks, as the examples do.
+```
 
 ## Development
+
+### Repositories
+
+OpenECS holds the core. Two more repositories are its submodules, so a clone with its submodules builds and ships all three:
+
+- [OpenECS-std](https://github.com/omerfuyar/OpenECS-std), in `std/`: the standard plugins, the settings window and the launcher.
+- [OpenECS-examples](https://github.com/omerfuyar/OpenECS-examples), in `examples/`: the examples.
 
 ### To clone the repository
 
@@ -170,4 +175,4 @@ GitHub checks every pull request (DESIGN.md section 19.3). These commands run th
 
 ## License
 
-OpenECS is under the zlib license; see [LICENSE](LICENSE). The release archives hold the licenses of the libraries and the font that OpenECS includes, in `licenses/`.
+OpenECS is under the zlib license; see [LICENSE.md](LICENSE.md). The release archives hold the licenses of the libraries and the font that OpenECS includes, in `licenses/`.

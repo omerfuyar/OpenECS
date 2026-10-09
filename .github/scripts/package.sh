@@ -14,7 +14,7 @@ mkdir -p "$folder/include" "$folder/licenses"
 cp -r build/Release/bin/. "$folder/"
 cp include/OpenECS.h include/ecs.lua "$folder/include/"
 cp -r build/Release/include/shu "$folder/include/"
-cp LICENSE README.md "$folder/"
+cp LICENSE.md README.md "$folder/"
 
 # the libraries linked into the program, and the font it ships
 ttf=dependencies/SDL_ttf/external

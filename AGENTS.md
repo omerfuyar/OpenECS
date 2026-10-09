@@ -19,15 +19,14 @@ Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 | --------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `include/`      | Headers: the plugin header and the core's module headers, and `ecs.lua` for editors (DESIGN.md, sections 1.5 and 9.6). |
 | `src/`          | The core's source files.                                                                                               |
-| `plugins/`      | The standard plugins (DESIGN.md, section 20).                                                                          |
-| `presets/`      | First-party presets.                                                                                                   |
-| `examples/`     | Examples for plugin authors, from the first steps to complex ones (DESIGN.md, section 17.6).                           |
+| `std/`          | Submodule: OpenECS-std, the standard plugins and first-party presets (DESIGN.md, sections 17.7 and 20).                |
+| `examples/`     | Submodule: OpenECS-examples, examples for plugin authors (DESIGN.md, sections 17.6 and 17.7).                          |
 | `dependencies/` | Third-party git submodules.                                                                                            |
 | `resources/`    | Files the program loads at run time.                                                                                   |
 | `tests/`        | Tests that Debug builds run (DESIGN.md, section 17.5).                                                                 |
 | `shuild.c`      | The build script (see README.md).                                                                                      |
 | `.github/`      | Checks, release workflow and their scripts, rulesets and release descriptions (DESIGN.md, section 19).                 |
-| `LICENSE`       | OpenECS's license, zlib.                                                                                               |
+| `LICENSE.md`    | OpenECS's license, zlib.                                                                                               |
 
 ## Current stage
 
@@ -57,12 +56,12 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 
 - Changing anything that is marked as decided.
 - Adding a dependency.
-- Changing submodules.
+- Changing submodules, except moving `std/` and `examples/` to a newer commit of their repository's `dev` (DESIGN.md, section 17.7).
 
 **Never**
 
 - Push, unless the owner tells you to.
-- Edit anything under `dependencies/`.
+- Edit anything under `dependencies/`. Change `std/` and `examples/` in their own repositories, which follow this file too.
 - Break or invent code conventions. Follow DESIGN.md section 1.
 
 ## Git
