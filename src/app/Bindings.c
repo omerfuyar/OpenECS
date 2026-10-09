@@ -2064,6 +2064,8 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     lua_setfield(state, -2, "name");
     lua_pushstring(state, ECSIPlugin_GetVersion(plugin));
     lua_setfield(state, -2, "version");
+    lua_pushstring(state, ECSPlugin_GetFolder(plugin));
+    lua_setfield(state, -2, "folder");
     lua_pushlightuserdata(state, plugin);
     lua_pushcclosure(state, ECSIBindings_PluginRegisterState, 1);
     lua_setfield(state, -2, "registerState");

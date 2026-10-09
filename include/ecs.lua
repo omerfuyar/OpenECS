@@ -604,6 +604,7 @@ function ecs.service.get(name, signature) end
 ---@class ecs.plugin
 ---@field name string
 ---@field version string
+---@field folder string The folder the plugin was loaded from, ending with a separator, such as for its images.
 ecs.plugin = {}
 
 ---Saves state of the plugin in the session, apart from its panels'.

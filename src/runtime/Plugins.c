@@ -20,6 +20,7 @@ typedef struct ECSIPlugin
 {
     char *name;
     char *version;
+    char *folder;                       // ends with a separator
     SDL_SharedObject *library;          // NULL if the plugin has no native code
     ECSIPluginShutdownFunction Shutdown;
     bool failed;                        // its ECSPlugin_Init failed; plugins that depend on it are skipped
@@ -99,6 +100,28 @@ static void ECSIPlugin_Free(ECSIPlugin *plugin)
     arrfree(plugin->dependencies);
     SDL_free(plugin->name);
     SDL_free(plugin->version);
+    SDL_free(plugin->folder);
+}
+
+/// @brief Gives a plugin folder as a full path, so it stays right if the working folder changes.
+/// @return A copy to free with SDL_free, or NULL if out of memory.
+static char *ECSIPlugin_AbsoluteFolder(const char *folder)
+{
+    if (folder[0] == '/')
+    {
+        return SDL_strdup(folder);
+    }
+
+    char *current = SDL_GetCurrentDirectory();
+    char *full = NULL;
+
+    if (current == NULL || SDL_asprintf(&full, "%s%s", current, folder) < 0)
+    {
+        full = NULL;
+    }
+
+    SDL_free(current);
+    return full;
 }
 
 /// @brief Copies the name of a dependency into a plugin.
@@ -235,13 +258,17 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
     (void)arrpop(PLUGINS.loading);
     SHU_ReturnResult(dependencies);
 
-    ECSIPlugin plugin = {.name = SDL_strdup(name), .version = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "version"), "0.0.0"))};
+    ECSIPlugin plugin = {
+        .name = SDL_strdup(name),
+        .version = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "version"), "0.0.0")),
+        .folder = ECSIPlugin_AbsoluteFolder(manifest->folder),
+    };
     ECSIPlugin *record = SDL_malloc(sizeof(ECSIPlugin));
     ECSIPluginInitFunction Init = NULL;
 
     ECSIValue_TableForEachField(ECSValue_GetTableField(file, "depends"), ECSIPlugin_AddDependency, &plugin);
 
-    if (plugin.name == NULL || plugin.version == NULL || record == NULL)
+    if (plugin.name == NULL || plugin.version == NULL || plugin.folder == NULL || record == NULL)
     {
         SDL_free(record);
         ECSIPlugin_Free(&plugin);
@@ -532,6 +559,13 @@ void ECSIPlugin_SetLuaShutdown(ECSPlugin plugin, ECSTaskFunction function, ECSTa
     plugin->LuaShutdown = function;
     plugin->luaShutdownRelease = release;
     plugin->luaShutdownData = data;
+}
+
+const char *ECSPlugin_GetFolder(ECSPlugin plugin)
+{
+    SDL_assert(plugin != NULL);
+
+    return plugin->folder;
 }
 
 SHUResult ECSPlugin_RegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc)
