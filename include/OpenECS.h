@@ -629,6 +629,24 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSession_Save(const char *path);
 /// @lua ecs.session.open
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_Open(const char *path);
 
+/// @brief Opens a preset's tool in place of the current one, as ECSSession_Open opens a session. The tool starts from its last session if it has one. Main thread only.
+/// @param nameOrPath A preset's name, looked up in the user's presets, then in the first-party presets; or a path, which has a '/' or ends with .lua.
+/// @return SHUResult_Ok if OpenECS restarts into the tool, SHUResult_ErrFile or SHUResult_ErrBadData if the file is not a preset, SHUResult_Err if the user keeps the unsaved work, SHUResult_ErrPrivileges during a test, which cannot restart, or SHUResult_ErrAllocation.
+/// @lua ecs.session.openPreset
+OPENECS_EXPORT SHUWUR SHUResult ECSSession_OpenPreset(const char *nameOrPath);
+
+/// @brief Lists the presets that a name finds: the user's presets, then the first-party presets. A name in both is listed once, from the user's presets. A file that cannot be read is reported and left out, and so is a preset with listed = false. Main thread only.
+/// @param retList The value to set to a list sorted by name. Each entry is a table: name (the file's name without .lua), path, appId, appName, and lastUsed, when the tool's last session was written, in seconds since 1970, if it has one.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.session.presets
+OPENECS_EXPORT SHUWUR SHUResult ECSSession_ListPresets(ECSValue *retList);
+
+/// @brief Lists the .lua files in the folder of saved sessions. A file that cannot be read is reported and left out. Main thread only.
+/// @param retList The value to set to a list sorted by name. Each entry is a table: name (the file's name without .lua), path, appId, appName, and saved, when the file was written, in seconds since 1970.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.session.sessions
+OPENECS_EXPORT SHUWUR SHUResult ECSSession_ListSessions(ECSValue *retList);
+
 /// @brief Puts text on the clipboard. Main thread only.
 /// @param text The text. The core copies it.
 /// @return SHUResult_Ok, or SHUResult_ErrInternal if the system refuses it.

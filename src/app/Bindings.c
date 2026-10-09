@@ -843,9 +843,56 @@ static int ECSIBindings_SessionOpen(lua_State *state)
     return 1;
 }
 
+static int ECSIBindings_SessionOpenPreset(lua_State *state)
+{
+    const char *nameOrPath = luaL_checkstring(state, 1);
+    SHUResult result = ECSSession_OpenPreset(nameOrPath);
+
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "the preset '%s' is not opened (%s)", nameOrPath, result == SHUResult_Err ? "the unsaved work is kept" : SHUResult_String(result));
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
+/// @brief Pushes a list of presets or sessions, or raises an error when it cannot be made.
+static int ECSIBindings_SessionPushList(lua_State *state, SHUResult (*List)(ECSValue *retList))
+{
+    ECSValue *list = NULL;
+    SHUResult result = ECSValue_Create(&list);
+    result = result ? result : List(list);
+
+    if (result)
+    {
+        ECSValue_Destroy(&list);
+        return luaL_error(state, "cannot list them (%s)", SHUResult_String(result));
+    }
+
+    ECSILua_PushValue(list);
+    ECSValue_Destroy(&list);
+    return 1;
+}
+
+static int ECSIBindings_SessionPresets(lua_State *state)
+{
+    return ECSIBindings_SessionPushList(state, ECSSession_ListPresets);
+}
+
+static int ECSIBindings_SessionSessions(lua_State *state)
+{
+    return ECSIBindings_SessionPushList(state, ECSSession_ListSessions);
+}
+
 static const luaL_Reg OPENECS_BINDINGS_SESSION[] = {
     {"save", ECSIBindings_SessionSave},
     {"open", ECSIBindings_SessionOpen},
+    {"openPreset", ECSIBindings_SessionOpenPreset},
+    {"presets", ECSIBindings_SessionPresets},
+    {"sessions", ECSIBindings_SessionSessions},
     {NULL, NULL},
 };
 
