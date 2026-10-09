@@ -12,18 +12,19 @@
 #define OPENECS_DEFAULT_PRESET "launcher"
 
 /// @brief What --help prints.
-#define OPENECS_USAGE                                                                                    \
-    "Usage: OpenECS [OPTION...] [FILE...]\n"                                                            \
-    "\n"                                                                                                \
-    "Starts the tool a preset describes, or the launcher without one. The preset's open function\n"     \
-    "opens each FILE.\n"                                                                                \
-    "\n"                                                                                                \
-    "Options:\n"                                                                                        \
-    "  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file\n"       \
-    "  -s, --session FILE      Open a saved session\n"                                                  \
-    "  -f, --fresh             Start from the preset, not from the tool's last session\n"               \
-    "  -t, --test FILE         Run a test; Debug builds only\n"                                         \
-    "  -v, --version           Print the version and exit\n"                                            \
+#define OPENECS_USAGE                                                                                     \
+    "Usage: OpenECS [OPTION...] [FILE...]\n"                                                              \
+    "\n"                                                                                                  \
+    "Starts the tool a preset describes, or the launcher without one. The preset's open function\n"       \
+    "opens each FILE.\n"                                                                                  \
+    "\n"                                                                                                  \
+    "Options:\n"                                                                                          \
+    "  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file\n"         \
+    "  -s, --session FILE      Open a saved session\n"                                                    \
+    "  -f, --fresh             Start from the preset, not from the tool's last session\n"                 \
+    "  -t, --test FILE         Run a test; Debug builds only\n"                                           \
+    "  -d, --definitions DIR   Write the definition files of the plugins' functions into DIR, and exit\n" \
+    "  -v, --version           Print the version and exit\n"                                              \
     "  -h, --help              Print this help and exit\n"
 
 /// @brief One option of the command line.
@@ -40,6 +41,7 @@ static const ECSIOption OPENECS_OPTIONS[] = {
     {"-s", "--session", true},
     {"-f", "--fresh", false},
     {"-t", "--test", true},
+    {"-d", "--definitions", true},
     {"-v", "--version", false},
     {"-h", "--help", false},
 };
@@ -50,6 +52,7 @@ typedef enum ECSIOptionIndex
     ECSIOption_Session,
     ECSIOption_Fresh,
     ECSIOption_Test,
+    ECSIOption_Definitions,
     ECSIOption_Version,
     ECSIOption_Help,
 } ECSIOptionIndex;
@@ -112,6 +115,9 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
         case ECSIOption_Test:
             retArguments->test = value;
             break;
+        case ECSIOption_Definitions:
+            retArguments->definitions = value;
+            break;
         case ECSIOption_Version:
             retArguments->version = true;
             break;
@@ -149,7 +155,7 @@ int main(int argc, char **argv)
     }
 
     ECSIApp_Start(&arguments);
-    int status = ECSIApp_Run();
+    int status = arguments.definitions != NULL ? (ECSIApp_WriteDefinitions(arguments.definitions) ? 1 : 0) : ECSIApp_Run();
     const char *option = NULL;
     char *next = ECSIApp_Stop(&option);
 

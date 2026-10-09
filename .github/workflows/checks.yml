@@ -43,6 +43,9 @@ jobs:
       - name: Run the tests with the sanitizers
         run: .github/scripts/test.sh build/Debug/bin/OpenECS
 
+      - name: Write and compile the definition files
+        run: .github/scripts/definitions.sh build/Debug/bin/OpenECS
+
       # a change between releases may break an example, so the examples' tests run only for main, before a release
       - name: Run the examples' tests
         if: github.base_ref == 'main' || github.ref == 'refs/heads/main'

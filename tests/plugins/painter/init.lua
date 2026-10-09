@@ -2,17 +2,11 @@
 
 local ecs = require("ecs")
 
-local fill = assert(ecs.service.get("ui.fill"))
-local text = assert(ecs.service.get("ui.text"))
-local measure = assert(ecs.service.get("ui.measure"))
-local color = assert(ecs.service.get("ui.color"))
-local outline = assert(ecs.service.get("ui.outline"))
-local image = assert(ecs.service.get("ui.image"))
-local imageSize = assert(ecs.service.get("ui.imageSize"))
-local check = assert(ecs.service.get("ui.check"))
-local field = assert(ecs.service.get("ui.field"))
-local scrollbar = assert(ecs.service.get("ui.scrollbar"))
-local thumb = assert(ecs.service.get("ui.thumb"))
+-- require gives the functions of a plugin the manifest depends on
+local ui = require("ui")
+local fill, text, measure, color = ui.fill, ui.text, ui.measure, ui.color
+local outline, image, imageSize = ui.outline, ui.image, ui.imageSize
+local check, field, scrollbar, thumb = ui.check, ui.field, ui.scrollbar, ui.thumb
 
 -- the plugin's own image, a green square
 local GREEN = ecs.plugin.folder .. "green.png"

@@ -102,4 +102,16 @@ SHUWUR SHUResult ECSIServices_RegisterLua(ECSPlugin plugin, const char *name, co
 /// @return SHUResult_Ok with the function pushed, or the error of ECSService_GetFunction with nothing pushed.
 SHUWUR SHUResult ECSIServices_PushFunction(ECSPlugin plugin, const char *name, const char *signature);
 
+/// @brief Pushes a table of every function a plugin registered, by local name, for the Bindings module's require.
+/// @param plugin The plugin that asks. It may ask for itself and for the plugins its manifest depends on.
+/// @param provider The plugin whose functions are pushed.
+/// @return SHUResult_Ok with the table pushed, or SHUResult_ErrPrivileges or SHUResult_ErrAllocation with nothing pushed.
+SHUWUR SHUResult ECSIServices_PushPlugin(ECSPlugin plugin, ECSPlugin provider);
+
+/// @brief Writes the definition files of a plugin's functions (DESIGN 10.10): NAME.lua for editors of Lua plugins, and NAME.h for plugins in C.
+/// @param provider The plugin.
+/// @param folder The folder to write into, ending with a separator.
+/// @return SHUResult_Ok, SHUResult_ErrFile if a file cannot be written, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSIServices_WriteDefinitions(ECSPlugin provider, const char *folder);
+
 #pragma endregion Declarations

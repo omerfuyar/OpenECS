@@ -760,3 +760,25 @@ void ECS_Log(ECSPlugin plugin, ECSLogLevel level, const char *format, ...)
         SDL_free(message);
     }
 }
+
+ECSPlugin ECSIPlugins_Get(const char *name)
+{
+    SDL_assert(name != NULL);
+
+    ECSIPlugin *plugin = PLUGINS.plugins == NULL ? NULL : ECSIPlugin_Find(name);
+    return plugin == NULL || plugin->failed ? NULL : plugin;
+}
+
+ECSPlugin ECSIPlugins_GetAt(usz index)
+{
+    // failed plugins are skipped, so the positions count the others
+    for (usz i = 0; i < shlenu(PLUGINS.plugins); i++)
+    {
+        if (!PLUGINS.plugins[i].value->failed && index-- == 0)
+        {
+            return PLUGINS.plugins[i].value;
+        }
+    }
+
+    return NULL;
+}

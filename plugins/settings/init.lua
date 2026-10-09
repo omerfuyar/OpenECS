@@ -3,19 +3,9 @@
 
 local ecs = require("ecs")
 
-local function ui(localName, signature)
-  return assert(ecs.service.get("ui." .. localName, signature))
-end
-
-local fill = ui("fill", "void(handle<ecs.surface>, float, float, float, float, int64)")
-local text = ui("text", "float(handle<ecs.surface>, string, float, float, float, int64)")
-local measure = ui("measure", "void(string, float, out float, out float)")
-local color = ui("color", "int64(string)")
-local button = ui("button", "void(handle<ecs.surface>, string, float, float, float, float, int)")
-local check = ui("check", "void(handle<ecs.surface>, float, float, float, bool)")
-local field = ui("field", "float(handle<ecs.surface>, string, float, float, float, float, bool)")
-local scrollbar = ui("scrollbar", "void(handle<ecs.surface>, float, float, float, float, float, float, float)")
-local thumb = ui("thumb", "void(float, float, float, float, out float, out float)")
+local ui = require("ui")
+local fill, text, measure, color = ui.fill, ui.text, ui.measure, ui.color
+local button, check, field, scrollbar, thumb = ui.button, ui.check, ui.field, ui.scrollbar, ui.thumb
 
 local function name(localName)
   return "settings." .. localName

@@ -46,6 +46,7 @@ static struct
     char *presetsFolder; // the user's presets, or NULL if there is no configuration folder
     char *stateFolder;   // NULL if there is none
     bool test;           // true when the program runs a test: no user files, no last session, nothing saved
+    bool definitions;    // true when the program only writes definition files: no display, nothing opened or saved
 } APP = {0};
 
 /// @brief Finds an XDG base folder for OpenECS: $variable/openecs/, or ~/fallback/openecs/ if the variable is not set.
@@ -216,6 +217,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     // a test names its preset and starts from it alone, without the user's files and folders
     char *testPreset = NULL;
     APP.test = arguments->test != NULL;
+    APP.definitions = arguments->definitions != NULL;
 
     if (APP.test)
     {
@@ -282,8 +284,8 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 
     SDL_SetAppMetadata(APP.preset.appName, NULL, APP.preset.appId);
 
-    // a test needs no display; the environment variables still choose other drivers
-    if (APP.test)
+    // a test, and writing definitions, need no display; the environment variables still choose other drivers
+    if (APP.test || APP.definitions)
     {
         SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
         SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
@@ -329,12 +331,45 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSISettings_ReportUndeclared();
     ECSIKeys_ReportUnknownFunctions();
 
-    usz fileCount = arguments->fileCount;
+    usz fileCount = APP.definitions ? 0 : arguments->fileCount;
     char **files = APP.test ? ECSITest_GetFiles(&fileCount) : arguments->files;
     ECSIApp_OpenFiles(files, fileCount);
 
     // drivers, plugins and system libraries are loaded now
     ECSISanitizers_KeepLibraries();
+}
+
+SHUResult ECSIApp_WriteDefinitions(const char *folder)
+{
+    SDL_assert(folder != NULL);
+
+    char *path = NULL;
+    usz length = SDL_strlen(folder);
+
+    if (SDL_asprintf(&path, "%s%s", folder, length > 0 && folder[length - 1] == '/' ? "" : "/") < 0)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    if (!SDL_CreateDirectory(path))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot make the folder '%s': %s", path, SDL_GetError());
+        SDL_free(path);
+        return SHUResult_ErrFile;
+    }
+
+    SHUResult result = SHUResult_Ok;
+    ECSPlugin plugin = NULL;
+
+    for (usz i = 0; (plugin = ECSIPlugins_GetAt(i)) != NULL; i++)
+    {
+        SHUResult written = ECSIServices_WriteDefinitions(plugin, path);
+        result = result ? result : written;
+    }
+
+    SDL_Log("Definition files written to '%s'.", path);
+    SDL_free(path);
+    return result;
 }
 
 int ECSIApp_Run(void)
@@ -395,7 +430,7 @@ char *ECSIApp_Stop(const char **retOption)
     ECSITest_Terminate();
 
     // the setting in effect when the tool quits decides
-    if (APP.lastSession != NULL && ECSValue_GetBool(ECSSetting_Get(OPENECS_KEEP_SESSION), false) && ECSSession_Save(APP.lastSession) == SHUResult_Ok)
+    if (APP.lastSession != NULL && !APP.definitions && ECSValue_GetBool(ECSSetting_Get(OPENECS_KEEP_SESSION), false) && ECSSession_Save(APP.lastSession) == SHUResult_Ok)
     {
         SDL_Log("Session saved to '%s'.", APP.lastSession);
     }

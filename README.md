@@ -28,6 +28,7 @@ Options:
   -s, --session FILE      Open a saved session
   -f, --fresh             Start from the preset, not from the tool's last session
   -t, --test FILE         Run a test; Debug builds only
+  -d, --definitions DIR   Write the definition files of the plugins' functions into DIR, and exit
   -v, --version           Print the version and exit
   -h, --help              Print this help and exit
 ```
@@ -46,7 +47,13 @@ The `examples/` folder shows how to write plugins, one part at a time. Read the 
 
 ### Writing plugins
 
-The archive holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`. `ecs.lua` also describes manifests, presets and settings files: write `---@type ecs.Manifest` or `---@type ecs.Preset` above the file's `return` to get completion and checks, as the examples do.
+The archive holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`.
+
+Plugins offer functions to each other. In Lua, `local ui = require("ui")` gives the functions of the plugin `ui`, if your manifest depends on it. For completion and checks of those functions, write their definition files and add the folder to `workspace.library` too; a C plugin includes the header of the same name:
+
+``` shell
+./OpenECS --preset paint --definitions definitions/
+``` `ecs.lua` also describes manifests, presets and settings files: write `---@type ecs.Manifest` or `---@type ecs.Preset` above the file's `return` to get completion and checks, as the examples do.
 
 ## Development
 
