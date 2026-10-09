@@ -586,7 +586,9 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 
 - All Lua plugins share one Lua state. Each plugin's code runs in its own environment, which reads globals from the shared global table.
 - A plugin gets the core's Lua names from the `ecs` module: `local ecs = require("ecs")`. There is no global `ecs`.
-- The environment has its own `require`. For `"ecs"` it gives the plugin's own `ecs` table, whose functions carry the plugin, so the core knows which plugin made an `ecs` call. Other names go to Lua's `require`.
+- The environment has its own `require`. For `"ecs"` it gives the plugin's own `ecs` table, whose functions carry the plugin, so the core knows which plugin made an `ecs` call.
+- For other names, `require` first looks in the plugin's folder: `require("parts.shapes")` finds `parts/shapes.lua`, or else `parts/shapes/init.lua`. It runs the module once, in the plugin's environment, so the module can also `require("ecs")`, and gives what the module returns, or `true` if it returns nothing. Each plugin has its own modules, so two plugins can have modules of the same name.
+- Names that the plugin's folder does not hold go to Lua's `require`.
 - `include/ecs.lua` describes the `ecs` module for editors: every function's parameters, results and documentation, in LuaLS annotations. It changes with the bindings. A plugin's author adds the build's `include/` folder to `workspace.library` in the plugin's `.luarc.json`.
 - The manifest's `lua` file runs once, in a protected call, after the native `ECSPlugin_Init`. An error fails the plugin.
 
@@ -971,7 +973,7 @@ OpenECS follows the XDG Base Directory specification:
 - libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.
 - Native plugins are shared libraries, built against the plugin header only. They do not link against the core; their calls to it are resolved when they are loaded.
-- A first-party plugin is built from every C file in its folder, `plugins/<name>/`, so the build needs no settings for each plugin.
+- A first-party plugin is built from every C file in its folder, `plugins/<name>/`, so the build needs no settings for each plugin. Its Lua files and its folders, which hold its Lua modules (9.6), are copied.
 
 ### 17.3 Compiler
 

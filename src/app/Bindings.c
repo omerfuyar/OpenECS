@@ -1799,15 +1799,60 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIServices_ForEachCore(ECSIBindings_AddCore, state);
 }
 
-/// @brief The require of a plugin's environment: gives the plugin's ecs table for "ecs", and Lua's require gives other modules.
+/// @brief The require of a plugin's environment. Its upvalues are the plugin's ecs table, its environment, its folder and the table of its loaded modules.
+/// It gives the ecs table for "ecs". It runs a module of the plugin's folder once, in the plugin's environment: "parts.shapes" is parts/shapes.lua or parts/shapes/init.lua. Lua's require gives other modules.
 static int ECSIBindings_Require(lua_State *state)
 {
-    if (SDL_strcmp(luaL_checkstring(state, 1), "ecs") == 0)
+    const char *name = luaL_checkstring(state, 1);
+    lua_settop(state, 1);
+
+    if (SDL_strcmp(name, "ecs") == 0)
     {
         lua_pushvalue(state, lua_upvalueindex(1));
         return 1;
     }
 
+    if (lua_getfield(state, lua_upvalueindex(4), name) != LUA_TNIL)
+    {
+        return 1;
+    }
+
+    // paths are built on the Lua stack, so an error frees them
+    const char *folder = lua_tostring(state, lua_upvalueindex(3));
+    const char *module = luaL_gsub(state, name, ".", "/");
+    const char *path = lua_pushfstring(state, "%s%s.lua", folder, module);
+
+    if (!SDL_GetPathInfo(path, NULL))
+    {
+        path = lua_pushfstring(state, "%s%s/init.lua", folder, module);
+    }
+
+    if (SDL_GetPathInfo(path, NULL))
+    {
+        if (luaL_loadfilex(state, path, "t") != LUA_OK)
+        {
+            return lua_error(state);
+        }
+
+        lua_pushvalue(state, lua_upvalueindex(2));
+        lua_setupvalue(state, -2, 1);
+        lua_pushvalue(state, 1);
+        lua_pushstring(state, path);
+        lua_call(state, 2, 1);
+
+        // like Lua's require, a module that returns nothing gives true
+        if (lua_isnil(state, -1))
+        {
+            lua_pop(state, 1);
+            lua_pushboolean(state, true);
+        }
+
+        lua_pushvalue(state, -1);
+        lua_setfield(state, lua_upvalueindex(4), name);
+        return 1;
+    }
+
+    lua_settop(state, 1);
     lua_getglobal(state, "require");
     lua_insert(state, 1);
     lua_call(state, lua_gettop(state) - 1, LUA_MULTRET);
@@ -1861,9 +1906,10 @@ void ECSIBindings_Terminate(void)
     SDL_zero(BINDINGS);
 }
 
-SHUResult ECSIBindings_StartPlugin(ECSPlugin plugin, const char *path)
+SHUResult ECSIBindings_StartPlugin(ECSPlugin plugin, const char *folder, const char *path)
 {
     SDL_assert(plugin != NULL);
+    SDL_assert(folder != NULL);
     SDL_assert(path != NULL);
 
     lua_State *state = ECSILua_GetState();
@@ -1876,10 +1922,13 @@ SHUResult ECSIBindings_StartPlugin(ECSPlugin plugin, const char *path)
         return SHUResult_ErrFile;
     }
 
-    // the plugin's environment has its own require, which gives the plugin's ecs table; it reads other globals from the shared global table
+    // the plugin's environment has its own require, which gives the plugin's ecs table and modules; it reads other globals from the shared global table
     lua_newtable(state);
     ECSIBindings_PushEcs(state, plugin);
-    lua_pushcclosure(state, ECSIBindings_Require, 1);
+    lua_pushvalue(state, -2);
+    lua_pushstring(state, folder);
+    lua_newtable(state);
+    lua_pushcclosure(state, ECSIBindings_Require, 4);
     lua_setfield(state, -2, "require");
     lua_newtable(state);
     lua_pushglobaltable(state);
