@@ -13,9 +13,40 @@ OpenECS does nothing specific to any job. Plugins decide what each panel shows a
 
 ## Usage
 
-Download the archive for your system from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it and run `OpenECS` in it. The Linux build needs glibc 2.38 or later, such as Ubuntu 24.04 or Fedora 39. `OpenECS --version` prints its version.
+Download the archive for your system from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it and run `OpenECS` in it. The Linux build needs glibc 2.38 or later, such as Ubuntu 24.04 or Fedora 39.
 
-The archive also holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`.
+### Command line
+
+``` text
+Usage: OpenECS [OPTION...] [FILE...]
+
+Starts the tool a preset describes, or the launcher without one. The preset's open function
+opens each FILE.
+
+Options:
+  --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file
+  --session FILE      Open a saved session
+  --fresh             Start from the preset, not from the tool's last session
+  --test FILE         Run a test; Debug builds only
+  --version           Print the version and exit
+  --help              Print this help and exit
+```
+
+Without a preset, OpenECS shows the launcher: it lists the presets and saved sessions, and Up, Down and Return or a click open one. Press Alt+W to see the core's keys; Alt+W then `,` opens the settings window.
+
+### Examples
+
+The `examples/` folder shows how to write plugins, one part at a time. Read the examples in the order of their numbers, from `1_hello` to `12_sketch`. Each holds a preset, its plugins and a test:
+
+``` shell
+./OpenECS --preset examples/1_hello/preset.lua
+```
+
+`12_sketch` shows two plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Shift and a drag carry a canvas's strokes to another canvas, and a canvas takes strokes files dropped from a file manager. Ctrl+Tab switches workspace.
+
+### Writing plugins
+
+The archive holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`.
 
 ## Development
 
@@ -81,30 +112,30 @@ sudo pacman -S alsa-lib cmake hidapi ibus jack libdecor libthai fribidi libgl li
 
 The code is C23, so it needs a C23 compiler such as gcc 14 or later. SDL and SDL_ttf also need cmake and ninja.
 
-Shuild builds the program:
-
-Usage:
-./shuild [TYPE [LINK]]
-
-Arguments:
-TYPE
-    D   Debug (Default)
-    R   Release
-    RD  RelWithDebInfo
-    SR  MinSizeRel
-LINK
-    S   Static (Default)
-    D   Dynamic
-
-LINK chooses how Lua, Clay, libffi and stb are linked. SDL and SDL_ttf are always shared libraries, which the build puts next to the executable.
-
-So this command builds the program in Release mode, with those libraries linked statically.
+Shuild builds the program. Compile the build script once; it compiles itself again when `shuild.c` changes:
 
 ``` shell
 cd OpenECS/
 gcc shuild.c -o shuild.ignore -O3
-./shuild.ignore R S
+./shuild.ignore --release --examples
 ```
+
+``` text
+Usage: ./shuild.ignore [FLAG...]
+
+Flags:
+  --debug            Debug build, with the static analyzer and the sanitizers (the default)
+  --release          Release build
+  --relwithdebinfo   Release build with debug information
+  --minsizerel       Release build made small
+  --static           Link Lua, Clay, libffi and stb into the executable (the default)
+  --dynamic          Link Lua, Clay, libffi and stb as shared libraries
+  --examples         Also build the examples, into bin/examples/
+  --tests            Also build the tests, into tests/ beside bin/
+  --help             Show this help
+```
+
+The build puts the executable, SDL's shared libraries, the standard plugins, the first-party presets and the examples in `build/<LINK>/<TYPE>/bin/`, such as `build/Static/Release/bin/`. SDL and SDL_ttf are always shared libraries.
 
 Dependencies are built the first time only. To build one again, delete its library from `build/<LINK>/<TYPE>/lib/` and the `.shu/` folder; shuild does not make a library again while its compiled files are unchanged.
 
@@ -112,32 +143,12 @@ Shuild compiles again only the files that changed. After changing compiler flags
 
 Debug builds run the static analyzer while compiling, and the sanitizers while the program runs. A sanitizer prints its report to standard error, and the program exits with an error.
 
-### Running
-
-The build puts the executable, SDL's shared libraries, the first-party plugins and presets, and the examples in `build/<LINK>/<TYPE>/bin/`.
-
-``` shell
-./build/Static/Release/bin/OpenECS
-./build/Static/Release/bin/OpenECS --preset path/to/preset.lua
-```
-
-Without a preset, OpenECS shows the launcher: it lists the presets and saved sessions, and Up, Down and Return or a click open one. Press Alt+W to see the core's keys; Alt+W then `,` opens the settings window.
-
-### Examples
-
-The examples in `examples/` show how to write plugins, one part at a time. Read them in the order of their numbers, from `1_hello` to `12_sketch`. Each holds a preset, its plugins and a test:
-
-``` shell
-./build/Static/Release/bin/OpenECS --preset build/Static/Release/bin/examples/1_hello/preset.lua
-```
-
-`12_sketch` shows two plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Shift and a drag carry a canvas's strokes to another canvas, and a canvas takes strokes files dropped from a file manager. Ctrl+Tab switches workspace.
-
 ### Testing
 
-Debug builds run the tests. The build copies `tests/` beside `bin/`, so build again after changing a test. A test needs no display, and prints "The test passed." or the reason it failed. These commands run the tests, then the examples' tests, and name the ones that fail:
+Debug builds built with `--tests` run the tests. The build copies `tests/` beside `bin/`, so build again after changing a test. A test needs no display, and prints "The test passed." or the reason it failed. These commands run the tests, then the examples' tests, and name the ones that fail:
 
 ``` shell
+./shuild.ignore --debug --examples --tests
 .github/scripts/test.sh build/Static/Debug/bin/OpenECS
 .github/scripts/test.sh build/Static/Debug/bin/OpenECS examples
 ```

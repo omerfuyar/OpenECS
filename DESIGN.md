@@ -896,10 +896,11 @@ The core converts only layout data.
 ### 13.6 Command line
 
 ```
-openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [--version] [FILE...]
+openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [--version] [--help] [FILE...]
 ```
 
 - `--version` prints the version of OpenECS (19.1) and of the plugin API, and exits.
+- `--help` prints the options, and exits. An unknown option is reported and ignored.
 - `--fresh` starts from the preset instead of the tool's last session.
 - `--test` runs a test (17.5).
 - Without `--preset` and `--session`, OpenECS starts with the preset `launcher` (13.8).
@@ -1042,7 +1043,7 @@ OpenECS follows the XDG Base Directory specification:
 - A test is a Lua file in `tests/`. Debug builds run it with `openecs --test FILE`; other builds refuse the option.
 - The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `launcher` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.6), `presets` and `sessions`, folders relative to the test file that stand for the user's presets and the saved sessions (16), and `run`, a function that gets the `test` table.
 - Tests keep their presets and test plugins in `tests/presets/` and `tests/plugins/`, so a change to a first-party preset or an example does not change a test. The test plugins `boxes`, in Lua, and `cboxes`, in C, give tests panels to arrange.
-- The build copies `tests/` to `build/<LINK>/<TYPE>/tests/`, beside `bin/`, and builds the native test plugins there. Tests run from that copy, so a test reads the build's copies of the plugin header, `ecs.lua` and the core's settings file.
+- With the flag `--tests`, the build copies `tests/` to `build/<LINK>/<TYPE>/tests/`, beside `bin/`, and builds the native test plugins there. Tests run from that copy, so a test reads the build's copies of the plugin header, `ecs.lua` and the core's settings file.
 - A test starts from its preset alone. It reads none of the user's settings, plugins or sessions, and writes no session and no log file. SDL's offscreen video driver and software renderer are the defaults, so a test needs no display; the variables `SDL_VIDEO_DRIVER` and `SDL_RENDER_DRIVER` choose others, for example to watch a test.
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).
 - The `test` table:
@@ -1077,7 +1078,7 @@ OpenECS follows the XDG Base Directory specification:
 - An example holds a preset, `preset.lua`, the folders of its plugins, and its tests, the files whose names start with `test`. The preset names the folder in `pluginsDir`, so the example needs nothing else but the standard plugins.
 - Its comments say what a statement does and when it may be called, not what the functions' documentation already says.
 - `12_sketch` holds `sketch_c` and `sketch_lua`, the same plugin in C and in Lua: canvases and a clock with settings, services, keys, events and state. They use the plugin interface the same way in both languages, and draw the same strokes into the same pixels.
-- The build copies `examples/` whole, sources too, to `bin/examples/`, and builds each example's native plugins there.
+- With the flag `--examples`, the build copies `examples/` whole, sources too, to `bin/examples/`, and builds each example's native plugins there.
 - A change between releases may break an example. Before a release, the examples are brought up to date, so their tests pass (19.4).
 
 ## 18. Platform notes
