@@ -117,27 +117,23 @@ Shuild builds the program. Compile the build script once; it compiles itself aga
 ``` shell
 cd OpenECS/
 gcc shuild.c -o shuild.ignore -O3
-./shuild.ignore --release --examples
+./shuild.ignore -b release -e
 ```
 
 ``` text
 Usage: ./shuild.ignore [FLAG...]
 
 Flags:
-  --debug            Debug build, with the static analyzer and the sanitizers (the default)
-  --release          Release build
-  --relwithdebinfo   Release build with debug information
-  --minsizerel       Release build made small
-  --static           Link Lua, Clay, libffi and stb into the executable (the default)
-  --dynamic          Link Lua, Clay, libffi and stb as shared libraries
-  --examples         Also build the examples, into bin/examples/
-  --tests            Also build the tests, into tests/ beside bin/
-  --help             Show this help
+  -b, --build TYPE   Build type: debug (the default), with the static analyzer and the sanitizers;
+                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release
+  -e, --examples     Also build the examples, into bin/examples/
+  -t, --tests        Also build the tests, into tests/ beside bin/
+  -h, --help         Show this help
 ```
 
-The build puts the executable, SDL's shared libraries, the standard plugins, the first-party presets and the examples in `build/<LINK>/<TYPE>/bin/`, such as `build/Static/Release/bin/`. SDL and SDL_ttf are always shared libraries.
+The build puts the executable, SDL's shared libraries, the standard plugins, the first-party presets and the examples in `build/<TYPE>/bin/`, such as `build/Release/bin/`. SDL and SDL_ttf are shared libraries; Lua, Clay, libffi and stb are linked into the executable.
 
-Dependencies are built the first time only. To build one again, delete its library from `build/<LINK>/<TYPE>/lib/` and the `.shu/` folder; shuild does not make a library again while its compiled files are unchanged.
+Dependencies are built the first time only. To build one again, delete its library from `build/<TYPE>/lib/` and the `.shu/` folder; shuild does not make a library again while its compiled files are unchanged.
 
 Shuild compiles again only the files that changed. After changing compiler flags in `shuild.c`, delete `.shu/` (or run `sudo git clean -Xfd` to delete all ignored files) to compile everything again.
 
@@ -145,15 +141,15 @@ Debug builds run the static analyzer while compiling, and the sanitizers while t
 
 ### Testing
 
-Debug builds built with `--tests` run the tests. The build copies `tests/` beside `bin/`, so build again after changing a test. A test needs no display, and prints "The test passed." or the reason it failed. These commands run the tests, then the examples' tests, and name the ones that fail:
+Debug builds built with `-t` run the tests. The build copies `tests/` beside `bin/`, so build again after changing a test. A test needs no display, and prints "The test passed." or the reason it failed. These commands run the tests, then the examples' tests, and name the ones that fail:
 
 ``` shell
-./shuild.ignore --debug --examples --tests
-.github/scripts/test.sh build/Static/Debug/bin/OpenECS
-.github/scripts/test.sh build/Static/Debug/bin/OpenECS examples
+./shuild.ignore -b debug -e -t
+.github/scripts/test.sh build/Debug/bin/OpenECS
+.github/scripts/test.sh build/Debug/bin/OpenECS examples
 ```
 
-To see why a test fails, run it alone: `./build/Static/Debug/bin/OpenECS --test build/Static/Debug/tests/menus.lua`. DESIGN.md section 17.5 explains how to write one.
+To see why a test fails, run it alone: `./build/Debug/bin/OpenECS --test build/Debug/tests/menus.lua`. DESIGN.md section 17.5 explains how to write one.
 
 ### Checks
 
@@ -161,7 +157,7 @@ GitHub checks every pull request (DESIGN.md section 19.3). These commands run th
 
 ``` shell
 .github/scripts/build.sh D
-.github/scripts/test.sh build/Static/Debug/bin/OpenECS
+.github/scripts/test.sh build/Debug/bin/OpenECS
 .github/scripts/build.sh R
 ```
 

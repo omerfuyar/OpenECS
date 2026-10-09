@@ -18,37 +18,16 @@ typedef enum BuildType
 static const char *const _BUILD_TYPE_STRINGS[] = {"Debug", "Release", "RelWithDebInfo", "MinSizeRel"};
 #define BuildType_String(buildType) _BUILD_TYPE_STRINGS[(buildType)]
 
-static const char *const _LINK_TYPE_STRINGS[] = {"", "Static", "Dynamic"};
-#define LinkType_String(linkType) _LINK_TYPE_STRINGS[(linkType)]
+/// @brief Names of the build types for -b, in the order of BuildType.
+static const char *const BUILD_TYPE_NAMES[] = {"debug", "release", "relwithdebinfo", "minsizerel"};
 
 /// @brief What the flags choose.
 static struct
 {
-    int type;     // a BuildType
-    int link;     // how Lua, Clay, libffi and stb are linked: SHUModuleType_LibraryStatic or SHUModuleType_LibraryDynamic
-    int examples; // also build the examples
-    int tests;    // also build the tests
-    int help;
-} CONFIG = {BuildType_Debug, SHUModuleType_LibraryStatic, false, false, false};
-
-/// @brief The flags: each sets a field of CONFIG to a value.
-static const struct
-{
-    const char *flag;
-    int *field;
-    int value;
-    const char *help;
-} FLAGS[] = {
-    {"--debug", &CONFIG.type, BuildType_Debug, "Debug build, with the static analyzer and the sanitizers (the default)"},
-    {"--release", &CONFIG.type, BuildType_Release, "Release build"},
-    {"--relwithdebinfo", &CONFIG.type, BuildType_RelWithDebInfo, "Release build with debug information"},
-    {"--minsizerel", &CONFIG.type, BuildType_MinSizeRel, "Release build made small"},
-    {"--static", &CONFIG.link, SHUModuleType_LibraryStatic, "Link Lua, Clay, libffi and stb into the executable (the default)"},
-    {"--dynamic", &CONFIG.link, SHUModuleType_LibraryDynamic, "Link Lua, Clay, libffi and stb as shared libraries"},
-    {"--examples", &CONFIG.examples, true, "Also build the examples, into bin/examples/"},
-    {"--tests", &CONFIG.tests, true, "Also build the tests, into tests/ beside bin/"},
-    {"--help", &CONFIG.help, true, "Show this help"},
-};
+    BuildType type;
+    bool examples; // also build the examples
+    bool tests;    // also build the tests
+} CONFIG = {BuildType_Debug, false, false};
 
 static SHUI_String BUILD_DIRECTORY = {0};
 static SHUI_String OUTPUT_DIRECTORY = {0};
@@ -87,22 +66,22 @@ int main(int argc, char **argv)
         Shuild_SDL_ttf();
     }
 
-    if (!IsBuilt("lua", CONFIG.link == SHUModuleType_LibraryDynamic))
+    if (!IsBuilt("lua", false))
     {
         Shuild_lua();
     }
 
-    if (!IsBuilt("clay", CONFIG.link == SHUModuleType_LibraryDynamic))
+    if (!IsBuilt("clay", false))
     {
         Shuild_clay();
     }
 
-    if (!IsBuilt("ffi", CONFIG.link == SHUModuleType_LibraryDynamic))
+    if (!IsBuilt("ffi", false))
     {
         Shuild_libffi();
     }
 
-    if (!IsBuilt("stb", CONFIG.link == SHUModuleType_LibraryDynamic))
+    if (!IsBuilt("stb", false))
     {
         Shuild_stb();
     }
@@ -121,47 +100,69 @@ static void CopyFile(const char *file, const char *directory)
 
 static void PrintUsage(void)
 {
-    printf("Usage: ./shuild.ignore [FLAG...]\n\nFlags:\n");
+    printf("Usage: ./shuild.ignore [FLAG...]\n\n"
+           "Flags:\n"
+           "  -b, --build TYPE   Build type: debug (the default), with the static analyzer and the sanitizers;\n"
+           "                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release\n"
+           "  -e, --examples     Also build the examples, into bin/examples/\n"
+           "  -t, --tests        Also build the tests, into tests/ beside bin/\n"
+           "  -h, --help         Show this help\n");
+}
 
-    for (usz i = 0; i < sizeof(FLAGS) / sizeof(*FLAGS); i++)
-    {
-        printf("  %-18s %s\n", FLAGS[i].flag, FLAGS[i].help);
-    }
+/// @brief Stops the build with what is wrong, the argument, and the usage.
+static void Refuse(const char *what, const char *argument)
+{
+    SHU_LogError(0, "%s: " SHUM_COLOR_RED("'%s'"), what, argument);
+    PrintUsage();
+    exit(1);
 }
 
 static void SetupConfiguration(int argc, char **argv)
 {
     for (int i = 1; i < argc; i++)
     {
-        usz flag = 0;
+        const char *flag = argv[i];
 
-        while (flag < sizeof(FLAGS) / sizeof(*FLAGS) && strcmp(argv[i], FLAGS[flag].flag) != 0)
+        if (!strcmp(flag, "-b") || !strcmp(flag, "--build"))
         {
-            flag++;
+            const char *name = i + 1 < argc ? argv[++i] : "";
+            usz type = 0;
+
+            while (type < sizeof(BUILD_TYPE_NAMES) / sizeof(*BUILD_TYPE_NAMES) && strcasecmp(name, BUILD_TYPE_NAMES[type]) != 0)
+            {
+                type++;
+            }
+
+            if (type == sizeof(BUILD_TYPE_NAMES) / sizeof(*BUILD_TYPE_NAMES))
+            {
+                Refuse("Unknown build type", name);
+            }
+
+            CONFIG.type = (BuildType)type;
         }
-
-        if (flag == sizeof(FLAGS) / sizeof(*FLAGS))
+        else if (!strcmp(flag, "-e") || !strcmp(flag, "--examples"))
         {
-            SHU_LogError(0, "Unknown flag: " SHUM_COLOR_RED("'%s'"), argv[i]);
+            CONFIG.examples = true;
+        }
+        else if (!strcmp(flag, "-t") || !strcmp(flag, "--tests"))
+        {
+            CONFIG.tests = true;
+        }
+        else if (!strcmp(flag, "-h") || !strcmp(flag, "--help"))
+        {
             PrintUsage();
-            exit(1);
+            exit(0);
         }
-
-        *FLAGS[flag].field = FLAGS[flag].value;
+        else
+        {
+            Refuse("Unknown flag", flag);
+        }
     }
 
-    if (CONFIG.help)
-    {
-        PrintUsage();
-        exit(0);
-    }
+    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", examples: " SHUM_COLOR_BLUE("%s") ", tests: " SHUM_COLOR_BLUE("%s"), BuildType_String(CONFIG.type), CONFIG.examples ? "yes" : "no", CONFIG.tests ? "yes" : "no");
 
-    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'"), BuildType_String(CONFIG.type));
-    SHU_LogInfo("Link type: " SHUM_COLOR_BLUE("'%s'"), LinkType_String(CONFIG.link));
-    SHU_LogInfo("Examples: " SHUM_COLOR_BLUE("%s") ", tests: " SHUM_COLOR_BLUE("%s"), CONFIG.examples ? "yes" : "no", CONFIG.tests ? "yes" : "no");
-
-    SHUI_SFormat(&BUILD_DIRECTORY, ".shu/%s/%s/", LinkType_String(CONFIG.link), BuildType_String(CONFIG.type));
-    SHUI_SFormat(&OUTPUT_DIRECTORY, "build/%s/%s/", LinkType_String(CONFIG.link), BuildType_String(CONFIG.type));
+    SHUI_SFormat(&BUILD_DIRECTORY, ".shu/%s/", BuildType_String(CONFIG.type));
+    SHUI_SFormat(&OUTPUT_DIRECTORY, "build/%s/", BuildType_String(CONFIG.type));
 
     SHU_CacheConfigure(BUILD_DIRECTORY.data);
 }
@@ -301,7 +302,7 @@ static void Shuild_lua(void)
     CopyFile("dependencies/lua/luaconf.h", tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, (SHUModuleType)CONFIG.link);
+    SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 }
 
 static void Shuild_clay(void)
@@ -316,7 +317,7 @@ static void Shuild_clay(void)
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, (SHUModuleType)CONFIG.link);
+    SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 
     // clay.c includes the headers from the submodule, so they are copied for the core after it compiles
     SHUI_SFormat(&tempStr, "%sinclude/clay/", OUTPUT_DIRECTORY.data);
@@ -343,7 +344,7 @@ static void Shuild_stb(void)
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, (SHUModuleType)CONFIG.link);
+    SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 }
 
 /// @brief Reads a whole file. Free it with free.
@@ -493,7 +494,7 @@ static void Shuild_libffi(void)
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, (SHUModuleType)CONFIG.link);
+    SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 }
 
 static void Shuild_OpenECS(void)
