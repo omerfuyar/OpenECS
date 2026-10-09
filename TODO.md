@@ -4,11 +4,8 @@ What is not decided yet, and work that is waiting. When an item is settled, writ
 
 ## Open questions
 
-- **ui plugin.** Should a first-party ui plugin offer drawing and user-interface elements to other plugins? (OVERVIEW 3.3, DESIGN 5.4)
 - **Other first-party plugins.** Which other plugins ship with OpenECS? (OVERVIEW 3.3)
 - **Domain plugins.** Should plugins for specific domains, such as glTF models, audio or networking, live in their own repositories instead of being first-party? (OVERVIEW 3.3)
-- **Lua plugins of several files.** Should a plugin's `require` find modules in the plugin's folder and run them in the plugin's environment, so they can also `require("ecs")`? Now it gives Lua's `require` every name but `"ecs"`. (DESIGN 9.6)
-- **How the launcher draws its list.** Its panel shows text, and no plugin can draw text yet. Should it wait for the ui plugin, or draw its text itself into a pixels surface for now? (DESIGN 5.4, 13.8)
 - **Build system.** The repository builds with shuild. Decide whether it stays, then add build and test commands to README.md.
 
 ## Tasks

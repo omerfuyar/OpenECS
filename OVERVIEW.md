@@ -80,10 +80,12 @@ Everything else. If the core's own machinery needs it, it is core; if only some 
 
 Some plugins are made and shipped together with OpenECS because the product needs them:
 
-- **sdl:** built into the executable. Gives native plugins access to SDL (section 4).
-- **ui:** drawing (shapes, text, images) and user-interface elements, offered as a service to other plugins.
-- **settings:** the settings window.
-- **launcher:** picks a preset or session when OpenECS starts without one.
+- **sdl:** built into the executable. Gives native plugins the core's SDL objects (section 4).
+- **ui:** a **standard plugin**: drawing (shapes, text, images) and user-interface elements, offered as a service to other plugins.
+- **settings:** the settings window, built on ui.
+- **launcher:** picks a preset or session when OpenECS starts without one, built on ui.
+
+Apart from sdl, they are plugins like any other. They use only the plugin API, the core neither knows nor favours them, and a user can replace any of them with a plugin of the same name.
 
 ### 3.4 Platform
 
@@ -112,7 +114,7 @@ OpenECS targets Linux only for now.
 +--------------------------------------------------------------+
 ```
 
-**Plugins talk only to the plugin API.** They never receive an SDL, Lua, Clay or libffi object from it. For example, a native plugin that needs SDL goes through the built-in **sdl** plugin.
+**Plugins talk only to the plugin API.** They never receive an SDL, Lua, Clay or libffi object from it. For example, a native plugin that needs one of the core's SDL objects, such as the graphics device, gets it through the built-in **sdl** plugin.
 
 ## 5. Panels
 
@@ -427,6 +429,8 @@ The user's hand-edited file is the top layer, and the core never rewrites it, so
 **Plugin.** An add-on module that provides panel types, services, events or settings.
 
 **Plugin API.** The functions and types through which plugins use the core.
+
+**Standard plugin.** A first-party plugin whose services other plugins build on, such as ui.
 
 **Pop-out.** Moving a panel into a new OS window.
 
