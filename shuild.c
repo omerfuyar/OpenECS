@@ -7,13 +7,6 @@
 
 #pragma region Setup
 
-#define PrintUsage() SHU_LogInfo("\n\n\
-Usage:\n\
-./shuild [TYPE [LINK]]\n\n\
-Arguments:\n\
-TYPE\n\tD   Debug (Default)\n\tR   Release\n\tRD  RelWithDebInfo\n\tSR  MinSizeRel\n\
-LINK\n\tS   Static (Default)\n\tD   Dynamic\n")
-
 typedef enum BuildType
 {
     BuildType_Debug,
@@ -28,8 +21,34 @@ static const char *const _BUILD_TYPE_STRINGS[] = {"Debug", "Release", "RelWithDe
 static const char *const _LINK_TYPE_STRINGS[] = {"", "Static", "Dynamic"};
 #define LinkType_String(linkType) _LINK_TYPE_STRINGS[(linkType)]
 
-static BuildType BUILD_TYPE = BuildType_Debug;
-static SHUModuleType LINK_TYPE = SHUModuleType_LibraryStatic;
+/// @brief What the flags choose.
+static struct
+{
+    int type;     // a BuildType
+    int link;     // how Lua, Clay, libffi and stb are linked: SHUModuleType_LibraryStatic or SHUModuleType_LibraryDynamic
+    int examples; // also build the examples
+    int tests;    // also build the tests
+    int help;
+} CONFIG = {BuildType_Debug, SHUModuleType_LibraryStatic, false, false, false};
+
+/// @brief The flags: each sets a field of CONFIG to a value.
+static const struct
+{
+    const char *flag;
+    int *field;
+    int value;
+    const char *help;
+} FLAGS[] = {
+    {"--debug", &CONFIG.type, BuildType_Debug, "Debug build, with the static analyzer and the sanitizers (the default)"},
+    {"--release", &CONFIG.type, BuildType_Release, "Release build"},
+    {"--relwithdebinfo", &CONFIG.type, BuildType_RelWithDebInfo, "Release build with debug information"},
+    {"--minsizerel", &CONFIG.type, BuildType_MinSizeRel, "Release build made small"},
+    {"--static", &CONFIG.link, SHUModuleType_LibraryStatic, "Link Lua, Clay, libffi and stb into the executable (the default)"},
+    {"--dynamic", &CONFIG.link, SHUModuleType_LibraryDynamic, "Link Lua, Clay, libffi and stb as shared libraries"},
+    {"--examples", &CONFIG.examples, true, "Also build the examples, into bin/examples/"},
+    {"--tests", &CONFIG.tests, true, "Also build the tests, into tests/ beside bin/"},
+    {"--help", &CONFIG.help, true, "Show this help"},
+};
 
 static SHUI_String BUILD_DIRECTORY = {0};
 static SHUI_String OUTPUT_DIRECTORY = {0};
@@ -68,22 +87,22 @@ int main(int argc, char **argv)
         Shuild_SDL_ttf();
     }
 
-    if (!IsBuilt("lua", LINK_TYPE == SHUModuleType_LibraryDynamic))
+    if (!IsBuilt("lua", CONFIG.link == SHUModuleType_LibraryDynamic))
     {
         Shuild_lua();
     }
 
-    if (!IsBuilt("clay", LINK_TYPE == SHUModuleType_LibraryDynamic))
+    if (!IsBuilt("clay", CONFIG.link == SHUModuleType_LibraryDynamic))
     {
         Shuild_clay();
     }
 
-    if (!IsBuilt("ffi", LINK_TYPE == SHUModuleType_LibraryDynamic))
+    if (!IsBuilt("ffi", CONFIG.link == SHUModuleType_LibraryDynamic))
     {
         Shuild_libffi();
     }
 
-    if (!IsBuilt("stb", LINK_TYPE == SHUModuleType_LibraryDynamic))
+    if (!IsBuilt("stb", CONFIG.link == SHUModuleType_LibraryDynamic))
     {
         Shuild_stb();
     }
@@ -100,57 +119,49 @@ static void CopyFile(const char *file, const char *directory)
     SHU_UtilRun("cp -r %s %s", file, directory);
 }
 
+static void PrintUsage(void)
+{
+    printf("Usage: ./shuild.ignore [FLAG...]\n\nFlags:\n");
+
+    for (usz i = 0; i < sizeof(FLAGS) / sizeof(*FLAGS); i++)
+    {
+        printf("  %-18s %s\n", FLAGS[i].flag, FLAGS[i].help);
+    }
+}
+
 static void SetupConfiguration(int argc, char **argv)
 {
-    if (argc >= 2)
+    for (int i = 1; i < argc; i++)
     {
-        if (!strcasecmp(argv[1], "D"))
+        usz flag = 0;
+
+        while (flag < sizeof(FLAGS) / sizeof(*FLAGS) && strcmp(argv[i], FLAGS[flag].flag) != 0)
         {
-            BUILD_TYPE = BuildType_Debug;
+            flag++;
         }
-        else if (!strcasecmp(argv[1], "R"))
+
+        if (flag == sizeof(FLAGS) / sizeof(*FLAGS))
         {
-            BUILD_TYPE = BuildType_Release;
-        }
-        else if (!strcasecmp(argv[1], "RD"))
-        {
-            BUILD_TYPE = BuildType_RelWithDebInfo;
-        }
-        else if (!strcasecmp(argv[1], "SR"))
-        {
-            BUILD_TYPE = BuildType_MinSizeRel;
-        }
-        else
-        {
-            SHU_LogError(0, "Unknown build type: " SHUM_COLOR_RED("%s"), argv[1]);
+            SHU_LogError(0, "Unknown flag: " SHUM_COLOR_RED("'%s'"), argv[i]);
             PrintUsage();
             exit(1);
         }
+
+        *FLAGS[flag].field = FLAGS[flag].value;
     }
 
-    if (argc >= 3)
+    if (CONFIG.help)
     {
-        if (!strcasecmp(argv[2], "S"))
-        {
-            LINK_TYPE = SHUModuleType_LibraryStatic;
-        }
-        else if (!strcasecmp(argv[2], "D"))
-        {
-            LINK_TYPE = SHUModuleType_LibraryDynamic;
-        }
-        else
-        {
-            SHU_LogError(0, "Unknown link type: '%s'", argv[2]);
-            PrintUsage();
-            exit(1);
-        }
+        PrintUsage();
+        exit(0);
     }
 
-    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'"), BuildType_String(BUILD_TYPE));
-    SHU_LogInfo("Link type: " SHUM_COLOR_BLUE("'%s'"), LinkType_String(LINK_TYPE));
+    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'"), BuildType_String(CONFIG.type));
+    SHU_LogInfo("Link type: " SHUM_COLOR_BLUE("'%s'"), LinkType_String(CONFIG.link));
+    SHU_LogInfo("Examples: " SHUM_COLOR_BLUE("%s") ", tests: " SHUM_COLOR_BLUE("%s"), CONFIG.examples ? "yes" : "no", CONFIG.tests ? "yes" : "no");
 
-    SHUI_SFormat(&BUILD_DIRECTORY, ".shu/%s/%s/", LinkType_String(LINK_TYPE), BuildType_String(BUILD_TYPE));
-    SHUI_SFormat(&OUTPUT_DIRECTORY, "build/%s/%s/", LinkType_String(LINK_TYPE), BuildType_String(BUILD_TYPE));
+    SHUI_SFormat(&BUILD_DIRECTORY, ".shu/%s/%s/", LinkType_String(CONFIG.link), BuildType_String(CONFIG.type));
+    SHUI_SFormat(&OUTPUT_DIRECTORY, "build/%s/%s/", LinkType_String(CONFIG.link), BuildType_String(CONFIG.type));
 
     SHU_CacheConfigure(BUILD_DIRECTORY.data);
 }
@@ -162,7 +173,7 @@ static void SetBuildFlags(bool ownCode)
     SHU_CompilerClearFlags();
     SHU_CompilerAddFlags(SHUM_FLAGS_STANDARD_C23);
 
-    switch (BUILD_TYPE)
+    switch (CONFIG.type)
     {
     case BuildType_Debug:
         if (ownCode)
@@ -212,13 +223,13 @@ static void Shuild_SDL(void)
     SHUI_SFormat(&outputPrefixDir, "%s%s", root, OUTPUT_DIRECTORY.data);
 
     SHU_UtilRun(
-        "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
+        "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_CONFIG.type=%s "
         "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
         "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
         "-DSDL_SHARED=ON -DSDL_STATIC=OFF "                          // link type
         "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF " // options
         "--log-level=WARNING",                                       // logs
-        sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
+        sourceDir.data, buildDir.data, BuildType_String(CONFIG.type),
         outputPrefixDir.data, outputPrefixDir.data);
 
     SHU_UtilRun(
@@ -247,13 +258,13 @@ static void Shuild_SDL_ttf(void)
     SHUI_SFormat(&outputPrefixDir, "%s%s/", root, OUTPUT_DIRECTORY.data);
 
     SHU_UtilRun(
-        "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
+        "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_CONFIG.type=%s "
         "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
         "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
         "-DBUILD_SHARED_LIBS=ON "                    // link type
         "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF " // options
         "--log-level=WARNING",                       // logs
-        sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
+        sourceDir.data, buildDir.data, BuildType_String(CONFIG.type),
         outputPrefixDir.data, outputPrefixDir.data);
 
     SHU_UtilRun(
@@ -290,7 +301,7 @@ static void Shuild_lua(void)
     CopyFile("dependencies/lua/luaconf.h", tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+    SHU_ModuleCompile(tempStr.data, (SHUModuleType)CONFIG.link);
 }
 
 static void Shuild_clay(void)
@@ -305,7 +316,7 @@ static void Shuild_clay(void)
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+    SHU_ModuleCompile(tempStr.data, (SHUModuleType)CONFIG.link);
 
     // clay.c includes the headers from the submodule, so they are copied for the core after it compiles
     SHUI_SFormat(&tempStr, "%sinclude/clay/", OUTPUT_DIRECTORY.data);
@@ -332,7 +343,7 @@ static void Shuild_stb(void)
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+    SHU_ModuleCompile(tempStr.data, (SHUModuleType)CONFIG.link);
 }
 
 /// @brief Reads a whole file. Free it with free.
@@ -468,7 +479,7 @@ static void Shuild_libffi(void)
     }
 
     // libffi checks its arguments in Debug builds
-    if (BUILD_TYPE == BuildType_Debug)
+    if (CONFIG.type == BuildType_Debug)
     {
         SHU_CompilerAddDefinitions("FFI_DEBUG", NULL);
         SHU_ModuleAddSourceFile("src/debug.c");
@@ -482,7 +493,7 @@ static void Shuild_libffi(void)
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+    SHU_ModuleCompile(tempStr.data, (SHUModuleType)CONFIG.link);
 }
 
 static void Shuild_OpenECS(void)
@@ -495,7 +506,7 @@ static void Shuild_OpenECS(void)
     SHU_CompilerAddFlags(" -fvisibility=hidden '-Wl,--export-dynamic-symbol=ECS*' '-Wl,-rpath,$ORIGIN'");
 
     // the sanitizers find their settings in src/base/Sanitizers.c by name
-    if (BUILD_TYPE == BuildType_Debug)
+    if (CONFIG.type == BuildType_Debug)
     {
         SHU_CompilerAddFlags(" '-Wl,--export-dynamic-symbol=__*san_default_*'");
     }
@@ -655,15 +666,22 @@ static void Shuild_Plugins(void)
 {
     ForEachFolder("plugins/", Shuild_Plugin);
 
+    // examples and tests are built when the flags ask for them; a copy from an earlier build is removed otherwise
+    SHU_UtilRun("rm -rf %sbin/examples %stests", OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data);
+
     // examples are copied whole, their sources too, and each of their plugin folders is built in the copy
-    SHU_UtilRun("rm -rf %sbin/examples", OUTPUT_DIRECTORY.data);
-    SHU_UtilRun("cp -r examples %sbin/", OUTPUT_DIRECTORY.data);
-    ForEachFolder("examples/", Shuild_Example);
+    if (CONFIG.examples)
+    {
+        SHU_UtilRun("cp -r examples %sbin/", OUTPUT_DIRECTORY.data);
+        ForEachFolder("examples/", Shuild_Example);
+    }
 
     // the tests are copied beside bin/, so their presets and plugins are found next to the test files, and their native plugins are built there
-    SHU_UtilRun("rm -rf %stests", OUTPUT_DIRECTORY.data);
-    SHU_UtilRun("cp -r tests %s", OUTPUT_DIRECTORY.data);
-    ForEachFolder("tests/plugins/", Shuild_CopiedPlugin);
+    if (CONFIG.tests)
+    {
+        SHU_UtilRun("cp -r tests %s", OUTPUT_DIRECTORY.data);
+        ForEachFolder("tests/plugins/", Shuild_CopiedPlugin);
+    }
 }
 
 static void Shuild_other(void)

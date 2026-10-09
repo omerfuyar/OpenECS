@@ -14,6 +14,7 @@ typedef struct ECSIArguments
     bool fresh;          // true to start from the preset, not from the tool's last session
     const char *test;    // path of a test to run, or NULL
     bool version;        // print the version and exit
+    bool help;           // print the options and exit
     char **files;        // the files to open, as the command line names them
     usz fileCount;
 } ECSIArguments;

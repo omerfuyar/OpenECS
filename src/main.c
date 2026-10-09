@@ -11,6 +11,21 @@
 /// @brief Preset used when the command line names none.
 #define OPENECS_DEFAULT_PRESET "launcher"
 
+/// @brief What --help prints.
+#define OPENECS_USAGE                                                                                    \
+    "Usage: OpenECS [OPTION...] [FILE...]\n"                                                            \
+    "\n"                                                                                                \
+    "Starts the tool a preset describes, or the launcher without one. The preset's open function\n"     \
+    "opens each FILE.\n"                                                                                \
+    "\n"                                                                                                \
+    "Options:\n"                                                                                        \
+    "  --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file\n"           \
+    "  --session FILE      Open a saved session\n"                                                      \
+    "  --fresh             Start from the preset, not from the tool's last session\n"                   \
+    "  --test FILE         Run a test; Debug builds only\n"                                             \
+    "  --version           Print the version and exit\n"                                               \
+    "  --help              Print this help and exit\n"
+
 /// @brief Reads the options, and moves the files to the start of argv, over options already read.
 static ECSIArguments ECSIMain_ReadArguments(int argc, char **argv)
 {
@@ -34,6 +49,10 @@ static ECSIArguments ECSIMain_ReadArguments(int argc, char **argv)
         {
             arguments.version = true;
         }
+        else if (SDL_strcmp(argv[i], "--help") == 0)
+        {
+            arguments.help = true;
+        }
         else if (SDL_strcmp(argv[i], "--test") == 0 && i + 1 < argc)
         {
             arguments.test = argv[++i];
@@ -44,7 +63,7 @@ static ECSIArguments ECSIMain_ReadArguments(int argc, char **argv)
         }
         else
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Unknown argument '%s'. Usage: openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [--version] [FILE...]", argv[i]);
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Unknown option '%s'; OpenECS --help lists the options.", argv[i]);
         }
     }
 
@@ -61,6 +80,12 @@ int main(int argc, char **argv)
     if (arguments.version)
     {
         printf("OpenECS %s, plugin API %d\n", OPENECS_VERSION, OPENECS_API_VERSION);
+        return 0;
+    }
+
+    if (arguments.help)
+    {
+        printf("%s", OPENECS_USAGE);
         return 0;
     }
 
