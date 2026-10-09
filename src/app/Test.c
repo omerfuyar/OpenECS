@@ -33,6 +33,7 @@ static struct
     SDL_Keymod held;              // modifiers held during the pointer events being sent
     usz nextEvent;                // index of the next event to send
     u64 resumeTicks;              // when the test goes on after test.wait, in nanoseconds
+    usz window;                   // the OS window that input events go to, as ECSIWindow_Get counts them; 0 before test.window chooses one, which is the main window
     f32 pointerX;                 // the pointer's last position
     f32 pointerY;
     SDL_MouseButtonFlags buttons; // the buttons held
@@ -72,10 +73,11 @@ static const char OPENECS_TEST_MATCH[] =
     "  if difference then error((message and message .. ': ' or '') .. difference, 2) end\n"
     "end\n";
 
-/// @brief Adds an input event for the loop, in the test's OS window.
+/// @brief Adds an input event for the loop, in the OS window that test.window chose; the main window if that one has closed.
 static void ECSITest_Send(SDL_Event event)
 {
-    SDL_Window *window = ECSIWindow_GetMain();
+    SDL_Window *window = TEST.window > 1 ? ECSIWindow_Get(TEST.window) : NULL;
+    window = window != NULL ? window : ECSIWindow_GetMain();
     SDL_WindowID id = window != NULL ? SDL_GetWindowID(window) : 0;
 
     switch (event.type)
@@ -102,6 +104,9 @@ static void ECSITest_Send(SDL_Event event)
     case SDL_EVENT_DROP_TEXT:
     case SDL_EVENT_DROP_COMPLETE:
         event.drop.windowID = id;
+        break;
+    case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+        event.window.windowID = id;
         break;
     default:
         break;
@@ -316,6 +321,14 @@ static int ECSITest_Wheel(lua_State *state)
     return lua_yield(state, 0);
 }
 
+/// @brief test.close(): asks the OS window that test.window chose to close, as its close button does.
+static int ECSITest_Close(lua_State *state)
+{
+    SDL_Event event = {.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED};
+    ECSITest_Send(event);
+    return lua_yield(state, 0);
+}
+
 /// @brief Adds a drop from another application at a position: its begin, a file or text event for each string, and its end.
 static void ECSITest_SendDrop(f32 x, f32 y, Uint32 type, const char *const *texts, usz count)
 {
@@ -436,7 +449,7 @@ static int ECSITest_Session(lua_State *state)
     return 1;
 }
 
-/// @brief test.rect(id): the rectangle of a shown panel.
+/// @brief test.rect(id): the rectangle of a shown panel, and the number of its OS window.
 static int ECSITest_Rect(lua_State *state)
 {
     lua_Integer id = luaL_checkinteger(state, 1);
@@ -453,7 +466,9 @@ static int ECSITest_Rect(lua_State *state)
         return luaL_error(state, "the panel %d is not shown", (int)id);
     }
 
-    lua_createtable(state, 0, 4);
+    lua_createtable(state, 0, 5);
+    lua_pushinteger(state, (lua_Integer)ECSIWindow_NumberOf(panel));
+    lua_setfield(state, -2, "window");
     lua_pushnumber(state, (lua_Number)panel->x);
     lua_setfield(state, -2, "x");
     lua_pushnumber(state, (lua_Number)panel->y);
@@ -493,12 +508,32 @@ static int ECSITest_Panel(lua_State *state)
     return 1;
 }
 
-/// @brief test.screenshot(path): draws a frame and saves it as a PNG file.
+/// @brief test.window(number): chooses the OS window that later input events go to, and that test.screenshot saves: 1 for the main window, then the pop-out windows. Gives the window's position on the screen.
+static int ECSITest_Window(lua_State *state)
+{
+    lua_Integer number = luaL_checkinteger(state, 1);
+    SDL_Window *window = number < 1 ? NULL : ECSIWindow_Get((usz)number);
+    int x = 0;
+    int y = 0;
+
+    if (window == NULL)
+    {
+        return luaL_error(state, "there is no OS window %d", (int)number);
+    }
+
+    TEST.window = (usz)number;
+    SDL_GetWindowPosition(window, &x, &y);
+    lua_pushinteger(state, x);
+    lua_pushinteger(state, y);
+    return 2;
+}
+
+/// @brief test.screenshot(path): draws a frame and saves the picture of the OS window that test.window chose as a PNG file.
 static int ECSITest_Screenshot(lua_State *state)
 {
     const char *path = luaL_checkstring(state, 1);
 
-    if (ECSIWindow_Screenshot(path))
+    if (ECSIWindow_Screenshot(path, TEST.window > 0 ? TEST.window : 1))
     {
         return luaL_error(state, "cannot save a screenshot to '%s'", path);
     }
@@ -522,6 +557,8 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"session", ECSITest_Session},
     {"rect", ECSITest_Rect},
     {"panel", ECSITest_Panel},
+    {"window", ECSITest_Window},
+    {"close", ECSITest_Close},
     {"screenshot", ECSITest_Screenshot},
     {NULL, NULL},
 };

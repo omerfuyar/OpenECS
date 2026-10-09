@@ -321,7 +321,7 @@ typedef struct ECSSurface
 
 ### 6.1 Data
 
-- Each OS window is a **root**: the OS window, its layout tree, and its maximized group, if any.
+- Each OS window is a **root**: the OS window, its layout tree, its maximized group, if any, and its size. A workspace's first root is the main window's; it is empty when the workspace has no panels there.
 - Node types:
 
 | Type  | Holds                                                                                                         |
@@ -394,9 +394,9 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The core draws its menus itself, inside the OS window, with Clay. They are kept inside the OS window.
 - A right click on a tab or grip, or a click on a grip, opens the panel's menu. A right click on the rest of a tab row opens the group's menu. The panel, or the group's shown panel, gets the focus.
 - Entries are core functions that act on the focused panel. Each shows the keys that run its function after the prefix (7.5).
-- Menus show only what can be done now, and say what it does now: "Lock the group" or "Unlock the group", "Maximize the group" or "Restore the group". Close and move are left out for a locked group, restart for a panel that has not failed (14.2), reopen when nothing was closed, and split when the panel's type is missing.
+- Menus show only what can be done now, and say what it does now: "Lock the group" or "Unlock the group", "Maximize the group" or "Restore the group". Close and move are left out for a locked group, pop out for a locked group and for a panel alone in its OS window, restart for a panel that has not failed (14.2), reopen when nothing was closed, and split when the panel's type is missing.
 - Entries of one kind go into a submenu. An entry with a submenu shows `›`, and pointing at it opens the submenu beside it.
-- The panel's menu: close, restart, maximize, lock, reopen the last closed panel; the submenus Split (right, down), Move (left, right, up, down) and Move to workspace (each other workspace, by number and name); then the entries of the panel's type.
+- The panel's menu: close, restart, maximize, pop out, lock, reopen the last closed panel; the submenus Split (right, down), Move (left, right, up, down) and Move to workspace (each other workspace, by number and name); then the entries of the panel's type.
 - The entries of a type: `ECSPanelType_AddMenuEntry(plugin, type, function)`, or `ecs.panel.addMenuEntry(type, function)` in Lua, adds a service function whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and the key the plugin bound to the same function for the type.
 - The group's menu: the submenu Tabs, which shows any of its panels and marks the shown one with `•`; then maximize, lock, close the group's panels, and reopen.
 - Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. Escape in the first menu, or a press outside the menus, closes them. While a menu is open, pointer and key events go to the menus only.
@@ -414,11 +414,13 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Pop-out creates an OS window with a new root that holds one group with the panel. The window has the panel's size and opens at the pointer; on Wayland, the compositor places it (OVERVIEW 6.4).
 - `ecs.layout.popOut` pops out the focused panel. A panel alone in its OS window, and a panel of a locked group, stay. Code pops a panel out with the zone `ECSZone_Window`, in Lua `"window"`: `ECSLayout_Open(plugin, &panel, "text.editor", NULL, NULL, ECSZone_Window)` or `ECSLayout_Move(panel, NULL, ECSZone_Window)`.
 - Inside a pop-out window, every layout operation works as in the main window: splits, tabs, maximize, dragging and docking along its edges. Panels move between OS windows by dragging or by code.
+- A dragged panel lands in the OS window under the pointer. The core finds it from the windows' places on the screen. On Wayland, an application cannot know them, so a panel dropped outside the window it was dragged from pops out.
+- Each OS window has its own renderer and Clay context. Only the main window's renderer waits for vsync (3.1), so presenting several OS windows does not wait once for each.
 - A pop-out window closes when its last panel leaves it. Its close button closes its panels, after asking about unsaved work (4.5); Cancel keeps the window. Closing the main window quits.
-- The keys that move focus or panels (7.5) act within the focused panel's OS window. Focusing a panel in another OS window raises that window (7.1).
+- The keys that move focus or panels (7.5) act within the focused panel's OS window. Focusing a panel in another OS window raises that window (7.1). When an OS window gets the system's focus, the panel that had the focus last in it gets it.
 - The core's menus and the list of prefix keys show in the OS window of the focused panel.
 - Switching workspaces hides the pop-out windows of the old workspace and shows those of the new one.
-- A session's `windows` list holds the main window's tree first, then one tree for each pop-out window (13.2). A pop-out window's tree also has `width` and `height`, its size in layout units. Positions are not saved, because Wayland does not let them be chosen.
+- A session's `windows` list holds the main window's tree first, then one tree for each pop-out window (13.2). A pop-out window's tree also has `width` and `height`, its size in layout units. When the main window has no panels but pop-out windows do, its tree is an empty table. Positions are not saved, because Wayland does not let them be chosen.
 
 ## 7. Input, focus and keys
 
@@ -839,6 +841,7 @@ return {
           { size = 240, panels = { { type = "palette.view" } } },
           { share = 1,  panels = { { type = "canvas.view", state = { document = 1 } } } },
         },
+        { width = 300, height = 400, panels = { { type = "layers.view" } } },
       },
     },
   },
@@ -1035,23 +1038,25 @@ OpenECS follows the XDG Base Directory specification:
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).
 - The `test` table:
 
-  | Function                                                             | Does                                                                                                                           |
-  | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-  | `key(combination)`                                                   | Presses and releases a key combination, such as `"Alt+W"` (7.3).                                                               |
-  | `move(x, y)`                                                         | Moves the pointer. Positions are in layout units of the OS window.                                                             |
-  | `press(x, y, button, modifiers)`, `release(x, y, button, modifiers)` | Presses or releases a button: 1 left (the default), 2 middle, 3 right. The `modifiers`, such as `"Shift"`, are held during it. |
-  | `click(x, y, button, modifiers)`                                     | Presses and releases a button.                                                                                                 |
-  | `drag(x, y, toX, toY, modifiers)`                                    | Presses the left button, moves in steps and releases it.                                                                       |
-  | `wheel(x, y, amount)`                                                | Turns the wheel; a positive amount is away from the user.                                                                      |
-  | `text(text)`                                                         | Types text to the focused panel, as an input method gives it (4.6).                                                            |
-  | `dropFiles(x, y, paths)`, `dropText(x, y, text)`                     | Drops files or text from another application at a position (7.9).                                                              |
-  | `call(name)`                                                         | Runs a bound function (7.8), such as `"ecs.layout.maximize"`, as a key would.                                                  |
-  | `wait(seconds)`                                                      | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                                              |
-  | `session()`                                                          | The session that quitting would save now, as a Lua table (13.2).                                                               |
-  | `rect(id)`                                                           | The rectangle of the shown panel with that id: `x`, `y`, `width` and `height`.                                                 |
-  | `panel(id)`                                                          | The panel with that id: its `title`, `type`, `unsaved` mark, and `fault`, the error that stopped it or a missing type.         |
-  | `screenshot(path)`                                                   | Draws a frame and saves it as a PNG file.                                                                                      |
-  | `match(actual, expected, message)`                                   | Checks that `actual` has the same number of list items as `expected`, and each item and field it names.                        |
+  | Function                                                             | Does                                                                                                                                                                                                                                               |
+  | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `key(combination)`                                                   | Presses and releases a key combination, such as `"Alt+W"` (7.3).                                                                                                                                                                                   |
+  | `move(x, y)`                                                         | Moves the pointer. Positions are in layout units of the OS window that `window` chose.                                                                                                                                                             |
+  | `press(x, y, button, modifiers)`, `release(x, y, button, modifiers)` | Presses or releases a button: 1 left (the default), 2 middle, 3 right. The `modifiers`, such as `"Shift"`, are held during it.                                                                                                                     |
+  | `click(x, y, button, modifiers)`                                     | Presses and releases a button.                                                                                                                                                                                                                     |
+  | `drag(x, y, toX, toY, modifiers)`                                    | Presses the left button, moves in steps and releases it.                                                                                                                                                                                           |
+  | `wheel(x, y, amount)`                                                | Turns the wheel; a positive amount is away from the user.                                                                                                                                                                                          |
+  | `text(text)`                                                         | Types text to the focused panel, as an input method gives it (4.6).                                                                                                                                                                                |
+  | `dropFiles(x, y, paths)`, `dropText(x, y, text)`                     | Drops files or text from another application at a position (7.9).                                                                                                                                                                                  |
+  | `window(number)`                                                     | Chooses the OS window that later input goes to, and that `screenshot` saves: 1 for the main window, then the current workspace's pop-out windows in the order they were made. It is 1 at start. Gives the window's position on the screen, `x, y`. |
+  | `close()`                                                            | Asks the chosen OS window to close, as its close button does.                                                                                                                                                                                      |
+  | `call(name)`                                                         | Runs a bound function (7.8), such as `"ecs.layout.maximize"`, as a key would.                                                                                                                                                                      |
+  | `wait(seconds)`                                                      | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                                                                                                                                                                  |
+  | `session()`                                                          | The session that quitting would save now, as a Lua table (13.2).                                                                                                                                                                                   |
+  | `rect(id)`                                                           | The rectangle of the shown panel with that id: `x`, `y`, `width` and `height`, and `window`, the number of its OS window.                                                                                                                          |
+  | `panel(id)`                                                          | The panel with that id: its `title`, `type`, `unsaved` mark, and `fault`, the error that stopped it or a missing type.                                                                                                                             |
+  | `screenshot(path)`                                                   | Draws a frame and saves the chosen OS window's picture as a PNG file.                                                                                                                                                                              |
+  | `match(actual, expected, message)`                                   | Checks that `actual` has the same number of list items as `expected`, and each item and field it names.                                                                                                                                            |
 
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
 - A Lua error fails the test and logs it with its stack trace. When `run` returns, the program quits without asking about unsaved work.

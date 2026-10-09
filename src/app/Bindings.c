@@ -682,7 +682,7 @@ static const luaL_Reg OPENECS_BINDINGS_SUBSCRIPTION_METHODS[] = {
 #pragma region Layout
 
 /// @brief Names of the zones in Lua, in the order of ECSZone.
-static const char *const OPENECS_BINDINGS_ZONES[] = {"default", "center", "left", "right", "top", "bottom", NULL};
+static const char *const OPENECS_BINDINGS_ZONES[] = {"default", "center", "left", "right", "top", "bottom", "window", NULL};
 
 /// @brief Reads an optional panel handle.
 static ECSPanel ECSIBindings_OptPanel(lua_State *state, int index)
@@ -717,8 +717,14 @@ static int ECSIBindings_LayoutOpen(lua_State *state)
 static int ECSIBindings_LayoutMove(lua_State *state)
 {
     ECSPanel panel = ECSIBindings_CheckPanel(state, 1);
-    ECSPanel target = ECSIBindings_CheckPanel(state, 2);
+    ECSPanel target = ECSIBindings_OptPanel(state, 2);
     ECSZone zone = (ECSZone)luaL_checkoption(state, 3, "center", OPENECS_BINDINGS_ZONES);
+
+    // only a pop-out needs no target
+    if (target == NULL && zone != ECSZone_Window)
+    {
+        return luaL_argerror(state, 2, "a panel is needed, except with the zone \"window\"");
+    }
 
     if (ECSLayout_Move(panel, target, zone))
     {

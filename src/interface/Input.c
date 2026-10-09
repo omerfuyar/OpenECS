@@ -48,7 +48,8 @@ static struct
     bool swallowText;         // the last key press ran a binding or the core's keys, so the text it types is dropped
     bool textOn;              // text input is on, for the panel below
     ECSPanel textPanel;
-    SDL_Rect textArea; // where the input method shows its window, in the OS window
+    SDL_Window *textWindow; // the OS window text input is on in
+    SDL_Rect textArea;      // where the input method shows its window, in the OS window
 } INPUT = {0};
 
 /// @brief A file dialog waiting for its answer, with copies of everything SDL reads until it answers.
@@ -116,14 +117,14 @@ static void ECSIInput_SendPointer(ECSPanel panel, ECSPanelEventType type, f32 x,
     ECSIPanel_PostEvent(panel, &event);
 }
 
-/// @brief Sends a wheel event to a panel. The amount is turned back if the system flips the wheel, so positive is always away from the user.
-static void ECSIInput_SendWheel(ECSPanel panel, const SDL_MouseWheelEvent *wheel)
+/// @brief Sends a wheel event to a panel, at a position of its OS window. The amount is turned back if the system flips the wheel, so positive is always away from the user.
+static void ECSIInput_SendWheel(ECSPanel panel, const SDL_MouseWheelEvent *wheel, f32 x, f32 y)
 {
     f32 direction = wheel->direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
     ECSPanelEvent event = {
         .type = ECSPanelEventType_Wheel,
         .modifiers = ECSIInput_Modifiers(SDL_GetModState()),
-        .wheel = {.x = wheel->mouse_x - panel->x, .y = wheel->mouse_y - panel->y, .amountX = wheel->x * direction, .amountY = wheel->y * direction},
+        .wheel = {.x = x - panel->x, .y = y - panel->y, .amountX = wheel->x * direction, .amountY = wheel->y * direction},
     };
 
     ECSIPanel_PostEvent(panel, &event);
@@ -138,6 +139,16 @@ static void ECSIInput_SendKey(ECSPanel panel, ECSPanelEventType type, const SDL_
     };
 
     ECSIPanel_PostEvent(panel, &event);
+}
+
+/// @brief Asks about the unsaved work of every panel before the program quits.
+/// @return true if the program may quit; the user may cancel to keep the work.
+static bool ECSIInput_ConfirmQuit(void)
+{
+    ECSPanel *panels = ECSILayout_GetPanels();
+    bool quit = ECSIPanels_ConfirmClose(panels, arrlenu(panels), true);
+    arrfree(panels);
+    return quit;
 }
 
 /// @brief Moves the keyboard focus to a panel; the layout tells both panels.
@@ -169,10 +180,10 @@ static void ECSIInput_EndDataDrag(void)
     ECSIWindow_ShowDataDrag(NULL, 0.0f, 0.0f);
 }
 
-/// @brief Drops data on the panel at a position, if the panel accepts its type.
+/// @brief Drops data on the panel at a position of the event window, or of another OS window under it, if the panel accepts its type.
 static void ECSIInput_Drop(f32 x, f32 y, const char *type, const ECSValue *value)
 {
-    ECSPanel panel = ECSILayout_PanelAt(x, y);
+    ECSPanel panel = ECSIWindow_PanelAt(x, y, &x, &y);
 
     if (panel != NULL && ECSIPanel_Accepts(panel, type))
     {
@@ -604,6 +615,14 @@ bool ECSIInput_Handle(const SDL_Event *event)
 {
     SDL_assert(event != NULL);
 
+    // pointer positions are in the layout units of the event's OS window
+    SDL_Window *window = SDL_GetWindowFromEvent(event);
+
+    if (window != NULL)
+    {
+        ECSIWindow_SetEventWindow(SDL_GetWindowID(window));
+    }
+
     if (ECSIMenus_Handle(event))
     {
         return true;
@@ -611,14 +630,46 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
     switch (event->type)
     {
-    case SDL_EVENT_QUIT:
     case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
     {
-        // the user may cancel quitting to keep unsaved work
-        ECSPanel *panels = ECSILayout_GetPanels();
-        bool quit = ECSIPanels_ConfirmClose(panels, arrlenu(panels), true);
-        arrfree(panels);
-        return !quit;
+        // a pop-out window closes its panels, after asking about unsaved work; Cancel keeps it
+        bool main = true;
+        ECSIRoot *root = ECSIWindow_GetRoot(event->window.windowID, &main);
+
+        if (!main)
+        {
+            ECSPanel *panels = root == NULL ? NULL : ECSILayout_GetRootPanels(root);
+
+            if (ECSIPanels_ConfirmClose(panels, arrlenu(panels), false))
+            {
+                for (usz i = 0; i < arrlenu(panels); i++)
+                {
+                    ECSILayout_ClosePanel(panels[i]);
+                }
+            }
+
+            arrfree(panels);
+            return true;
+        }
+
+        // closing the main window quits
+        return !ECSIInput_ConfirmQuit();
+    }
+
+    case SDL_EVENT_QUIT:
+        return !ECSIInput_ConfirmQuit();
+
+    // the panel focused last in an OS window gets the focus when the window gets the system's
+    case SDL_EVENT_WINDOW_FOCUS_GAINED:
+    {
+        ECSIRoot *root = ECSIWindow_GetRoot(event->window.windowID, NULL);
+
+        if (root != NULL)
+        {
+            ECSILayout_FocusRoot(root);
+        }
+
+        break;
     }
 
     case SDL_EVENT_WINDOW_RESIZED:
@@ -669,14 +720,16 @@ bool ECSIInput_Handle(const SDL_Event *event)
             break;
         }
 
-        ECSPanel panel = ECSILayout_PanelAt(button->x, button->y);
+        f32 x = 0.0f;
+        f32 y = 0.0f;
+        ECSPanel panel = ECSIWindow_PanelAt(button->x, button->y, &x, &y);
 
         if (panel != NULL)
         {
             ECSIInput_Focus(panel);
             INPUT.pointerPanel = panel;
 
-            ECSIInput_SendPointer(panel, ECSPanelEventType_PointerDown, button->x, button->y, button->button);
+            ECSIInput_SendPointer(panel, ECSPanelEventType_PointerDown, x, y, button->button);
         }
 
         break;
@@ -700,7 +753,10 @@ bool ECSIInput_Handle(const SDL_Event *event)
             break;
         }
 
-        ECSPanel panel = ECSIInput_PointerPanel() != NULL ? INPUT.pointerPanel : ECSILayout_PanelAt(motion->x, motion->y);
+        // the panel that got the press gets the moves in the OS window of the press, even outside it
+        f32 x = motion->x;
+        f32 y = motion->y;
+        ECSPanel panel = ECSIInput_PointerPanel() != NULL ? INPUT.pointerPanel : ECSIWindow_PanelAt(motion->x, motion->y, &x, &y);
 
         if (panel == NULL)
         {
@@ -713,7 +769,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
             ECSIInput_Focus(panel);
         }
 
-        ECSIInput_SendPointer(panel, ECSPanelEventType_PointerMove, motion->x, motion->y, 0);
+        ECSIInput_SendPointer(panel, ECSPanelEventType_PointerMove, x, y, 0);
 
         break;
     }
@@ -758,11 +814,13 @@ bool ECSIInput_Handle(const SDL_Event *event)
             break;
         }
 
-        ECSPanel panel = ECSILayout_PanelAt(wheel->mouse_x, wheel->mouse_y);
+        f32 x = 0.0f;
+        f32 y = 0.0f;
+        ECSPanel panel = ECSIWindow_PanelAt(wheel->mouse_x, wheel->mouse_y, &x, &y);
 
         if (panel != NULL)
         {
-            ECSIInput_SendWheel(panel, wheel);
+            ECSIInput_SendWheel(panel, wheel, x, y);
         }
 
         break;
@@ -885,13 +943,20 @@ bool ECSIInput_Handle(const SDL_Event *event)
 void ECSIInput_UpdateTextInput(void)
 {
     ECSPanel focus = ECSILayout_GetFocus();
-    SDL_Window *window = ECSIWindow_GetMain();
+    SDL_Window *window = ECSIWindow_OfPanel(focus);
     bool on = focus != NULL && focus->textInput && focus->fault == NULL;
     SDL_Rect area = {0};
 
     if (window == NULL)
     {
         return;
+    }
+
+    // text input follows the focus into another OS window
+    if (INPUT.textOn && INPUT.textWindow != window)
+    {
+        SDL_StopTextInput(INPUT.textWindow);
+        INPUT.textOn = false;
     }
 
     // the cursor is in the panel's surface pixels, and a surface has one pixel for each layout unit
@@ -920,6 +985,7 @@ void ECSIInput_UpdateTextInput(void)
     }
 
     INPUT.textOn = on;
+    INPUT.textWindow = window;
     INPUT.textPanel = on ? focus : NULL;
     INPUT.textArea = area;
 }

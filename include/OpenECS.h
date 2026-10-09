@@ -98,6 +98,7 @@ typedef enum ECSZone
     ECSZone_Right,
     ECSZone_Top,
     ECSZone_Bottom,
+    ECSZone_Window, // a new pop-out window, which needs no target
 } ECSZone;
 
 /// @brief Modifier keys held during an event, as bits.
@@ -580,15 +581,15 @@ OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelT
 /// @param type Name of the panel type.
 /// @param state Saved state to create the panel from, in the type's current version, or NULL for a new panel. The core copies it.
 /// @param target A panel of the current workspace to open next to, or NULL. With NULL, the panel joins the group of the most recently focused panel of its type, or else the focused group.
-/// @param zone Where next to the target: its group or a side of it.
+/// @param zone Where next to the target: its group or a side of it; or ECSZone_Window for a new pop-out window.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if the target is not in the current workspace, or SHUResult_ErrAllocation.
 /// @lua ecs.layout.open
 OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type, const ECSValue *state, ECSPanel target, ECSZone zone);
 
-/// @brief Moves a panel into a target's group, or beside it, also from another workspace. Main thread only.
+/// @brief Moves a panel into a target's group, or beside it, also from another workspace or OS window; or out into a new pop-out window. Main thread only.
 /// @param panel Panel to move.
-/// @param target The target panel.
-/// @param zone Where next to the target.
+/// @param target The target panel, or NULL with ECSZone_Window.
+/// @param zone Where next to the target, or ECSZone_Window for a new pop-out window in the panel's workspace. A panel alone in its OS window stays.
 /// @return SHUResult_Ok, or SHUResult_ErrNotFound if a panel is not in the layout.
 /// @lua ecs.layout.move
 OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone);
