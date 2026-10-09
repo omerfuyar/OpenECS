@@ -146,7 +146,7 @@ function Panel:acceptDrops(types) end
 ---@return string? message Why no drag starts: no pointer button that was pressed on the panel is held.
 function Panel:startDrag(type, value) end
 
----The pixels a panel draws into. It is valid only while draw runs.
+---The pixels a panel draws into: a handle of type ecs.surface, which a panel can pass to a service that draws. It is valid only while draw runs.
 ---@class ecs.Surface
 ---@field width integer
 ---@field height integer

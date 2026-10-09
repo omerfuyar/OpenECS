@@ -3,6 +3,7 @@
 #include "base/Values.h"
 #include "runtime/Events.h"
 #include "runtime/Plugins.h"
+#include "runtime/Services.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -364,6 +365,9 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         panel->needsDraw = false;
 
         panel->type->desc.Draw(panel->state, &surface, seconds);
+
+        // the surface is valid only during Draw, so a Lua handle of it is too
+        ECSIServices_ForgetHandle(&surface);
         SDL_UpdateTexture(panel->texture, NULL, pixels->pixels, pixels->pitch);
     }
 }

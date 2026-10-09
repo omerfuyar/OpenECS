@@ -31,6 +31,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 17. Build and dependencies
 18. Platform notes
 19. Versions and releases
+20. Standard plugins
 - Glossary
 
 ---
@@ -144,7 +145,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 
 - No header that plugins include, and no function that plugins call, exposes a type from SDL, Lua, Clay or libffi.
 - `shu.h` is the exception; it is part of the plugin interface (1.3).
-- Native plugins reach SDL only through the built-in **sdl** plugin (9.8). Inside the core, every module calls SDL directly (1.7).
+- Native plugins get the core's SDL objects only through the built-in **sdl** plugin (9.8). A native plugin may call SDL itself, using the executable's copy (17.2), as the standard plugins do (20). Inside the core, every module calls SDL directly (1.7).
 - Plugins can call only the core functions marked `OPENECS_EXPORT`. Every other function of the core is hidden from them (17.2).
 
 ### 2.3 Start-up
@@ -312,8 +313,8 @@ typedef struct ECSSurface
 ### 5.4 How plugins draw
 
 - GPU panels get the GPU device and their texture through the **sdl** plugin (9.8) and draw with SDL's GPU API.
-- The **ui** plugin draws with SDL's 2D renderer and SDL3_ttf. It creates an offscreen renderer on the shared device (`SDL_CreateGPURenderer(device, NULL)`) and draws into the panel's texture.
-- The ui plugin draws only into GPU surfaces. Plugins that compute their own pixels use pixels surfaces.
+- Plugins that compute their own pixels use pixels surfaces.
+- The **ui** plugin draws into pixels surfaces, with SDL's surface functions and SDL3_ttf (20.2).
 
 ## 6. Layout
 
@@ -695,7 +696,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - A handle stands for an object owned by its provider: a pointer plus a type name and a destructor, registered with `ECSHandle_RegisterType(plugin, "audio.sound", Destroy)`. In C, a `handle<audio.sound>` is the object's pointer.
 - In Lua, a handle is a userdata whose metatable names its type. A handle of the wrong type is rejected with a clear error. When Lua no longer uses a handle, its garbage collector calls the destructor.
 - The same object always has the same Lua handle. A provider that still uses an object after giving it to Lua counts references, and its destructor drops one.
-- The core's own handle type is `ecs.panel`: Lua's panel handles (11.4).
+- The core's own handle types are `ecs.panel`, Lua's panel handles (11.4), and `ecs.surface`, the surface a panel draws into. A surface handle is valid only during the `Draw` call that gives it, so a panel can pass its surface to a service that draws, such as the ui plugin's (20.2).
 - A Lua plugin provides a handle type too: `ecs.handle.registerType(name)`, `ecs.handle.new(name, value)` for a handle that stands for a Lua value, and `ecs.handle.value(handle, name)`, which gives the value back to the plugin that owns the type. Users see such a handle like any other. The core keeps the value until the handle is collected.
 - Handles that wait for their finalizer at exit are collected before the handle types are freed.
 - A failed plugin's handles become invalid without their destructor. On exit, the objects of handles that Lua still holds are destroyed before plugins shut down.
@@ -749,7 +750,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 
 - A Lua panel type is a table (4.1). The core registers C callbacks that call its Lua functions in protected calls.
 - Panels are handles with methods: `panel:redraw()`, `panel:getId()`, `panel:getType()`, `panel:getTitle()`, `panel:setTitle(text)`, `panel:setUnsaved(unsaved)` and `panel:startTimer(seconds, repeat, fn)`. Each is also a function of `ecs.panel` that takes the panel first, such as `ecs.panel.getTitle(panel)`. A handle of a destroyed panel raises an error when it is used.
-- `draw(state, surface, seconds)` gets a surface with `width`, `height` and `scale`, and the methods `setPixel(x, y, color)`, `getPixel(x, y)` and `setRow(y, bytes, x)`. Colours are ARGB integers; `setRow` takes the row's pixels as a string in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
+- `draw(state, surface, seconds)` gets a surface handle (10.6) with `width`, `height` and `scale`, and the methods `setPixel(x, y, color)`, `getPixel(x, y)` and `setRow(y, bytes, x)`. Colours are ARGB integers; `setRow` takes the row's pixels as a string in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
 - `event(state, event)` gets a table: `type` (such as `"pointerDown"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheelX` and `wheelY` for the wheel, `key` (SDL's key name) for keys, `width` and `height` for `shown` and `resized`, and `x`, `y`, `dataType` and `value` for `drop` (7.9).
 
 ### 11.5 Parity
@@ -989,6 +990,7 @@ OpenECS follows the XDG Base Directory specification:
 - libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.
 - Native plugins are shared libraries, built against the plugin header only. They do not link against the core; their calls to it are resolved when they are loaded.
+- First-party native plugins may call SDL3 and SDL3_ttf. Like their calls to the core, these calls are resolved when the plugin is loaded, against the libraries the executable loaded, so every plugin uses the executable's copy of SDL.
 - A first-party plugin is built from every C file in its folder, `plugins/<name>/`, so the build needs no settings for each plugin. Its Lua files and its folders, which hold its Lua modules (9.6), are copied.
 
 ### 17.3 Compiler
@@ -1094,6 +1096,32 @@ OpenECS follows the XDG Base Directory specification:
 - They say what is new, and what people can do with it.
 - They say what breaks after the release: what plugins, presets, settings and sessions must change, and how.
 - They name the small fixes briefly.
+
+
+## 20. Standard plugins
+
+### 20.1 Rules
+
+- A standard plugin is a first-party plugin whose services other plugins build on (OVERVIEW 3.3). It is built and loaded like a third-party plugin: from its folder in `plugins/`, against the plugin interface only (2.2), with a manifest and a version of its own.
+- The core never refers to a standard plugin, and a user's plugin of the same name replaces it (9.3, 9.9).
+- Plugins that use a standard plugin name it in their manifest's `depends`, and look up its functions with the signatures it documents (10.5).
+
+### 20.2 ui
+
+- The `ui` plugin draws into the pixels surface of another plugin's panel. A panel's `Draw` passes its surface handle (10.6) to ui's functions.
+- Positions and sizes are in layout units; ui multiplies them by the surface's scale. Colours are ARGB integers.
+- It is a native plugin. It calls SDL3 and SDL3_ttf itself (17.2): it wraps the surface's pixels in an SDL surface for each call, and draws text with one SDL3_ttf surface text engine, which keeps the glyphs it has drawn.
+- Its font is the core's `ecs.font`, at the size the caller asks for; a relative path starts at the executable's folder.
+- Its functions:
+
+  | Function     | Signature                                                        | Does                                                                                                                           |
+  | ------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+  | `ui.fill`    | `void(handle<ecs.surface>, float, float, float, float, int64)`   | Fills a rectangle `x, y, width, height` with a colour, blending by its alpha.                                                  |
+  | `ui.text`    | `float(handle<ecs.surface>, string, float, float, float, int64)` | Draws text at `x, y`, the top left of its line, in a size and a colour, and gives its width.                                   |
+  | `ui.measure` | `void(string, float, out float, out float)`                      | Gives the width and the line height of a text in a size, without drawing it.                                                   |
+  | `ui.color`   | `int64(string)`                                                  | Reads a colour: `"#RRGGBB"`, `"#RRGGBBAA"`, or the name of a colour of the core's theme, such as `"text"` for `ecs.colorText`. |
+
+- A colour that cannot be read is reported, and gives opaque magenta, so the mistake shows.
 
 ---
 
