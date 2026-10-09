@@ -1,3 +1,4 @@
+---@type ecs.Manifest
 return {
   name = "swatches",
   version = "0.1.0",

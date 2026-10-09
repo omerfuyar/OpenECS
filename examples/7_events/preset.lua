@@ -1,4 +1,5 @@
 -- Run it with: OpenECS --preset examples/7_events/preset.lua
+---@type ecs.Preset
 return {
   format = 1,
   name = "events",

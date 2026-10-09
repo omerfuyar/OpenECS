@@ -1,5 +1,6 @@
 -- The core's own settings: OpenECS reads them at start, and they are the lowest settings layer.
 -- Plugins' defaults, the preset, the settings window and the user's settings file override them.
+---@type ecs.SettingsFile
 return {
   -- plugins that every tool loads: the settings window
   plugins = { "settings" },
@@ -38,6 +39,7 @@ return {
     ["8"] = "ecs.workspace.switch8",
     ["9"] = "ecs.workspace.switch9",
     ["0"] = "ecs.workspace.switch10",
+    ["W"] = "ecs.workspace.menu",
   },
 
   -- how focus follows the pointer: "click" or "hover"

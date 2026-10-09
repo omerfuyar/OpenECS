@@ -1,4 +1,5 @@
 -- Run it with: OpenECS --preset examples/2_native/preset.lua
+---@type ecs.Preset
 return {
   format = 1,
   name = "native",

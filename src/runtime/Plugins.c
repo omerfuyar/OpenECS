@@ -161,7 +161,7 @@ static void ECSIManifest_ReportMissing(const char *name)
 {
     char neededBy[OPENECS_PLUGINS_REPORT_SIZE];
     ECSIPlugin_NeededBy(cs(neededBy, sizeof(neededBy)));
-    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not found. It is needed by %s.", name, neededBy);
+    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not found. It is needed by %s.", name, neededBy);
 
     for (usz i = 0; i < PLUGINS.directoryCount; i++)
     {
@@ -226,7 +226,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
 
     if (api != OPENECS_API_VERSION)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' was made for plugin API %" SDL_PRIs64 "; this is version %d.", name, api, OPENECS_API_VERSION);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' was made for plugin API %" SDL_PRIs64 "; this is version %d.", name, api, OPENECS_API_VERSION);
         return SHUResult_ErrBadData;
     }
 
@@ -260,7 +260,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
 
         if (plugin.library == NULL)
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot load the library of plugin '%s': %s", name, SDL_GetError());
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot load the library of plugin '%s': %s", name, SDL_GetError());
             SDL_free(record);
             ECSIPlugin_Free(&plugin);
             return SHUResult_ErrFile;
@@ -271,7 +271,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
 
         if (Init == NULL)
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' does not export ECSPlugin_Init.", name);
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' does not export ECSPlugin_Init.", name);
             SDL_UnloadObject(plugin.library);
             SDL_free(record);
             ECSIPlugin_Free(&plugin);
@@ -292,7 +292,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
         record->failed = true;
         PLUGINS.hooks.RemoveRegistrations(record);
         ECSIPlugin_ForgetState(record);
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' failed to start (%s).", name, SHUResult_String(result));
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' failed to start (%s).", name, SHUResult_String(result));
         return result;
     }
 
@@ -310,7 +310,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
             record->failed = true;
             PLUGINS.hooks.RemoveRegistrations(record);
             ECSIPlugin_ForgetState(record);
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' failed to start its Lua code (%s).", name, SHUResult_String(result));
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' failed to start its Lua code (%s).", name, SHUResult_String(result));
             return result;
         }
     }
@@ -355,7 +355,7 @@ static SHUResult ECSIPlugin_Load(const char *name, const char *minimum)
     {
         char neededBy[OPENECS_PLUGINS_REPORT_SIZE];
         ECSIPlugin_NeededBy(cs(neededBy, sizeof(neededBy)));
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' has version %s, but %s needs version %s or a later one with the same major number.", name, version, neededBy, minimum);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' has version %s, but %s needs version %s or a later one with the same major number.", name, version, neededBy, minimum);
         ECSIManifest_Free(&manifest);
         return SHUResult_ErrBadData;
     }

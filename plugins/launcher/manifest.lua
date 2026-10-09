@@ -1,3 +1,4 @@
+---@type ecs.Manifest
 return {
   name = "launcher",
   version = "0.1.0",

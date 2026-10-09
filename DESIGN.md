@@ -407,7 +407,8 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Entries of one kind go into a submenu. An entry with a submenu shows `›`, and pointing at it opens the submenu beside it.
 - The panel's menu: close, restart, maximize, pop out, lock, reopen the last closed panel; the submenus Split (right, down), Move (left, right, up, down) and Move to workspace (each other workspace, by number and name); then the entries of the panel's type.
 - The entries of a type: `ECSPanelType_AddMenuEntry(plugin, type, function)`, or `ecs.panel.addMenuEntry(type, function)` in Lua, adds a service function whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and the key the plugin bound to the same function for the type.
-- The group's menu: the submenu Tabs, which shows any of its panels and marks the shown one with `•`; then maximize, lock, close the group's panels, and reopen.
+- The group's menu: the submenu Tabs, which shows any of its panels and marks the shown one with `•`; the submenu Workspaces; then maximize, lock, close the group's panels, and reopen.
+- The menu of workspaces lists each workspace by number and name, marks the current one with `•`, and switches to the one chosen. `ecs.workspace.menu` shows it near the focused panel's top left corner; it is also a submenu of the group's menu.
 - Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. Escape in the first menu, or a press outside the menus, closes them. While a menu is open, pointer and key events go to the menus only.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
 - The wheel over a tab row scrolls it by `ecs.tabScrollStep` layout units a step; down and right go toward the last tab. When a group shows another panel, its tab scrolls into view.
@@ -477,8 +478,9 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | `ecs.layout.reopen`                                 | Reopen the last closed panel                                                                             |
   | `ecs.panel.restart`                                 | Restart the failed panel                                                                                 |
   | `ecs.session.save`                                  | Save the session to a file, which a save dialog asks for (13.4)                                          |
-  | `ecs.session.open`                                  | Open a saved session, which an open dialog asks for (13.5)                                               |
+  | `ecs.session.open`                                  | Open a session or a preset, which an open dialog asks for (13.5)                                         |
   | `ecs.workspace.switch1` to `ecs.workspace.switch10` | Switch to workspace 1 to 10                                                                              |
+  | `ecs.workspace.menu`                                | Show the menu of workspaces (6.8)                                                                        |
 
 - Escape after the prefix cancels. It is not a function, so it always works.
 
@@ -882,7 +884,7 @@ The core converts only layout data.
 - Named fields are read and written in the order of their names, so the same session always writes the same file.
 - A session is written from the file it came from, with the current workspaces. So fields that the core does not use are kept.
 - A file is written to a temporary file, then renamed over the old one, so it is never left half-written.
-- `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. Without a path, they ask for the file with a save dialog that starts in the folder of saved sessions (16). Keys run `ecs.session.save` that way. Quitting still saves the tool's last session.
+- `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. Without a path, they ask for the file with a save dialog that starts in the folder of saved sessions (16) and suggests a file named after the preset. A chosen name without `.lua` gets it. Keys run `ecs.session.save` that way. Quitting still saves the tool's last session.
 
 ### 13.5 Opening a session or a preset
 
@@ -941,7 +943,8 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [--version
 ### 14.1 Error reports
 
 - A native plugin that crashes takes the program down. This cannot be prevented and is accepted.
-- An error report holds the plugin, the type of error, a message and, for Lua, a stack trace. It goes to the log. The user sees it where it applies: a faulted panel shows it; plugin loading problems appear in the log, and the panels of a plugin that did not load show placeholders (4.4). A message dialog is used only when start-up fails.
+- An error report holds the plugin, the type of error, a message and, for Lua, a stack trace. It goes to the log. The user sees it where it applies: a faulted panel shows it; plugin loading problems appear in the log as errors, the program goes on, and the panels of a plugin that did not load show placeholders (4.4).
+- A message dialog is used only when start-up fails. It names the step, the file it read, the last error that was logged, and where the log file is. The log file opens before the preset is read, so it holds the reason.
 
 ### 14.2 Policies
 

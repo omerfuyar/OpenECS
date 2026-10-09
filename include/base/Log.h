@@ -16,4 +16,12 @@ void ECSILog_OpenFile(const char *path);
 /// @brief Closes the log file. Lines logged later go to standard error only.
 void ECSILog_Terminate(void);
 
+/// @brief Gets the path of the log file.
+/// @return The path, or NULL if there is no log file.
+const char *ECSILog_GetPath(void);
+
+/// @brief Gets the last error or critical message, for the dialog of a failed start.
+/// @return The message, valid until the next one, or NULL if there was none.
+const char *ECSILog_GetLastError(void);
+
 #pragma endregion Declarations

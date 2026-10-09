@@ -1,14 +1,18 @@
 -- A button that counts its clicks. It draws with the ui standard plugin, and follows the pointer.
+-- A standard plugin ships with OpenECS for other plugins to build on; its manifest is in plugins/ui/.
 
 local ecs = require("ecs")
 
--- another plugin's functions are looked up by name and signature; get them once, while the plugin loads
+-- another plugin's functions, its services, are looked up by name and signature; get them once, while the plugin loads
+-- a signature is the result type, then the argument types: handle<ecs.surface> is the surface draw gets, int64 a colour,
+-- and an out argument comes back as an extra result
 local fill = assert(ecs.service.get("ui.fill", "void(handle<ecs.surface>, float, float, float, float, int64)"))
 local text = assert(ecs.service.get("ui.text", "float(handle<ecs.surface>, string, float, float, float, int64)"))
 local measure = assert(ecs.service.get("ui.measure", "void(string, float, out float, out float)"))
 local color = assert(ecs.service.get("ui.color", "int64(string)"))
 
-local WIDTH, HEIGHT, TEXT_SIZE = 200, 60, 18 -- in layout units, which ui scales to pixels
+-- layout units keep sizes the same on every screen; a surface's scale says how many pixels one layout unit is
+local WIDTH, HEIGHT, TEXT_SIZE = 200, 60, 18
 
 -- the button's rectangle, centred in a panel of a size in layout units
 local function buttonRect(width, height)
@@ -34,7 +38,7 @@ ecs.panel.registerType({
     button.width, button.height = surface.width / surface.scale, surface.height / surface.scale
     local left, top = buttonRect(button.width, button.height)
 
-    fill(surface, 0, 0, button.width, button.height, color("background")) -- a theme colour's name
+    fill(surface, 0, 0, button.width, button.height, color("background")) -- a colour of the core's theme, which settings change
     fill(surface, left, top, WIDTH, HEIGHT, color(button.hover and "#88C0D0" or "#5E81AC"))
 
     local label = ("Clicked %d times"):format(button.clicks)

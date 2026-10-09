@@ -1,5 +1,6 @@
 -- Run it with: OpenECS --preset examples/8_state/preset.lua
 -- Quit and run it again: the marks come back, because the tool's last session keeps them.
+---@type ecs.Preset
 return {
   format = 1,
   name = "state",

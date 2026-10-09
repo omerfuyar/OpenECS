@@ -1,4 +1,5 @@
 -- Run it with: OpenECS --preset examples/10_text_input/preset.lua
+---@type ecs.Preset
 return {
   format = 1,
   name = "textinput",
