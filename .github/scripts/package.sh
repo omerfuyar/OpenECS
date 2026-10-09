@@ -1,6 +1,6 @@
 #!/bin/sh
 # Packs a Release build for one platform into dist/openecs-VERSION-PLATFORM.tar.gz:
-# the program with its plugins, presets and resources; the plugin interface; OpenECS's license and the licenses of what it includes.
+# the program with its plugins, presets, examples and resources; the plugin interface; OpenECS's license and the licenses of what it includes.
 set -eu
 
 version="$1"

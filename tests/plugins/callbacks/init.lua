@@ -1,4 +1,4 @@
--- calls the twins' eachCanvas with Lua functions, and saves what it saw in its plugin state
+-- calls each of boxes and cboxes with Lua functions, and saves what it saw in its plugin state
 
 local ecs = require("ecs")
 assert(require("string") == string, "require gives Lua's modules for other names")
@@ -7,18 +7,18 @@ local SIGNATURE = "int(fn<void(handle<ecs.panel>, int)>)"
 local results = {}
 
 local function each(plugin)
-  local eachCanvas = assert(ecs.service.get(plugin .. ".eachCanvas", SIGNATURE))
+  local each_ = assert(ecs.service.get(plugin .. ".each", SIGNATURE))
   local seen = {}
-  local count = eachCanvas(function(panel, strokes)
+  local count = each_(function(panel, clicks)
     assert(ecs.panel.getType(panel) == panel:getType() and ecs.panel.getId(panel) == panel:getId())
-    seen[#seen + 1] = { type = panel:getType(), strokes = strokes }
+    seen[#seen + 1] = { type = panel:getType(), clicks = clicks }
   end)
-  return { count = count, seen = seen, without = eachCanvas(nil) }
+  return { count = count, seen = seen, without = each_(nil) }
 end
 
 local function run()
-  results.c = each("sketch_c")
-  results.lua = each("sketch_lua")
+  results.c = each("cboxes")
+  results.lua = each("boxes")
 
   -- a callback is a parameter only, and its signature has no callbacks
   local refused = {}
@@ -28,7 +28,7 @@ local function run()
   results.refused = refused
 end
 
-assert(ecs.service.register("callbacks", { run = { sig = "void()", doc = "Calls the twins' eachCanvas", fn = run } }))
+assert(ecs.service.register("callbacks", { run = { sig = "void()", doc = "Calls each of boxes and cboxes", fn = run } }))
 
 ecs.plugin.registerState({
   version = 1,

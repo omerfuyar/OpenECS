@@ -114,27 +114,35 @@ Debug builds run the static analyzer while compiling, and the sanitizers while t
 
 ### Running
 
-The build puts the executable, SDL's shared libraries, the first-party plugins and presets in `build/<LINK>/<TYPE>/bin/`.
+The build puts the executable, SDL's shared libraries, the first-party plugins and presets, and the examples in `build/<LINK>/<TYPE>/bin/`.
 
 ``` shell
 ./build/Static/Release/bin/OpenECS
-./build/Static/Release/bin/OpenECS --preset sketch
 ./build/Static/Release/bin/OpenECS --preset path/to/preset.lua
 ```
 
 Without a preset, OpenECS shows the launcher: it lists the presets and saved sessions, and Up, Down and Return or a click open one. Press Alt+W to see the core's keys; Alt+W then `,` opens the settings window.
 
-The `sketch` preset shows two example plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Shift and a drag carry a canvas's strokes to another canvas, and a canvas takes strokes files dropped from a file manager. Ctrl+Tab switches workspace.
+### Examples
+
+The examples in `examples/` show how to write plugins, one part at a time. Read them in the order of their numbers, from `1_hello` to `11_sketch`. Each holds a preset, its plugins and a test:
+
+``` shell
+./build/Static/Release/bin/OpenECS --preset build/Static/Release/bin/examples/1_hello/preset.lua
+```
+
+The last one, `11_sketch`, shows two plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Shift and a drag carry a canvas's strokes to another canvas, and a canvas takes strokes files dropped from a file manager. Ctrl+Tab switches workspace.
 
 ### Testing
 
-Debug builds run the tests in `tests/`. A test needs no display, and prints "The test passed." or the reason it failed. This command runs them all and names the ones that fail:
+Debug builds run the tests. The build copies `tests/` beside `bin/`, so build again after changing a test. A test needs no display, and prints "The test passed." or the reason it failed. These commands run the tests, then the examples' tests, and name the ones that fail:
 
 ``` shell
-for test in tests/*.lua; do ./build/Static/Debug/bin/OpenECS --test "$test" > /dev/null 2>&1 || echo "failed: $test"; done
+.github/scripts/test.sh build/Static/Debug/bin/OpenECS
+.github/scripts/test.sh build/Static/Debug/bin/OpenECS examples
 ```
 
-To see why a test fails, run it alone. DESIGN.md section 17.5 explains how to write one.
+To see why a test fails, run it alone: `./build/Static/Debug/bin/OpenECS --test build/Static/Debug/tests/menus.lua`. DESIGN.md section 17.5 explains how to write one.
 
 ### Checks
 

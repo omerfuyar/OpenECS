@@ -38,6 +38,7 @@ static struct
     SDL_MouseButtonFlags buttons; // the buttons held
     char **files;                 // stb_ds array of the paths that the test's files field names
     char **dropped;               // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
+    char *presets;                // the folder that the test's presets field names, ending with a separator, or NULL
     char *sessions;               // the folder that the test's sessions field names, ending with a separator, or NULL
 } TEST = {0};
 
@@ -464,6 +465,34 @@ static int ECSITest_Rect(lua_State *state)
     return 1;
 }
 
+/// @brief test.panel(id): a panel's title and type, whether it has unsaved work, and its fault: the error that stopped it, or why its type is missing.
+static int ECSITest_Panel(lua_State *state)
+{
+    lua_Integer id = luaL_checkinteger(state, 1);
+    ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : NULL;
+
+    if (panel == NULL)
+    {
+        return luaL_error(state, "no panel has the id %d", (int)id);
+    }
+
+    lua_createtable(state, 0, 4);
+    lua_pushstring(state, panel->title);
+    lua_setfield(state, -2, "title");
+    lua_pushstring(state, panel->typeName);
+    lua_setfield(state, -2, "type");
+    lua_pushboolean(state, panel->unsaved);
+    lua_setfield(state, -2, "unsaved");
+
+    if (panel->fault != NULL || panel->type == NULL)
+    {
+        lua_pushstring(state, panel->fault != NULL ? panel->fault : "the panel's type is missing");
+        lua_setfield(state, -2, "fault");
+    }
+
+    return 1;
+}
+
 /// @brief test.screenshot(path): draws a frame and saves it as a PNG file.
 static int ECSITest_Screenshot(lua_State *state)
 {
@@ -492,6 +521,7 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"wait", ECSITest_Wait},
     {"session", ECSITest_Session},
     {"rect", ECSITest_Rect},
+    {"panel", ECSITest_Panel},
     {"screenshot", ECSITest_Screenshot},
     {NULL, NULL},
 };
@@ -524,6 +554,24 @@ static void ECSITest_Finish(void)
     arrfree(TEST.events);
     arrfree(TEST.eventModifiers);
     TEST.nextEvent = 0;
+}
+
+/// @brief Reads a field of the test table, at -2, that names a folder relative to the test file.
+static void ECSITest_ReadFolder(lua_State *state, const char *field, const char *path, char **retFolder)
+{
+    const char *slash = SDL_strrchr(path, '/');
+
+    if (lua_getfield(state, -2, field) == LUA_TSTRING)
+    {
+        const char *folder = lua_tostring(state, -1);
+
+        if (SDL_asprintf(retFolder, "%.*s%s/", slash != NULL && folder[0] != '/' ? (int)(slash - path + 1) : 0, path, folder) < 0)
+        {
+            *retFolder = NULL;
+        }
+    }
+
+    lua_pop(state, 1);
 }
 
 #pragma endregion Source Only
@@ -603,18 +651,9 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     // the loop leaves the first value that is not a file on the stack, above the table
     lua_pop(state, lua_istable(state, -2) ? 2 : 1);
 
-    // the folder that stands for the saved sessions is relative to the test file too
-    if (lua_getfield(state, -2, "sessions") == LUA_TSTRING)
-    {
-        const char *sessions = lua_tostring(state, -1);
-
-        if (SDL_asprintf(&TEST.sessions, "%.*s%s/", slash != NULL && sessions[0] != '/' ? (int)(slash - path + 1) : 0, path, sessions) < 0)
-        {
-            TEST.sessions = NULL;
-        }
-    }
-
-    lua_pop(state, 1);
+    // the folders that stand for the user's presets and the saved sessions are relative to the test file too
+    ECSITest_ReadFolder(state, "presets", path, &TEST.presets);
+    ECSITest_ReadFolder(state, "sessions", path, &TEST.sessions);
 
     // the run function and the test table wait on the coroutine's stack until its first resume
     TEST.thread = lua_newthread(state);
@@ -647,6 +686,11 @@ char **ECSITest_GetFiles(usz *retCount)
     return TEST.files;
 }
 
+const char *ECSITest_GetPresets(void)
+{
+    return TEST.presets;
+}
+
 const char *ECSITest_GetSessions(void)
 {
     return TEST.sessions;
@@ -669,6 +713,7 @@ void ECSITest_Terminate(void)
     }
 
     arrfree(TEST.dropped);
+    SDL_free(TEST.presets);
     SDL_free(TEST.sessions);
     SDL_zero(TEST);
 }
@@ -754,6 +799,11 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 char **ECSITest_GetFiles(usz *retCount)
 {
     *retCount = 0;
+    return NULL;
+}
+
+const char *ECSITest_GetPresets(void)
+{
     return NULL;
 }
 

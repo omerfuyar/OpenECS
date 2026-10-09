@@ -36,7 +36,7 @@ local function readLua()
 end
 
 return {
-  preset = "presets/sketch.lua",
+  preset = "presets/boxes.lua",
   run = function()
     local functions = readLua()
     local named = {}
@@ -76,7 +76,7 @@ return {
     end
 
     -- the core's settings file binds keys to the core's functions, and to functions of the plugins it loads in every tool
-    local coreSettings = dofile(folder .. "../resources/settings.lua")
+    local coreSettings = dofile(folder .. "../bin/resources/settings.lua")
     local loaded = {}
 
     for _, plugin in ipairs(coreSettings.plugins or {}) do

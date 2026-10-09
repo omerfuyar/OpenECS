@@ -19,8 +19,9 @@ Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 | --------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `include/`      | Headers: the plugin header and the core's module headers, and `ecs.lua` for editors (DESIGN.md, sections 1.5 and 9.6). |
 | `src/`          | The core's source files.                                                                                               |
-| `plugins/`      | First-party plugins.                                                                                                   |
+| `plugins/`      | The standard plugins (DESIGN.md, section 20).                                                                          |
 | `presets/`      | First-party presets.                                                                                                   |
+| `examples/`     | Examples for plugin authors, from the first steps to complex ones (DESIGN.md, section 17.6).                           |
 | `dependencies/` | Third-party git submodules.                                                                                            |
 | `resources/`    | Files the program loads at run time.                                                                                   |
 | `tests/`        | Tests that Debug builds run (DESIGN.md, section 17.5).                                                                 |
@@ -74,6 +75,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Publish the branch at the start of the work, then push each commit to it.
 - Put small changes on the branch you work on; do not open a branch for each of them. Keep few branches at a time, each a whole piece of work, so they do not conflict.
 - Write a release's description once, when the release is ready, before the pull request from `dev` into `main`; not with each change.
+- A change between releases may break an example. Before a release, bring the examples up to date so their tests pass (DESIGN.md, section 17.6).
 - Commit messages have one line per change, starting with `-`. Details go on lines starting with `--`.
 
 ## Writing documents

@@ -1,7 +1,10 @@
 -- both sketch plugins drag their strokes with Shift, and take dropped strokes, text and files
 
+-- the folder of this test, for the file it drops
+local folder = debug.getinfo(1, "S").source:match("^@(.*/)") or "./"
+
 return {
-  preset = "presets/sketch.lua",
+  preset = "preset.lua",
   run = function(test)
     test.call("ecs.workspace.switch3")
     local canvases = test.session().workspaces[3].windows[1][1]
@@ -14,7 +17,7 @@ return {
     test.drag(lua.x + 100, lua.y + 100, c.x + 100, c.y + 100, "Shift")
 
     -- a file of three strokes on the C canvas, and a stroke as text on the Lua canvas
-    test.dropFiles(c.x + 10, c.y + 10, { "tests/files/three-strokes.txt" })
+    test.dropFiles(c.x + 10, c.y + 10, { folder .. "three-strokes.txt" })
     test.dropText(lua.x + 10, lua.y + 10, "4 4278190335 10.0 10.0 20.0 20.0\n")
 
     canvases = test.session().workspaces[3].windows[1][1]

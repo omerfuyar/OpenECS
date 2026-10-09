@@ -18,6 +18,10 @@ SHUWUR SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, cha
 /// @return The paths. Valid until ECSITest_Terminate.
 char **ECSITest_GetFiles(usz *retCount);
 
+/// @brief Gets the folder that the test's presets field names, which stands for the folder of the user's presets.
+/// @return The folder, ending with a separator, or NULL if the test names none. Valid until ECSITest_Terminate.
+const char *ECSITest_GetPresets(void);
+
 /// @brief Gets the folder that the test's sessions field names, which stands for the folder of saved sessions.
 /// @return The folder, ending with a separator, or NULL if the test names none. Valid until ECSITest_Terminate.
 const char *ECSITest_GetSessions(void);
