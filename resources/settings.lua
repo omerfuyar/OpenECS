@@ -42,6 +42,9 @@ return {
     ["W"] = "ecs.workspace.menu",
   },
 
+  -- save the tool's session when it quits, and start from it the next time; --fresh still starts from the preset
+  ["ecs.keepSession"] = false,
+
   -- how focus follows the pointer: "click" or "hover"
   ["ecs.focus"] = "click",
 

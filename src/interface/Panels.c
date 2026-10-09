@@ -848,6 +848,31 @@ void ECSPanel_Redraw(ECSPanel panel)
     panel->needsDraw = true;
 }
 
+void ECSSurface_Fill(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height, u32 color)
+{
+    SDL_assert(surface != NULL);
+
+    if (surface->type != ECSSurfaceType_Pixels)
+    {
+        return;
+    }
+
+    i32 left = SDL_max(x, 0);
+    i32 top = SDL_max(y, 0);
+    i32 right = (i32)SDL_min((i64)x + width, (i64)surface->width);
+    i32 bottom = (i32)SDL_min((i64)y + height, (i64)surface->height);
+
+    for (i32 row = top; row < bottom; row++)
+    {
+        u32 *pixel = (u32 *)((u8 *)surface->pixels.data + (usz)row * (usz)surface->pitch);
+
+        for (i32 column = left; column < right; column++)
+        {
+            pixel[column] = color;
+        }
+    }
+}
+
 const char *ECSPanel_GetTitle(ECSPanel panel)
 {
     SDL_assert(panel != NULL);

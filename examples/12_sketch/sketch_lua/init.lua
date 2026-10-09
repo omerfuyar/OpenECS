@@ -287,11 +287,7 @@ ecs.panel.registerType({
 
   draw = function(canvas, surface)
     canvas.width, canvas.height = surface.width, surface.height
-    local background = string.pack("=I4", BACKGROUND):rep(surface.width)
-
-    for y = 0, surface.height - 1 do
-      surface:setRow(y, background)
-    end
+    surface:fill(0, 0, surface.width, surface.height, BACKGROUND)
 
     paint(surface.width, surface.height, canvas.strokes, function(x, y, color)
       surface:setPixel(x, y, color)

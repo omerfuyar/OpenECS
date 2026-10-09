@@ -458,15 +458,7 @@ SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSe
     ECSValue_Destroy(&coreFile);
     SHU_ReturnResult(reader.result);
 
-    SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[ECSISettingsLayer_Preset]));
-    SHU_ReturnResult(ECSIValue_Copy(SETTINGS.layers[ECSISettingsLayer_Preset], presetSettings));
-    SETTINGS.paths[ECSISettingsLayer_Preset] = SDL_strdup(presetPath);
-
-    if (SETTINGS.paths[ECSISettingsLayer_Preset] == NULL)
-    {
-        return SHUResult_ErrAllocation;
-    }
-
+    SHU_ReturnResult(ECSISettings_SetPreset(presetSettings, presetPath));
     SETTINGS.appId = SDL_strdup(appId);
 
     if (SETTINGS.appId == NULL)
@@ -481,6 +473,34 @@ SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSe
 
     SHU_ReturnResult(ECSISettings_ReadFile(ECSISettingsLayer_Window, configFolder, OPENECS_SETTINGS_WINDOW_FILE, &SETTINGS.windowFile));
     return ECSISettings_ReadFile(ECSISettingsLayer_User, configFolder, OPENECS_SETTINGS_USER_FILE, NULL);
+}
+
+SHUResult ECSISettings_SetPreset(const ECSValue *presetSettings, const char *presetPath)
+{
+    SDL_assert(presetPath != NULL);
+    SDL_assert(shlenu(SETTINGS.settings) == 0);
+
+    ECSValue_Destroy(&SETTINGS.layers[ECSISettingsLayer_Preset]);
+    SDL_free(SETTINGS.paths[ECSISettingsLayer_Preset]);
+    SETTINGS.paths[ECSISettingsLayer_Preset] = SDL_strdup(presetPath);
+    SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[ECSISettingsLayer_Preset]));
+    SHU_ReturnResult(ECSIValue_Copy(SETTINGS.layers[ECSISettingsLayer_Preset], presetSettings));
+    return SETTINGS.paths[ECSISettingsLayer_Preset] == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
+}
+
+bool ECSISettings_PeekBool(const char *name, bool fallback)
+{
+    for (i32 layer = ECSISettingsLayer_Count - 1; layer >= 0; layer--)
+    {
+        const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[layer], name);
+
+        if (ECSValue_GetType(value) == ECSValueType_Bool)
+        {
+            return ECSValue_GetBool(value, fallback);
+        }
+    }
+
+    return fallback;
 }
 
 void ECSISettings_Terminate(void)

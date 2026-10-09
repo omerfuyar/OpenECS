@@ -27,6 +27,10 @@
 
 /// @brief The log file, in the state folder. Each start writes it anew.
 #define OPENECS_LOG_FILE "openecs.log"
+
+/// @brief The setting that keeps the tool's session between runs.
+#define OPENECS_KEEP_SESSION "ecs.keepSession"
+
 /// @brief Where the user's saved sessions go by default, in the data folder.
 #define OPENECS_SESSIONS_FOLDER "sessions/"
 /// @brief The user's presets, in the configuration folder.
@@ -248,33 +252,33 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_CheckStart(ECSISession_ReadInfo(APP.presetPath, &APP.preset), "reading the preset", APP.presetPath);
     SDL_free(testPreset);
 
-    // the tool's last session replaces the preset, unless the command line names a session or asks for a fresh start
-    APP.lastSession = ECSISession_GetLastPath(APP.stateFolder, APP.preset.appId);
-
+    // a session on the command line replaces the preset; its identity wins, so it may name another tool
     if (arguments->session != NULL && !APP.test)
     {
         APP.sessionPath = SDL_strdup(arguments->session);
-    }
-    else if (!arguments->fresh && APP.lastSession != NULL && SDL_GetPathInfo(APP.lastSession, NULL))
-    {
-        APP.sessionPath = SDL_strdup(APP.lastSession);
-    }
-
-    if (APP.sessionPath != NULL)
-    {
-        // the session's identity wins; it may name another tool, whose last session it then replaces
         ECSISession_FreeInfo(&APP.preset);
         ECSIApp_CheckStart(ECSISession_ReadInfo(APP.sessionPath, &APP.preset), "reading the session", APP.sessionPath);
-        SDL_free(APP.lastSession);
-        APP.lastSession = ECSISession_GetLastPath(APP.stateFolder, APP.preset.appId);
     }
-
-    const char *sourcePath = APP.sessionPath != NULL ? APP.sessionPath : APP.presetPath;
 
     char *coreSettingsPath = NULL;
     ECSIApp_CheckStart(SDL_asprintf(&coreSettingsPath, "%s%s", SDL_GetBasePath(), OPENECS_CORE_SETTINGS_FILE) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok, "finding the core's settings", NULL);
-    ECSIApp_CheckStart(ECSISettings_Initialize(coreSettingsPath, ECSValue_GetTableField(APP.preset.file, "settings"), sourcePath, APP.preset.appId, APP.configFolder), "reading the settings", NULL);
+    ECSIApp_CheckStart(ECSISettings_Initialize(coreSettingsPath, ECSValue_GetTableField(APP.preset.file, "settings"), APP.sessionPath != NULL ? APP.sessionPath : APP.presetPath, APP.preset.appId, APP.configFolder), "reading the settings", NULL);
     SDL_free(coreSettingsPath);
+
+    // with ecs.keepSession, the tool's last session replaces the preset, unless the command line asks for a fresh start
+    APP.lastSession = ECSISession_GetLastPath(APP.stateFolder, APP.preset.appId);
+
+    if (APP.sessionPath == NULL && !arguments->fresh && ECSISettings_PeekBool(OPENECS_KEEP_SESSION, false) && APP.lastSession != NULL && SDL_GetPathInfo(APP.lastSession, NULL))
+    {
+        APP.sessionPath = SDL_strdup(APP.lastSession);
+        ECSISession_FreeInfo(&APP.preset);
+        ECSIApp_CheckStart(ECSISession_ReadInfo(APP.sessionPath, &APP.preset), "reading the session", APP.sessionPath);
+        ECSIApp_CheckStart(ECSISettings_SetPreset(ECSValue_GetTableField(APP.preset.file, "settings"), APP.sessionPath), "reading the session's settings", APP.sessionPath);
+    }
+
+    ECSSettingDesc keepSession = {.name = OPENECS_KEEP_SESSION, .type = ECSSettingType_Bool, .description = "Save the tool's session when it quits, and start from it the next time"};
+    ECSIApp_CheckStart(ECSISettings_DeclareCore(&keepSession), "declaring the session settings", NULL);
+    const char *sourcePath = APP.sessionPath != NULL ? APP.sessionPath : APP.presetPath;
 
     SDL_SetAppMetadata(APP.preset.appName, NULL, APP.preset.appId);
 
@@ -390,7 +394,8 @@ char *ECSIApp_Stop(const char **retOption)
     ECSISanitizers_KeepLibraries();
     ECSITest_Terminate();
 
-    if (APP.lastSession != NULL && ECSSession_Save(APP.lastSession) == SHUResult_Ok)
+    // the setting in effect when the tool quits decides
+    if (APP.lastSession != NULL && ECSValue_GetBool(ECSSetting_Get(OPENECS_KEEP_SESSION), false) && ECSSession_Save(APP.lastSession) == SHUResult_Ok)
     {
         SDL_Log("Session saved to '%s'.", APP.lastSession);
     }

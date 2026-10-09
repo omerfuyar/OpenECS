@@ -1953,6 +1953,21 @@ static int ECSIBindings_SurfaceSetRow(lua_State *state)
     return 0;
 }
 
+static int ECSIBindings_SurfaceFill(lua_State *state)
+{
+    ECSSurface *surface = ECSIBindings_CheckSurface(1);
+    lua_Integer values[4];
+
+    // the rectangle is clipped to the surface, so larger numbers are clamped first
+    for (int i = 0; i < 4; i++)
+    {
+        values[i] = SDL_clamp(luaL_checkinteger(state, i + 2), -(lua_Integer)SDL_MAX_SINT32, (lua_Integer)SDL_MAX_SINT32);
+    }
+
+    ECSSurface_Fill(surface, (i32)values[0], (i32)values[1], (i32)values[2], (i32)values[3], (u32)luaL_checkinteger(state, 6));
+    return 0;
+}
+
 static int ECSIBindings_SurfaceIndex(lua_State *state)
 {
     ECSSurface *surface = ECSIBindings_CheckSurface(1);
@@ -1983,6 +1998,7 @@ static const luaL_Reg OPENECS_BINDINGS_SURFACE_METHODS[] = {
     {"setPixel", ECSIBindings_SurfaceSetPixel},
     {"getPixel", ECSIBindings_SurfaceGetPixel},
     {"setRow", ECSIBindings_SurfaceSetRow},
+    {"fill", ECSIBindings_SurfaceFill},
     {NULL, NULL},
 };
 

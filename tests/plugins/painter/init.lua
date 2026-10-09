@@ -74,6 +74,10 @@ ecs.panel.registerType({
     scrollbar(surface, 310, 80, 8, 100, 400, 100, 0)
     results.thumb = surface:getPixel(314, 85) == color("tabShown") and surface:getPixel(314, 170) == color("tabRow")
     results.thumbPlace = { thumb(100, 400, 100, 300) }
+
+    -- the core's own fill replaces pixels, in pixels, and clips
+    surface:fill(-5, 120, 15, 10, 0xFF0000FF)
+    results.surfaceFill = surface:getPixel(5, 125)
     kept = surface
   end,
 })
