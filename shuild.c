@@ -554,7 +554,7 @@ static void Shuild_Plugins(void)
         SHUI_SFormat(&include, "../../%sinclude/", OUTPUT_DIRECTORY.data);
         SHU_UtilCreateDirectory(output.data);
 
-        // a plugin's C files make its native library; its Lua files, the manifest among them, are copied
+        // a plugin's C files make its native library; its Lua files, the manifest among them, and its folders of Lua modules are copied
         bool native = false;
         DIR *folder = opendir(root.data);
         struct dirent *entry = NULL;
@@ -568,7 +568,7 @@ static void Shuild_Plugins(void)
             {
                 native = true;
             }
-            else if (EndsWith(entry->d_name, ".lua"))
+            else if (EndsWith(entry->d_name, ".lua") || (entry->d_type == DT_DIR && entry->d_name[0] != '.'))
             {
                 CopyFile(file.data, output.data);
             }
