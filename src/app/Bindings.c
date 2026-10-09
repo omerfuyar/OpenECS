@@ -4,6 +4,7 @@
 #include "interface/Input.h"
 #include "interface/Panels.h"
 #include "runtime/Events.h"
+#include "runtime/Plugins.h"
 #include "runtime/Services.h"
 #include "runtime/Settings.h"
 
@@ -2094,8 +2095,9 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIServices_ForEachCore(ECSIBindings_AddCore, state);
 }
 
-/// @brief The require of a plugin's environment. Its upvalues are the plugin's ecs table, its environment, its folder and the table of its loaded modules.
-/// It gives the ecs table for "ecs". It runs a module of the plugin's folder once, in the plugin's environment: "parts.shapes" is parts/shapes.lua or parts/shapes/init.lua. Lua's require gives other modules.
+/// @brief The require of a plugin's environment. Its upvalues are the plugin's ecs table, its environment, its folder, the table of its loaded modules and the plugin.
+/// It gives the ecs table for "ecs". It runs a module of the plugin's folder once, in the plugin's environment: "parts.shapes" is parts/shapes.lua or parts/shapes/init.lua.
+/// A plugin's name gives a table of that plugin's functions (DESIGN 10.5). Lua's require gives other modules.
 static int ECSIBindings_Require(lua_State *state)
 {
     const char *name = luaL_checkstring(state, 1);
@@ -2147,7 +2149,16 @@ static int ECSIBindings_Require(lua_State *state)
         return 1;
     }
 
+    // a plugin's name gives its functions, by local name
     lua_settop(state, 1);
+    ECSPlugin provider = ECSIPlugins_Get(name);
+
+    if (provider != NULL)
+    {
+        SHUResult result = ECSIServices_PushPlugin(lua_touserdata(state, lua_upvalueindex(5)), provider);
+        return result ? luaL_error(state, "the functions of '%s' are not available (%s)", name, SHUResult_String(result)) : 1;
+    }
+
     lua_getglobal(state, "require");
     lua_insert(state, 1);
     lua_call(state, lua_gettop(state) - 1, LUA_MULTRET);
@@ -2228,7 +2239,8 @@ SHUResult ECSIBindings_StartPlugin(ECSPlugin plugin, const char *folder, const c
     lua_pushvalue(state, -2);
     lua_pushstring(state, folder);
     lua_newtable(state);
-    lua_pushcclosure(state, ECSIBindings_Require, 4);
+    lua_pushlightuserdata(state, plugin);
+    lua_pushcclosure(state, ECSIBindings_Require, 5);
     lua_setfield(state, -2, "require");
     lua_newtable(state);
     lua_pushglobaltable(state);

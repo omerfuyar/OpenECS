@@ -514,18 +514,18 @@ SHUResult ECSPlugin_Init(ECSPlugin plugin)
         const char *signature;
         const char *description;
     } functions[] = {
-        {UI_NAME("fill"), (ECSFunction)UiFill, "void(handle<ecs.surface>, float, float, float, float, int64)", "Fill a rectangle with a colour"},
-        {UI_NAME("text"), (ECSFunction)UiText, "float(handle<ecs.surface>, string, float, float, float, int64)", "Draw text and give its width"},
-        {UI_NAME("measure"), (ECSFunction)UiMeasure, "void(string, float, out float, out float)", "Give the width and line height of a text"},
-        {UI_NAME("color"), (ECSFunction)UiColor, "int64(string)", "Read a colour, or a colour of the theme by name"},
-        {UI_NAME("outline"), (ECSFunction)UiOutline, "void(handle<ecs.surface>, float, float, float, float, float, int64)", "Draw the edge of a rectangle"},
-        {UI_NAME("image"), (ECSFunction)UiImageDraw, "bool(handle<ecs.surface>, string, float, float, float, float)", "Draw an image file stretched to a rectangle"},
-        {UI_NAME("imageSize"), (ECSFunction)UiImageSize, "bool(string, out float, out float)", "Give an image file's size in pixels"},
-        {UI_NAME("button"), (ECSFunction)UiButton, "void(handle<ecs.surface>, string, float, float, float, float, int)", "Draw a button with a label"},
-        {UI_NAME("check"), (ECSFunction)UiCheck, "void(handle<ecs.surface>, float, float, float, bool)", "Draw a check box"},
-        {UI_NAME("field"), (ECSFunction)UiField, "float(handle<ecs.surface>, string, float, float, float, float, bool)", "Draw a text field and give its cursor's x"},
-        {UI_NAME("scrollbar"), (ECSFunction)UiScrollbar, "void(handle<ecs.surface>, float, float, float, float, float, float, float)", "Draw a vertical scrollbar"},
-        {UI_NAME("thumb"), (ECSFunction)UiThumb, "void(float, float, float, float, out float, out float)", "Give where a scrollbar's thumb is and how long"},
+        {UI_NAME("fill"), (ECSFunction)UiFill, "void(handle<ecs.surface> surface, float x, float y, float width, float height, int64 color)", "Fill a rectangle with a colour"},
+        {UI_NAME("text"), (ECSFunction)UiText, "float(handle<ecs.surface> surface, string text, float x, float y, float size, int64 color)", "Draw text and give its width"},
+        {UI_NAME("measure"), (ECSFunction)UiMeasure, "void(string text, float size, out float width, out float lineHeight)", "Give the width and line height of a text"},
+        {UI_NAME("color"), (ECSFunction)UiColor, "int64(string color)", "Read a colour, or a colour of the theme by name"},
+        {UI_NAME("outline"), (ECSFunction)UiOutline, "void(handle<ecs.surface> surface, float x, float y, float width, float height, float thickness, int64 color)", "Draw the edge of a rectangle"},
+        {UI_NAME("image"), (ECSFunction)UiImageDraw, "bool(handle<ecs.surface> surface, string path, float x, float y, float width, float height)", "Draw an image file stretched to a rectangle"},
+        {UI_NAME("imageSize"), (ECSFunction)UiImageSize, "bool(string path, out float width, out float height)", "Give an image file's size in pixels"},
+        {UI_NAME("button"), (ECSFunction)UiButton, "void(handle<ecs.surface> surface, string label, float x, float y, float width, float height, int state)", "Draw a button with a label"},
+        {UI_NAME("check"), (ECSFunction)UiCheck, "void(handle<ecs.surface> surface, float x, float y, float size, bool on)", "Draw a check box"},
+        {UI_NAME("field"), (ECSFunction)UiField, "float(handle<ecs.surface> surface, string text, float x, float y, float width, float height, bool focused)", "Draw a text field and give its cursor's x"},
+        {UI_NAME("scrollbar"), (ECSFunction)UiScrollbar, "void(handle<ecs.surface> surface, float x, float y, float width, float height, float total, float shown, float offset)", "Draw a vertical scrollbar"},
+        {UI_NAME("thumb"), (ECSFunction)UiThumb, "void(float length, float total, float shown, float offset, out float start, out float thumbLength)", "Give where a scrollbar's thumb is and how long"},
     };
 
     // a plugin whose Init fails gets no Shutdown, so it cleans up here

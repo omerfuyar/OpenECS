@@ -119,27 +119,27 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 In order: a module includes only the modules above it (1.5). The modules are in four groups, each in its own folder.
 
-| Group     | Module   | Job                                                                                                                 |
-| --------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
-| base      | Log      | Where SDL's log goes, and how its lines look (14.4).                                                                |
-|           | Sanitizers | The sanitizers' settings in Debug builds (17.3).                                                                  |
-|           | Values   | Generic values (10.3).                                                                                              |
-|           | Lua      | The Lua state. Reads data files (11.2) and runs all Lua code in protected calls.                                    |
-| runtime   | Plugins  | Finding, ordering and loading plugins. Logging for plugins.                                                         |
-|           | Settings | Declarations, layers, explanations.                                                                                 |
-|           | Events   | Core and plugin events, the event queue, timers, worker threads.                                                    |
-|           | Services | Function registry, signatures, calls between C and Lua. The only module that calls libffi.                          |
-| interface | Panels   | Panel types, panels, and the pixels each panel draws.                                                               |
-|           | Layout   | Workspaces and their layout trees: operations, tidying, sizes, focus, closed panels and saving.                     |
-|           | Popups   | Popups, the pixels each popup draws, and its events (4.6).                                                          |
-|           | Window   | OS windows and their renderers, frame pacing, and the core's own interface: tab rows, grips, menus, dragging and hit testing. The only module that calls Clay. |
-|           | Keys     | Key combinations, the core prefix and the keys after it, and every key binding (7.3 to 7.5, 7.8).                  |
-|           | Menus    | The core's bindable functions, and the panel and group menus that offer them (6.8).                                 |
-|           | Input    | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input, the clipboard, dialogs. |
-| app       | Session  | Reading presets and sessions, applying them, writing them.                                                          |
-|           | Bindings | The `ecs` module: the plugin interface for Lua plugins (11.3).                                                      |
-|           | Test     | Runs a test in Debug builds (17.5).                                                                                 |
-|           | App      | Start-up, the main loop and shutdown (2.3, 3.1, 2.4).                                                               |
+| Group     | Module     | Job                                                                                                                                                            |
+| --------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| base      | Log        | Where SDL's log goes, and how its lines look (14.4).                                                                                                           |
+|           | Sanitizers | The sanitizers' settings in Debug builds (17.3).                                                                                                               |
+|           | Values     | Generic values (10.3).                                                                                                                                         |
+|           | Lua        | The Lua state. Reads data files (11.2) and runs all Lua code in protected calls.                                                                               |
+| runtime   | Plugins    | Finding, ordering and loading plugins. Logging for plugins.                                                                                                    |
+|           | Settings   | Declarations, layers, explanations.                                                                                                                            |
+|           | Events     | Core and plugin events, the event queue, timers, worker threads.                                                                                               |
+|           | Services   | Function registry, signatures, calls between C and Lua, definition files (10.10). The only module that calls libffi.                                           |
+| interface | Panels     | Panel types, panels, and the pixels each panel draws.                                                                                                          |
+|           | Layout     | Workspaces and their layout trees: operations, tidying, sizes, focus, closed panels and saving.                                                                |
+|           | Popups     | Popups, the pixels each popup draws, and its events (4.6).                                                                                                     |
+|           | Window     | OS windows and their renderers, frame pacing, and the core's own interface: tab rows, grips, menus, dragging and hit testing. The only module that calls Clay. |
+|           | Keys       | Key combinations, the core prefix and the keys after it, and every key binding (7.3 to 7.5, 7.8).                                                              |
+|           | Menus      | The core's bindable functions, and the panel and group menus that offer them (6.8).                                                                            |
+|           | Input      | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input, the clipboard, dialogs.                                         |
+| app       | Session    | Reading presets and sessions, applying them, writing them.                                                                                                     |
+|           | Bindings   | The `ecs` module: the plugin interface for Lua plugins (11.3).                                                                                                 |
+|           | Test       | Runs a test in Debug builds (17.5).                                                                                                                            |
+|           | App        | Start-up, the main loop and shutdown (2.3, 3.1, 2.4).                                                                                                          |
 
 ### 2.2 The boundary
 
@@ -636,7 +636,8 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 - A plugin gets the core's Lua names from the `ecs` module: `local ecs = require("ecs")`. There is no global `ecs`.
 - The environment has its own `require`. For `"ecs"` it gives the plugin's own `ecs` table, whose functions carry the plugin, so the core knows which plugin made an `ecs` call.
 - For other names, `require` first looks in the plugin's folder: `require("parts.shapes")` finds `parts/shapes.lua`, or else `parts/shapes/init.lua`. It runs the module once, in the plugin's environment, so the module can also `require("ecs")`, and gives what the module returns, or `true` if it returns nothing. Each plugin has its own modules, so two plugins can have modules of the same name.
-- Names that the plugin's folder does not hold go to Lua's `require`.
+- A name that the plugin's folder does not hold, and that is a plugin's name, gives that plugin's functions as a table, by local name: `local ui = require("ui")` gives `ui.fill` for `ui.fill` (10.5).
+- Other names go to Lua's `require`.
 - `include/ecs.lua` describes the `ecs` module for editors: every function's parameters, results and documentation, in LuaLS annotations. It changes with the bindings.
 - It also describes the files plugin authors write: `ecs.Manifest`, `ecs.Preset`, `ecs.Session` and `ecs.SettingsFile`. `---@type ecs.Preset` above a file's `return` gives editors completion and checks for its fields. A plugin's author adds the build's `include/` folder to `workspace.library` in the plugin's `.luarc.json`.
 - The manifest's `lua` file runs once, in a protected call, after the native `ECSPlugin_Init`. An error fails the plugin.
@@ -691,6 +692,7 @@ ecs.service.register("audio", {
 | `fn<signature>`   | a function to call back (10.4)                     |
 | `out <type>`      | an output parameter; in Lua, an extra return value |
 
+- A parameter may have a name after its type: `void(string path, float volume)`. Names only document; they never change how signatures compare. Definition files use them (10.10).
 - Structures are passed as handles or buffers, never by value.
 - In C, an `out` parameter is a pointer to its type. An `out value` is a value that the caller gives and the function fills.
 - There is no fixed limit on the number of parameters.
@@ -722,6 +724,8 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - A plugin asks for a function by name and states the signature it expects. The core compares it with the registered signature and refuses a mismatch, so a version mismatch shows up at lookup instead of crashing a call.
 - A plugin may look up its own functions, and functions of plugins named in its manifest's dependencies. A provider fails only while it loads, before the plugins that depend on it, and those are skipped (14.2). So a plugin never uses a failed provider.
 - C: `ECSService_GetFunction(plugin, &play, "audio.play", "int(string, float)")`. Lua: `ecs.service.get("audio.play", "int(string, float)")`, where the signature may be left out.
+- Lua also gets every function of a plugin at once: `local audio = require("audio")` (9.6), with the same rule.
+- C gets them at once from the plugin's definition header (10.10): `AudioFunctions audio; AudioFunctions_Get(plugin, &audio)`, then `audio.play(path, 1.0f)`.
 
 ### 10.6 Handles
 
@@ -746,6 +750,14 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 
 - Each function's call description is prepared once, at registration.
 - The core cannot check that a C function really matches its declared signature. A wrong declaration is a bug in the plugin and may crash the program.
+
+### 10.10 Definition files
+
+- `openecs --definitions FOLDER` starts the tool as usual but without a display, writes two definition files for each loaded plugin, and exits. Nothing is opened or saved.
+- `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`.
+- `NAME.h` is a C header. Its structure is named after the plugin in PascalCase, such as `SketchCFunctions` for `sketch_c`, and has one typed function pointer for each function. `SketchCFunctions_Get(plugin, &functions)` looks them all up with their signatures.
+- A parameter without a name is called `arg1`, `arg2` and so on.
+- Types: `int` and `int64` are `integer` in Lua and `i32` and `i64` in C, `float` and `double` are `number` and `f32` and `f64`, `buffer` is `string` and `SHUSlice`, and `value` is `any` and `const ECSValue *`. The core's handles are `ecs.Panel`, `ecs.Popup` and `ecs.Surface` in Lua and `ECSPanel`, `ECSPopup` and `ECSSurface *` in C; other handles are `userdata` and `void *`.
 
 ## 11. Lua
 
@@ -917,7 +929,7 @@ The core converts only layout data.
 ### 13.6 Command line
 
 ```
-openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE] [-v|--version] [-h|--help] [FILE...]
+openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE] [-d|--definitions FOLDER] [-v|--version] [-h|--help] [FILE...]
 ```
 
 - `--version` prints the version of OpenECS (19.1) and of the plugin API, and exits.
@@ -925,6 +937,7 @@ openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE
 - Each option has a short form of one letter. An argument that starts with `-` and is not an option, or an option without its value, is reported, and OpenECS exits with status 2.
 - `--fresh` starts from the preset even when `ecs.keepSession` is on (13.4).
 - `--test` runs a test (17.5).
+- `--definitions` writes the definition files of the plugins' functions, and exits (10.10).
 - Without `--preset` and `--session`, OpenECS starts with the preset `launcher` (13.8).
 - A preset's name is looked up in the user's presets, then in the first-party presets (16). A name that has a `/` or ends with `.lua` is a path.
 - A session's identity wins over the preset's, so the session is saved again as the last session of its own tool, if `ecs.keepSession` is on.
@@ -1133,11 +1146,11 @@ OpenECS follows the XDG Base Directory specification:
 
 - `.github/workflows/checks.yml` runs on every push and pull request to `dev` and `main`:
 
-  | Check             | Does                                                                                                                                                                                                                                                                             |
-  | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `Debug (Linux)`   | Builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs every test (17.5) under the sanitizers; a failed test or a report fails it. On `main` and pull requests into it, it also runs the examples' tests (17.6). |
-  | `Release (Linux)` | Builds in Release, so code that only Release builds compile or link fails before a release.                                                                                                                                                                                      |
-  | `Lua (LuaLS)`     | Checks every Lua file with LuaLS, so code that misuses the `ecs` module, and mistakes in `ecs.lua`, fail it (9.6).                                                                                                                                                               |
+  | Check             | Does                                                                                                                                                                                                                                                                                                                                                                        |
+  | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `Debug (Linux)`   | Builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs every test (17.5) under the sanitizers; a failed test or a report fails it. Then writes the definition files of the tests' plugins (10.10) and compiles each C header. On `main` and pull requests into it, it also runs the examples' tests (17.6). |
+  | `Release (Linux)` | Builds in Release, so code that only Release builds compile or link fails before a release.                                                                                                                                                                                                                                                                                 |
+  | `Lua (LuaLS)`     | Checks every Lua file with LuaLS, so code that misuses the `ecs` module, and mistakes in `ecs.lua`, fail it (9.6).                                                                                                                                                                                                                                                          |
 
 - The steps are scripts in `.github/scripts/`, so they run the same way on a contributor's computer.
 - The built dependencies are kept between runs until a submodule or the build changes. OpenECS's own files are compiled every time, so the analyzer sees all of them.
