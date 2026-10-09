@@ -219,7 +219,12 @@ void ECSIApp_Start(const ECSIArguments *arguments)
         APP.stateFolder = ECSIApp_XdgFolder("XDG_STATE_HOME", ".local/state");
     }
 
-    if (APP.configFolder != NULL && SDL_asprintf(&APP.presetsFolder, "%s%s", APP.configFolder, OPENECS_PRESETS_FOLDER) < 0)
+    // a test's presets field names the folder that stands for the user's presets
+    if (APP.test)
+    {
+        APP.presetsFolder = ECSITest_GetPresets() == NULL ? NULL : SDL_strdup(ECSITest_GetPresets());
+    }
+    else if (APP.configFolder != NULL && SDL_asprintf(&APP.presetsFolder, "%s%s", APP.configFolder, OPENECS_PRESETS_FOLDER) < 0)
     {
         APP.presetsFolder = NULL;
     }

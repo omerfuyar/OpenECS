@@ -34,8 +34,6 @@ static SHUModuleType LINK_TYPE = SHUModuleType_LibraryStatic;
 static SHUI_String BUILD_DIRECTORY = {0};
 static SHUI_String OUTPUT_DIRECTORY = {0};
 
-static const char *const PLUGINS[] = {"ui", "launcher", "settings", "sketch_c", "sketch_lua"};
-
 #pragma endregion Setup
 
 static void SetupConfiguration(int argc, char **argv);
@@ -539,60 +537,133 @@ static bool EndsWith(const char *name, const char *suffix)
     return nameLength >= suffixLength && strcmp(name + nameLength - suffixLength, suffix) == 0;
 }
 
+/// @brief Calls a function for each folder in a folder, in no order; names starting with a dot are left out.
+static void ForEachFolder(const char *path, void (*function)(const char *path, const char *name))
+{
+    DIR *folder = opendir(path);
+    struct dirent *entry = NULL;
+
+    while (folder != NULL && (entry = readdir(folder)) != NULL)
+    {
+        if (entry->d_type == DT_DIR && entry->d_name[0] != '.')
+        {
+            function(path, entry->d_name);
+        }
+    }
+
+    if (folder != NULL)
+    {
+        closedir(folder);
+    }
+}
+
+/// @brief Compiles the C files of a plugin's folder, root, into the plugin's native library in output. Does nothing if the folder has no C file.
+static void Shuild_NativePlugin(const char *name, const char *root, const char *output)
+{
+    bool native = false;
+    DIR *folder = opendir(root);
+    struct dirent *entry = NULL;
+
+    while (folder != NULL && (entry = readdir(folder)) != NULL)
+    {
+        native = native || EndsWith(entry->d_name, ".c");
+    }
+
+    if (folder != NULL)
+    {
+        closedir(folder);
+    }
+
+    if (!native)
+    {
+        return;
+    }
+
+    // the include path is relative to the plugin's folder, so it climbs one level for each folder in root
+    SHUI_String include = {0};
+
+    for (const char *c = root; *c != '\0'; c++)
+    {
+        if (*c == '/')
+        {
+            SHUI_SAppendC(&include, "../");
+        }
+    }
+
+    SHUI_SAppendC(&include, OUTPUT_DIRECTORY.data);
+    SHUI_SAppendC(&include, "include/");
+
+    SHU_ModuleBegin(name, root);
+    SetBuildFlags(true);
+    SHU_CompilerAddFlags(" -fvisibility=hidden");
+
+    // plugins see only the copied plugin header and the dependencies' headers, never the core's headers
+    SHU_ModuleAddSourceFile("./");
+    SHU_ModuleAddIncludeDirectory(include.data);
+    SHU_ModuleCompile(output, SHUModuleType_LibraryDynamic);
+}
+
+// a first-party plugin's C files make its native library; its Lua files, the manifest among them, and its folders of Lua modules are copied
+static void Shuild_Plugin(const char *path, const char *name)
+{
+    SHUI_String root;
+    SHUI_String output;
+    SHUI_SFormat(&root, "%s%s/", path, name);
+    SHUI_SFormat(&output, "%sbin/plugins/%s/", OUTPUT_DIRECTORY.data, name);
+    SHU_UtilCreateDirectory(output.data);
+
+    DIR *folder = opendir(root.data);
+    struct dirent *entry = NULL;
+
+    while (folder != NULL && (entry = readdir(folder)) != NULL)
+    {
+        SHUI_String file;
+        SHUI_SFormat(&file, "%s%s", root.data, entry->d_name);
+
+        if (EndsWith(entry->d_name, ".lua") || (entry->d_type == DT_DIR && entry->d_name[0] != '.'))
+        {
+            CopyFile(file.data, output.data);
+        }
+    }
+
+    if (folder != NULL)
+    {
+        closedir(folder);
+    }
+
+    Shuild_NativePlugin(name, root.data, output.data);
+}
+
+// a plugin folder of an example or of the tests is built in place, in the copy of its folder
+static void Shuild_CopiedPlugin(const char *path, const char *name)
+{
+    SHUI_String root;
+    SHUI_String output;
+    SHUI_SFormat(&root, "%s%s/", path, name);
+    SHUI_SFormat(&output, "%s%s%s/", OUTPUT_DIRECTORY.data, strncmp(path, "tests/", 6) == 0 ? "" : "bin/", root.data);
+    Shuild_NativePlugin(name, root.data, output.data);
+}
+
+static void Shuild_Example(const char *path, const char *name)
+{
+    SHUI_String root;
+    SHUI_SFormat(&root, "%s%s/", path, name);
+    ForEachFolder(root.data, Shuild_CopiedPlugin);
+}
+
 static void Shuild_Plugins(void)
 {
-    for (usz i = 0; i < sizeof(PLUGINS) / sizeof(*PLUGINS); i++)
-    {
-        const char *currentPlugin = PLUGINS[i];
+    ForEachFolder("plugins/", Shuild_Plugin);
 
-        SHUI_String root;
-        SHUI_String output;
-        SHUI_String include;
+    // examples are copied whole, their sources too, and each of their plugin folders is built in the copy
+    SHU_UtilRun("rm -rf %sbin/examples", OUTPUT_DIRECTORY.data);
+    SHU_UtilRun("cp -r examples %sbin/", OUTPUT_DIRECTORY.data);
+    ForEachFolder("examples/", Shuild_Example);
 
-        SHUI_SFormat(&root, "plugins/%s/", currentPlugin);
-        SHUI_SFormat(&output, "%sbin/plugins/%s/", OUTPUT_DIRECTORY.data, currentPlugin);
-        SHUI_SFormat(&include, "../../%sinclude/", OUTPUT_DIRECTORY.data);
-        SHU_UtilCreateDirectory(output.data);
-
-        // a plugin's C files make its native library; its Lua files, the manifest among them, and its folders of Lua modules are copied
-        bool native = false;
-        DIR *folder = opendir(root.data);
-        struct dirent *entry = NULL;
-
-        while (folder != NULL && (entry = readdir(folder)) != NULL)
-        {
-            SHUI_String file;
-            SHUI_SFormat(&file, "%s%s", root.data, entry->d_name);
-
-            if (EndsWith(entry->d_name, ".c"))
-            {
-                native = true;
-            }
-            else if (EndsWith(entry->d_name, ".lua") || (entry->d_type == DT_DIR && entry->d_name[0] != '.'))
-            {
-                CopyFile(file.data, output.data);
-            }
-        }
-
-        if (folder != NULL)
-        {
-            closedir(folder);
-        }
-
-        if (!native)
-        {
-            continue;
-        }
-
-        SHU_ModuleBegin(currentPlugin, root.data);
-        SetBuildFlags(true);
-        SHU_CompilerAddFlags(" -fvisibility=hidden");
-
-        // plugins see only the copied plugin header and the dependencies' headers, never the core's headers
-        SHU_ModuleAddSourceFile("./");
-        SHU_ModuleAddIncludeDirectory(include.data);
-        SHU_ModuleCompile(output.data, SHUModuleType_LibraryDynamic);
-    }
+    // the tests are copied beside bin/, so their presets and plugins are found next to the test files, and their native plugins are built there
+    SHU_UtilRun("rm -rf %stests", OUTPUT_DIRECTORY.data);
+    SHU_UtilRun("cp -r tests %s", OUTPUT_DIRECTORY.data);
+    ForEachFolder("tests/plugins/", Shuild_CopiedPlugin);
 }
 
 static void Shuild_other(void)

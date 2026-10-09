@@ -13,6 +13,6 @@ return {
 
     test.key("Alt+W")
     test.key("K")
-    test.match(test.session().workspaces[1].windows[1], { panels = { { type = "sketch_c.clock" } } }, "K closes the focused canvas")
+    test.match(test.session().workspaces[1].windows[1], { panels = { { type = "boxes.two" } } }, "K closes the focused box")
   end,
 }

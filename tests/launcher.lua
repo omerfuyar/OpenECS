@@ -6,10 +6,11 @@ local function chosen(test)
 end
 
 return {
+  presets = "files/presets",
   sessions = "files/sessions",
   run = function(test)
-    -- the sketch preset first, then the sessions; the launcher's own preset is not listed
-    test.match(chosen(test), { kind = "preset", name = "sketch" }, "the first entry")
+    -- the paint preset first, then the sessions; the launcher's own preset is not listed
+    test.match(chosen(test), { kind = "preset", name = "paint" }, "the first entry")
 
     test.call("launcher.down")
     test.match(chosen(test), { kind = "session", name = "drawing" }, "after down")
@@ -28,9 +29,9 @@ return {
     -- a click chooses the entry under it and opens it; a test cannot open one, so the launcher stays
     local list = test.rect(1)
     test.click(list.x + 100, list.y + 90)
-    test.match(chosen(test), { kind = "preset", name = "sketch" }, "after a click on the first entry")
+    test.match(chosen(test), { kind = "preset", name = "paint" }, "after a click on the first entry")
 
     test.call("launcher.open")
-    test.match(chosen(test), { kind = "preset", name = "sketch" }, "after open")
+    test.match(chosen(test), { kind = "preset", name = "paint" }, "after open")
   end,
 }

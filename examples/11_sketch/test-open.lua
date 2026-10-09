@@ -1,4 +1,4 @@
--- files on the command line go to the preset's open function, here boxes.open, which opens a box with each file's lines
+-- files on the command line go to the preset's open function, here sketch_c.open, which opens a canvas with each file's strokes
 
 -- the panels of a layout node and its children
 local function addPanels(node, panels)
@@ -12,8 +12,8 @@ local function addPanels(node, panels)
 end
 
 return {
-  preset = "presets/boxes.lua",
-  files = { "files/three-lines.txt", "files/missing.txt" },
+  preset = "preset.lua",
+  files = { "three-strokes.txt", "missing.txt" },
   run = function(test)
     local panels = {}
 
@@ -25,11 +25,11 @@ return {
     local opened = {}
 
     for _, panel in ipairs(panels) do
-      if panel.type == "boxes.one" and #panel.state.lines > 0 then
+      if panel.type == "sketch_c.canvas" and #panel.state.strokes > 0 then
         opened[#opened + 1] = panel.state
       end
     end
 
-    test.match(opened, { { lines = { "first line", "second line", "third line" } } }, "opened boxes")
+    test.match(opened, { { strokes = { { size = 4, points = { 10, 10, 50, 50 } }, { size = 6 }, { size = 2 } } } }, "opened canvases")
   end,
 }

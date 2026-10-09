@@ -1,18 +1,18 @@
 -- dragging a grip onto the centre of a panel groups them; dragging a tab to an edge splits them again
 return {
-  preset = "presets/sketch.lua",
+  preset = "presets/boxes.lua",
   run = function(test)
-    local canvas = test.rect(1)
-    local clock = test.rect(2)
+    local one = test.rect(1)
+    local two = test.rect(2)
 
     -- the grip shows near the top edge of a panel without a tab row
-    test.move(clock.x + clock.width / 2, clock.y + 30)
-    test.drag(clock.x + clock.width / 2, clock.y + 8, canvas.x + canvas.width / 2, canvas.y + canvas.height / 2)
-    test.match(test.session().workspaces[1].windows[1], { panels = { { type = "sketch_c.canvas" }, { type = "sketch_c.clock" } } }, "grouped")
+    test.move(two.x + two.width / 2, two.y + 30)
+    test.drag(two.x + two.width / 2, two.y + 8, one.x + one.width / 2, one.y + one.height / 2)
+    test.match(test.session().workspaces[1].windows[1], { panels = { { type = "boxes.one" }, { type = "boxes.two" } } }, "grouped")
 
-    -- the clock is shown, and its tab is the second one in the tab row
-    clock = test.rect(2)
-    test.drag(clock.x + 150, clock.y - 13, clock.x + clock.width - 10, clock.y + clock.height / 2)
-    test.match(test.session().workspaces[1].windows[1], { split = "horizontal", { panels = { { type = "sketch_c.canvas" } } }, { panels = { { type = "sketch_c.clock" } } } }, "split again")
+    -- the second box is shown, and its tab is the second one in the tab row
+    two = test.rect(2)
+    test.drag(two.x + 150, two.y - 13, two.x + two.width - 10, two.y + two.height / 2)
+    test.match(test.session().workspaces[1].windows[1], { split = "horizontal", { panels = { { type = "boxes.one" } } }, { panels = { { type = "boxes.two" } } } }, "split again")
   end,
 }

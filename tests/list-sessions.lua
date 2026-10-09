@@ -11,16 +11,17 @@ end
 
 return {
   preset = "presets/lister.lua",
+  presets = "files/presets",
   sessions = "files/sessions",
   run = function(test)
     test.call("lister.list")
     local results = test.session().pluginState.lister.state
 
-    -- a test lists only the first-party presets, and finds no last session of their tools
-    local sketch = find(results.presets, "sketch")
-    test.match(sketch, { appId = "openecs.sketch", appName = "Sketch" }, "the sketch preset")
-    assert(sketch.path:match("/presets/sketch%.lua$"), "the sketch preset's path: " .. sketch.path)
-    assert(sketch.lastUsed == nil, "a test has no last sessions")
+    -- a test lists the first-party presets and its own presets folder, and finds no last session of their tools
+    local paint = find(results.presets, "paint")
+    test.match(paint, { appId = "org.example.Paint", appName = "Paint" }, "the paint preset")
+    assert(paint.path:match("files/presets/paint%.lua$"), "the paint preset's path: " .. paint.path)
+    assert(paint.lastUsed == nil, "a test has no last sessions")
 
     -- the launcher's own preset is not listed
     test.match(find(results.presets, "launcher"), nil, "the launcher's preset")

@@ -1,9 +1,12 @@
+-- The sketch example's preset: three workspaces with the canvases and clocks of sketch_c and sketch_lua.
+-- Its plugins are in this folder, so pluginsDir names it.
 return {
   format = 1,
   name = "sketch",
   version = "0.1.0",
   app = { id = "openecs.sketch", name = "Sketch" },
   depends = { sketch_c = "0.1", sketch_lua = "0.1" },
+  pluginsDir = ".",
   settings = { ["sketch_c.brushColor"] = "red", ["sketch_lua.brushColor"] = "green" },
   open = "sketch_c.open",
   keys = { ["Ctrl+Tab"] = "sketch_c.nextWorkspace" },

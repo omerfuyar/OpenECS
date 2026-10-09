@@ -2,13 +2,13 @@
 return {
   preset = "presets/callbacks.lua",
   run = function(test)
-    local c = test.rect(1)
-    test.drag(c.x + 50, c.y + 60, c.x + 200, c.y + 150)
+    local box = test.rect(1)
+    test.click(box.x + 50, box.y + 60)
 
     test.call("callbacks.run")
     local results = test.session().pluginState.callbacks.state
-    test.match(results.c, { count = 1, seen = { { type = "sketch_c.canvas", strokes = 1 } }, without = 1 }, "sketch_c")
-    test.match(results.lua, { count = 1, seen = { { type = "sketch_lua.canvas", strokes = 0 } }, without = 1 }, "sketch_lua")
+    test.match(results.c, { count = 1, seen = { { type = "cboxes.box", clicks = 0 } }, without = 1 }, "cboxes")
+    test.match(results.lua, { count = 1, seen = { { type = "boxes.one", clicks = 1 } }, without = 1 }, "boxes")
     test.match(results.refused, { true, true, true, true }, "bad signatures")
   end,
 }

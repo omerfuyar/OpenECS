@@ -1,6 +1,6 @@
 -- the same stroke on the C canvas and on the Lua canvas saves the same points
 return {
-  preset = "presets/sketch.lua",
+  preset = "preset.lua",
   run = function(test)
     test.call("ecs.workspace.switch3")
     local canvases = test.session().workspaces[3].windows[1][1]
