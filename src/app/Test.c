@@ -465,6 +465,34 @@ static int ECSITest_Rect(lua_State *state)
     return 1;
 }
 
+/// @brief test.panel(id): a panel's title and type, whether it has unsaved work, and its fault: the error that stopped it, or why its type is missing.
+static int ECSITest_Panel(lua_State *state)
+{
+    lua_Integer id = luaL_checkinteger(state, 1);
+    ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : NULL;
+
+    if (panel == NULL)
+    {
+        return luaL_error(state, "no panel has the id %d", (int)id);
+    }
+
+    lua_createtable(state, 0, 4);
+    lua_pushstring(state, panel->title);
+    lua_setfield(state, -2, "title");
+    lua_pushstring(state, panel->typeName);
+    lua_setfield(state, -2, "type");
+    lua_pushboolean(state, panel->unsaved);
+    lua_setfield(state, -2, "unsaved");
+
+    if (panel->fault != NULL || panel->type == NULL)
+    {
+        lua_pushstring(state, panel->fault != NULL ? panel->fault : "the panel's type is missing");
+        lua_setfield(state, -2, "fault");
+    }
+
+    return 1;
+}
+
 /// @brief test.screenshot(path): draws a frame and saves it as a PNG file.
 static int ECSITest_Screenshot(lua_State *state)
 {
@@ -493,6 +521,7 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"wait", ECSITest_Wait},
     {"session", ECSITest_Session},
     {"rect", ECSITest_Rect},
+    {"panel", ECSITest_Panel},
     {"screenshot", ECSITest_Screenshot},
     {NULL, NULL},
 };

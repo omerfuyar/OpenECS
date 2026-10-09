@@ -44,7 +44,7 @@ function services.open(path)
   local file = io.open(path, "r")
   local panel = file and ecs.layout.open("boxes.one")
 
-  if not panel then
+  if not file or not panel then
     ecs.log.warn(("Cannot open '%s'."):format(path))
     return
   end
