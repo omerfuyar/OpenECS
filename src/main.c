@@ -9,7 +9,7 @@
 #pragma region Source Only
 
 /// @brief Preset used when the command line names none.
-#define OPENECS_DEFAULT_PRESET "default"
+#define OPENECS_DEFAULT_PRESET "launcher"
 
 /// @brief Reads the options, and moves the files to the start of argv, over options already read.
 static ECSIArguments ECSIMain_ReadArguments(int argc, char **argv)

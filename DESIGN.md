@@ -905,7 +905,9 @@ openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [--version
 - The panel type `launcher.list` lists the presets, then the saved sessions (13.7). Presets whose tool has a last session come first, the most recently used first; the others follow by name. Sessions are listed newest first.
 - An entry shows the tool's name. A session's entry also shows the file's name and when it was saved.
 - The panel reads both lists when it is created and each time it is shown again.
-- The functions `launcher.up`, `launcher.down` and `launcher.open` choose an entry and open it. Their keys are the settings `launcher.upKey` (Up), `launcher.downKey` (Down) and `launcher.openKey` (Return), bound for the panel type (7.8). A click on an entry opens it.
+- The functions `launcher.up`, `launcher.down` and `launcher.open` choose an entry and open it. Their keys are the settings `launcher.upKey` (Up), `launcher.downKey` (Down) and `launcher.openKey` (Return), bound for the panel type (7.8). The wheel chooses too, and a click on an entry opens it.
+- The panel's saved state is the chosen entry, so the launcher chooses it again at the next start.
+- It draws with the ui plugin (20.2).
 - A preset opens with `ecs.session.openPreset`, a session with `ecs.session.open` (13.5).
 
 ## 14. Errors and logging
