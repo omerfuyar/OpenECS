@@ -30,6 +30,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 16. Files and directories
 17. Build and dependencies
 18. Platform notes
+19. Versions and releases
 - Glossary
 
 ---
@@ -256,6 +257,7 @@ typedef struct ECSPanelTypeDesc
 
 ### 4.4 Placeholders
 
+- A panel whose type is missing is a placeholder that keeps its saved state (OVERVIEW 10.3).
 - A panel whose callback raised an error becomes a faulted placeholder (14.2).
 
 ### 4.5 Unsaved work
@@ -354,7 +356,7 @@ After every operation:
 
 - Besides the operations in OVERVIEW 6.3, there are cycling tabs, reopening the last closed panel, and moving a panel to another workspace.
 - The core remembers the last `ecs.reopenLimit` closed panels with their type and saved state. `ecs.layout.reopen` opens the last one again next to a panel that stayed in its group, wherever that panel is now, or else in the focused group, and shows its workspace.
-- `ecs.moveToWorkspace1` to `ecs.moveToWorkspace10` move the focused panel into that workspace's focused group; the current workspace stays shown.
+- `ecs.layout.moveToWorkspace1` to `ecs.layout.moveToWorkspace10` move the focused panel into that workspace's focused group; the current workspace stays shown.
 - `ecs.layout.splitRight` and `ecs.layout.splitDown` open another panel of the focused panel's type beside it.
 - Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)` (also from another workspace), `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles.
 - Workspaces are numbered from 1, in C and in Lua: `ECSWorkspace_Switch(10)` switches to workspace 10.
@@ -406,8 +408,15 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 6.10 Maximize, pop-out and workspaces
 
-- Maximize is a mark on one group. The mark is saved in the session.
-- Pop-out creates an OS window with a new root that holds one group with the panel.
+- Maximize is a mark on one group of a root. The mark is saved in the session.
+- Pop-out creates an OS window with a new root that holds one group with the panel. The window has the panel's size and opens at the pointer; on Wayland, the compositor places it (OVERVIEW 6.4).
+- `ecs.layout.popOut` pops out the focused panel. A panel alone in its OS window, and a panel of a locked group, stay. Code pops a panel out with the zone `ECSZone_Window`, in Lua `"window"`: `ECSLayout_Open(plugin, &panel, "text.editor", NULL, NULL, ECSZone_Window)` or `ECSLayout_Move(panel, NULL, ECSZone_Window)`.
+- Inside a pop-out window, every layout operation works as in the main window: splits, tabs, maximize, dragging and docking along its edges. Panels move between OS windows by dragging or by code.
+- A pop-out window closes when its last panel leaves it. Its close button closes its panels, after asking about unsaved work (4.5); Cancel keeps the window. Closing the main window quits.
+- The keys that move focus or panels (7.5) act within the focused panel's OS window. Focusing a panel in another OS window raises that window (7.1).
+- The core's menus and the list of prefix keys show in the OS window of the focused panel.
+- Switching workspaces hides the pop-out windows of the old workspace and shows those of the new one.
+- A session's `windows` list holds the main window's tree first, then one tree for each pop-out window (13.2). A pop-out window's tree also has `width` and `height`, its size in layout units. Positions are not saved, because Wayland does not let them be chosen.
 
 ## 7. Input, focus and keys
 
@@ -442,21 +451,21 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The prefix and the key after it are the only key sequence the core handles.
 - The core's functions after the prefix, in the order the list shows them. Their keys are the value of `ecs.prefixKeys` in the core's settings file (12.1).
 
-  | Function                              | Action                                                                                                   |
-  | ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-  | `ecs.layout.focusLeft` and so on      | Move focus                                                                                               |
-  | `ecs.layout.moveLeft` and so on       | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
-  | `ecs.layout.nextTab`                  | Show the next tab                                                                                        |
-  | `ecs.layout.maximize`                 | Maximize or restore                                                                                      |
-  | `ecs.layout.popOut`                   | Pop out                                                                                                  |
-  | `ecs.layout.close`                    | Close the panel                                                                                          |
-  | `ecs.layout.closeGroup`               | Close the group's panels                                                                                 |
-  | `ecs.layout.lock`                     | Lock or unlock the group                                                                                 |
-  | `ecs.layout.reopen`                   | Reopen the last closed panel                                                                             |
-  | `ecs.panel.restart`                   | Restart the failed panel                                                                                 |
-  | `ecs.session.save`                    | Save the session to a file, which a save dialog asks for (13.4)                                          |
-  | `ecs.session.open`                    | Open a saved session, which an open dialog asks for (13.5)                                               |
-  | `ecs.workspace1` to `ecs.workspace10` | Switch to workspace 1 to 10                                                                              |
+  | Function                                            | Action                                                                                                   |
+  | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+  | `ecs.layout.focusLeft` and so on                    | Move focus                                                                                               |
+  | `ecs.layout.moveLeft` and so on                     | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
+  | `ecs.layout.nextTab`                                | Show the next tab                                                                                        |
+  | `ecs.layout.maximize`                               | Maximize or restore                                                                                      |
+  | `ecs.layout.popOut`                                 | Pop out                                                                                                  |
+  | `ecs.layout.close`                                  | Close the panel                                                                                          |
+  | `ecs.layout.closeGroup`                             | Close the group's panels                                                                                 |
+  | `ecs.layout.lock`                                   | Lock or unlock the group                                                                                 |
+  | `ecs.layout.reopen`                                 | Reopen the last closed panel                                                                             |
+  | `ecs.panel.restart`                                 | Restart the failed panel                                                                                 |
+  | `ecs.session.save`                                  | Save the session to a file, which a save dialog asks for (13.4)                                          |
+  | `ecs.session.open`                                  | Open a saved session, which an open dialog asks for (13.5)                                               |
+  | `ecs.workspace.switch1` to `ecs.workspace.switch10` | Switch to workspace 1 to 10                                                                              |
 
 - Escape after the prefix cancels. It is not a function, so it always works.
 
@@ -482,6 +491,15 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Each of them is also a function of the `ecs` module with the same name, such as `ecs.layout.maximize()`. A key calls it with no arguments, which is the user's action: it acts on the focused panel, and locks stop it (6.4). Some also take arguments, such as `ecs.layout.close(panel)` and `ecs.session.save(path)`.
 - C runs them by name with `ECSService_GetFunction`.
 
+### 7.9 Drag and drop of data
+
+- `ECSPanel_AcceptDrops(panel, types, count)`, and in Lua `panel:acceptDrops(types)`, set the types of data a panel accepts, such as `color`. A new call replaces the list. A faulted panel accepts nothing, and a restarted panel sets its list again.
+- `ECSPanel_StartDrag(panel, type, value)`, and in Lua `panel:startDrag(type, value)`, start dragging data while a pointer button that was pressed on the panel is held, usually from its `PointerDown` or `PointerMove` event. The core copies the value.
+- While data is dragged, the panel that started the drag gets no pointer moves. The core outlines every shown panel that accepts the type, and fills the one under the pointer. Escape cancels the drag.
+- On release, the panel under the pointer gets a `Drop` event if it accepts the type, even the panel that started the drag. The event holds the position and the data, which `ECSDropData_GetType` and `ECSDropData_GetValue` read during the event. A Lua panel's event has the fields `dataType` and `value`. The panel that started the drag still gets its `PointerUp`.
+- Files and text dropped from other applications arrive the same way: files as `file-list`, a list of paths, and text as `text`, a string. The core learns their type only when they are dropped, so it marks no panel before.
+- Data dropped on a panel that does not accept its type is dropped nowhere.
+
 ## 8. Events
 
 ### 8.1 Types
@@ -490,7 +508,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Named events carry a value (10.3). The core emits its own (8.4), and plugins declare and emit theirs (8.3).
 - Events are notifications. Handlers return nothing and cannot cancel anything.
 - A panel gets `Shown` when it becomes visible and `Hidden` when another tab, workspace or maximized group hides it, and `Resized` when its size changes while it is visible. `Shown` and `Resized` carry the size in layout units. The layout checks after each pass, so a panel that was never visible gets no `Hidden`.
-- A panel's event is a tagged union, `ECSPanelEvent`: its type chooses which member is set, `pointer`, `wheel`, `key` or `size`. Every input event carries the modifiers held when it happened. A wheel amount is positive away from the user, even when the system flips the wheel.
+- A panel's event is a tagged union, `ECSPanelEvent`: its type chooses which member is set, `pointer`, `wheel`, `key`, `size` or `drop`. Every input event carries the modifiers held when it happened. A wheel amount is positive away from the user, even when the system flips the wheel.
 
 ### 8.2 Delivery
 
@@ -584,7 +602,9 @@ OPENECS_EXPORT void ECSPlugin_Shutdown(ECSPlugin plugin);
 
 - All Lua plugins share one Lua state. Each plugin's code runs in its own environment, which reads globals from the shared global table.
 - A plugin gets the core's Lua names from the `ecs` module: `local ecs = require("ecs")`. There is no global `ecs`.
-- The environment has its own `require`. For `"ecs"` it gives the plugin's own `ecs` table, whose functions carry the plugin, so the core knows which plugin made an `ecs` call. Other names go to Lua's `require`.
+- The environment has its own `require`. For `"ecs"` it gives the plugin's own `ecs` table, whose functions carry the plugin, so the core knows which plugin made an `ecs` call.
+- For other names, `require` first looks in the plugin's folder: `require("parts.shapes")` finds `parts/shapes.lua`, or else `parts/shapes/init.lua`. It runs the module once, in the plugin's environment, so the module can also `require("ecs")`, and gives what the module returns, or `true` if it returns nothing. Each plugin has its own modules, so two plugins can have modules of the same name.
+- Names that the plugin's folder does not hold go to Lua's `require`.
 - `include/ecs.lua` describes the `ecs` module for editors: every function's parameters, results and documentation, in LuaLS annotations. It changes with the bindings. A plugin's author adds the build's `include/` folder to `workspace.library` in the plugin's `.luarc.json`.
 - The manifest's `lua` file runs once, in a protected call, after the native `ECSPlugin_Init`. An error fails the plugin.
 
@@ -707,21 +727,21 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 
 ### 11.3 The `ecs` module
 
-| Table                         | Contents                            |
-| ----------------------------- | ----------------------------------- |
-| `ecs.panel`                   | panel types and panel functions     |
-| `ecs.layout`                  | layout operations                   |
-| `ecs.workspace`               | workspaces                          |
-| `ecs.input`                   | key bindings and focus              |
-| `ecs.event`                   | declare, emit and subscribe         |
-| `ecs.handle`                  | handle types of Lua plugins (10.6)  |
-| `ecs.timer`                   | timers                              |
-| `ecs.service`                 | register and look up functions      |
-| `ecs.settings`                | declare, get, set, list and explain |
-| `ecs.session`                 | saving and opening sessions         |
-| `ecs.plugin`                  | information about plugins           |
-| `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs               |
-| `ecs.log`                     | `debug`, `info`, `warn` and `error` |
+| Table                         | Contents                                         |
+| ----------------------------- | ------------------------------------------------ |
+| `ecs.panel`                   | panel types and panel functions                  |
+| `ecs.layout`                  | layout operations                                |
+| `ecs.workspace`               | workspaces                                       |
+| `ecs.input`                   | key bindings and focus                           |
+| `ecs.event`                   | declare, emit and subscribe                      |
+| `ecs.handle`                  | handle types of Lua plugins (10.6)               |
+| `ecs.timer`                   | timers                                           |
+| `ecs.service`                 | register and look up functions                   |
+| `ecs.settings`                | declare, get, set, list and explain              |
+| `ecs.session`                 | saving, opening and listing sessions and presets |
+| `ecs.plugin`                  | information about plugins                        |
+| `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs                            |
+| `ecs.log`                     | `debug`, `info`, `warn` and `error`              |
 
 - `ecs.plugin` holds the plugin's `name` and `version`, `registerState` (13.2), and `onShutdown(fn)`, the Lua counterpart of `ECSPlugin_Shutdown` (2.4).
 
@@ -730,13 +750,14 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 - A Lua panel type is a table (4.1). The core registers C callbacks that call its Lua functions in protected calls.
 - Panels are handles with methods: `panel:redraw()`, `panel:getId()`, `panel:getType()`, `panel:getTitle()`, `panel:setTitle(text)`, `panel:setUnsaved(unsaved)` and `panel:startTimer(seconds, repeat, fn)`. Each is also a function of `ecs.panel` that takes the panel first, such as `ecs.panel.getTitle(panel)`. A handle of a destroyed panel raises an error when it is used.
 - `draw(state, surface, seconds)` gets a surface with `width`, `height` and `scale`, and the methods `setPixel(x, y, color)`, `getPixel(x, y)` and `setRow(y, bytes, x)`. Colours are ARGB integers; `setRow` takes the row's pixels as a string in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
-- `event(state, event)` gets a table: `type` (such as `"pointerDown"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheelX` and `wheelY` for the wheel, `key` (SDL's key name) for keys, and `width` and `height` for `shown` and `resized`.
+- `event(state, event)` gets a table: `type` (such as `"pointerDown"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `wheelX` and `wheelY` for the wheel, `key` (SDL's key name) for keys, `width` and `height` for `shown` and `resized`, and `x`, `y`, `dataType` and `value` for `drop` (7.9).
 
 ### 11.5 Parity
 
 - The documentation of each public function in `OpenECS.h` ends with a line that names its Lua counterparts in `include/ecs.lua`, such as `/// @lua ecs.panel.getTitle, panel:getTitle`, or says `none:` and why.
 - The functions of values (10.3) have no `@lua` line, because Lua passes its own values.
 - A function of `ecs.lua` that C does not have says `Lua only:` and why in its documentation, or `Keys can run it.` when it is a core function that C runs by name (7.8).
+- A change that renames or changes anything plugins use changes both files, and every reference to it in code, presets, tests, settings files and documents, in the same commit.
 - The test `tests/parity.lua` checks both files: every public function has its line, every name it gives is in `ecs.lua`, and every function of `ecs.lua` is named or says why not. It also checks that every function the core's settings file binds to a key is in `ecs.lua` and says keys can run it.
 
 ### 11.6 Keeping Lua values
@@ -798,7 +819,7 @@ return {
   keys = { ["Ctrl+N"] = "canvas.new" },      -- bindings for the whole tool
   workspaces = {
     { name = "drawing",
-      windows = {                            -- one layout tree per OS window
+      windows = {                            -- one layout tree per OS window: the main window first, then pop-out windows
         { split = "horizontal",
           { size = 240, panels = { { type = "palette.view" } } },
           { share = 1,  panels = { { type = "canvas.view", state = { document = 1 } } } },
@@ -815,6 +836,7 @@ return {
 - Sessions also store each panel's `id`, each workspace's `focus` (a panel id), each group's `shown` panel and `maximized` mark, the `currentWorkspace`, and `pluginState`: for each plugin's name, its `state` and `stateVersion`.
 - A plugin saves state of its own, apart from its panels', with `ECSPlugin_RegisterState(plugin, &desc)`: a version and `Save` and `Restore` functions. Lua: `ecs.plugin.registerState({ version = 1, save = fn, restore = fn })`. The state of a plugin that is not loaded stays in the session.
 - The app id matches the name of the tool's `.desktop` file.
+- A preset with `listed = false` is left out of the list of presets (13.7), as the launcher's own preset is.
 
 ### 13.3 Applying a session
 
@@ -835,32 +857,62 @@ The core converts only layout data.
 - A file is written to a temporary file, then renamed over the old one, so it is never left half-written.
 - `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. Without a path, they ask for the file with a save dialog that starts in the folder of saved sessions (16). Keys run `ecs.session.save` that way. Quitting still saves the tool's last session.
 
-### 13.5 Opening a session
+### 13.5 Opening a session or a preset
 
 - `ECSSession_Open(path)`, and in Lua `ecs.session.open(path)`, open a session in place of the current one. Without a path, they ask for the file with an open dialog that starts in the folder of saved sessions (16). Keys run `ecs.session.open` that way.
+- `ECSSession_OpenPreset(nameOrPath)`, and in Lua `ecs.session.openPreset(nameOrPath)`, open a preset's tool in place of the current one. The name is looked up as `--preset` looks it up (13.6). The tool starts from its last session if it has one, as at a start from the desktop.
 - A file without a list of workspaces is reported, and nothing changes.
-- The core asks about unsaved work (4.5). When the dialog cannot be shown, the work is kept and the session is not opened.
-- When the current pass of the main loop ends, OpenECS shuts down from step 2 of 2.4, so the tool's last session is saved. Then the program replaces itself with `openecs --session FILE`. So the session's identity, plugins and settings apply as at a start.
-- A test cannot open a session (17.5).
+- The core asks about unsaved work (4.5). When the dialog cannot be shown, the work is kept and nothing is opened.
+- When the current pass of the main loop ends, OpenECS shuts down from step 2 of 2.4, so the tool's last session is saved. Then the program replaces itself with `openecs --session FILE`, or `openecs --preset FILE` for a preset. So the identity, plugins and settings of the new tool apply as at a start.
+- A test cannot open a session or a preset (17.5).
 
 ### 13.6 Command line
 
 ```
-openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [FILE...]
+openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [--version] [FILE...]
 ```
 
+- `--version` prints the version of OpenECS (19.1) and of the plugin API, and exits.
 - `--fresh` starts from the preset instead of the tool's last session.
 - `--test` runs a test (17.5).
+- Without `--preset` and `--session`, OpenECS starts with the preset `launcher` (13.8).
+- A preset's name is looked up in the user's presets, then in the first-party presets (16). A name that has a `/` or ends with `.lua` is a path.
 - A session's identity wins over the preset's, so the session is saved again as the last session of its own tool.
 - Files are passed to the function that the preset or session names in `open`. Its signature is `void(string)`. It is called once for each file, in order, once the session is built (2.3). Without an `open` function, the files are reported and not opened.
 - A tool's `.desktop` file runs, for example, `openecs --preset paint %F`.
+
+### 13.7 Lists of presets and sessions
+
+- `ECSSession_ListPresets(&list)`, and in Lua `ecs.session.presets()`, list the presets that `--preset` finds by name (13.6). A name in both folders is listed once, from the user's presets.
+- `ECSSession_ListSessions(&list)`, and in Lua `ecs.session.sessions()`, list the `.lua` files in the folder of saved sessions (16).
+- Both lists are sorted by name. Each entry is a table:
+
+  | Field              | Holds                                                                                                  |
+  | ------------------ | ------------------------------------------------------------------------------------------------------ |
+  | `name`             | The file's name without `.lua`. For a preset, it is the name that `--preset` takes.                    |
+  | `path`             | The file's path.                                                                                       |
+  | `appId`, `appName` | The tool's identity (13.2).                                                                            |
+  | `lastUsed`         | Presets only: when the tool's last session was written, in seconds since 1970. Missing if it has none. |
+  | `saved`            | Sessions only: when the file was written, in seconds since 1970.                                       |
+
+- A file that cannot be read is reported and left out, and so is a preset with `listed = false`.
+- A test lists only the first-party presets, and the sessions in the folder that its `sessions` field names (17.5).
+
+### 13.8 The launcher
+
+- When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. Its app id is `openecs.launcher`, it sets `listed = false`, and it shows one panel of the first-party Lua plugin `launcher`.
+- The panel type `launcher.list` lists the presets, then the saved sessions (13.7). Presets whose tool has a last session come first, the most recently used first; the others follow by name. Sessions are listed newest first.
+- An entry shows the tool's name. A session's entry also shows the file's name and when it was saved.
+- The panel reads both lists when it is created and each time it is shown again.
+- The functions `launcher.up`, `launcher.down` and `launcher.open` choose an entry and open it. Their keys are the settings `launcher.upKey` (Up), `launcher.downKey` (Down) and `launcher.openKey` (Return), bound for the panel type (7.8). A click on an entry opens it.
+- A preset opens with `ecs.session.openPreset`, a session with `ecs.session.open` (13.5).
 
 ## 14. Errors and logging
 
 ### 14.1 Error reports
 
 - A native plugin that crashes takes the program down. This cannot be prevented and is accepted.
-- An error report holds the plugin, the type of error, a message and, for Lua, a stack trace. It goes to the log. The user sees it where it applies: a faulted panel shows it; plugin loading problems appear in the launcher and the log. A message dialog is used only when start-up fails.
+- An error report holds the plugin, the type of error, a message and, for Lua, a stack trace. It goes to the log. The user sees it where it applies: a faulted panel shows it; plugin loading problems appear in the log, and the panels of a plugin that did not load show placeholders (4.4). A message dialog is used only when start-up fails.
 
 ### 14.2 Policies
 
@@ -937,7 +989,7 @@ OpenECS follows the XDG Base Directory specification:
 - libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.
 - Native plugins are shared libraries, built against the plugin header only. They do not link against the core; their calls to it are resolved when they are loaded.
-- A first-party plugin is built from every C file in its folder, `plugins/<name>/`, so the build needs no settings for each plugin.
+- A first-party plugin is built from every C file in its folder, `plugins/<name>/`, so the build needs no settings for each plugin. Its Lua files and its folders, which hold its Lua modules (9.6), are copied.
 
 ### 17.3 Compiler
 
@@ -950,31 +1002,33 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.4 Dependency versions
 
-Every dependency is a git submodule pinned to a release tag, not to a development commit.
+- Every dependency is a git submodule that follows its development branch. An update moves every submodule to the latest commit of its branch (`git submodule update --remote`), and passes the checks (19.3) like any change.
+- SDL_ttf brings FreeType, HarfBuzz and PlutoSVG as its own submodules, at the commits SDL_ttf names.
 
 ### 17.5 Tests
 
 - A test is a Lua file in `tests/`. Debug builds run it with `openecs --test FILE`; other builds refuse the option.
-- The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `default` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.6), and `run`, a function that gets the `test` table.
+- The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `launcher` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.6), `sessions`, a folder relative to the test file that stands for the folder of saved sessions (16), and `run`, a function that gets the `test` table.
 - Tests keep their presets and test plugins in `tests/presets/` and `tests/plugins/`, so a change to a first-party preset does not change a test.
 - A test starts from its preset alone. It reads none of the user's settings, plugins or sessions, and writes no session and no log file. SDL's offscreen video driver and software renderer are the defaults, so a test needs no display; the variables `SDL_VIDEO_DRIVER` and `SDL_RENDER_DRIVER` choose others, for example to watch a test.
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).
 - The `test` table:
 
-  | Function                                       | Does                                                                                                    |
-  | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-  | `key(combination)`                             | Presses and releases a key combination, such as `"Alt+W"` (7.3).                                        |
-  | `move(x, y)`                                   | Moves the pointer. Positions are in layout units of the OS window.                                      |
-  | `press(x, y, button)`, `release(x, y, button)` | Presses or releases a button: 1 left (the default), 2 middle, 3 right.                                  |
-  | `click(x, y, button)`                          | Presses and releases a button.                                                                          |
-  | `drag(x, y, toX, toY)`                         | Presses the left button, moves in steps and releases it.                                                |
-  | `wheel(x, y, amount)`                          | Turns the wheel; a positive amount is away from the user.                                               |
-  | `call(name)`                                   | Runs a bound function (7.8), such as `"ecs.layout.maximize"`, as a key would.                           |
-  | `wait(seconds)`                                | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                       |
-  | `session()`                                    | The session that quitting would save now, as a Lua table (13.2).                                        |
-  | `rect(id)`                                     | The rectangle of the shown panel with that id: `x`, `y`, `width` and `height`.                          |
-  | `screenshot(path)`                             | Draws a frame and saves it as a PNG file.                                                               |
-  | `match(actual, expected, message)`             | Checks that `actual` has the same number of list items as `expected`, and each item and field it names. |
+  | Function                                                             | Does                                                                                                                           |
+  | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+  | `key(combination)`                                                   | Presses and releases a key combination, such as `"Alt+W"` (7.3).                                                               |
+  | `move(x, y)`                                                         | Moves the pointer. Positions are in layout units of the OS window.                                                             |
+  | `press(x, y, button, modifiers)`, `release(x, y, button, modifiers)` | Presses or releases a button: 1 left (the default), 2 middle, 3 right. The `modifiers`, such as `"Shift"`, are held during it. |
+  | `click(x, y, button, modifiers)`                                     | Presses and releases a button.                                                                                                 |
+  | `drag(x, y, toX, toY, modifiers)`                                    | Presses the left button, moves in steps and releases it.                                                                       |
+  | `wheel(x, y, amount)`                                                | Turns the wheel; a positive amount is away from the user.                                                                      |
+  | `dropFiles(x, y, paths)`, `dropText(x, y, text)`                     | Drops files or text from another application at a position (7.9).                                                              |
+  | `call(name)`                                                         | Runs a bound function (7.8), such as `"ecs.layout.maximize"`, as a key would.                                                  |
+  | `wait(seconds)`                                                      | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                                              |
+  | `session()`                                                          | The session that quitting would save now, as a Lua table (13.2).                                                               |
+  | `rect(id)`                                                           | The rectangle of the shown panel with that id: `x`, `y`, `width` and `height`.                                                 |
+  | `screenshot(path)`                                                   | Draws a frame and saves it as a PNG file.                                                                                      |
+  | `match(actual, expected, message)`                                   | Checks that `actual` has the same number of list items as `expected`, and each item and field it names.                        |
 
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
 - A Lua error fails the test and logs it with its stack trace. When `run` returns, the program quits without asking about unsaved work.
@@ -986,6 +1040,60 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 - OpenECS runs on x86_64 and aarch64 processors (17.2).
 - On Wayland, dragging a panel out of its window still works, because the core keeps receiving pointer events while the button is held (7.2). Only the position of the new window cannot be chosen.
 - Popups are positioned relative to their parent window, which Wayland supports.
+
+## 19. Versions and releases
+
+### 19.1 Versions
+
+- OpenECS uses semantic versioning. Its version is `OPENECS_VERSION` in `OpenECS.h`, and `openecs --version` prints it (13.6).
+- From 1.0.0, a major release breaks something that worked: the plugin interface, the `ecs` module, the names of the core's functions, settings and events, or the files that presets, sessions and settings are read from. A minor release only adds. A patch release only fixes.
+- Before 1.0.0, a minor release may also break those things, and a patch release only fixes.
+- Between releases, `OPENECS_VERSION` is the next release with `-dev`, such as `0.2.0-dev`. A release candidate ends with `-rc.1`, `-rc.2` and so on.
+- Two numbers change on their own: `OPENECS_API_VERSION` when native plugins must be built again (9.5), and the `format` of presets and sessions (13.2) when an older OpenECS cannot read the new files.
+- A release is a tag `vMAJOR.MINOR.PATCH`, such as `v0.1.0`, on `main`.
+
+### 19.2 Branches
+
+- `main` holds the releases. It changes only through a pull request from `dev`, or from a branch that fixes a release.
+- `dev` is the default branch. Every change reaches it through a pull request from a branch that started from `dev`: `feature/<feature>`, `fix/<bug>`, `refactor/<area>` or `docs/<area>`.
+- A fix for a release starts from its tag. It is merged into `main` and released as a patch, then merged into `dev` too.
+- Pull requests are merged with a merge commit, never squashed or rebased, so `main` and `dev` share one history.
+- The rulesets in `.github/rulesets/` hold these rules; they are imported in the repository's settings. `main` and `dev` cannot be deleted or force-pushed, and a pull request into them needs the checks (19.3) to pass and its conversations resolved. Repository admins may skip the checks through a pull request. Only repository admins create, move or delete release tags.
+
+### 19.3 Checks
+
+- `.github/workflows/checks.yml` runs on every push and pull request to `dev` and `main`:
+
+  | Check             | Does                                                                                                                                                                                               |
+  | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `Debug (Linux)`   | Builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs every test (17.5) under the sanitizers; a failed test or a report fails it. |
+  | `Release (Linux)` | Builds in Release, so code that only Release builds compile or link fails before a release.                                                                                                        |
+  | `Lua (LuaLS)`     | Checks every Lua file with LuaLS, so code that misuses the `ecs` module, and mistakes in `ecs.lua`, fail it (9.6).                                                                                 |
+
+- The steps are scripts in `.github/scripts/`, so they run the same way on a contributor's computer.
+- The built dependencies are kept between runs until a submodule or the build changes. OpenECS's own files are compiled every time, so the analyzer sees all of them.
+
+### 19.4 Releases
+
+- `.github/workflows/release.yml` runs when a version tag is pushed. It fails when the tag does not match `OPENECS_VERSION`.
+- For each platform, it makes a Release build and packs it into `openecs-VERSION-PLATFORM.tar.gz`: the program with its plugins, presets and resources, the plugin interface (`OpenECS.h`, `ecs.lua` and `shu.h`), `LICENSE`, and the licenses of the works it includes.
+- It packs the source with every submodule into `openecs-VERSION-source.tar.gz`, because GitHub's own source archives leave the submodules out. `SHA256SUMS` holds the checksums of the archives.
+- It makes a draft release with these files. Its description is `.github/release-notes/vVERSION.md`. A version below 1.0.0, or one with a suffix, is marked as a pre-release.
+- Releases are made for Linux on x86_64. The workflow also lists the other platforms, commented out.
+- Linux builds are made on Ubuntu 24.04, so they need glibc 2.38 or later.
+- The steps of a release:
+  1. On `dev`, set `OPENECS_VERSION` to the release, and write its description.
+  2. Merge `dev` into `main` with a pull request.
+  3. Tag the merge commit `vVERSION` and push the tag.
+  4. Check the draft release, then publish it.
+  5. On `dev`, set `OPENECS_VERSION` to the next version with `-dev`.
+
+### 19.5 Release descriptions
+
+- They use plain words and short sentences, for users and plugin authors.
+- They say what is new, and what people can do with it.
+- They say what breaks after the release: what plugins, presets, settings and sessions must change, and how.
+- They name the small fixes briefly.
 
 ---
 
@@ -1021,6 +1129,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 
 **Function pointer.** A value that holds the address of a function, so the function can be called through it.
 
+**glibc.** The C standard library of most Linux systems. A program built against a newer glibc does not start on a system with an older one.
+
 **GPU device.** SDL's object for the graphics card. Textures and other GPU resources belong to a device.
 
 **Handle.** A token that stands for an object owned by someone else, so it can be passed around without exposing its inside.
@@ -1032,6 +1142,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 **LuaLS (Lua language server).** The program behind Lua support in editors such as VS Code. It reads annotations in comments, such as `---@param`, to give completion, documentation and warnings.
 
 **Main thread.** The thread on which the program starts. OS windows, input and all Lua code run there.
+
+**Merge commit.** A commit that joins two branches and keeps the commits of both.
 
 **Metatable (Lua).** A table that defines how a Lua value behaves. For handles, it carries the type name.
 
@@ -1045,9 +1157,13 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 
 **Protected call (Lua).** A way to call Lua code so that an error is caught and returned, instead of jumping out through the caller.
 
+**Pull request.** A request on GitHub to merge one branch into another, where the change is checked and discussed first.
+
 **Registry (Lua).** A table that Lua keeps for C code to store values it needs to keep alive.
 
 **Root.** The top of a layout tree. There is one per OS window.
+
+**Ruleset (GitHub).** A set of rules that GitHub enforces for branches or tags, such as requiring pull requests.
 
 **Run path.** A directory written into a program where it looks for shared libraries. `$ORIGIN` means the program's own directory.
 
@@ -1071,6 +1187,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 
 **Symbol.** A name in a compiled file that other code can look up, such as an exported function.
 
+**Tag (git).** A name for one commit, such as `v0.1.0`.
+
 **Texture.** An image stored on the graphics card.
 
 **Topological order.** An order in which every item comes after the items it depends on.
@@ -1078,6 +1196,8 @@ Every dependency is a git submodule pinned to a release tag, not to a developmen
 **Userdata (Lua).** A block of memory managed by Lua's garbage collector that holds data from C. Handles are userdata.
 
 **Vsync.** Waiting for the display's refresh before showing a new frame, so drawing matches the screen's rate.
+
+**Workflow (GitHub Actions).** A file in `.github/workflows/` that tells GitHub which jobs to run, and when.
 
 **X11.** The older display system used on Linux.
 

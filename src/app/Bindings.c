@@ -82,7 +82,7 @@ static struct
 } BINDINGS = {0};
 
 /// @brief Names of the event types in Lua, in the order of ECSPanelEventType.
-static const char *const OPENECS_BINDINGS_EVENT_TYPES[] = {"pointerDown", "pointerUp", "pointerMove", "wheel", "keyDown", "keyUp", "focused", "unfocused", "shown", "hidden", "resized"};
+static const char *const OPENECS_BINDINGS_EVENT_TYPES[] = {"pointerDown", "pointerUp", "pointerMove", "wheel", "keyDown", "keyUp", "focused", "unfocused", "shown", "hidden", "resized", "drop"};
 
 /// @brief Names of the setting types in Lua, in the order of ECSSettingType.
 static const char *const OPENECS_BINDINGS_SETTING_TYPES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", NULL};
@@ -843,9 +843,56 @@ static int ECSIBindings_SessionOpen(lua_State *state)
     return 1;
 }
 
+static int ECSIBindings_SessionOpenPreset(lua_State *state)
+{
+    const char *nameOrPath = luaL_checkstring(state, 1);
+    SHUResult result = ECSSession_OpenPreset(nameOrPath);
+
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "the preset '%s' is not opened (%s)", nameOrPath, result == SHUResult_Err ? "the unsaved work is kept" : SHUResult_String(result));
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
+/// @brief Pushes a list of presets or sessions, or raises an error when it cannot be made.
+static int ECSIBindings_SessionPushList(lua_State *state, SHUResult (*List)(ECSValue *retList))
+{
+    ECSValue *list = NULL;
+    SHUResult result = ECSValue_Create(&list);
+    result = result ? result : List(list);
+
+    if (result)
+    {
+        ECSValue_Destroy(&list);
+        return luaL_error(state, "cannot list them (%s)", SHUResult_String(result));
+    }
+
+    ECSILua_PushValue(list);
+    ECSValue_Destroy(&list);
+    return 1;
+}
+
+static int ECSIBindings_SessionPresets(lua_State *state)
+{
+    return ECSIBindings_SessionPushList(state, ECSSession_ListPresets);
+}
+
+static int ECSIBindings_SessionSessions(lua_State *state)
+{
+    return ECSIBindings_SessionPushList(state, ECSSession_ListSessions);
+}
+
 static const luaL_Reg OPENECS_BINDINGS_SESSION[] = {
     {"save", ECSIBindings_SessionSave},
     {"open", ECSIBindings_SessionOpen},
+    {"openPreset", ECSIBindings_SessionOpenPreset},
+    {"presets", ECSIBindings_SessionPresets},
+    {"sessions", ECSIBindings_SessionSessions},
     {NULL, NULL},
 };
 
@@ -1325,6 +1372,16 @@ static void ECSIBindings_PushEvent(lua_State *state, const ECSPanelEvent *event)
         lua_pushnumber(state, (lua_Number)event->size.height);
         lua_setfield(state, -2, "height");
         break;
+    case ECSPanelEventType_Drop:
+        lua_pushnumber(state, (lua_Number)event->drop.x);
+        lua_setfield(state, -2, "x");
+        lua_pushnumber(state, (lua_Number)event->drop.y);
+        lua_setfield(state, -2, "y");
+        lua_pushstring(state, ECSDropData_GetType(event->drop.data));
+        lua_setfield(state, -2, "dataType");
+        ECSILua_PushValue(ECSDropData_GetValue(event->drop.data));
+        lua_setfield(state, -2, "value");
+        break;
     default:
         break;
     }
@@ -1519,7 +1576,61 @@ static int ECSIBindings_PanelStartTimer(lua_State *state)
     return ECSIBindings_StartTimer(state, panel->type->plugin, panel, 2);
 }
 
+static int ECSIBindings_PanelAcceptDrops(lua_State *state)
+{
+    ECSPanel panel = ECSIBindings_CheckPanel(state, 1);
+    luaL_checktype(state, 2, LUA_TTABLE);
+
+    // the table keeps its strings alive while the core copies them
+    const char **types = NULL;
+
+    for (lua_Integer i = 1; lua_rawgeti(state, 2, i) != LUA_TNIL; i++)
+    {
+        if (lua_type(state, -1) != LUA_TSTRING)
+        {
+            arrfree(types);
+            return luaL_argerror(state, 2, "the types must be a list of strings");
+        }
+
+        arrput(types, lua_tostring(state, -1));
+        lua_pop(state, 1);
+    }
+
+    SHUResult result = ECSPanel_AcceptDrops(panel, types, arrlenu(types));
+    arrfree(types);
+
+    if (result)
+    {
+        return luaL_error(state, "the types are not set (%s)", SHUResult_String(result));
+    }
+
+    return 0;
+}
+
+static int ECSIBindings_PanelStartDrag(lua_State *state)
+{
+    ECSPanel panel = ECSIBindings_CheckPanel(state, 1);
+    const char *type = luaL_checkstring(state, 2);
+    ECSValue *value = NULL;
+    SHUResult result = ECSValue_Create(&value);
+    result = result ? result : ECSILua_GetValue(3, value);
+    result = result ? result : ECSPanel_StartDrag(panel, type, value);
+    ECSValue_Destroy(&value);
+
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "no drag of '%s' (%s)", type, result == SHUResult_Err ? "no pointer button pressed on the panel is held" : SHUResult_String(result));
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
 static const luaL_Reg OPENECS_BINDINGS_PANEL_METHODS[] = {
+    {"acceptDrops", ECSIBindings_PanelAcceptDrops},
+    {"startDrag", ECSIBindings_PanelStartDrag},
     {"redraw", ECSIBindings_PanelRedraw},
     {"getTitle", ECSIBindings_PanelGetTitle},
     {"setTitle", ECSIBindings_PanelSetTitle},
@@ -1550,6 +1661,8 @@ static int ECSIBindings_PanelAddMenuEntry(lua_State *state)
 static const luaL_Reg OPENECS_BINDINGS_PANEL[] = {
     {"registerType", ECSIBindings_PanelRegisterType},
     {"addMenuEntry", ECSIBindings_PanelAddMenuEntry},
+    {"acceptDrops", ECSIBindings_PanelAcceptDrops},
+    {"startDrag", ECSIBindings_PanelStartDrag},
     {"redraw", ECSIBindings_PanelRedraw},
     {"getTitle", ECSIBindings_PanelGetTitle},
     {"setTitle", ECSIBindings_PanelSetTitle},
@@ -1752,15 +1865,60 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIServices_ForEachCore(ECSIBindings_AddCore, state);
 }
 
-/// @brief The require of a plugin's environment: gives the plugin's ecs table for "ecs", and Lua's require gives other modules.
+/// @brief The require of a plugin's environment. Its upvalues are the plugin's ecs table, its environment, its folder and the table of its loaded modules.
+/// It gives the ecs table for "ecs". It runs a module of the plugin's folder once, in the plugin's environment: "parts.shapes" is parts/shapes.lua or parts/shapes/init.lua. Lua's require gives other modules.
 static int ECSIBindings_Require(lua_State *state)
 {
-    if (SDL_strcmp(luaL_checkstring(state, 1), "ecs") == 0)
+    const char *name = luaL_checkstring(state, 1);
+    lua_settop(state, 1);
+
+    if (SDL_strcmp(name, "ecs") == 0)
     {
         lua_pushvalue(state, lua_upvalueindex(1));
         return 1;
     }
 
+    if (lua_getfield(state, lua_upvalueindex(4), name) != LUA_TNIL)
+    {
+        return 1;
+    }
+
+    // paths are built on the Lua stack, so an error frees them
+    const char *folder = lua_tostring(state, lua_upvalueindex(3));
+    const char *module = luaL_gsub(state, name, ".", "/");
+    const char *path = lua_pushfstring(state, "%s%s.lua", folder, module);
+
+    if (!SDL_GetPathInfo(path, NULL))
+    {
+        path = lua_pushfstring(state, "%s%s/init.lua", folder, module);
+    }
+
+    if (SDL_GetPathInfo(path, NULL))
+    {
+        if (luaL_loadfilex(state, path, "t") != LUA_OK)
+        {
+            return lua_error(state);
+        }
+
+        lua_pushvalue(state, lua_upvalueindex(2));
+        lua_setupvalue(state, -2, 1);
+        lua_pushvalue(state, 1);
+        lua_pushstring(state, path);
+        lua_call(state, 2, 1);
+
+        // like Lua's require, a module that returns nothing gives true
+        if (lua_isnil(state, -1))
+        {
+            lua_pop(state, 1);
+            lua_pushboolean(state, true);
+        }
+
+        lua_pushvalue(state, -1);
+        lua_setfield(state, lua_upvalueindex(4), name);
+        return 1;
+    }
+
+    lua_settop(state, 1);
     lua_getglobal(state, "require");
     lua_insert(state, 1);
     lua_call(state, lua_gettop(state) - 1, LUA_MULTRET);
@@ -1814,9 +1972,10 @@ void ECSIBindings_Terminate(void)
     SDL_zero(BINDINGS);
 }
 
-SHUResult ECSIBindings_StartPlugin(ECSPlugin plugin, const char *path)
+SHUResult ECSIBindings_StartPlugin(ECSPlugin plugin, const char *folder, const char *path)
 {
     SDL_assert(plugin != NULL);
+    SDL_assert(folder != NULL);
     SDL_assert(path != NULL);
 
     lua_State *state = ECSILua_GetState();
@@ -1829,10 +1988,13 @@ SHUResult ECSIBindings_StartPlugin(ECSPlugin plugin, const char *path)
         return SHUResult_ErrFile;
     }
 
-    // the plugin's environment has its own require, which gives the plugin's ecs table; it reads other globals from the shared global table
+    // the plugin's environment has its own require, which gives the plugin's ecs table and modules; it reads other globals from the shared global table
     lua_newtable(state);
     ECSIBindings_PushEcs(state, plugin);
-    lua_pushcclosure(state, ECSIBindings_Require, 1);
+    lua_pushvalue(state, -2);
+    lua_pushstring(state, folder);
+    lua_newtable(state);
+    lua_pushcclosure(state, ECSIBindings_Require, 4);
     lua_setfield(state, -2, "require");
     lua_newtable(state);
     lua_pushglobaltable(state);

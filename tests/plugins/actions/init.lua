@@ -8,8 +8,8 @@ local function run()
   results.types = {
     maximize = type(ecs.layout.maximize),
     restart = type(ecs.panel.restart),
-    workspace1 = type(ecs.workspace1),
-    moveToWorkspace10 = type(ecs.moveToWorkspace10),
+    switch1 = type(ecs.workspace.switch1),
+    moveToWorkspace10 = type(ecs.layout.moveToWorkspace10),
   }
 
   -- without a panel, closing is the user's close, which a lock stops
@@ -18,7 +18,7 @@ local function run()
   ecs.layout.lock()
 
   ecs.layout.maximize()
-  ecs.workspace2()
+  ecs.workspace.switch2()
 end
 
 assert(ecs.service.register("actions", { run = { sig = "void()", doc = "Runs the core's functions from Lua", fn = run } }))

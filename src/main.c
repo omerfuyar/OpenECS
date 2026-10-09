@@ -3,6 +3,7 @@
 
 #include "SDL3/SDL.h"
 
+#include <stdio.h>
 #include <unistd.h>
 
 #pragma region Source Only
@@ -29,6 +30,10 @@ static ECSIArguments ECSIMain_ReadArguments(int argc, char **argv)
         {
             arguments.fresh = true;
         }
+        else if (SDL_strcmp(argv[i], "--version") == 0)
+        {
+            arguments.version = true;
+        }
         else if (SDL_strcmp(argv[i], "--test") == 0 && i + 1 < argc)
         {
             arguments.test = argv[++i];
@@ -39,7 +44,7 @@ static ECSIArguments ECSIMain_ReadArguments(int argc, char **argv)
         }
         else
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Unknown argument '%s'. Usage: openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [FILE...]", argv[i]);
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Unknown argument '%s'. Usage: openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [--version] [FILE...]", argv[i]);
         }
     }
 
@@ -53,15 +58,22 @@ int main(int argc, char **argv)
     ECSILog_Initialize();
     ECSIArguments arguments = ECSIMain_ReadArguments(argc, argv);
 
+    if (arguments.version)
+    {
+        printf("OpenECS %s, plugin API %d\n", OPENECS_VERSION, OPENECS_API_VERSION);
+        return 0;
+    }
+
     ECSIApp_Start(&arguments);
     int status = ECSIApp_Run();
-    char *next = ECSIApp_Stop();
+    const char *option = NULL;
+    char *next = ECSIApp_Stop(&option);
 
-    // a session opened while OpenECS ran starts a new OpenECS in place of this one; SDL can start a process but not replace one
+    // a session or preset opened while OpenECS ran starts a new OpenECS in place of this one; SDL can start a process but not replace one
     if (next != NULL)
     {
-        execv("/proc/self/exe", (char *[]){argv[0], "--session", next, NULL});
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot start again from the session '%s'.", next);
+        execv("/proc/self/exe", (char *[]){argv[0], (char *)option, next, NULL});
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot start again from '%s'.", next);
         SDL_free(next);
         return 1;
     }

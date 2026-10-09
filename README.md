@@ -13,7 +13,9 @@ OpenECS does nothing specific to any job. Plugins decide what each panel shows a
 
 ## Usage
 
-Just download the correct build for your setup from releases and run the executable. See [Releases](https://github.com/omerfuyar/OpenECS/releases)
+Download the archive for your system from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it and run `OpenECS` in it. The Linux build needs glibc 2.38 or later, such as Ubuntu 24.04 or Fedora 39. `OpenECS --version` prints its version.
+
+The archive also holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`.
 
 ## Development
 
@@ -94,7 +96,9 @@ LINK
     S   Static (Default)
     D   Dynamic
 
-So this command will build the program mode statically linked release mode.
+LINK chooses how Lua, Clay, libffi and stb are linked. SDL and SDL_ttf are always shared libraries, which the build puts next to the executable.
+
+So this command builds the program in Release mode, with those libraries linked statically.
 
 ``` shell
 cd OpenECS/
@@ -110,7 +114,7 @@ Debug builds run the static analyzer while compiling, and the sanitizers while t
 
 ### Running
 
-The build puts the executable, the first-party plugins and presets in `build/<LINK>/<TYPE>/bin/`.
+The build puts the executable, SDL's shared libraries, the first-party plugins and presets in `build/<LINK>/<TYPE>/bin/`.
 
 ``` shell
 ./build/Static/Release/bin/OpenECS
@@ -119,7 +123,7 @@ The build puts the executable, the first-party plugins and presets in `build/<LI
 
 Press Alt+W to see the core's keys.
 
-The default preset shows two example plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Ctrl+Tab switches workspace.
+The default preset shows two example plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Shift and a drag carry a canvas's strokes to another canvas, and a canvas takes strokes files dropped from a file manager. Ctrl+Tab switches workspace.
 
 ### Testing
 
@@ -130,3 +134,17 @@ for test in tests/*.lua; do ./build/Static/Debug/bin/OpenECS --test "$test" > /d
 ```
 
 To see why a test fails, run it alone. DESIGN.md section 17.5 explains how to write one.
+
+### Checks
+
+GitHub checks every pull request (DESIGN.md section 19.3). These commands run the same checks on your computer:
+
+``` shell
+.github/scripts/build.sh D
+.github/scripts/test.sh build/Static/Debug/bin/OpenECS
+.github/scripts/build.sh R
+```
+
+## License
+
+OpenECS is under the zlib license; see [LICENSE](LICENSE). The release archives hold the licenses of the libraries and the font that OpenECS includes, in `licenses/`.

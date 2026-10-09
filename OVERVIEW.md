@@ -400,6 +400,8 @@ The user's hand-edited file is the top layer, and the core never rewrites it, so
 
 **Keybinding.** A link between a key combination and a function. It is a setting.
 
+**Launcher.** The tool that OpenECS shows when it starts without a preset. It lists presets and saved sessions, and opens the one the user chooses.
+
 **Layout tree.** The splits, groups and panels inside one OS window.
 
 **Least authority.** The rule that a plugin can do only what its job needs.

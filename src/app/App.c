@@ -24,22 +24,23 @@
 /// @brief The core's settings file, relative to the executable.
 #define OPENECS_CORE_SETTINGS_FILE "resources/settings.lua"
 
-/// @brief A tool's last session, in its folder in the state folder.
-#define OPENECS_LAST_SESSION_FILE "session.lua"
 /// @brief The log file, in the state folder. Each start writes it anew.
 #define OPENECS_LOG_FILE "openecs.log"
 /// @brief Where the user's saved sessions go by default, in the data folder.
 #define OPENECS_SESSIONS_FOLDER "sessions/"
+/// @brief The user's presets, in the configuration folder.
+#define OPENECS_PRESETS_FOLDER "presets/"
 
 static struct
 {
     ECSIPresetInfo preset; // identity and contents of the preset, or of the session that replaced it
     char *presetPath;
-    char *sessionPath;  // NULL when OpenECS starts from the preset
-    char *lastSession;  // where the session is saved on quit, or NULL if there is no state folder
-    char *configFolder; // NULL if there is none
-    char *stateFolder;  // NULL if there is none
-    bool test;          // true when the program runs a test: no user files, no last session, nothing saved
+    char *sessionPath;   // NULL when OpenECS starts from the preset
+    char *lastSession;   // where the session is saved on quit, or NULL if there is no state folder
+    char *configFolder;  // NULL if there is none
+    char *presetsFolder; // the user's presets, or NULL if there is no configuration folder
+    char *stateFolder;   // NULL if there is none
+    bool test;           // true when the program runs a test: no user files, no last session, nothing saved
 } APP = {0};
 
 /// @brief Finds an XDG base folder for OpenECS: $variable/openecs/, or ~/fallback/openecs/ if the variable is not set.
@@ -64,20 +65,6 @@ static char *ECSIApp_XdgFolder(const char *variable, const char *fallback)
     }
 
     return folder;
-}
-
-/// @brief Finds a tool's last session file in the state folder.
-/// @return The path, or NULL if there is no state folder. Free it with SDL_free.
-static char *ECSIApp_LastSessionPath(const char *stateFolder, const char *appId)
-{
-    char *path = NULL;
-
-    if (stateFolder != NULL && SDL_asprintf(&path, "%s%s/%s", stateFolder, appId, OPENECS_LAST_SESSION_FILE) < 0)
-    {
-        path = NULL;
-    }
-
-    return path;
 }
 
 /// @brief Removes everything a failed plugin registered, for the Plugins module.
@@ -185,7 +172,6 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
     SDL_free(firstPartyPlugins);
 }
 
-/// @brief Gives the shorter of two waits in milliseconds, where -1 means no wait.
 /// @brief Passes files to the function that the preset or session names in open, one call for each file.
 static void ECSIApp_OpenFiles(char **files, usz count)
 {
@@ -203,6 +189,7 @@ static void ECSIApp_OpenFiles(char **files, usz count)
     }
 }
 
+/// @brief Gives the shorter of two waits in milliseconds, where -1 means no wait.
 static i32 ECSIApp_ShorterWait(i32 a, i32 b)
 {
     return a < 0 || (b >= 0 && b < a) ? b : a;
@@ -213,6 +200,8 @@ static i32 ECSIApp_ShorterWait(i32 a, i32 b)
 void ECSIApp_Start(const ECSIArguments *arguments)
 {
     SDL_assert(arguments != NULL);
+
+    SDL_Log("OpenECS %s, plugin API %d.", OPENECS_VERSION, OPENECS_API_VERSION);
 
     // every path of the program's own files starts here
     ECSIApp_CheckStart(SDL_GetBasePath() == NULL ? SHUResult_ErrNotFound : SHUResult_Ok, "finding the program's folder");
@@ -231,17 +220,23 @@ void ECSIApp_Start(const ECSIArguments *arguments)
         ECSIApp_CheckStart(ECSITest_Load(arguments->test, &APP.preset, &testPreset), "reading the test");
     }
 
-    ECSIApp_CheckStart(ECSISession_FindPreset(&APP.presetPath, APP.test ? testPreset : arguments->preset), "finding the preset");
-    ECSIApp_CheckStart(ECSISession_ReadInfo(APP.presetPath, &APP.preset), "reading the preset");
-    SDL_free(testPreset);
-
-    // the tool's last session replaces the preset, unless the command line names a session or asks for a fresh start
     if (!APP.test)
     {
         APP.configFolder = ECSIApp_XdgFolder("XDG_CONFIG_HOME", ".config");
         APP.stateFolder = ECSIApp_XdgFolder("XDG_STATE_HOME", ".local/state");
-        APP.lastSession = ECSIApp_LastSessionPath(APP.stateFolder, APP.preset.appId);
     }
+
+    if (APP.configFolder != NULL && SDL_asprintf(&APP.presetsFolder, "%s%s", APP.configFolder, OPENECS_PRESETS_FOLDER) < 0)
+    {
+        APP.presetsFolder = NULL;
+    }
+
+    ECSIApp_CheckStart(ECSISession_FindPreset(&APP.presetPath, APP.test ? testPreset : arguments->preset, APP.presetsFolder), "finding the preset");
+    ECSIApp_CheckStart(ECSISession_ReadInfo(APP.presetPath, &APP.preset), "reading the preset");
+    SDL_free(testPreset);
+
+    // the tool's last session replaces the preset, unless the command line names a session or asks for a fresh start
+    APP.lastSession = ECSISession_GetLastPath(APP.stateFolder, APP.preset.appId);
 
     // the lines logged so far went to standard error only
     char *logPath = NULL;
@@ -267,7 +262,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
         ECSISession_FreeInfo(&APP.preset);
         ECSIApp_CheckStart(ECSISession_ReadInfo(APP.sessionPath, &APP.preset), "reading the session");
         SDL_free(APP.lastSession);
-        APP.lastSession = ECSIApp_LastSessionPath(APP.stateFolder, APP.preset.appId);
+        APP.lastSession = ECSISession_GetLastPath(APP.stateFolder, APP.preset.appId);
     }
 
     const char *sourcePath = APP.sessionPath != NULL ? APP.sessionPath : APP.presetPath;
@@ -298,16 +293,21 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_CheckStart(ECSIMenus_Initialize(), "registering the core's functions");
     ECSIApp_CheckStart(ECSIInput_Initialize(), "declaring the input settings");
 
-    // a test has no data folder, so the dialogs of sessions start where the system chooses
+    // a test has no data folder; its sessions field names the folder that stands for the saved sessions
     char *dataFolder = APP.test ? NULL : ECSIApp_XdgFolder("XDG_DATA_HOME", ".local/share");
     char *sessionsFolder = NULL;
 
-    if (dataFolder != NULL && SDL_asprintf(&sessionsFolder, "%s%s", dataFolder, OPENECS_SESSIONS_FOLDER) < 0)
+    if (APP.test)
+    {
+        sessionsFolder = ECSITest_GetSessions() == NULL ? NULL : SDL_strdup(ECSITest_GetSessions());
+    }
+    else if (dataFolder != NULL && SDL_asprintf(&sessionsFolder, "%s%s", dataFolder, OPENECS_SESSIONS_FOLDER) < 0)
     {
         sessionsFolder = NULL;
     }
 
-    ECSIApp_CheckStart(ECSISession_Initialize(sessionsFolder, !APP.test), "registering the session functions");
+    ECSISessionFolders folders = {.presets = APP.presetsFolder, .sessions = sessionsFolder, .state = APP.stateFolder};
+    ECSIApp_CheckStart(ECSISession_Initialize(&folders, !APP.test), "registering the session functions");
     SDL_free(dataFolder);
     SDL_free(sessionsFolder);
 
@@ -367,14 +367,16 @@ int ECSIApp_Run(void)
         }
 
         // a session opened in this pass replaces the program once it stops
-        running = ECSITest_Step() && ECSISession_GetNext() == NULL;
+        running = ECSITest_Step() && ECSISession_GetNext(NULL) == NULL;
     }
 
     return ECSITest_GetStatus();
 }
 
-char *ECSIApp_Stop(void)
+char *ECSIApp_Stop(const char **retOption)
 {
+    SDL_assert(retOption != NULL);
+
     ECSISanitizers_KeepLibraries();
     ECSITest_Terminate();
 
@@ -398,13 +400,14 @@ char *ECSIApp_Stop(void)
     ECSIPlugins_Unload();
     ECSISettings_Terminate();
     ECSIBindings_Terminate();
-    char *next = ECSISession_GetNext() == NULL ? NULL : SDL_strdup(ECSISession_GetNext());
+    char *next = ECSISession_GetNext(retOption) == NULL ? NULL : SDL_strdup(ECSISession_GetNext(NULL));
     ECSISession_Terminate();
     ECSISession_FreeInfo(&APP.preset);
     SDL_free(APP.presetPath);
     SDL_free(APP.sessionPath);
     SDL_free(APP.lastSession);
     SDL_free(APP.configFolder);
+    SDL_free(APP.presetsFolder);
     SDL_free(APP.stateFolder);
     ECSILua_Terminate();
 

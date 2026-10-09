@@ -2,7 +2,7 @@
 return {
   preset = "presets/sketch.lua",
   run = function(test)
-    test.call("ecs.workspace3")
+    test.call("ecs.workspace.switch3")
     local canvases = test.session().workspaces[3].windows[1][1]
     local c = test.rect(canvases[1].panels[1].id)
     local lua = test.rect(canvases[2].panels[1].id)

@@ -115,6 +115,10 @@ static struct
     ECSIDrop drop;     // where the dragged panel lands now
     SDL_FRect dropRect; // the highlight of the drop place
 
+    const char *dataType; // type of the data being dragged, or NULL
+    f32 dataX;            // the pointer's position while data is dragged
+    f32 dataY;
+
     SDL_Cursor *cursors[SDL_SYSTEM_CURSOR_COUNT]; // made when first used
     SDL_SystemCursor cursor;                      // the pointer's shape now
 
@@ -539,6 +543,35 @@ static void ECSIWindow_FitTabs(void)
     }
 }
 
+/// @brief Marks a visible group's shown panel if it accepts the dragged data, and fills it if the pointer is over it.
+static void ECSIWindow_DeclareDataTarget(ECSINode *group, void *userData)
+{
+    (void)userData;
+
+    if (arrlenu(group->panels) == 0)
+    {
+        return;
+    }
+
+    ECSPanel panel = group->panels[group->shown];
+
+    if (!ECSIPanel_Accepts(panel, WINDOW.dataType))
+    {
+        return;
+    }
+
+    bool under = WINDOW.dataX >= panel->x && WINDOW.dataX < panel->x + panel->width && WINDOW.dataY >= panel->y && WINDOW.dataY < panel->y + panel->height;
+
+    CLAY_AUTO_ID({
+        .layout = {.sizing = {CLAY_SIZING_FIXED(panel->width), CLAY_SIZING_FIXED(panel->height)}},
+        .backgroundColor = under ? WINDOW.colors[ECSIColor_Drop] : (Clay_Color){0},
+        .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {2, 2, 2, 2, 0}},
+        .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {panel->x, panel->y}, .zIndex = 4, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
+    })
+    {
+    }
+}
+
 /// @brief Declares the core's own interface for Clay and returns what to draw.
 static Clay_RenderCommandArray ECSIWindow_DeclareInterface(void)
 {
@@ -617,6 +650,11 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(void)
             })
             {
             }
+        }
+
+        if (WINDOW.dataType != NULL)
+        {
+            ECSILayout_ForEachGroup(ECSIWindow_DeclareDataTarget, NULL);
         }
 
         for (usz level = 0; level < OPENECS_MENU_DEPTH && WINDOW.menus[level].lines != NULL; level++)
@@ -1355,6 +1393,14 @@ bool ECSIWindow_MenuContains(f32 x, f32 y)
     }
 
     return false;
+}
+
+void ECSIWindow_ShowDataDrag(const char *type, f32 x, f32 y)
+{
+    WINDOW.dataType = type;
+    WINDOW.dataX = x;
+    WINDOW.dataY = y;
+    ECSILayout_RequestFrame();
 }
 
 void ECSIWindow_ShowPrefixKeys(const char *const *lines, usz count)

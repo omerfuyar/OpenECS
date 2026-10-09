@@ -19,13 +19,26 @@
 /// @brief Longest path to a part of a file that a problem report names.
 #define OPENECS_SESSION_PATH_SIZE 256
 
+/// @brief A tool's last session, in its folder in the state folder.
+#define OPENECS_LAST_SESSION_FILE "session.lua"
+
 static struct
 {
     const ECSIPresetInfo *info; // the preset or session in use, which saved sessions are written from
-    char *folder;               // where the dialogs that ask for session files start, or NULL
+    char *presets;              // the user's presets, or NULL
+    char *folder;               // the saved sessions, where the dialogs that ask for session files start, or NULL
+    char *state;                // the state folder, or NULL
     bool canOpen;               // false during a test
-    char *next;                 // the session that OpenECS starts again from once it stops, or NULL
+    char *next;                 // the session or preset that OpenECS starts again from once it stops, or NULL
+    bool nextIsPreset;          // true when next is a preset
 } SESSION = {0};
+
+/// @brief A file of a list of presets or sessions, before it is read.
+typedef struct ECSISessionFile
+{
+    char *name; // without .lua
+    char *path;
+} ECSISessionFile;
 
 /// @brief State while the workspaces of a file are built.
 typedef struct ECSISessionReader
@@ -290,9 +303,195 @@ static void ECSISession_OpenBound(void)
     }
 }
 
+/// @brief Adds the .lua files of a folder to a list, unless the list has a file of the same name. A folder that does not exist adds nothing.
+static SHUResult ECSISession_FindFiles(ECSISessionFile **files, const char *folder)
+{
+    if (folder == NULL)
+    {
+        return SHUResult_Ok;
+    }
+
+    int count = 0;
+    char **names = SDL_GlobDirectory(folder, "*.lua", 0, &count);
+    SHUResult result = SHUResult_Ok;
+
+    for (int i = 0; !result && i < count; i++)
+    {
+        ECSISessionFile file = {.name = SDL_strndup(names[i], SDL_strlen(names[i]) - 4)};
+        bool listed = false;
+
+        for (usz j = 0; file.name != NULL && j < arrlenu(*files); j++)
+        {
+            listed = listed || SDL_strcmp((*files)[j].name, file.name) == 0;
+        }
+
+        if (file.name == NULL || (!listed && SDL_asprintf(&file.path, "%s%s", folder, names[i]) < 0))
+        {
+            result = SHUResult_ErrAllocation;
+        }
+
+        if (result || listed)
+        {
+            SDL_free(file.name);
+            continue;
+        }
+
+        arrput(*files, file);
+    }
+
+    SDL_free(names);
+    return result;
+}
+
+static int ECSISession_CompareFiles(const void *a, const void *b)
+{
+    return SDL_strcmp(((const ECSISessionFile *)a)->name, ((const ECSISessionFile *)b)->name);
+}
+
+/// @brief Sets a field of a list entry to a text.
+static SHUResult ECSISession_SetText(ECSValue *entry, const char *name, const char *text)
+{
+    ECSValue *field = NULL;
+    SHU_ReturnResult(ECSValue_TableSetField(entry, name, &field));
+    return ECSValue_SetString(field, text);
+}
+
+/// @brief Sets a field of a list entry to the time a file was written, in seconds since 1970. A missing file sets nothing.
+static SHUResult ECSISession_SetTime(ECSValue *entry, const char *name, const char *path)
+{
+    SDL_PathInfo info = {0};
+
+    if (path == NULL || !SDL_GetPathInfo(path, &info))
+    {
+        return SHUResult_Ok;
+    }
+
+    ECSValue *field = NULL;
+    SHU_ReturnResult(ECSValue_TableSetField(entry, name, &field));
+    ECSValue_SetInteger(field, info.modify_time / (SDL_Time)SDL_NS_PER_SECOND);
+    return SHUResult_Ok;
+}
+
+/// @brief Reads a list's files, sorted by name, and adds an entry for each to the list. A file that cannot be read is reported and left out.
+static SHUResult ECSISession_FillList(ECSValue *retList, ECSISessionFile *files, bool presets)
+{
+    SDL_qsort(files, arrlenu(files), sizeof(*files), ECSISession_CompareFiles);
+    ECSValue_SetTable(retList);
+    SHUResult result = SHUResult_Ok;
+
+    for (usz i = 0; !result && i < arrlenu(files); i++)
+    {
+        ECSIPresetInfo info = {0};
+        result = ECSISession_ReadInfo(files[i].path, &info);
+
+        // the Lua module reported why the file cannot be read
+        if (result && result != SHUResult_ErrAllocation)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is left out of the list of %s.", files[i].path, presets ? "presets" : "sessions");
+            ECSISession_FreeInfo(&info);
+            result = SHUResult_Ok;
+            continue;
+        }
+
+        if (!result && (!presets || ECSValue_GetBool(ECSValue_GetTableField(info.file, "listed"), true)))
+        {
+            ECSValue *entry = NULL;
+            result = ECSValue_ListAddItem(retList, &entry);
+
+            if (!result)
+            {
+                ECSValue_SetTable(entry);
+            }
+
+            result = result ? result : ECSISession_SetText(entry, "name", files[i].name);
+            result = result ? result : ECSISession_SetText(entry, "path", files[i].path);
+            result = result ? result : ECSISession_SetText(entry, "appId", info.appId);
+            result = result ? result : ECSISession_SetText(entry, "appName", info.appName);
+
+            if (presets)
+            {
+                char *lastSession = ECSISession_GetLastPath(SESSION.state, info.appId);
+                result = result ? result : ECSISession_SetTime(entry, "lastUsed", lastSession);
+                SDL_free(lastSession);
+            }
+            else
+            {
+                result = result ? result : ECSISession_SetTime(entry, "saved", files[i].path);
+            }
+        }
+
+        ECSISession_FreeInfo(&info);
+    }
+
+    return result;
+}
+
+static void ECSISession_FreeFiles(ECSISessionFile **files)
+{
+    for (usz i = 0; i < arrlenu(*files); i++)
+    {
+        SDL_free((*files)[i].name);
+        SDL_free((*files)[i].path);
+    }
+
+    arrfree(*files);
+}
+
+/// @brief Opens a session or a preset in place of the current one, once the user has been asked about unsaved work.
+static SHUResult ECSISession_OpenFile(const char *path, bool preset)
+{
+    // the file is checked first, so a file that is not a session never stops OpenECS
+    ECSIPresetInfo info = {0};
+    SHUResult result = ECSISession_ReadInfo(path, &info);
+    bool hasWorkspaces = ECSValue_GetListCount(ECSValue_GetTableField(info.file, "workspaces")) > 0;
+    ECSISession_FreeInfo(&info);
+
+    if (!result && !hasWorkspaces)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a %s: it has no list of workspaces.", path, preset ? "preset" : "session");
+        result = SHUResult_ErrBadData;
+    }
+
+    SHU_ReturnResult(result);
+
+    // like closing panels, opening a session keeps the unsaved work when the user cannot be asked
+    ECSPanel *panels = ECSILayout_GetPanels();
+    bool confirmed = ECSIPanels_ConfirmClose(panels, arrlenu(panels), false);
+    arrfree(panels);
+
+    if (!confirmed)
+    {
+        return SHUResult_Err;
+    }
+
+    char *next = SDL_strdup(path);
+
+    if (next == NULL)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    SDL_free(SESSION.next);
+    SESSION.next = next;
+    SESSION.nextIsPreset = preset;
+    SDL_Log("OpenECS starts again from the %s '%s'.", preset ? "preset" : "session", path);
+    return SHUResult_Ok;
+}
+
+/// @brief Refuses to open a session or a preset during a test, which cannot restart.
+static bool ECSISession_CanOpen(void)
+{
+    if (!SESSION.canOpen)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A test starts from its preset alone, so it cannot open a session or a preset.");
+    }
+
+    return SESSION.canOpen;
+}
+
 #pragma endregion Source Only
 
-SHUResult ECSISession_FindPreset(char **retPath, const char *nameOrPath)
+SHUResult ECSISession_FindPreset(char **retPath, const char *nameOrPath, const char *userFolder)
 {
     SDL_assert(retPath != NULL);
     SDL_assert(nameOrPath != NULL);
@@ -306,7 +505,37 @@ SHUResult ECSISession_FindPreset(char **retPath, const char *nameOrPath)
         return *retPath == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
     }
 
+    // the user's preset wins over a first-party preset of the same name
+    if (userFolder != NULL)
+    {
+        if (SDL_asprintf(retPath, "%s%s.lua", userFolder, nameOrPath) < 0)
+        {
+            return SHUResult_ErrAllocation;
+        }
+
+        if (SDL_GetPathInfo(*retPath, NULL))
+        {
+            return SHUResult_Ok;
+        }
+
+        SDL_free(*retPath);
+    }
+
     return SDL_asprintf(retPath, "%spresets/%s.lua", SDL_GetBasePath(), nameOrPath) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok;
+}
+
+char *ECSISession_GetLastPath(const char *stateFolder, const char *appId)
+{
+    SDL_assert(appId != NULL);
+
+    char *path = NULL;
+
+    if (stateFolder != NULL && SDL_asprintf(&path, "%s%s/%s", stateFolder, appId, OPENECS_LAST_SESSION_FILE) < 0)
+    {
+        path = NULL;
+    }
+
+    return path;
 }
 
 SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
@@ -458,12 +687,16 @@ SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
     return result;
 }
 
-SHUResult ECSISession_Initialize(const char *folder, bool canOpen)
+SHUResult ECSISession_Initialize(const ECSISessionFolders *folders, bool canOpen)
 {
-    SESSION.folder = folder == NULL ? NULL : SDL_strdup(folder);
+    SDL_assert(folders != NULL);
+
+    SESSION.presets = folders->presets == NULL ? NULL : SDL_strdup(folders->presets);
+    SESSION.folder = folders->sessions == NULL ? NULL : SDL_strdup(folders->sessions);
+    SESSION.state = folders->state == NULL ? NULL : SDL_strdup(folders->state);
     SESSION.canOpen = canOpen;
 
-    if (folder != NULL && SESSION.folder == NULL)
+    if ((folders->presets != NULL && SESSION.presets == NULL) || (folders->sessions != NULL && SESSION.folder == NULL) || (folders->state != NULL && SESSION.state == NULL))
     {
         return SHUResult_ErrAllocation;
     }
@@ -473,23 +706,29 @@ SHUResult ECSISession_Initialize(const char *folder, bool canOpen)
     return ECSIServices_RegisterCore("ecs.session.open", (ECSFunction)ECSISession_OpenBound, "void()", "Open a saved session");
 }
 
-const char *ECSISession_GetNext(void)
+const char *ECSISession_GetNext(const char **retOption)
 {
+    if (retOption != NULL)
+    {
+        *retOption = SESSION.nextIsPreset ? "--preset" : "--session";
+    }
+
     return SESSION.next;
 }
 
 void ECSISession_Terminate(void)
 {
+    SDL_free(SESSION.presets);
     SDL_free(SESSION.folder);
+    SDL_free(SESSION.state);
     SDL_free(SESSION.next);
     SDL_zero(SESSION);
 }
 
 SHUResult ECSSession_Open(const char *path)
 {
-    if (!SESSION.canOpen)
+    if (!ECSISession_CanOpen())
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A test starts from its preset alone, so it cannot open a session.");
         return SHUResult_ErrPrivileges;
     }
 
@@ -498,41 +737,52 @@ SHUResult ECSSession_Open(const char *path)
         return ECSISession_ShowDialog(ECSDialogType_OpenFile, ECSISession_OpenChosen);
     }
 
-    // the file is checked first, so a file that is not a session never stops OpenECS
-    ECSIPresetInfo info = {0};
-    SHUResult result = ECSISession_ReadInfo(path, &info);
-    bool hasWorkspaces = ECSValue_GetListCount(ECSValue_GetTableField(info.file, "workspaces")) > 0;
-    ECSISession_FreeInfo(&info);
+    return ECSISession_OpenFile(path, false);
+}
 
-    if (!result && !hasWorkspaces)
+SHUResult ECSSession_OpenPreset(const char *nameOrPath)
+{
+    SDL_assert(nameOrPath != NULL);
+
+    if (!ECSISession_CanOpen())
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a session: it has no list of workspaces.", path);
-        result = SHUResult_ErrBadData;
+        return SHUResult_ErrPrivileges;
     }
 
-    SHU_ReturnResult(result);
+    char *path = NULL;
+    SHU_ReturnResult(ECSISession_FindPreset(&path, nameOrPath, SESSION.presets));
+    SHUResult result = ECSISession_OpenFile(path, true);
+    SDL_free(path);
+    return result;
+}
 
-    // like closing panels, opening a session keeps the unsaved work when the user cannot be asked
-    ECSPanel *panels = ECSILayout_GetPanels();
-    bool confirmed = ECSIPanels_ConfirmClose(panels, arrlenu(panels), false);
-    arrfree(panels);
+SHUResult ECSSession_ListPresets(ECSValue *retList)
+{
+    SDL_assert(retList != NULL);
 
-    if (!confirmed)
-    {
-        return SHUResult_Err;
-    }
+    // the user's presets first, so they win over first-party presets of the same name
+    ECSISessionFile *files = NULL;
+    char *firstParty = NULL;
+    SHUResult result = SDL_asprintf(&firstParty, "%spresets/", SDL_GetBasePath()) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok;
+    result = result ? result : ECSISession_FindFiles(&files, SESSION.presets);
+    result = result ? result : ECSISession_FindFiles(&files, firstParty);
+    result = result ? result : ECSISession_FillList(retList, files, true);
 
-    char *next = SDL_strdup(path);
+    ECSISession_FreeFiles(&files);
+    SDL_free(firstParty);
+    return result;
+}
 
-    if (next == NULL)
-    {
-        return SHUResult_ErrAllocation;
-    }
+SHUResult ECSSession_ListSessions(ECSValue *retList)
+{
+    SDL_assert(retList != NULL);
 
-    SDL_free(SESSION.next);
-    SESSION.next = next;
-    SDL_Log("OpenECS starts again from the session '%s'.", path);
-    return SHUResult_Ok;
+    ECSISessionFile *files = NULL;
+    SHUResult result = ECSISession_FindFiles(&files, SESSION.folder);
+    result = result ? result : ECSISession_FillList(retList, files, false);
+
+    ECSISession_FreeFiles(&files);
+    return result;
 }
 
 SHUResult ECSSession_Save(const char *path)

@@ -6,6 +6,9 @@
 
 #pragma region Macros
 
+/// @brief Version of OpenECS (DESIGN 19.1). Between releases it is the next release with "-dev".
+#define OPENECS_VERSION "0.1.0"
+
 /// @brief Version of this plugin interface. The core refuses a plugin whose manifest names another version.
 #define OPENECS_API_VERSION 1
 
@@ -122,7 +125,11 @@ typedef enum ECSPanelEventType
     ECSPanelEventType_Shown,   // the panel became visible
     ECSPanelEventType_Hidden,  // the panel is no longer visible: another tab, workspace or maximized group is shown
     ECSPanelEventType_Resized, // the panel's size changed while it is visible
+    ECSPanelEventType_Drop,    // data of a type the panel accepts was dropped on it
 } ECSPanelEventType;
+
+/// @brief Handle of dropped data, valid only during the Drop event that carries it. ECSDropData_GetType and ECSDropData_GetValue read it.
+typedef struct ECSIDropData *ECSDropData;
 
 /// @brief An event sent to a panel. Its type chooses the member of the union that is set.
 typedef struct ECSPanelEvent
@@ -161,6 +168,14 @@ typedef struct ECSPanelEvent
             f32 width;  // in layout units
             f32 height; // in layout units
         } size;
+
+        // Drop
+        struct
+        {
+            f32 x;            // position in surface pixels
+            f32 y;            // position in surface pixels
+            ECSDropData data; // the dropped data
+        } drop;
     };
 } ECSPanelEvent;
 
@@ -626,6 +641,24 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSession_Save(const char *path);
 /// @lua ecs.session.open
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_Open(const char *path);
 
+/// @brief Opens a preset's tool in place of the current one, as ECSSession_Open opens a session. The tool starts from its last session if it has one. Main thread only.
+/// @param nameOrPath A preset's name, looked up in the user's presets, then in the first-party presets; or a path, which has a '/' or ends with .lua.
+/// @return SHUResult_Ok if OpenECS restarts into the tool, SHUResult_ErrFile or SHUResult_ErrBadData if the file is not a preset, SHUResult_Err if the user keeps the unsaved work, SHUResult_ErrPrivileges during a test, which cannot restart, or SHUResult_ErrAllocation.
+/// @lua ecs.session.openPreset
+OPENECS_EXPORT SHUWUR SHUResult ECSSession_OpenPreset(const char *nameOrPath);
+
+/// @brief Lists the presets that a name finds: the user's presets, then the first-party presets. A name in both is listed once, from the user's presets. A file that cannot be read is reported and left out, and so is a preset with listed = false. Main thread only.
+/// @param retList The value to set to a list sorted by name. Each entry is a table: name (the file's name without .lua), path, appId, appName, and lastUsed, when the tool's last session was written, in seconds since 1970, if it has one.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.session.presets
+OPENECS_EXPORT SHUWUR SHUResult ECSSession_ListPresets(ECSValue *retList);
+
+/// @brief Lists the .lua files in the folder of saved sessions. A file that cannot be read is reported and left out. Main thread only.
+/// @param retList The value to set to a list sorted by name. Each entry is a table: name (the file's name without .lua), path, appId, appName, and saved, when the file was written, in seconds since 1970.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.session.sessions
+OPENECS_EXPORT SHUWUR SHUResult ECSSession_ListSessions(ECSValue *retList);
+
 /// @brief Puts text on the clipboard. Main thread only.
 /// @param text The text. The core copies it.
 /// @return SHUResult_Ok, or SHUResult_ErrInternal if the system refuses it.
@@ -760,5 +793,33 @@ OPENECS_EXPORT u32 ECSPanel_GetId(ECSPanel panel);
 /// @return The name. Valid while the panel exists.
 /// @lua ecs.panel.getType, panel:getType
 OPENECS_EXPORT const char *ECSPanel_GetType(ECSPanel panel);
+
+/// @brief Sets the types of data that a panel accepts when data is dropped on it, such as "color" or "file-list". Data from other applications is "file-list", a list of paths, or "text". Main thread only.
+/// @param panel The panel.
+/// @param types The types. The core copies them. A new call replaces the list; NULL with a count of 0 accepts nothing.
+/// @param count Number of types.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.panel.acceptDrops, panel:acceptDrops
+OPENECS_EXPORT SHUWUR SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char *const *types, usz count);
+
+/// @brief Starts dragging data from a panel, while a pointer button that was pressed on the panel is held, usually from its PointerDown or PointerMove event. The panel then gets no pointer moves until the release, and still gets its PointerUp. The core marks the panels that accept the type; on release, the one under the pointer gets a Drop event. Escape cancels. Main thread only.
+/// @param panel The panel the drag starts from.
+/// @param type The type of the data, such as "color".
+/// @param value The data, or NULL. The core copies it.
+/// @return SHUResult_Ok, SHUResult_Err if no pointer button that was pressed on the panel is held, or SHUResult_ErrAllocation.
+/// @lua ecs.panel.startDrag, panel:startDrag
+OPENECS_EXPORT SHUWUR SHUResult ECSPanel_StartDrag(ECSPanel panel, const char *type, const ECSValue *value);
+
+/// @brief Gets the type of dropped data.
+/// @param data The data of a Drop event.
+/// @return The type, such as "color". Valid during the event.
+/// @lua none: a Lua panel's drop event has the field dataType.
+OPENECS_EXPORT const char *ECSDropData_GetType(ECSDropData data);
+
+/// @brief Gets dropped data.
+/// @param data The data of a Drop event.
+/// @return The value; a nil value if the drag gave none. Valid during the event.
+/// @lua none: a Lua panel's drop event has the field value.
+OPENECS_EXPORT const ECSValue *ECSDropData_GetValue(ECSDropData data);
 
 #pragma endregion Core Functions

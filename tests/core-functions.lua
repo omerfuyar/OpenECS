@@ -6,7 +6,7 @@ return {
     local session = test.session()
 
     test.match(session.pluginState.actions.state, {
-      types = { maximize = "function", restart = "function", workspace1 = "function", moveToWorkspace10 = "function" },
+      types = { maximize = "function", restart = "function", switch1 = "function", moveToWorkspace10 = "function" },
       closedLocked = false,
     }, "the module")
 

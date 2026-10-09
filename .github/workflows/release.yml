@@ -1,0 +1,101 @@
+# Makes a release from a version tag on main, such as v0.1.0: a Release build for each platform, the source with its submodules, and checksums.
+# The release is a draft, so its description can be checked before it is published.
+# Run by hand, it makes the same packages without a release, to try them.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Release (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            runner: ubuntu-24.04
+            install: .github/scripts/install-linux.sh
+          # shuild builds on Linux only for now; other platforms join here when it builds on them
+          # - platform: linux-aarch64
+          #   runner: ubuntu-24.04-arm
+          #   install: .github/scripts/install-linux.sh
+          # - platform: windows-x86_64
+          #   runner: windows-2025
+          #   install: .github/scripts/install-windows.ps1
+          # - platform: macos-arm64
+          #   runner: macos-15
+          #   install: .github/scripts/install-macos.sh
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Find the version
+        run: echo "VERSION=$(.github/scripts/version.sh)" >> "$GITHUB_ENV"
+
+      - name: Install the build tools
+        run: ${{ matrix.install }}
+
+      - name: Build
+        run: .github/scripts/build.sh R
+
+      - name: Package
+        run: .github/scripts/package.sh "$VERSION" "${{ matrix.platform }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openecs-${{ matrix.platform }}
+          path: dist/*.tar.gz
+
+  source:
+    name: Source
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Package the source with its submodules
+        run: .github/scripts/package-source.sh "$(.github/scripts/version.sh)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openecs-source
+          path: dist/*.tar.gz
+
+  release:
+    name: Draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, source]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write the checksums
+        run: cd dist && sha256sum *.tar.gz > SHA256SUMS
+
+      # the description is .github/release-notes/TAG.md; a version below 1.0.0, or with a suffix such as -rc.1, is a pre-release
+      - name: Make the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          notes=".github/release-notes/$tag.md"
+          test -f "$notes" || { echo "$notes is missing."; exit 1; }
+          prerelease=""
+          case "$tag" in v0.* | *-*) prerelease="--prerelease" ;; esac
+          gh release create "$tag" dist/* --draft $prerelease --title "OpenECS ${tag#v}" --notes-file "$notes"

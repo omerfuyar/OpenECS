@@ -6,26 +6,6 @@
 -- A function that keys can run says so. Keys call it with no arguments, which acts on the focused panel as the user does: locks stop it.
 
 ---@class ecs
----@field workspace1 fun() Switches to workspace 1. Keys can run it.
----@field workspace2 fun() Switches to workspace 2. Keys can run it.
----@field workspace3 fun() Switches to workspace 3. Keys can run it.
----@field workspace4 fun() Switches to workspace 4. Keys can run it.
----@field workspace5 fun() Switches to workspace 5. Keys can run it.
----@field workspace6 fun() Switches to workspace 6. Keys can run it.
----@field workspace7 fun() Switches to workspace 7. Keys can run it.
----@field workspace8 fun() Switches to workspace 8. Keys can run it.
----@field workspace9 fun() Switches to workspace 9. Keys can run it.
----@field workspace10 fun() Switches to workspace 10. Keys can run it.
----@field moveToWorkspace1 fun() Moves the focused panel into workspace 1's focused group. Keys can run it.
----@field moveToWorkspace2 fun() Moves the focused panel into workspace 2's focused group. Keys can run it.
----@field moveToWorkspace3 fun() Moves the focused panel into workspace 3's focused group. Keys can run it.
----@field moveToWorkspace4 fun() Moves the focused panel into workspace 4's focused group. Keys can run it.
----@field moveToWorkspace5 fun() Moves the focused panel into workspace 5's focused group. Keys can run it.
----@field moveToWorkspace6 fun() Moves the focused panel into workspace 6's focused group. Keys can run it.
----@field moveToWorkspace7 fun() Moves the focused panel into workspace 7's focused group. Keys can run it.
----@field moveToWorkspace8 fun() Moves the focused panel into workspace 8's focused group. Keys can run it.
----@field moveToWorkspace9 fun() Moves the focused panel into workspace 9's focused group. Keys can run it.
----@field moveToWorkspace10 fun() Moves the focused panel into workspace 10's focused group. Keys can run it.
 local ecs = {}
 
 -- Log
@@ -153,6 +133,19 @@ function Panel:setUnsaved(unsaved) end
 ---@return ecs.Timer
 function Panel:startTimer(seconds, repeat_, fn) end
 
+---Sets the types of data that the panel accepts when data is dropped on it, such as "color" or "file-list".
+---Data from other applications is "file-list", a list of paths, or "text". A new call replaces the list.
+---@param types string[]
+function Panel:acceptDrops(types) end
+
+---Starts dragging data from the panel, while a pointer button that was pressed on it is held, usually from its pointerDown or pointerMove event.
+---The panel then gets no pointer moves until the release, and still gets its pointerUp. On release, the panel under the pointer that accepts the type gets a drop event. Escape cancels.
+---@param type string The type of the data, such as "color".
+---@param value? any The data: a value as in saved state.
+---@return true|nil ok
+---@return string? message Why no drag starts: no pointer button that was pressed on the panel is held.
+function Panel:startDrag(type, value) end
+
 ---The pixels a panel draws into. It is valid only while draw runs.
 ---@class ecs.Surface
 ---@field width integer
@@ -178,7 +171,7 @@ function Surface:getPixel(x, y) end
 ---@param x? integer The first pixel's column; 0 if missing.
 function Surface:setRow(y, bytes, x) end
 
----@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"
+---@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"|"drop"
 
 ---@class ecs.PanelEvent
 ---@field type ecs.PanelEventType
@@ -186,14 +179,16 @@ function Surface:setRow(y, bytes, x) end
 ---@field ctrl boolean
 ---@field alt boolean
 ---@field super boolean
----@field x? number For pointer and wheel events.
----@field y? number For pointer and wheel events.
+---@field x? number For pointer, wheel and drop events.
+---@field y? number For pointer, wheel and drop events.
 ---@field button? integer For pointerDown and pointerUp.
 ---@field wheelX? number For wheel events.
 ---@field wheelY? number For wheel events.
 ---@field key? string SDL's key name, for keyDown and keyUp.
 ---@field width? number For shown and resized.
 ---@field height? number For shown and resized.
+---@field dataType? string For drop: the type of the dropped data, such as "color" or "file-list".
+---@field value? any For drop: the dropped data.
 
 ---@class ecs.PanelTypeDesc
 ---@field name string The plugin's name, a dot and the type's name, such as "canvas.view".
@@ -256,6 +251,17 @@ function ecs.panel.setUnsaved(panel, unsaved) end
 ---@return ecs.Timer
 function ecs.panel.startTimer(panel, seconds, repeat_, fn) end
 
+---@param panel ecs.Panel
+---@param types string[]
+function ecs.panel.acceptDrops(panel, types) end
+
+---@param panel ecs.Panel
+---@param type string
+---@param value? any
+---@return true|nil ok
+---@return string? message
+function ecs.panel.startDrag(panel, type, value) end
+
 ---Restarts the focused panel from its last saved state, if it failed. Keys can run it.
 function ecs.panel.restart() end
 
@@ -264,6 +270,16 @@ function ecs.panel.restart() end
 ---@alias ecs.Zone "default"|"center"|"left"|"right"|"top"|"bottom"
 
 ---@class ecs.layout
+---@field moveToWorkspace1 fun() Moves the focused panel into workspace 1's focused group. Keys can run it.
+---@field moveToWorkspace2 fun() Moves the focused panel into workspace 2's focused group. Keys can run it.
+---@field moveToWorkspace3 fun() Moves the focused panel into workspace 3's focused group. Keys can run it.
+---@field moveToWorkspace4 fun() Moves the focused panel into workspace 4's focused group. Keys can run it.
+---@field moveToWorkspace5 fun() Moves the focused panel into workspace 5's focused group. Keys can run it.
+---@field moveToWorkspace6 fun() Moves the focused panel into workspace 6's focused group. Keys can run it.
+---@field moveToWorkspace7 fun() Moves the focused panel into workspace 7's focused group. Keys can run it.
+---@field moveToWorkspace8 fun() Moves the focused panel into workspace 8's focused group. Keys can run it.
+---@field moveToWorkspace9 fun() Moves the focused panel into workspace 9's focused group. Keys can run it.
+---@field moveToWorkspace10 fun() Moves the focused panel into workspace 10's focused group. Keys can run it.
 ecs.layout = {}
 
 ---Finds a panel by its id.
@@ -346,6 +362,16 @@ function ecs.layout.splitRight() end
 function ecs.layout.splitDown() end
 
 ---@class ecs.workspace
+---@field switch1 fun() Switches to workspace 1. Keys can run it.
+---@field switch2 fun() Switches to workspace 2. Keys can run it.
+---@field switch3 fun() Switches to workspace 3. Keys can run it.
+---@field switch4 fun() Switches to workspace 4. Keys can run it.
+---@field switch5 fun() Switches to workspace 5. Keys can run it.
+---@field switch6 fun() Switches to workspace 6. Keys can run it.
+---@field switch7 fun() Switches to workspace 7. Keys can run it.
+---@field switch8 fun() Switches to workspace 8. Keys can run it.
+---@field switch9 fun() Switches to workspace 9. Keys can run it.
+---@field switch10 fun() Switches to workspace 10. Keys can run it.
 ecs.workspace = {}
 
 ---@return integer count
@@ -379,6 +405,30 @@ function ecs.session.save(path) end
 ---@return true|nil ok
 ---@return string? message Why the session is not opened: the file is not a session, the user keeps the unsaved work, or a test runs.
 function ecs.session.open(path) end
+
+---Opens a preset's tool in place of the current one, as ecs.session.open opens a session. The tool starts from its last session if it has one.
+---@param nameOrPath string A preset's name, looked up in the user's presets, then in the first-party presets; or a path, which has a '/' or ends with .lua.
+---@return true|nil ok
+---@return string? message Why the preset is not opened: the file is not a preset, the user keeps the unsaved work, or a test runs.
+function ecs.session.openPreset(nameOrPath) end
+
+---A preset or a saved session in a list.
+---@class ecs.SessionEntry
+---@field name string The file's name without .lua. For a preset, the name that ecs.session.openPreset takes.
+---@field path string The file's path.
+---@field appId string The tool's app id.
+---@field appName string The tool's name.
+---@field lastUsed? integer Presets only: when the tool's last session was written, in seconds since 1970. Missing if it has none.
+---@field saved? integer Sessions only: when the file was written, in seconds since 1970.
+
+---Lists the presets that a name finds: the user's presets, then the first-party presets. A name in both is listed once, from the user's presets.
+---A file that cannot be read is reported and left out, and so is a preset with listed = false.
+---@return ecs.SessionEntry[] presets Sorted by name.
+function ecs.session.presets() end
+
+---Lists the .lua files in the folder of saved sessions. A file that cannot be read is reported and left out.
+---@return ecs.SessionEntry[] sessions Sorted by name.
+function ecs.session.sessions() end
 
 -- Input
 

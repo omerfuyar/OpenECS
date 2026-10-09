@@ -43,7 +43,8 @@ struct ECSIPanel
     bool visible;   // what the panel was last told: shown or hidden
     f32 toldWidth;  // the size the panel was last told
     f32 toldHeight;
-    char *fault; // the error of a callback, or NULL; a faulted panel shows it and its type is not called again, except Destroy
+    char *fault;    // the error of a callback, or NULL; a faulted panel shows it and its type is not called again, except Destroy
+    char **accepts; // stb_ds array of the types of data the panel accepts when data is dropped on it
 };
 
 /// @brief Registers a panel type like ECSPanelType_Register, with data for the Bindings module.
@@ -159,5 +160,20 @@ void ECSIPanel_Emit(const char *name, ECSPanel panel);
 /// @param panel Panel that receives the event.
 /// @param event The event.
 void ECSIPanel_PostEvent(ECSPanel panel, const ECSPanelEvent *event);
+
+/// @brief Checks whether a panel accepts dropped data of a type. A faulted or closed panel accepts nothing.
+/// @param panel The panel.
+/// @param type The data's type.
+/// @return true if the panel accepts it.
+bool ECSIPanel_Accepts(ECSPanel panel, const char *type);
+
+/// @brief Queues a Drop event for a panel's type, with copies of the data, which stay valid until the event is delivered.
+/// @param panel Panel that receives the event.
+/// @param x Horizontal position in the panel's surface pixels.
+/// @param y Vertical position in the panel's surface pixels.
+/// @param type The data's type.
+/// @param value The data, or NULL.
+/// @param modifiers ECSModifier bits held when the data was dropped.
+void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const ECSValue *value, u32 modifiers);
 
 #pragma endregion Declarations
