@@ -847,7 +847,7 @@ return {
 
 ### 12.4 The settings window
 
-The settings window is the first-party Lua plugin `settings`, in OpenECS-std (17.7). Its design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), section 3.
+The settings window is the first-party Lua plugin `settings`, in OpenECS-std (17.7). Its design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The settings window.
 
 ## 13. Presets and sessions
 
@@ -956,7 +956,7 @@ openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE
 
 ### 13.8 The launcher
 
-When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. The preset and its plugin `launcher` are in OpenECS-std (17.7); their design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), section 4.
+When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. The preset and its plugin `launcher` are in OpenECS-std (17.7); their design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The launcher.
 
 ## 14. Errors and logging
 
@@ -1049,7 +1049,7 @@ OpenECS follows the XDG Base Directory specification:
 
 - Warnings: `-Wall -Wextra -Wpedantic -Wconversion -Wshadow`.
 - Debug builds of the core and of plugins add the static analyzer (`-fanalyzer`) and the address, leak and undefined-behaviour sanitizers (`-fsanitize=address,undefined`). Dependencies get neither.
-- The Sanitizers module sets the sanitizers' options and hides leaks inside the system libraries that SDL loads: graphics drivers, display servers, input methods and D-Bus. In other builds its functions do nothing.
+- The Sanitizers module sets the sanitizers' options and hides leaks inside the system libraries that SDL loads: graphics drivers, display servers, input methods, audio systems and D-Bus. In other builds its functions do nothing.
 - Debug builds keep every library loaded until the program exits, so a leak inside one is matched by its name. Graphics drivers are otherwise unloaded when their device is destroyed, and their leaks would show an unknown module.
 - Debug builds check for leaks at shutdown, after OpenECS has freed its memory and before `SDL_Quit`.
 - Release builds set `SDL_ASSERT_LEVEL` to 0, so they have no assertions. Debug builds set it to 2.
@@ -1065,7 +1065,7 @@ OpenECS follows the XDG Base Directory specification:
 - The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `launcher` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.6), `presets` and `sessions`, folders relative to the test file that stand for the user's presets and the saved sessions (16), and `run`, a function that gets the `test` table.
 - Tests keep their presets and test plugins in `tests/presets/` and `tests/plugins/`, so a change to a first-party preset or an example does not change a test. OpenECS-std's tests join them in the build (17.7). The test plugins `boxes`, in Lua, and `cboxes`, in C, give tests panels to arrange.
 - With the flag `--tests`, the build copies `tests/` to `build/<TYPE>/tests/`, beside `bin/`, and builds the native test plugins there. Tests run from that copy, so a test reads the build's copies of the plugin header, `ecs.lua` and the core's settings file.
-- A test starts from its preset alone. It reads none of the user's settings, plugins or sessions, and writes no session and no log file. SDL's offscreen video driver and software renderer are the defaults, so a test needs no display; the variables `SDL_VIDEO_DRIVER` and `SDL_RENDER_DRIVER` choose others, for example to watch a test.
+- A test starts from its preset alone. It reads none of the user's settings, plugins or sessions, and writes no session and no log file. SDL's offscreen video driver, software renderer and dummy audio driver are the defaults, so a test needs no display and makes no sound; the variables `SDL_VIDEO_DRIVER`, `SDL_RENDER_DRIVER` and `SDL_AUDIO_DRIVER` choose others, for example to watch a test.
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).
 - The `test` table:
 

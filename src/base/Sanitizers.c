@@ -44,6 +44,9 @@ const char *__lsan_default_suppressions(void)
            "leak:libibus\n"
            "leak:libfcitx\n"
            "leak:libfontconfig.so\n"
+           "leak:libasound.so\n" // audio systems, which plugins such as audio start
+           "leak:libpulse\n"
+           "leak:libpipewire\n"
            // drivers that SDL unloads before the check at exit; also matched by the SDL function that called them
            "leak:SDL_EGL_InitializeOffscreen\n"
            "leak:SDL_EGL_LoadLibrary\n"
