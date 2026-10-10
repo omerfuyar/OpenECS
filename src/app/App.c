@@ -153,9 +153,9 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
         neededBy = NULL;
     }
 
-    // the preset's plugins first, then the plugins that the settings files name for every tool
+    // the preset's plugins first, then the plugins that the settings files name for every tool; a test loads only what its preset names, so the core's tests need no standard plugin
     SHUResult result = ECSIPlugins_Load(directories, directoryCount, ECSValue_GetTableField(preset->file, "depends"), neededBy != NULL ? neededBy : "the preset");
-    SHUResult extraResult = ECSIPlugins_Load(directories, directoryCount, ECSISettings_GetPlugins(), "the settings files");
+    SHUResult extraResult = APP.test ? SHUResult_Ok : ECSIPlugins_Load(directories, directoryCount, ECSISettings_GetPlugins(), "the settings files");
 
     if (result || extraResult)
     {

@@ -69,7 +69,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Commit each finished piece of work. Do not leave changes uncommitted.
 - Branches follow DESIGN.md, section 19.2: start yours from `dev`, and it reaches `dev` through a pull request. Never push to `dev` or `main`.
 - Merge your own pull requests into `dev`, with a merge commit, once their checks pass and no review thread is open.
-- Never merge into `main`. The owner reviews and merges every pull request into `main`, for major, minor and patch releases alike, and pushes the release tags. Open the pull request from `dev` into `main` when a release is ready, and give the owner the commands to tag it.
+- Never merge into `main`, here or in OpenECS-std and OpenECS-examples. The owner reviews and merges every pull request into `main`, for major, minor and patch releases alike, and pushes the release tags. The three repositories are released together with the same version (DESIGN.md, section 19.4): open the pull requests from `dev` into `main` when a release is ready, and give the owner the commands to tag them.
 - Name the branch after the change: `feature/<feature>`, `fix/<bug>`, `refactor/<area>` or `docs/<area>`; never use a generated name.
 - Publish the branch at the start of the work, then push each commit to it.
 - Put small changes on the branch you work on; do not open a branch for each of them. Keep few branches at a time, each a whole piece of work, so they do not conflict.
@@ -87,7 +87,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Do not invent framings, categories or rules, such as "three rules shape the architecture". Do not make vague claims, such as "an ordinary screen".
 - Keep section and list numbers in order, and update cross-references when they change.
 - No roadmaps, phases or schedules.
-- A release's description is `.github/release-notes/vVERSION.md`, written as DESIGN.md, section 19.5 says.
+- A release's description is `.github/release-notes/vVERSION.md`, written as DESIGN.md, section 19.5 says. Each repository's description explains its own changes, and OpenECS's links to the others'.
 - Use short sentences and plain words:
   - Good: "A group with one panel shows no tab row."
   - Bad: "It should be noted that, in cases where a group contains only a single panel, the tab row is not displayed."

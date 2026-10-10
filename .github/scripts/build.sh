@@ -18,9 +18,11 @@ gcc shuild.c -o shuild.ignore -O3
 # shellcheck disable=SC2086
 ./shuild.ignore $flags > build/shuild.log 2>&1 || true
 
-# dependencies are compiled without OpenECS's warnings, so only the problems in its own files count, named from the repository's root or by their full path
-root=$(pwd)
-if grep -E "^(\./|$root/)?(src|include|std|examples|tests)/[^:]*:[0-9]+:[0-9]+: (fatal error|error|warning):|^gcc: fatal error|(shuild\.(c|h)|build\.c):[0-9]+:.*ERROR" build/shuild.log; then
+# dependencies are compiled without OpenECS's warnings, so only the problems in the files of OpenECS, OpenECS-std and OpenECS-examples count;
+# std and examples are built in their own folders, so a file may be named from there or by its full path;
+# a warning in a system header, such as glibc's memcpy in Lua's code, is left out too, as the dependencies' code is what gets inlined there
+if grep -E "^[^ :]+:[0-9]+:[0-9]+: (fatal error|error|warning):" build/shuild.log | grep -v -E "^(([^ :]*/)?dependencies/|/usr/)" ||
+    grep -E "^gcc: fatal error|shuild\.(c|h):[0-9]+:.*ERROR" build/shuild.log; then
     echo "The build has errors or warnings; build/shuild.log has the details."
     exit 1
 fi

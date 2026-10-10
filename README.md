@@ -138,12 +138,15 @@ Usage: ./shuild.ignore [FLAG...]
 Flags:
   -b, --build TYPE   Build type: debug (the default), with the static analyzer and the sanitizers;
                      release; relwithdebinfo, a release with debug information; or minsizerel, a small release
-  -e, --examples     Also build the examples, into bin/examples/
-  -t, --tests        Also build the tests, into tests/ beside bin/
+  -n, --no-std       Do not build the standard plugins of std/
+  -e, --examples     Also build the examples of examples/, into bin/examples/
+  -t, --tests        Also build the tests, into tests/ beside bin/, and std's into std/tests/ beside bin/
   -h, --help         Show this help
 ```
 
 The build puts the executable, SDL's shared libraries, the standard plugins, the first-party presets and the examples in `build/<TYPE>/bin/`, such as `build/Release/bin/`. SDL and SDL_ttf are shared libraries; Lua, Clay, libffi and stb are linked into the executable.
+
+The standard plugins and the examples are in their own repositories, checked out in `std/` and `examples/`. Each has its own `shuild.c`, which this build compiles into `shuild.ignore` in that folder and runs, so they build with the same type into the same folder. `-n` leaves the standard plugins out, and `-e` adds the examples.
 
 Dependencies are built the first time only. To build one again, delete its library from `build/<TYPE>/lib/` and the `.shu/` folder; shuild does not make a library again while its compiled files are unchanged.
 
@@ -153,11 +156,12 @@ Debug builds run the static analyzer while compiling, and the sanitizers while t
 
 ### Testing
 
-Debug builds built with `-t` run the tests. The build copies `tests/` beside `bin/`, so build again after changing a test. A test needs no display, and prints "The test passed." or the reason it failed. These commands run the tests, then the examples' tests, and name the ones that fail:
+Debug builds built with `-t` run the tests. The build copies `tests/` beside `bin/`, so build again after changing a test. A test needs no display, and prints "The test passed." or the reason it failed. Each repository tests what it holds: these commands run OpenECS's tests, then the standard plugins' tests, then the examples' tests, and name the ones that fail:
 
 ``` shell
 ./shuild.ignore -b debug -e -t
 .github/scripts/test.sh build/Debug/bin/OpenECS
+.github/scripts/test.sh build/Debug/bin/OpenECS std
 .github/scripts/test.sh build/Debug/bin/OpenECS examples
 ```
 

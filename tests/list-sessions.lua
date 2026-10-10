@@ -23,8 +23,8 @@ return {
     assert(paint.path:match("files/presets/paint%.lua$"), "the paint preset's path: " .. paint.path)
     assert(paint.lastUsed == nil, "a test has no last sessions")
 
-    -- the launcher's own preset is not listed
-    test.match(find(results.presets, "launcher"), nil, "the launcher's preset")
+    -- a preset with listed = false is not listed
+    test.match(find(results.presets, "hidden"), nil, "the hidden preset")
 
     -- the sessions are sorted by name, and the file that cannot be read is left out
     test.match(results.sessions, {
