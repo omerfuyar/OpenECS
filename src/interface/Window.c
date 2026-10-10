@@ -933,6 +933,35 @@ static void ECSIWindow_CloseOS(ECSIOSWindow *os)
     arrfree(os->tabs);
     SDL_free(os->clayMemory);
 
+    // the renderer frees the textures made with it, so the panels and popups shown in this window must not keep them
+    if (os->renderer != NULL)
+    {
+        ECSPanel *panels = ECSILayout_GetPanels();
+
+        for (usz i = 0; i < arrlenu(panels); i++)
+        {
+            if (panels[i]->texture != NULL && SDL_GetRendererFromTexture(panels[i]->texture) == os->renderer)
+            {
+                ECSIPanel_ReleaseTexture(panels[i]);
+            }
+        }
+
+        arrfree(panels);
+        usz count = 0;
+        ECSPopup *popups = ECSIPopups_GetOpen(&count);
+
+        for (usz i = 0; i < count; i++)
+        {
+            ECSIPopupView *view = popups[i]->window;
+
+            if (view != NULL && view->texture != NULL && SDL_GetRendererFromTexture(view->texture) == os->renderer)
+            {
+                SDL_DestroyTexture(view->texture);
+                view->texture = NULL;
+            }
+        }
+    }
+
     if (os->clayRenderer.textEngine != NULL)
     {
         TTF_DestroyRendererTextEngine(os->clayRenderer.textEngine);

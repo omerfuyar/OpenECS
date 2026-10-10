@@ -106,6 +106,10 @@ SHUWUR SHUResult ECSIPanel_Create(ECSPanel *retPanel, const char *typeName, cons
 /// @param panel Panel to destroy.
 void ECSIPanel_Destroy(ECSPanel *panel);
 
+/// @brief Frees the texture a panel is shown with; the panel makes a new one the next time it is shown. A renderer frees its textures with it, so an OS window that closes releases the textures of its panels first.
+/// @param panel The panel.
+void ECSIPanel_ReleaseTexture(ECSPanel panel);
+
 /// @brief Closes a panel that left the layout, and sets the handle to NULL. Its timers stop and it gets no more events; ECSIPanels_DestroyClosed destroys it.
 /// @param panel Panel to close.
 void ECSIPanel_Close(ECSPanel *panel);
