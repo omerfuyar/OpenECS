@@ -25,9 +25,10 @@ static const char *const BUILD_TYPE_NAMES[] = {"debug", "release", "relwithdebin
 static struct
 {
     BuildType type;
-    bool examples; // also build the examples
+    bool std;      // also build the standard plugins, from std/
+    bool examples; // also build the examples, from examples/
     bool tests;    // also build the tests
-} CONFIG = {BuildType_Debug, false, false};
+} CONFIG = {BuildType_Debug, true, false, false};
 
 static SHUI_String BUILD_DIRECTORY = {0};
 static SHUI_String OUTPUT_DIRECTORY = {0};
@@ -104,8 +105,9 @@ static void PrintUsage(void)
            "Flags:\n"
            "  -b, --build TYPE   Build type: debug (the default), with the static analyzer and the sanitizers;\n"
            "                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release\n"
-           "  -e, --examples     Also build the examples, into bin/examples/\n"
-           "  -t, --tests        Also build the tests, into tests/ beside bin/\n"
+           "  -n, --no-std       Do not build the standard plugins of std/\n"
+           "  -e, --examples     Also build the examples of examples/, into bin/examples/\n"
+           "  -t, --tests        Also build the tests, into tests/ beside bin/, and std's into std/tests/ beside bin/\n"
            "  -h, --help         Show this help\n");
 }
 
@@ -140,6 +142,10 @@ static void SetupConfiguration(int argc, char **argv)
 
             CONFIG.type = (BuildType)type;
         }
+        else if (!strcmp(flag, "-n") || !strcmp(flag, "--no-std"))
+        {
+            CONFIG.std = false;
+        }
         else if (!strcmp(flag, "-e") || !strcmp(flag, "--examples"))
         {
             CONFIG.examples = true;
@@ -159,7 +165,8 @@ static void SetupConfiguration(int argc, char **argv)
         }
     }
 
-    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", examples: " SHUM_COLOR_BLUE("%s") ", tests: " SHUM_COLOR_BLUE("%s"), BuildType_String(CONFIG.type), CONFIG.examples ? "yes" : "no", CONFIG.tests ? "yes" : "no");
+    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", standard plugins: " SHUM_COLOR_BLUE("%s") ", examples: " SHUM_COLOR_BLUE("%s") ", tests: " SHUM_COLOR_BLUE("%s"),
+                BuildType_String(CONFIG.type), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no", CONFIG.tests ? "yes" : "no");
 
     SHUI_SFormat(&BUILD_DIRECTORY, ".shu/%s/", BuildType_String(CONFIG.type));
     SHUI_SFormat(&OUTPUT_DIRECTORY, "build/%s/", BuildType_String(CONFIG.type));
@@ -615,84 +622,71 @@ static void Shuild_NativePlugin(const char *name, const char *root, const char *
     SHU_ModuleCompile(output, SHUModuleType_LibraryDynamic);
 }
 
-// a first-party plugin's C files make its native library; its Lua files, the manifest among them, and its folders of Lua modules are copied
-static void Shuild_Plugin(const char *path, const char *name)
+// a plugin folder of the tests is built in place, in the copy of its folder
+static void Shuild_TestPlugin(const char *path, const char *name)
 {
     SHUI_String root;
     SHUI_String output;
     SHUI_SFormat(&root, "%s%s/", path, name);
-    SHUI_SFormat(&output, "%sbin/plugins/%s/", OUTPUT_DIRECTORY.data, name);
-    SHU_UtilCreateDirectory(output.data);
+    SHUI_SFormat(&output, "%s%s", OUTPUT_DIRECTORY.data, root.data);
+    Shuild_NativePlugin(name, root.data, output.data);
+}
 
-    DIR *folder = opendir(root.data);
-    struct dirent *entry = NULL;
+/// @brief Builds a repository checked out in a folder of OpenECS, std/ or examples/, with the shuild.c of its own (DESIGN 17.7).
+/// Its shuild.c is compiled with shu and shuild from dependencies/ into shuild.ignore in its folder, because shuild finds every path from the folder of the program it runs in.
+/// It runs with the build type, this build's output folder as seen from its folder, and --tests if asked.
+static void Shuild_Repository(const char *folder, bool tests)
+{
+    SHUI_String source;
+    SHUI_SFormat(&source, "%sshuild.c", folder);
 
-    while (folder != NULL && (entry = readdir(folder)) != NULL)
+    if (SHU_UtilFileExists(source.data) != SHUFileType_Regular)
     {
-        SHUI_String file;
-        SHUI_SFormat(&file, "%s%s", root.data, entry->d_name);
+        SHU_LogWarning("%s is not checked out, so it is not built; clone OpenECS with --recursive", folder);
+        return;
+    }
 
-        if (EndsWith(entry->d_name, ".lua") || (entry->d_type == DT_DIR && entry->d_name[0] != '.'))
+    // the output folder is named from the repository's folder, which is one level deeper for each of its folders
+    SHUI_String output = {0};
+
+    for (const char *c = folder; *c != '\0'; c++)
+    {
+        if (*c == '/')
         {
-            CopyFile(file.data, output.data);
+            SHUI_SAppendC(&output, "../");
         }
     }
 
-    if (folder != NULL)
-    {
-        closedir(folder);
-    }
+    SHUI_SAppendC(&output, OUTPUT_DIRECTORY.data);
 
-    Shuild_NativePlugin(name, root.data, output.data);
+    SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", folder);
+    SHU_UtilRun("gcc -O2 -Idependencies %s -o %sshuild.ignore", source.data, folder);
+    SHU_UtilRun("cd %s && ./shuild.ignore -b %s -o %s%s", folder, BUILD_TYPE_NAMES[CONFIG.type], output.data, tests ? " -t" : "");
+    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'%s'") "\n", folder);
 }
-
-// a plugin folder of an example or of the tests is built in place, in the copy of its folder
-static void Shuild_CopiedPlugin(const char *path, const char *name)
-{
-    SHUI_String root;
-    SHUI_String output;
-    SHUI_SFormat(&root, "%s%s/", path, name);
-    SHUI_SFormat(&output, "%s%s%s/", OUTPUT_DIRECTORY.data, strncmp(path, "tests/", 6) == 0 ? "" : "bin/", root.data);
-    Shuild_NativePlugin(name, root.data, output.data);
-}
-
-static void Shuild_Example(const char *path, const char *name)
-{
-    SHUI_String root;
-    SHUI_SFormat(&root, "%s%s/", path, name);
-    ForEachFolder(root.data, Shuild_CopiedPlugin);
-}
-
-// OpenECS-std, checked out in std/, builds the standard plugins and adds their presets and tests (DESIGN 17.7)
-#if __has_include("std/build.c")
-#include "std/build.c"
-#define SHUILD_HAS_STD
-#endif
 
 static void Shuild_Plugins(void)
 {
     // examples and tests are built when the flags ask for them; a copy from an earlier build is removed otherwise
-    SHU_UtilRun("rm -rf %sbin/examples %stests", OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data);
-
-    // the numbered folders of OpenECS-examples are copied whole, their sources too, and each of their plugin folders is built in the copy
-    if (CONFIG.examples)
-    {
-        SHU_UtilRun("mkdir -p %sbin/examples && cp -r examples/[0-9]* %sbin/examples/", OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data);
-        ForEachFolder("examples/", Shuild_Example);
-    }
+    SHU_UtilRun("rm -rf %sbin/examples %stests %sstd", OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data);
 
     // the tests are copied beside bin/, so their presets and plugins are found next to the test files, and their native plugins are built there
     if (CONFIG.tests)
     {
         SHU_UtilRun("cp -r tests %s", OUTPUT_DIRECTORY.data);
-        ForEachFolder("tests/plugins/", Shuild_CopiedPlugin);
+        ForEachFolder("tests/plugins/", Shuild_TestPlugin);
     }
 
-#ifdef SHUILD_HAS_STD
-    Shuild_Std();
-#else
-    SHU_LogWarning("std/ is not checked out, so the standard plugins are not built; clone with --recursive");
-#endif
+    // OpenECS-std builds the standard plugins into bin/plugins/ and their presets into bin/presets/; OpenECS-examples builds the examples into bin/examples/
+    if (CONFIG.std)
+    {
+        Shuild_Repository("std/", CONFIG.tests);
+    }
+
+    if (CONFIG.examples)
+    {
+        Shuild_Repository("examples/", false);
+    }
 }
 
 static void Shuild_other(void)

@@ -88,6 +88,7 @@ Some plugins are made and shipped together with OpenECS because the product need
 - **audio:** a standard plugin: reading sound files and playing them.
 - **net:** a standard plugin: TCP connections and servers that never block the program.
 - **gltf:** a standard plugin: reading glTF models, for plugins that draw 3D scenes.
+- **fs:** a standard plugin: listing, making, copying, moving and removing files and folders, which Lua's own libraries cannot.
 - **settings:** the settings window, built on ui.
 - **launcher:** picks a preset or session when OpenECS starts without one, built on ui.
 

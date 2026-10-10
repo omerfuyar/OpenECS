@@ -13,3 +13,6 @@ build/
 *.out
 *.log
 dist/
+.luarc.json
+compile_flags.txt
+.clangd
