@@ -30,6 +30,14 @@ cp dependencies/clay/LICENSE.md "$folder/licenses/Clay.txt"
 cp dependencies/stb/LICENSE "$folder/licenses/stb.txt"
 cp resources/Roboto-LICENSE.txt "$folder/licenses/Roboto.txt"
 
+# the libraries that the standard plugins include or link, and the font tty ships
+std=std/dependencies
+cp $std/SDL_net/LICENSE.txt "$folder/licenses/SDL_net.txt"
+cp $std/nanosvg/LICENSE.txt "$folder/licenses/nanosvg.txt"
+cp $std/dr_libs/LICENSE "$folder/licenses/dr_libs.txt"
+cp $std/cgltf/LICENSE "$folder/licenses/cgltf.txt"
+cp std/plugins/tty/fonts/OFL.txt "$folder/licenses/RobotoMono.txt"
+
 cat > "$folder/licenses/README.txt" << NOTICE
 OpenECS $version includes these works. Their licenses are in this folder.
 
@@ -40,8 +48,13 @@ PlutoSVG, PlutoVG: MIT license
 Lua: MIT license
 libffi: MIT license
 Clay: zlib license
-stb: MIT license or public domain
+stb (stb_image, stb_vorbis): MIT license or public domain
 Roboto font: Apache License 2.0
+SDL_net: zlib license
+nanosvg: zlib license
+dr_libs (dr_wav, dr_mp3, dr_flac): MIT No Attribution license or public domain
+cgltf: MIT license
+Roboto Mono font: SIL Open Font License 1.1
 NOTICE
 
 tar -C dist -czf "dist/$name.tar.gz" "$name"
