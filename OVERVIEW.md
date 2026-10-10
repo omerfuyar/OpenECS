@@ -81,8 +81,13 @@ Everything else. If the core's own machinery needs it, it is core; if only some 
 Some plugins are made and shipped together with OpenECS because the product needs them:
 
 - **sdl:** built into the executable. Gives native plugins the core's SDL objects (section 4).
-- **draw:** a **standard plugin**: drawing shapes, text and images into panels, offered as a service to other plugins.
+- **draw:** a **standard plugin**: drawing shapes and text into panels, offered as a service to other plugins.
 - **ui:** a standard plugin: user-interface elements with layout, which call back when the user clicks or types.
+- **tty:** a standard plugin: grids of characters for terminals, consoles and logs, drawn at any size.
+- **image:** a standard plugin: reading image files, SVG among them, and drawing them into panels.
+- **audio:** a standard plugin: reading sound files and playing them.
+- **net:** a standard plugin: TCP connections and servers that never block the program.
+- **gltf:** a standard plugin: reading glTF models, for plugins that draw 3D scenes.
 - **settings:** the settings window, built on ui.
 - **launcher:** picks a preset or session when OpenECS starts without one, built on ui.
 
