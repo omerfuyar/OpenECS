@@ -207,6 +207,17 @@ void ECSIPanel_Destroy(ECSPanel *panel)
     *panel = NULL;
 }
 
+void ECSIPanel_ReleaseTexture(ECSPanel panel)
+{
+    SDL_assert(panel != NULL);
+
+    if (panel->texture != NULL)
+    {
+        SDL_DestroyTexture(panel->texture);
+        panel->texture = NULL;
+    }
+}
+
 void ECSIPanel_Close(ECSPanel *panel)
 {
     SDL_assert(panel != NULL && *panel != NULL);
@@ -214,6 +225,9 @@ void ECSIPanel_Close(ECSPanel *panel)
 
     ECSIEvents_StopTimersOf(*panel);
     ECSIPanel_Emit("ecs.panelClosed", *panel);
+
+    // a closed panel is never shown again, and its OS window may close before it is destroyed, with the renderer its texture belongs to
+    ECSIPanel_ReleaseTexture(*panel);
     (*panel)->closed = true;
     arrput(PANELS.closed, *panel);
     *panel = NULL;
