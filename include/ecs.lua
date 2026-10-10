@@ -31,7 +31,7 @@ function ecs.log.error(text) end
 
 -- Settings
 
----@alias ecs.SettingType "bool"|"integer"|"number"|"string"|"choice"|"key"|"list"|"table"
+---@alias ecs.SettingType "bool"|"integer"|"number"|"string"|"choice"|"key"|"list"|"table"|"color"
 
 ---@class ecs.SettingDesc
 ---@field name string The plugin's name, a dot and the setting's name, such as "canvas.grid".
@@ -55,7 +55,7 @@ function ecs.settings.declare(desc) end
 ---@return any value
 function ecs.settings.get(name) end
 
----Sets a setting in the settings window's layer, and writes that layer's file. A higher layer may still override it.
+---Sets a setting in the user's settings file, the highest layer, and writes the file.
 ---@param name string
 ---@param value any
 ---@return true|nil ok
@@ -73,10 +73,10 @@ function ecs.settings.list() end
 ---@field description string
 ---@field owner string The plugin that declared the setting.
 ---@field value any The value in effect.
----@field layer string The layer the value comes from.
+---@field layer "default"|"preset"|"user" The layer the value comes from.
 ---@field file? string The file of that layer; missing for defaults.
 ---@field choices? string[]
----@field layers { default: any, preset: any, window: any, user: any } The value of each layer that sets it.
+---@field layers { default: any, preset: any, user: any } The value of each layer that sets it.
 
 ---Explains a setting: its value in effect, the layer it comes from, and what each layer says.
 ---@param name string
@@ -133,6 +133,15 @@ function Panel:setUnsaved(unsaved) end
 ---@return ecs.Timer
 function Panel:startTimer(seconds, repeat_, fn) end
 
+---Says whether the panel accepts typed text, and where its text cursor is. While the panel has focus and accepts text, it gets text events,
+---and the system's input method shows its window beside the cursor. A key that runs a binding types no text.
+---@param accept boolean
+---@param x? number The text cursor's rectangle, in surface pixels; 0 if missing.
+---@param y? number
+---@param width? number
+---@param height? number
+function Panel:setTextInput(accept, x, y, width, height) end
+
 ---Sets the types of data that the panel accepts when data is dropped on it, such as "color" or "file-list".
 ---Data from other applications is "file-list", a list of paths, or "text". A new call replaces the list.
 ---@param types string[]
@@ -146,12 +155,27 @@ function Panel:acceptDrops(types) end
 ---@return string? message Why no drag starts: no pointer button that was pressed on the panel is held.
 function Panel:startDrag(type, value) end
 
----The pixels a panel draws into. It is valid only while draw runs.
+---Opens a popup next to a rectangle of the shown panel: below it, or above it if there is no room below.
+---It closes when code closes it, on a press outside every popup, on Escape if it is a menu, and when the panel closes, fails or is hidden.
+---@param desc ecs.PopupDesc
+---@return ecs.Popup? popup
+---@return string? message Why the popup is not opened.
+function Panel:openPopup(desc) end
+
+---The pixels a panel draws into: a handle of type ecs.surface, which a panel can pass to a service that draws. It is valid only while draw runs.
 ---@class ecs.Surface
 ---@field width integer
 ---@field height integer
 ---@field scale number Pixels per layout unit.
 local Surface = {}
+
+---Fills a rectangle with one colour, such as to clear the surface. The rectangle is in pixels, and clipped to the surface.
+---@param x integer
+---@param y integer
+---@param width integer
+---@param height integer
+---@param color integer ARGB, such as 0xFFFF0000; it replaces the pixels.
+function Surface:fill(x, y, width, height, color) end
 
 ---Sets a pixel. Pixels outside the surface are clipped. Lua only: C writes the surface's pixels directly.
 ---@param x integer
@@ -171,7 +195,31 @@ function Surface:getPixel(x, y) end
 ---@param x? integer The first pixel's column; 0 if missing.
 function Surface:setRow(y, bytes, x) end
 
----@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"|"drop"
+---@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"|"drop"|"text"
+
+---@class ecs.PopupDesc
+---@field kind? "menu"|"tooltip" A menu takes the key presses while it is open, and Escape closes it; a tooltip takes none. "menu" if missing.
+---@field anchor? { x: number, y: number, width: number, height: number } The rectangle of the panel it opens next to, in the panel's surface pixels.
+---@field width number In layout units.
+---@field height number In layout units.
+---@field draw fun(surface: ecs.Surface) Draws the popup; what it leaves out is transparent.
+---@field event? fun(event: ecs.PanelEvent) Gets pointer, wheel and key events, with positions in the popup's surface pixels.
+---@field closed? fun() Says the popup has closed; it is invalid afterwards.
+
+---A popup of a panel: a handle of type ecs.popup.
+---@class ecs.Popup
+local Popup = {}
+
+---Closes the popup. Its closed function runs after the current callback returns.
+function Popup:close() end
+
+---Asks for the popup to be drawn again.
+function Popup:redraw() end
+
+---Changes the popup's size, in layout units, and draws it again.
+---@param width number
+---@param height number
+function Popup:setSize(width, height) end
 
 ---@class ecs.PanelEvent
 ---@field type ecs.PanelEventType
@@ -189,6 +237,7 @@ function Surface:setRow(y, bytes, x) end
 ---@field height? number For shown and resized.
 ---@field dataType? string For drop: the type of the dropped data, such as "color" or "file-list".
 ---@field value? any For drop: the dropped data.
+---@field text? string For text: the typed text, UTF-8.
 
 ---@class ecs.PanelTypeDesc
 ---@field name string The plugin's name, a dot and the type's name, such as "canvas.view".
@@ -252,6 +301,14 @@ function ecs.panel.setUnsaved(panel, unsaved) end
 function ecs.panel.startTimer(panel, seconds, repeat_, fn) end
 
 ---@param panel ecs.Panel
+---@param accept boolean
+---@param x? number
+---@param y? number
+---@param width? number
+---@param height? number
+function ecs.panel.setTextInput(panel, accept, x, y, width, height) end
+
+---@param panel ecs.Panel
 ---@param types string[]
 function ecs.panel.acceptDrops(panel, types) end
 
@@ -262,12 +319,35 @@ function ecs.panel.acceptDrops(panel, types) end
 ---@return string? message
 function ecs.panel.startDrag(panel, type, value) end
 
+---@param panel ecs.Panel
+---@param desc ecs.PopupDesc
+---@return ecs.Popup? popup
+---@return string? message
+function ecs.panel.openPopup(panel, desc) end
+
 ---Restarts the focused panel from its last saved state, if it failed. Keys can run it.
 function ecs.panel.restart() end
 
+-- Popups
+
+---@class ecs.popup
+ecs.popup = {}
+
+---@param popup ecs.Popup
+function ecs.popup.close(popup) end
+
+---@param popup ecs.Popup
+function ecs.popup.redraw(popup) end
+
+---@param popup ecs.Popup
+---@param width number
+---@param height number
+function ecs.popup.setSize(popup, width, height) end
+
 -- Layout and workspaces
 
----@alias ecs.Zone "default"|"center"|"left"|"right"|"top"|"bottom"
+---"window" is a new pop-out window, which needs no target.
+---@alias ecs.Zone "default"|"center"|"left"|"right"|"top"|"bottom"|"window"
 
 ---@class ecs.layout
 ---@field moveToWorkspace1 fun() Moves the focused panel into workspace 1's focused group. Keys can run it.
@@ -296,9 +376,9 @@ function ecs.layout.find(id) end
 ---@return string? message Why the panel is not opened.
 function ecs.layout.open(type, saved, target, zone) end
 
----Moves a panel next to another one in the same workspace.
+---Moves a panel next to another one, also from another workspace or OS window; or out into a new pop-out window with the zone "window". A panel alone in its OS window stays.
 ---@param panel ecs.Panel
----@param target ecs.Panel
+---@param target? ecs.Panel Needed, except with the zone "window".
 ---@param zone? ecs.Zone "center" if missing.
 ---@return true|nil ok
 ---@return string? message
@@ -346,6 +426,9 @@ function ecs.layout.nextTab() end
 ---Maximizes the focused panel's group, or restores it. Keys can run it.
 function ecs.layout.maximize() end
 
+---Pops the focused panel out into a new OS window, unless it is locked or alone in its OS window. Keys can run it.
+function ecs.layout.popOut() end
+
 ---Closes the panels of the focused panel's group, unless it is locked. Keys can run it.
 function ecs.layout.closeGroup() end
 
@@ -372,6 +455,7 @@ function ecs.layout.splitDown() end
 ---@field switch8 fun() Switches to workspace 8. Keys can run it.
 ---@field switch9 fun() Switches to workspace 9. Keys can run it.
 ---@field switch10 fun() Switches to workspace 10. Keys can run it.
+---@field menu fun() Shows the menu of workspaces, by number and name; an entry switches to its workspace. Keys can run it.
 ecs.workspace = {}
 
 ---@return integer count
@@ -399,9 +483,9 @@ ecs.session = {}
 ---@return string? message Why the session is not saved.
 function ecs.session.save(path) end
 
----Opens a session in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
+---Opens a session, or a preset, in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
 ---Without a path, it asks for the file with an open dialog. Keys can run it.
----@param path? string
+---@param path? string A session or a preset file.
 ---@return true|nil ok
 ---@return string? message Why the session is not opened: the file is not a session, the user keeps the unsaved work, or a test runs.
 function ecs.session.open(path) end
@@ -435,13 +519,13 @@ function ecs.session.sessions() end
 ---@class ecs.input
 ecs.input = {}
 
----Binds a key setting of the plugin to a function, for the panels of a type.
+---Gives a function a default key for one of the plugin's panel types. Presets and the user's settings can change it.
 ---@param panelType string
----@param settingName string A setting of type "key".
+---@param key string A key combination, such as "Ctrl+E".
 ---@param functionName string A service function, such as "canvas.clear".
 ---@return true|nil ok
 ---@return string? message
-function ecs.input.bind(panelType, settingName, functionName) end
+function ecs.input.bind(panelType, key, functionName) end
 
 -- Events
 
@@ -528,6 +612,7 @@ function ecs.service.get(name, signature) end
 ---@class ecs.plugin
 ---@field name string
 ---@field version string
+---@field folder string The folder the plugin was loaded from, ending with a separator, such as for its images.
 ecs.plugin = {}
 
 ---Saves state of the plugin in the session, apart from its panels'.
@@ -587,5 +672,82 @@ function ecs.dialog.show(desc, done) end
 ---@param buttons? string[] { "OK" } if missing.
 ---@return integer? button The pressed button's position, from 1.
 function ecs.dialog.message(title, text, buttons) end
+
+-- Files: the shapes of manifests, presets, sessions and settings files, for editors. Write ---@type ecs.Manifest, for example, above the file's return.
+
+---A plugin's manifest.lua.
+---@class ecs.Manifest
+---@field name string The plugin's name, which everything it registers starts with.
+---@field version string Its version, such as "1.2.0".
+---@field api integer The plugin API version it was written for.
+---@field description? string
+---@field depends? table<string, string> The plugins it needs, each with the lowest version it accepts, such as { ui = "0.1" }.
+---@field native? string Its native library, such as "libcanvas.so".
+---@field lua? string The Lua file that runs when it loads, such as "init.lua".
+
+---What a tool is called and how the desktop knows it.
+---@class ecs.AppDesc
+---@field id string Names the tool's last session and its .desktop file, such as "org.example.Paint".
+---@field name string
+---@field icon? string
+
+---A panel in a preset or session.
+---@class ecs.PanelDesc
+---@field type string The panel type, such as "canvas.view".
+---@field state? any The saved state it starts from.
+---@field stateVersion? integer The version of the state.
+---@field id? integer The panel's id, which sessions keep.
+
+---A node of a layout tree: a split, with its children as list items, or a group, with its panels.
+---@class ecs.LayoutNode
+---@field [integer] ecs.LayoutNode A split's children, in order.
+---@field split? "horizontal"|"vertical" Makes the node a split.
+---@field size? number A fixed size in layout units, along the parent split.
+---@field share? number A share of the parent split's remaining space.
+---@field panels? ecs.PanelDesc[] Makes the node a group.
+---@field shown? integer The group's shown panel, from 1.
+---@field locked? boolean The user cannot move or close the group's panels.
+---@field maximized? boolean The group fills its OS window.
+---@field width? number A pop-out window's width, in layout units.
+---@field height? number A pop-out window's height, in layout units.
+
+---A keys table: a key combination runs the function it names, and false removes a key that a lower layer binds.
+---prefix holds the keys after the core prefix, and a field named after a panel type the keys that work while such a panel has focus.
+---@class ecs.Keys
+---@field prefix? table<string, string|false>
+---@field [string] string|false|table<string, string|false>
+
+---A workspace of a preset or session.
+---@class ecs.WorkspaceDesc
+---@field name string
+---@field windows ecs.LayoutNode[] One layout tree for each OS window: the main window first, then the pop-out windows.
+---@field keys? ecs.Keys Keys for this workspace.
+---@field focus? integer The id of the focused panel.
+
+---A preset, which describes a tool.
+---@class ecs.Preset
+---@field format integer The version of the file format.
+---@field name string
+---@field version string
+---@field app ecs.AppDesc
+---@field depends? table<string, string> The plugins the tool needs, each with the lowest version it accepts.
+---@field pluginsDir? string A folder looked in for plugins first, relative to the preset.
+---@field open? string The function that files from the command line go to; its signature is void(string).
+---@field settings? table<string, any> Values of settings, over the plugins' defaults.
+---@field keys? ecs.Keys Keys for the whole tool.
+---@field listed? boolean false leaves the preset out of the list of presets.
+---@field workspaces ecs.WorkspaceDesc[]
+
+---A session, which OpenECS writes: a preset with the state it was saved in.
+---@class ecs.Session: ecs.Preset
+---@field currentWorkspace? integer
+---@field pluginState? table<string, { state: any, stateVersion: integer }> Each plugin's own state.
+
+---The user's settings file, or the core's settings file. A field whose name has a dot is a setting.
+---@class ecs.SettingsFile
+---@field [string] any
+---@field keys? ecs.Keys Keys for every tool.
+---@field plugins? string[] Plugins that every tool loads.
+---@field tools? table<string, table<string, any>> Settings for one tool, by its app id.
 
 return ecs

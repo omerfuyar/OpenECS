@@ -3,6 +3,7 @@
 #include "base/Values.h"
 #include "runtime/Events.h"
 #include "runtime/Plugins.h"
+#include "runtime/Services.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -79,6 +80,13 @@ struct ECSIDropData
     char *type;
     ECSValue *value; // a nil value if the drag gave none
 };
+
+/// @brief Delivers a Text event, then frees its copy of the text.
+static void ECSIPanel_DeliverText(void *target, const ECSPanelEvent *event)
+{
+    ECSIPanel_DeliverEvent(*(ECSPanel *)target, event);
+    SDL_free(target);
+}
 
 /// @brief Frees a panel's list of accepted types.
 static void ECSIPanel_ClearAccepts(ECSPanel panel)
@@ -199,6 +207,17 @@ void ECSIPanel_Destroy(ECSPanel *panel)
     *panel = NULL;
 }
 
+void ECSIPanel_ReleaseTexture(ECSPanel panel)
+{
+    SDL_assert(panel != NULL);
+
+    if (panel->texture != NULL)
+    {
+        SDL_DestroyTexture(panel->texture);
+        panel->texture = NULL;
+    }
+}
+
 void ECSIPanel_Close(ECSPanel *panel)
 {
     SDL_assert(panel != NULL && *panel != NULL);
@@ -206,6 +225,9 @@ void ECSIPanel_Close(ECSPanel *panel)
 
     ECSIEvents_StopTimersOf(*panel);
     ECSIPanel_Emit("ecs.panelClosed", *panel);
+
+    // a closed panel is never shown again, and its OS window may close before it is destroyed, with the renderer its texture belongs to
+    ECSIPanel_ReleaseTexture(*panel);
     (*panel)->closed = true;
     arrput(PANELS.closed, *panel);
     *panel = NULL;
@@ -364,6 +386,9 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         panel->needsDraw = false;
 
         panel->type->desc.Draw(panel->state, &surface, seconds);
+
+        // the surface is valid only during Draw, so a Lua handle of it is too
+        ECSIServices_ForgetHandle(&surface);
         SDL_UpdateTexture(panel->texture, NULL, pixels->pixels, pixels->pitch);
     }
 }
@@ -484,6 +509,37 @@ void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const EC
 
     ECSPanelEvent event = {.type = ECSPanelEventType_Drop, .modifiers = modifiers, .drop = {.x = x, .y = y, .data = data}};
     ECSIEvents_Post(ECSIPanel_DeliverDrop, data, &event);
+}
+
+void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers)
+{
+    SDL_assert(panel != NULL);
+    SDL_assert(text != NULL);
+
+    // the panel and the text are kept in one block: the panel first, then the text
+    usz length = SDL_strlen(text);
+    ECSPanel *target = SDL_malloc(sizeof(ECSPanel) + length + 1);
+
+    if (target == NULL)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Typed text is lost: out of memory.");
+        return;
+    }
+
+    char *copy = (char *)(target + 1);
+    *target = panel;
+    SDL_memcpy(copy, text, length + 1);
+
+    ECSPanelEvent event = {.type = ECSPanelEventType_Text, .modifiers = modifiers, .text = {.text = copy}};
+    ECSIEvents_Post(ECSIPanel_DeliverText, target, &event);
+}
+
+void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f32 y, f32 width, f32 height)
+{
+    SDL_assert(panel != NULL);
+
+    panel->textInput = accept;
+    panel->textArea = (SDL_FRect){x, y, width, height};
 }
 
 SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char *const *types, usz count)
@@ -663,6 +719,7 @@ bool ECSIPanel_Restart(ECSPanel panel)
     // the new state says again which data it accepts
     ECSIEvents_StopTimersOf(panel);
     ECSIPanel_ClearAccepts(panel);
+    panel->textInput = false;
     SDL_free(panel->fault);
     panel->fault = NULL;
     panel->state = NULL;
@@ -803,6 +860,31 @@ void ECSPanel_Redraw(ECSPanel panel)
     SDL_assert(panel != NULL);
 
     panel->needsDraw = true;
+}
+
+void ECSSurface_Fill(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height, u32 color)
+{
+    SDL_assert(surface != NULL);
+
+    if (surface->type != ECSSurfaceType_Pixels)
+    {
+        return;
+    }
+
+    i32 left = SDL_max(x, 0);
+    i32 top = SDL_max(y, 0);
+    i32 right = (i32)SDL_min((i64)x + width, (i64)surface->width);
+    i32 bottom = (i32)SDL_min((i64)y + height, (i64)surface->height);
+
+    for (i32 row = top; row < bottom; row++)
+    {
+        u32 *pixel = (u32 *)((u8 *)surface->pixels.data + (usz)row * (usz)surface->pitch);
+
+        for (i32 column = left; column < right; column++)
+        {
+            pixel[column] = color;
+        }
+    }
 }
 
 const char *ECSPanel_GetTitle(ECSPanel panel)

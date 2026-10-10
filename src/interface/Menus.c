@@ -17,6 +17,9 @@
 /// @brief What the entry of the shown tab shows in a group's menu.
 #define OPENECS_SHOWN_MARK "\u2022"
 
+/// @brief How far from the focused panel's corner a menu that keys open is, in layout units.
+#define OPENECS_MENU_OFFSET 24.0f
+
 /// @brief Most workspaces that have their own functions: keys 1 to 9 and 0.
 #define OPENECS_WORKSPACE_FUNCTION_COUNT 10
 
@@ -157,6 +160,7 @@ static void ECSIMenus_BuildPanelMenu(ECSIMenuEntry **entries, ECSPanel panel)
     ECSIMenus_AddFunction(entries, "ecs.layout.close", NULL, panel);
     ECSIMenus_AddFunction(entries, "ecs.panel.restart", NULL, panel);
     ECSIMenus_AddFunction(entries, "ecs.layout.maximize", NULL, panel);
+    ECSIMenus_AddFunction(entries, "ecs.layout.popOut", NULL, panel);
     ECSIMenus_AddFunction(entries, "ecs.layout.lock", NULL, panel);
     ECSIMenus_AddFunction(entries, "ecs.layout.reopen", NULL, panel);
 
@@ -188,6 +192,19 @@ static void ECSIMenus_BuildPanelMenu(ECSIMenuEntry **entries, ECSPanel panel)
     ECSIMenus_AddTypeEntries(entries, panel);
 }
 
+/// @brief Builds the menu of workspaces: each one by number and name, with the current one marked; an entry switches to it.
+static void ECSIMenus_BuildWorkspaceMenu(ECSIMenuEntry **entries)
+{
+    for (usz number = 1; number <= ECSWorkspace_GetCount() && number <= OPENECS_WORKSPACE_FUNCTION_COUNT; number++)
+    {
+        char function[32];
+        char label[256];
+        SDL_snprintf(function, sizeof(function), "ecs.workspace.switch%zu", number);
+        SDL_snprintf(label, sizeof(label), "%zu: %s", number, ECSWorkspace_GetName(number));
+        ECSIMenus_Add(entries, label, number == ECSWorkspace_GetCurrent() ? SDL_strdup(OPENECS_SHOWN_MARK) : ECSIKeys_PrefixTextOf(function), function);
+    }
+}
+
 /// @brief Builds a group's menu: its tabs, then what acts on the whole group.
 static void ECSIMenus_BuildGroupMenu(ECSIMenuEntry **entries, ECSPanel shownPanel)
 {
@@ -202,6 +219,9 @@ static void ECSIMenus_BuildGroupMenu(ECSIMenuEntry **entries, ECSPanel shownPane
     }
 
     ECSIMenus_AddSubmenu(entries, "Tabs", tabs);
+    ECSIMenuEntry *workspaces = NULL;
+    ECSIMenus_BuildWorkspaceMenu(&workspaces);
+    ECSIMenus_AddSubmenu(entries, "Workspaces", workspaces);
     ECSIMenus_AddFunction(entries, "ecs.layout.maximize", NULL, shownPanel);
     ECSIMenus_AddFunction(entries, "ecs.layout.lock", NULL, shownPanel);
     ECSIMenus_AddFunction(entries, "ecs.layout.closeGroup", NULL, shownPanel);
@@ -304,6 +324,11 @@ static void ECSIMenus_Maximize(void)
     ECSILayout_ToggleMaximize();
 }
 
+static void ECSIMenus_PopOut(void)
+{
+    ECSILayout_PopOut();
+}
+
 static void ECSIMenus_Close(void)
 {
     ECSLayout_Close(NULL);
@@ -386,6 +411,15 @@ static void ECSIMenus_SplitDown(void)
     ECSIMenus_Split(ECSZone_Bottom);
 }
 
+/// @brief Shows the menu of workspaces near the top left of the focused panel, or of the window without one.
+static void ECSIMenus_ShowWorkspaces(void)
+{
+    ECSPanel focus = ECSILayout_GetFocus();
+    ECSIMenus_CloseFrom(0);
+    ECSIMenus_BuildWorkspaceMenu(&MENUS.entries);
+    ECSIMenus_OpenLevel(MENUS.entries, (SDL_FRect){(focus != NULL ? focus->x : 0.0f) + OPENECS_MENU_OFFSET, (focus != NULL ? focus->y : 0.0f) + OPENECS_MENU_OFFSET, 0.0f, 0.0f});
+}
+
 /// @brief Defines the core's two functions for a workspace number: switching to the workspace, and moving the focused panel to it.
 #define ECSIMenus_WorkspaceFunctions(number)                 \
     static void ECSIMenus_Workspace##number(void)       \
@@ -433,6 +467,7 @@ static const struct
     {"ecs.layout.moveDown", ECSIMenus_MoveDown, "Move the panel down"},
     {"ecs.layout.nextTab", ECSIMenus_NextTab, "Show the next tab"},
     {"ecs.layout.maximize", ECSIMenus_Maximize, "Maximize or restore the group"},
+    {"ecs.layout.popOut", ECSIMenus_PopOut, "Pop the panel out into a new window"},
     {"ecs.layout.close", ECSIMenus_Close, "Close the panel"},
     {"ecs.layout.closeGroup", ECSIMenus_CloseGroup, "Close the group's panels"},
     {"ecs.layout.lock", ECSIMenus_Lock, "Lock or unlock the group"},
@@ -450,6 +485,7 @@ static const struct
     ECSIMenus_WorkspaceEntries(8),
     ECSIMenus_WorkspaceEntries(9),
     ECSIMenus_WorkspaceEntries(10),
+    {"ecs.workspace.menu", ECSIMenus_ShowWorkspaces, "Show the workspaces"},
 };
 
 #pragma endregion Core Functions
@@ -487,6 +523,12 @@ bool ECSIMenus_Offers(const char *function, ECSPanel panel)
     if (SDL_strncmp(function, "ecs.layout.split", SDL_strlen("ecs.layout.split")) == 0)
     {
         return panel != NULL && panel->type != NULL;
+    }
+
+    // a panel alone in its OS window stays, and so does a locked one
+    if (SDL_strcmp(function, "ecs.layout.popOut") == 0)
+    {
+        return panel != NULL && ECSILayout_CanPopOut(panel);
     }
 
     // the functions that move or close panels; the user cannot do that to a locked group

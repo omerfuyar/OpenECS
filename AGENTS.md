@@ -19,14 +19,14 @@ Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 | --------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `include/`      | Headers: the plugin header and the core's module headers, and `ecs.lua` for editors (DESIGN.md, sections 1.5 and 9.6). |
 | `src/`          | The core's source files.                                                                                               |
-| `plugins/`      | First-party plugins.                                                                                                   |
-| `presets/`      | First-party presets.                                                                                                   |
+| `std/`          | Submodule: OpenECS-std, the standard plugins and first-party presets (DESIGN.md, sections 17.7 and 20).                |
+| `examples/`     | Submodule: OpenECS-examples, examples for plugin authors (DESIGN.md, sections 17.6 and 17.7).                          |
 | `dependencies/` | Third-party git submodules.                                                                                            |
 | `resources/`    | Files the program loads at run time.                                                                                   |
 | `tests/`        | Tests that Debug builds run (DESIGN.md, section 17.5).                                                                 |
 | `shuild.c`      | The build script (see README.md).                                                                                      |
 | `.github/`      | Checks, release workflow and their scripts, rulesets and release descriptions (DESIGN.md, section 19).                 |
-| `LICENSE`       | OpenECS's license, zlib.                                                                                               |
+| `LICENSE.md`    | OpenECS's license, zlib.                                                                                               |
 
 ## Current stage
 
@@ -56,21 +56,25 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 
 - Changing anything that is marked as decided.
 - Adding a dependency.
-- Changing submodules.
+- Changing submodules, except moving `std/` and `examples/` to a newer commit of their repository's `dev` (DESIGN.md, section 17.7).
 
 **Never**
 
 - Push, unless the owner tells you to.
-- Edit anything under `dependencies/`.
+- Edit anything under `dependencies/`. Change `std/` and `examples/` in their own repositories, which follow this file too.
 - Break or invent code conventions. Follow DESIGN.md section 1.
 
 ## Git
 
 - Commit each finished piece of work. Do not leave changes uncommitted.
 - Branches follow DESIGN.md, section 19.2: start yours from `dev`, and it reaches `dev` through a pull request. Never push to `dev` or `main`.
+- Merge your own pull requests into `dev`, with a merge commit, once their checks pass and no review thread is open.
+- Never merge into `main`, here or in OpenECS-std and OpenECS-examples. The owner reviews and merges every pull request into `main`, for major, minor and patch releases alike, and pushes the release tags. The three repositories are released together with the same version (DESIGN.md, section 19.4): open the pull requests from `dev` into `main` when a release is ready, and give the owner the commands to tag them.
 - Name the branch after the change: `feature/<feature>`, `fix/<bug>`, `refactor/<area>` or `docs/<area>`; never use a generated name.
 - Publish the branch at the start of the work, then push each commit to it.
-- Put small changes on the branch you work on; do not open a branch for each of them.
+- Put small changes on the branch you work on; do not open a branch for each of them. Keep few branches at a time, each a whole piece of work, so they do not conflict.
+- Write a release's description once, when the release is ready, before the pull request from `dev` into `main`; not with each change.
+- A change between releases may break an example. Before a release, bring the examples up to date so their tests pass (DESIGN.md, section 17.6).
 - Commit messages have one line per change, starting with `-`. Details go on lines starting with `--`.
 
 ## Writing documents
@@ -83,7 +87,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Do not invent framings, categories or rules, such as "three rules shape the architecture". Do not make vague claims, such as "an ordinary screen".
 - Keep section and list numbers in order, and update cross-references when they change.
 - No roadmaps, phases or schedules.
-- A release's description is `.github/release-notes/vVERSION.md`, written as DESIGN.md, section 19.5 says.
+- A release's description is `.github/release-notes/vVERSION.md`, written as DESIGN.md, section 19.5 says. Each repository's description explains its own changes, and OpenECS's links to the others'.
 - Use short sentences and plain words:
   - Good: "A group with one panel shows no tab row."
   - Bad: "It should be noted that, in cases where a group contains only a single panel, the tab row is not displayed."

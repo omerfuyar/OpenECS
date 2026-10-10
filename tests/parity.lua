@@ -36,7 +36,7 @@ local function readLua()
 end
 
 return {
-  preset = "presets/sketch.lua",
+  preset = "presets/boxes.lua",
   run = function()
     local functions = readLua()
     local named = {}
@@ -75,11 +75,16 @@ return {
       end
     end
 
-    -- the core's settings file binds keys to the core's functions
-    local prefixKeys = dofile(folder .. "../resources/settings.lua")["ecs.prefixKeys"]
+    -- the core's settings file binds keys to the core's functions, and to functions of the plugins it loads in every tool
+    local coreSettings = dofile(folder .. "../bin/resources/settings.lua")
+    local loaded = {}
 
-    for key, name in pairs(prefixKeys) do
-      if not (functions[name] or ""):find("Keys can run it.", 1, true) then
+    for _, plugin in ipairs(coreSettings.plugins or {}) do
+      loaded[plugin] = true
+    end
+
+    for key, name in pairs(coreSettings.keys.prefix) do
+      if not loaded[name:match("^[^.]+")] and not (functions[name] or ""):find("Keys can run it.", 1, true) then
         problems[#problems + 1] = "the key " .. key .. " runs " .. name .. ", which ecs.lua does not have as a function keys can run"
       end
     end

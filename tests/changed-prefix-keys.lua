@@ -1,4 +1,4 @@
--- a preset's ecs.prefixKeys adds to the keys of the core's settings file, and false removes one
+-- a preset's prefix keys add to the keys of the core's settings file, and false removes one
 return {
   preset = "presets/changed-keys.lua",
   run = function(test)
@@ -13,6 +13,6 @@ return {
 
     test.key("Alt+W")
     test.key("K")
-    test.match(test.session().workspaces[1].windows[1], { panels = { { type = "sketch_c.clock" } } }, "K closes the focused canvas")
+    test.match(test.session().workspaces[1].windows[1], { panels = { { type = "boxes.two" } } }, "K closes the focused box")
   end,
 }

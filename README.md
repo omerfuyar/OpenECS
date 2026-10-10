@@ -13,11 +13,54 @@ OpenECS does nothing specific to any job. Plugins decide what each panel shows a
 
 ## Usage
 
-Download the archive for your system from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it and run `OpenECS` in it. The Linux build needs glibc 2.38 or later, such as Ubuntu 24.04 or Fedora 39. `OpenECS --version` prints its version.
+Download the archive for your system from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it and run `OpenECS` in it. The Linux build needs glibc 2.38 or later, such as Ubuntu 24.04 or Fedora 39.
 
-The archive also holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`.
+### Command line
+
+``` text
+Usage: OpenECS [OPTION...] [FILE...]
+
+Starts the tool a preset describes, or the launcher without one. The preset's open function
+opens each FILE.
+
+Options:
+  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file
+  -s, --session FILE      Open a saved session
+  -f, --fresh             Start from the preset, not from the tool's last session
+  -t, --test FILE         Run a test; Debug builds only
+  -d, --definitions DIR   Write the definition files of the plugins' functions into DIR, and exit
+  -v, --version           Print the version and exit
+  -h, --help              Print this help and exit
+```
+
+Without a preset, OpenECS shows the launcher: it lists the presets and saved sessions, and Up, Down and Return or a click open one. Press Alt+W to see the core's keys; Alt+W then `,` opens the settings window.
+
+### Examples
+
+The `examples/` folder shows how to write plugins, one part at a time, from `1_hello` to `12_sketch`. Its [README](https://github.com/omerfuyar/OpenECS-examples) says how to read and run them:
+
+``` shell
+./OpenECS --fresh --preset examples/1_hello/preset.lua
+```
+
+### Writing plugins
+
+The archive holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`. `ecs.lua` also describes manifests, presets and settings files: write `---@type ecs.Manifest` or `---@type ecs.Preset` above the file's `return` to get completion and checks, as the examples do.
+
+Plugins offer functions to each other. In Lua, `local draw = require("draw")` gives the functions of the plugin `draw`, if your manifest depends on it. For completion and checks of those functions, write their definition files and add the folder to `workspace.library` too; a C plugin includes the header of the same name:
+
+``` shell
+./OpenECS --preset paint --definitions definitions/
+```
 
 ## Development
+
+### Repositories
+
+OpenECS holds the core. Two more repositories are its submodules, so a clone with its submodules builds and ships all three:
+
+- [OpenECS-std](https://github.com/omerfuyar/OpenECS-std), in `std/`: the standard plugins, the settings window and the launcher.
+- [OpenECS-examples](https://github.com/omerfuyar/OpenECS-examples), in `examples/`: the examples.
 
 ### To clone the repository
 
@@ -81,59 +124,48 @@ sudo pacman -S alsa-lib cmake hidapi ibus jack libdecor libthai fribidi libgl li
 
 The code is C23, so it needs a C23 compiler such as gcc 14 or later. SDL and SDL_ttf also need cmake and ninja.
 
-Shuild builds the program:
-
-Usage:
-./shuild [TYPE [LINK]]
-
-Arguments:
-TYPE
-    D   Debug (Default)
-    R   Release
-    RD  RelWithDebInfo
-    SR  MinSizeRel
-LINK
-    S   Static (Default)
-    D   Dynamic
-
-LINK chooses how Lua, Clay, libffi and stb are linked. SDL and SDL_ttf are always shared libraries, which the build puts next to the executable.
-
-So this command builds the program in Release mode, with those libraries linked statically.
+Shuild builds the program. Compile the build script once; it compiles itself again when `shuild.c` changes:
 
 ``` shell
 cd OpenECS/
 gcc shuild.c -o shuild.ignore -O3
-./shuild.ignore R S
+./shuild.ignore -b release -e
 ```
 
-Dependencies are built the first time only. To build one again, delete its library from `build/<LINK>/<TYPE>/lib/` and the `.shu/` folder; shuild does not make a library again while its compiled files are unchanged.
+``` text
+Usage: ./shuild.ignore [FLAG...]
 
-Shuild compiles again only the files that changed. After changing compiler flags in `shuild.c`, delete `.shu/` to compile everything again.
+Flags:
+  -b, --build TYPE   Build type: debug (the default), with the static analyzer and the sanitizers;
+                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release
+  -n, --no-std       Do not build the standard plugins of std/
+  -e, --examples     Also build the examples of examples/, into bin/examples/
+  -t, --tests        Also build the tests, into tests/ beside bin/, and std's into std/tests/ beside bin/
+  -h, --help         Show this help
+```
+
+The build puts the executable, SDL's shared libraries, the standard plugins, the first-party presets and the examples in `build/<TYPE>/bin/`, such as `build/Release/bin/`. SDL and SDL_ttf are shared libraries; Lua, Clay, libffi and stb are linked into the executable.
+
+The standard plugins and the examples are in their own repositories, checked out in `std/` and `examples/`. Each has its own `shuild.c`, which this build compiles into `shuild.ignore` in that folder and runs, so they build with the same type into the same folder. `-n` leaves the standard plugins out, and `-e` adds the examples.
+
+Dependencies are built the first time only. To build one again, delete its library from `build/<TYPE>/lib/` and the `.shu/` folder; shuild does not make a library again while its compiled files are unchanged.
+
+Shuild compiles again only the files that changed. After changing compiler flags in `shuild.c`, delete `.shu/` (or run `sudo git clean -Xfd` to delete all ignored files) to compile everything again.
 
 Debug builds run the static analyzer while compiling, and the sanitizers while the program runs. A sanitizer prints its report to standard error, and the program exits with an error.
 
-### Running
-
-The build puts the executable, SDL's shared libraries, the first-party plugins and presets in `build/<LINK>/<TYPE>/bin/`.
-
-``` shell
-./build/Static/Release/bin/OpenECS
-./build/Static/Release/bin/OpenECS --preset path/to/preset.lua
-```
-
-Press Alt+W to see the core's keys.
-
-The default preset shows two example plugins that do the same things, `sketch_c` in C and `sketch_lua` in Lua, so their code can be compared: workspace 1 holds the C canvas, workspace 2 the Lua canvas, and workspace 3 both. Draw with the mouse; the wheel changes the brush size. On a canvas, Ctrl+C and Ctrl+V copy and paste strokes, also between the two plugins, Ctrl+B opens a canvas beside, Ctrl+G gathers every canvas, Ctrl+E exports an image and Delete clears. Shift and a drag carry a canvas's strokes to another canvas, and a canvas takes strokes files dropped from a file manager. Ctrl+Tab switches workspace.
-
 ### Testing
 
-Debug builds run the tests in `tests/`. A test needs no display, and prints "The test passed." or the reason it failed. This command runs them all and names the ones that fail:
+Debug builds built with `-t` run the tests. The build copies `tests/` beside `bin/`, so build again after changing a test. A test needs no display, and prints "The test passed." or the reason it failed. Each repository tests what it holds: these commands run OpenECS's tests, then the standard plugins' tests, then the examples' tests, and name the ones that fail:
 
 ``` shell
-for test in tests/*.lua; do ./build/Static/Debug/bin/OpenECS --test "$test" > /dev/null 2>&1 || echo "failed: $test"; done
+./shuild.ignore -b debug -e -t
+.github/scripts/test.sh build/Debug/bin/OpenECS
+.github/scripts/test.sh build/Debug/bin/OpenECS std
+.github/scripts/test.sh build/Debug/bin/OpenECS examples
 ```
 
-To see why a test fails, run it alone. DESIGN.md section 17.5 explains how to write one.
+To see why a test fails, run it alone: `./build/Debug/bin/OpenECS --test build/Debug/tests/menus.lua`. DESIGN.md section 17.5 explains how to write one.
 
 ### Checks
 
@@ -141,10 +173,10 @@ GitHub checks every pull request (DESIGN.md section 19.3). These commands run th
 
 ``` shell
 .github/scripts/build.sh D
-.github/scripts/test.sh build/Static/Debug/bin/OpenECS
+.github/scripts/test.sh build/Debug/bin/OpenECS
 .github/scripts/build.sh R
 ```
 
 ## License
 
-OpenECS is under the zlib license; see [LICENSE](LICENSE). The release archives hold the licenses of the libraries and the font that OpenECS includes, in `licenses/`.
+OpenECS is under the zlib license; see [LICENSE.md](LICENSE.md). The release archives hold the licenses of the libraries and the font that OpenECS includes, in `licenses/`.

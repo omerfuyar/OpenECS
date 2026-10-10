@@ -1,4 +1,5 @@
-# Checks every change to dev and main: a Debug build with the static analyzer, the tests under the sanitizers, a Release build, and the Lua annotations.
+# Checks every change to dev and main: a Debug build with the static analyzer, OpenECS's own tests under the sanitizers, a Release build, and the Lua annotations.
+# OpenECS-std and OpenECS-examples run their own tests in their own checks.
 name: Checks
 
 on:
@@ -33,15 +34,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            build/Static/Debug/lib
-            build/Static/Debug/include
+            build/Debug/lib
+            build/Debug/include
           key: debug-linux-${{ steps.dependencies.outputs.key }}
 
       - name: Build with the static analyzer
         run: .github/scripts/build.sh D
 
       - name: Run the tests with the sanitizers
-        run: .github/scripts/test.sh build/Static/Debug/bin/OpenECS
+        run: .github/scripts/test.sh build/Debug/bin/OpenECS
+
+      - name: Write and compile the definition files
+        run: .github/scripts/definitions.sh build/Debug/bin/OpenECS
 
       - name: Keep the build log
         if: failure()
@@ -69,8 +73,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            build/Static/Release/lib
-            build/Static/Release/include
+            build/Release/lib
+            build/Release/include
           key: release-linux-${{ steps.dependencies.outputs.key }}
 
       # code that only Release builds compile, or link, breaks here instead of at a release

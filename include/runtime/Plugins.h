@@ -93,4 +93,14 @@ bool ECSIPlugin_OwnsName(ECSPlugin plugin, const char *name);
 /// @return true if the owner runs, so the name can be checked against what it registered.
 bool ECSIPlugins_OwnerRuns(const char *name);
 
+/// @brief Gets a plugin that loaded and did not fail, by name.
+/// @param name The plugin's name.
+/// @return The plugin, or NULL.
+ECSPlugin ECSIPlugins_Get(const char *name);
+
+/// @brief Gets the plugins that loaded and did not fail, in load order.
+/// @param index Position, starting at 0.
+/// @return The plugin, or NULL past the last one.
+ECSPlugin ECSIPlugins_GetAt(usz index);
+
 #pragma endregion Declarations

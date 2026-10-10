@@ -19,6 +19,9 @@
 /// @brief Longest path to a part of a file that a problem report names.
 #define OPENECS_SESSION_PATH_SIZE 256
 
+/// @brief Size of a pop-out window whose session gives none, in layout units.
+#define OPENECS_SESSION_POP_OUT_SIZE 400.0f
+
 /// @brief A tool's last session, in its folder in the state folder.
 #define OPENECS_LAST_SESSION_FILE "session.lua"
 
@@ -207,58 +210,89 @@ static SHUResult ECSISession_ReadNode(ECSISessionReader *reader, const ECSValue 
     return SHUResult_Ok;
 }
 
-/// @brief Builds the workspace that a table describes.
+/// @brief Builds the workspace that a table describes: the main window's tree, then a tree for each pop-out window.
 static SHUResult ECSISession_ReadWorkspace(ECSISessionReader *reader, const ECSValue *saved)
 {
     const ECSValue *windows = ECSValue_GetTableField(saved, "windows");
-    const ECSValue *tree = ECSValue_GetListItem(windows, 0);
-    ECSINode *root = NULL;
+    usz count = SDL_max(1, ECSValue_GetListCount(windows));
+    ECSIRootDesc *roots = SDL_calloc(count, sizeof(ECSIRootDesc));
+    SHUResult result = roots == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
 
     reader->focusId = ECSValue_GetInteger(ECSValue_GetTableField(saved, "focus"), 0);
     reader->focus = NULL;
-    reader->maximized = NULL;
 
-    if (ECSValue_GetListCount(windows) > 1)
+    for (usz i = 0; !result && i < ECSValue_GetListCount(windows); i++)
     {
-        ECSISession_Report(reader, "pop-out windows are not implemented yet; only the first window is used.");
-    }
-
-    if (tree != NULL)
-    {
+        const ECSValue *tree = ECSValue_GetListItem(windows, i);
         usz length = ECSISession_Enter(reader, "windows", 0);
-        ECSISession_Enter(reader, NULL, 0);
+        ECSISession_Enter(reader, NULL, i);
+        reader->maximized = NULL;
 
         if (ECSValue_GetType(tree) != ECSValueType_Table)
         {
-            ECSISession_Report(reader, "a window must be a table; the workspace is left empty.");
+            ECSISession_Report(reader, "a window must be a table; it is left empty.");
         }
         else
         {
-            SHU_ReturnResult(ECSISession_ReadNode(reader, tree, &root));
+            result = ECSISession_ReadNode(reader, tree, &roots[i].tree);
+            roots[i].maximized = reader->maximized;
+
+            // a pop-out window opens with the size it had
+            if (i > 0)
+            {
+                roots[i].width = ECSISession_GetSize(reader, tree, "width", OPENECS_SESSION_POP_OUT_SIZE);
+                roots[i].height = ECSISession_GetSize(reader, tree, "height", OPENECS_SESSION_POP_OUT_SIZE);
+            }
         }
 
         ECSISession_Leave(reader, length);
     }
 
-    SHU_ReturnResult(ECSILayout_WorkspaceAdd(ECSValue_GetString(ECSValue_GetTableField(saved, "name"), "workspace"), root, reader->focus, reader->maximized), if (root != NULL) { ECSILayout_NodeDestroy(&root); });
+    // the workspace takes the trees, also when it fails
+    if (!result)
+    {
+        result = ECSILayout_WorkspaceAdd(ECSValue_GetString(ECSValue_GetTableField(saved, "name"), "workspace"), roots, count, reader->focus);
+    }
+    else
+    {
+        for (usz i = 0; roots != NULL && i < count; i++)
+        {
+            if (roots[i].tree != NULL)
+            {
+                ECSILayout_NodeDestroy(&roots[i].tree);
+            }
+        }
+    }
+
+    SDL_free(roots);
+    SHU_ReturnResult(result);
 
     // the keys go with the workspace just added, so their positions match
     return ECSIKeys_AddWorkspace(ECSValue_GetTableField(saved, "keys"));
 }
 
-/// @brief Saves the session to the file the user chose; a cancelled dialog gives no file.
+/// @brief Saves the session to the file the user chose, adding ".lua" if the name has no such ending; a cancelled dialog gives no file.
 static void ECSISession_SaveChosen(void *data, const char *const *files, usz count)
 {
     (void)data;
+    usz length = count > 0 ? SDL_strlen(files[0]) : 0;
+    char *path = NULL;
 
-    if (count > 0 && ECSSession_Save(files[0]) == SHUResult_Ok)
+    if (count == 0 || SDL_asprintf(&path, "%s%s", files[0], length >= 4 && SDL_strcmp(files[0] + length - 4, ".lua") == 0 ? "" : ".lua") < 0)
     {
-        SDL_Log("Session saved to '%s'.", files[0]);
+        return;
     }
-    else if (count > 0)
+
+    if (ECSSession_Save(path) == SHUResult_Ok)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot save the session to '%s'.", files[0]);
+        SDL_Log("Session saved to '%s'.", path);
     }
+    else
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot save the session to '%s'.", path);
+    }
+
+    SDL_free(path);
 }
 
 /// @brief Opens the session the user chose; a cancelled dialog gives no file. ECSSession_Open reports the other reasons a file is not opened.
@@ -272,7 +306,7 @@ static void ECSISession_OpenChosen(void *data, const char *const *files, usz cou
     }
 }
 
-/// @brief Shows a dialog of saved sessions, which starts in the sessions folder.
+/// @brief Shows a dialog of saved sessions and presets, which starts in the sessions folder. A save dialog suggests a file named after the preset, so a new file is made by pressing Save.
 static SHUResult ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunction Done)
 {
     if (SESSION.folder != NULL && !SDL_CreateDirectory(SESSION.folder))
@@ -280,9 +314,18 @@ static SHUResult ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunctio
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot make the sessions folder '%s': %s", SESSION.folder, SDL_GetError());
     }
 
-    ECSDialogFilter filter = {"OpenECS sessions", "lua"};
-    ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = SESSION.folder, .Done = Done};
-    return ECSIInput_ShowDialog(NULL, &desc);
+    char *location = NULL;
+
+    if (type == ECSDialogType_SaveFile && SESSION.folder != NULL && SDL_asprintf(&location, "%s%s.lua", SESSION.folder, SESSION.info->name != NULL ? SESSION.info->name : "session") < 0)
+    {
+        location = NULL;
+    }
+
+    ECSDialogFilter filter = {"OpenECS sessions and presets", "lua"};
+    ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = location != NULL ? location : SESSION.folder, .Done = Done};
+    SHUResult result = ECSIInput_ShowDialog(NULL, &desc);
+    SDL_free(location);
+    return result;
 }
 
 /// @brief What keys and menus run as ecs.session.save: saving without a path, which asks for the file.
@@ -703,7 +746,7 @@ SHUResult ECSISession_Initialize(const ECSISessionFolders *folders, bool canOpen
 
     // keys run the same names as the Lua functions, which ask for the file when they get no path
     SHU_ReturnResult(ECSIServices_RegisterCore("ecs.session.save", (ECSFunction)ECSISession_SaveBound, "void()", "Save the session to a file"));
-    return ECSIServices_RegisterCore("ecs.session.open", (ECSFunction)ECSISession_OpenBound, "void()", "Open a saved session");
+    return ECSIServices_RegisterCore("ecs.session.open", (ECSFunction)ECSISession_OpenBound, "void()", "Open a session or a preset");
 }
 
 const char *ECSISession_GetNext(const char **retOption)

@@ -9,46 +9,125 @@
 #pragma region Source Only
 
 /// @brief Preset used when the command line names none.
-#define OPENECS_DEFAULT_PRESET "default"
+#define OPENECS_DEFAULT_PRESET "launcher"
+
+/// @brief What --help prints.
+#define OPENECS_USAGE                                                                                     \
+    "Usage: OpenECS [OPTION...] [FILE...]\n"                                                              \
+    "\n"                                                                                                  \
+    "Starts the tool a preset describes, or the launcher without one. The preset's open function\n"       \
+    "opens each FILE.\n"                                                                                  \
+    "\n"                                                                                                  \
+    "Options:\n"                                                                                          \
+    "  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file\n"         \
+    "  -s, --session FILE      Open a saved session\n"                                                    \
+    "  -f, --fresh             Start from the preset, not from the tool's last session\n"                 \
+    "  -t, --test FILE         Run a test; Debug builds only\n"                                           \
+    "  -d, --definitions DIR   Write the definition files of the plugins' functions into DIR, and exit\n" \
+    "  -v, --version           Print the version and exit\n"                                              \
+    "  -h, --help              Print this help and exit\n"
+
+/// @brief One option of the command line.
+typedef struct ECSIOption
+{
+    const char *shortName;
+    const char *longName;
+    bool takesValue;
+} ECSIOption;
+
+/// @brief The options, in the order of ECSIOptionIndex.
+static const ECSIOption OPENECS_OPTIONS[] = {
+    {"-p", "--preset", true},
+    {"-s", "--session", true},
+    {"-f", "--fresh", false},
+    {"-t", "--test", true},
+    {"-d", "--definitions", true},
+    {"-v", "--version", false},
+    {"-h", "--help", false},
+};
+
+typedef enum ECSIOptionIndex
+{
+    ECSIOption_Preset,
+    ECSIOption_Session,
+    ECSIOption_Fresh,
+    ECSIOption_Test,
+    ECSIOption_Definitions,
+    ECSIOption_Version,
+    ECSIOption_Help,
+} ECSIOptionIndex;
 
 /// @brief Reads the options, and moves the files to the start of argv, over options already read.
-static ECSIArguments ECSIMain_ReadArguments(int argc, char **argv)
+/// @return false if an option is unknown or lacks its value; the reason is printed.
+static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArguments)
 {
-    ECSIArguments arguments = {.preset = OPENECS_DEFAULT_PRESET, .files = argv + 1};
+    *retArguments = (ECSIArguments){.preset = OPENECS_DEFAULT_PRESET, .files = argv + 1};
 
     for (int i = 1; i < argc; i++)
     {
-        if (SDL_strcmp(argv[i], "--preset") == 0 && i + 1 < argc)
+        // anything that does not start with a dash is a file
+        if (argv[i][0] != '-')
         {
-            arguments.preset = argv[++i];
+            retArguments->files[retArguments->fileCount++] = argv[i];
+            continue;
         }
-        else if (SDL_strcmp(argv[i], "--session") == 0 && i + 1 < argc)
+
+        usz option = SDL_arraysize(OPENECS_OPTIONS);
+
+        for (usz j = 0; j < SDL_arraysize(OPENECS_OPTIONS); j++)
         {
-            arguments.session = argv[++i];
+            if (SDL_strcmp(argv[i], OPENECS_OPTIONS[j].shortName) == 0 || SDL_strcmp(argv[i], OPENECS_OPTIONS[j].longName) == 0)
+            {
+                option = j;
+            }
         }
-        else if (SDL_strcmp(argv[i], "--fresh") == 0)
+
+        if (option == SDL_arraysize(OPENECS_OPTIONS))
         {
-            arguments.fresh = true;
+            fprintf(stderr, "OpenECS: unknown option '%s'; OpenECS --help lists the options.\n", argv[i]);
+            return false;
         }
-        else if (SDL_strcmp(argv[i], "--version") == 0)
+
+        const char *value = NULL;
+
+        if (OPENECS_OPTIONS[option].takesValue)
         {
-            arguments.version = true;
+            if (i + 1 >= argc)
+            {
+                fprintf(stderr, "OpenECS: the option '%s' needs a value; OpenECS --help lists the options.\n", argv[i]);
+                return false;
+            }
+
+            value = argv[++i];
         }
-        else if (SDL_strcmp(argv[i], "--test") == 0 && i + 1 < argc)
+
+        switch ((ECSIOptionIndex)option)
         {
-            arguments.test = argv[++i];
-        }
-        else if (SDL_strncmp(argv[i], "--", 2) != 0)
-        {
-            arguments.files[arguments.fileCount++] = argv[i];
-        }
-        else
-        {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Unknown argument '%s'. Usage: openecs [--preset NAME|FILE] [--session FILE] [--fresh] [--test FILE] [--version] [FILE...]", argv[i]);
+        case ECSIOption_Preset:
+            retArguments->preset = value;
+            break;
+        case ECSIOption_Session:
+            retArguments->session = value;
+            break;
+        case ECSIOption_Fresh:
+            retArguments->fresh = true;
+            break;
+        case ECSIOption_Test:
+            retArguments->test = value;
+            break;
+        case ECSIOption_Definitions:
+            retArguments->definitions = value;
+            break;
+        case ECSIOption_Version:
+            retArguments->version = true;
+            break;
+        case ECSIOption_Help:
+            retArguments->help = true;
+            break;
         }
     }
 
-    return arguments;
+    return true;
 }
 
 #pragma endregion Source Only
@@ -56,7 +135,12 @@ static ECSIArguments ECSIMain_ReadArguments(int argc, char **argv)
 int main(int argc, char **argv)
 {
     ECSILog_Initialize();
-    ECSIArguments arguments = ECSIMain_ReadArguments(argc, argv);
+    ECSIArguments arguments;
+
+    if (!ECSIMain_ReadArguments(argc, argv, &arguments))
+    {
+        return 2;
+    }
 
     if (arguments.version)
     {
@@ -64,8 +148,14 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    if (arguments.help)
+    {
+        printf("%s", OPENECS_USAGE);
+        return 0;
+    }
+
     ECSIApp_Start(&arguments);
-    int status = ECSIApp_Run();
+    int status = arguments.definitions != NULL ? (ECSIApp_WriteDefinitions(arguments.definitions) ? 1 : 0) : ECSIApp_Run();
     const char *option = NULL;
     char *next = ECSIApp_Stop(&option);
 

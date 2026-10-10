@@ -4,9 +4,14 @@
 
 #pragma region Source Only
 
+/// @brief Longest error kept for ECSILog_GetLastError.
+#define OPENECS_LOG_ERROR_SIZE 1024
+
 static struct
 {
     SDL_IOStream *file; // NULL until the state folder is known
+    char *path;         // of the log file, or NULL
+    char lastError[OPENECS_LOG_ERROR_SIZE]; // the last error or critical message, empty if none
 } LOG = {0};
 
 /// @brief Names of the log levels, as log lines show them.
@@ -46,6 +51,12 @@ static void ECSILog_Output(void *userData, int category, SDL_LogPriority priorit
 
     fputs(line, stderr);
 
+    // the dialog of a failed start shows the last error, since it is the reason
+    if (priority >= SDL_LOG_PRIORITY_ERROR)
+    {
+        SDL_strlcpy(LOG.lastError, message, sizeof(LOG.lastError));
+    }
+
     if (LOG.file != NULL)
     {
         SDL_WriteIO(LOG.file, line, (usz)length);
@@ -72,6 +83,7 @@ void ECSILog_OpenFile(const char *path)
 
     ECSILog_Terminate();
     LOG.file = SDL_IOFromFile(path, "w");
+    LOG.path = LOG.file == NULL ? NULL : SDL_strdup(path);
 
     if (LOG.file == NULL)
     {
@@ -86,4 +98,17 @@ void ECSILog_Terminate(void)
         SDL_CloseIO(LOG.file);
         LOG.file = NULL;
     }
+
+    SDL_free(LOG.path);
+    LOG.path = NULL;
+}
+
+const char *ECSILog_GetPath(void)
+{
+    return LOG.path;
+}
+
+const char *ECSILog_GetLastError(void)
+{
+    return LOG.lastError[0] == '\0' ? NULL : LOG.lastError;
 }

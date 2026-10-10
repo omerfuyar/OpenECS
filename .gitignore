@@ -1,6 +1,7 @@
 .vscode
 *.exe
 *.old
+ignore/
 ignore.*
 *.ignore
 shuild
@@ -12,3 +13,6 @@ build/
 *.out
 *.log
 dist/
+.luarc.json
+compile_flags.txt
+.clangd

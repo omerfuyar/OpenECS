@@ -11,16 +11,20 @@ end
 
 return {
   preset = "presets/lister.lua",
+  presets = "files/presets",
   sessions = "files/sessions",
   run = function(test)
     test.call("lister.list")
     local results = test.session().pluginState.lister.state
 
-    -- a test lists only the first-party presets, and finds no last session of their tools
-    local default = find(results.presets, "default")
-    test.match(default, { appId = "openecs.default", appName = "OpenECS" }, "the default preset")
-    assert(default.path:match("/presets/default%.lua$"), "the default preset's path: " .. default.path)
-    assert(default.lastUsed == nil, "a test has no last sessions")
+    -- a test lists the first-party presets and its own presets folder, and finds no last session of their tools
+    local paint = find(results.presets, "paint")
+    test.match(paint, { appId = "org.example.Paint", appName = "Paint" }, "the paint preset")
+    assert(paint.path:match("files/presets/paint%.lua$"), "the paint preset's path: " .. paint.path)
+    assert(paint.lastUsed == nil, "a test has no last sessions")
+
+    -- a preset with listed = false is not listed
+    test.match(find(results.presets, "hidden"), nil, "the hidden preset")
 
     -- the sessions are sorted by name, and the file that cannot be read is left out
     test.match(results.sessions, {

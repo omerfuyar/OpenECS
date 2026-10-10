@@ -67,6 +67,7 @@ typedef struct ECSILuaObject
 typedef struct ECSIParameter
 {
     ECSIParameterType type;
+    char *name;                        // the name the signature gives it, or NULL; only for documentation
     bool out;                          // an output parameter: a pointer in C, an extra result in Lua
     ECSIHandleType *handle;           // handles: their type
     struct ECSISignature *callback;   // callbacks: their signature, owned by the parameter
@@ -171,9 +172,12 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
 
 static void ECSISignature_Free(ECSISignature *signature);
 
-/// @brief Frees what a parameter owns: a callback's signature.
+/// @brief Frees what a parameter owns: its name and a callback's signature.
 static void ECSIParameter_Free(ECSIParameter *parameter)
 {
+    SDL_free(parameter->name);
+    parameter->name = NULL;
+
     if (parameter->callback != NULL)
     {
         ECSISignature_Free(parameter->callback);
@@ -211,7 +215,7 @@ static usz ECSISignature_ReadWord(const char **text, const char **retWord)
 {
     *retWord = *text;
 
-    while (SDL_isalnum((unsigned char)**text))
+    while (SDL_isalnum((unsigned char)**text) || **text == '_')
     {
         (*text)++;
     }
@@ -338,7 +342,7 @@ static SHUResult ECSISignature_Append(char **text, const char *separator, ECSIPa
     return SHUResult_Ok;
 }
 
-/// @brief Parses a signature such as "int(string, out float)", and prepares its libffi call description.
+/// @brief Parses a signature such as "int(string path, out float)", and prepares its libffi call description. Parameter names are kept apart from the signature's text, so they never change how signatures compare.
 static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignature)
 {
     SDL_zerop(retSignature);
@@ -352,7 +356,18 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
     while (valid && *cursor != ')')
     {
         ECSIParameter parameter = {0};
-        valid = ECSISignature_ReadParameter(&cursor, &parameter) && parameter.type != ECSIParameterType_Void && !(parameter.out && parameter.type == ECSIParameterType_Fn) && (*cursor == ',' || *cursor == ')');
+        valid = ECSISignature_ReadParameter(&cursor, &parameter) && parameter.type != ECSIParameterType_Void && !(parameter.out && parameter.type == ECSIParameterType_Fn);
+
+        // a parameter may have a name after its type, such as "float x"
+        if (valid && (SDL_isalpha((unsigned char)*cursor) || *cursor == '_'))
+        {
+            const char *word = NULL;
+            usz length = ECSISignature_ReadWord(&cursor, &word);
+            parameter.name = SDL_strndup(word, length);
+            valid = parameter.name != NULL;
+        }
+
+        valid = valid && (*cursor == ',' || *cursor == ')');
         cursor += valid && *cursor == ',' ? 1 : 0;
         ECSISignature_SkipSpaces(&cursor);
 
@@ -1162,7 +1177,10 @@ SHUResult ECSIServices_Initialize(void)
     lua_setmetatable(state, -2);
     SERVICES.handles = luaL_ref(state, LUA_REGISTRYINDEX);
 
-    return ECSIServices_RegisterHandleType(NULL, "ecs.panel", NULL);
+    // the core's handle types: panels, popups, and the surface a panel or popup draws into, valid during Draw
+    SHU_ReturnResult(ECSIServices_RegisterHandleType(NULL, "ecs.panel", NULL));
+    SHU_ReturnResult(ECSIServices_RegisterHandleType(NULL, "ecs.popup", NULL));
+    return ECSIServices_RegisterHandleType(NULL, "ecs.surface", NULL);
 }
 
 void ECSIServices_PushHandle(const char *type, void *object)
@@ -1556,4 +1574,342 @@ SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, con
     SHU_ReturnResult(ECSIServices_Find(plugin, name, signature, &function));
     *retFunction = function->pointer;
     return SHUResult_Ok;
+}
+
+SHUResult ECSIServices_PushPlugin(ECSPlugin plugin, ECSPlugin provider)
+{
+    SDL_assert(plugin != NULL);
+    SDL_assert(provider != NULL);
+
+    if (!ECSIPlugin_DependsOn(plugin, provider))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' requires '%s', but its manifest does not depend on it.", ECSIPlugin_GetName(plugin), ECSIPlugin_GetName(provider));
+        return SHUResult_ErrPrivileges;
+    }
+
+    lua_State *state = ECSILua_GetState();
+    lua_newtable(state);
+
+    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
+    {
+        ECSIFunction *function = SERVICES.functions[i].value;
+
+        if (function->plugin == provider)
+        {
+            SHU_ReturnResult(ECSIServices_PushFunction(plugin, function->name, NULL), lua_pop(state, 1););
+            lua_setfield(state, -2, SDL_strchr(function->name, '.') + 1);
+        }
+    }
+
+    return SHUResult_Ok;
+}
+
+#pragma region Definitions
+
+/// @brief Text that grows as parts are added; a failed addition leaves it NULL, and later additions do nothing.
+typedef struct ECSIDefinitionText
+{
+    char *data;
+    bool failed;
+} ECSIDefinitionText;
+
+static void ECSIDefinitionText_Add(ECSIDefinitionText *text, SDL_PRINTF_FORMAT_STRING const char *format, ...) SDL_PRINTF_VARARG_FUNC(2);
+
+static void ECSIDefinitionText_Add(ECSIDefinitionText *text, const char *format, ...)
+{
+    char *part = NULL;
+    char *joined = NULL;
+    va_list arguments;
+    va_start(arguments, format);
+    bool ok = !text->failed && SDL_vasprintf(&part, format, arguments) >= 0;
+    va_end(arguments);
+
+    ok = ok && SDL_asprintf(&joined, "%s%s", text->data == NULL ? "" : text->data, part) >= 0;
+    SDL_free(part);
+    SDL_free(text->data);
+    text->data = ok ? joined : NULL;
+    text->failed = !ok;
+}
+
+/// @brief Names a parameter that its signature leaves unnamed: arg1, arg2 and so on.
+static const char *ECSIDefinition_Name(ECSIParameter parameter, usz index, char *buffer, usz size)
+{
+    if (parameter.name != NULL)
+    {
+        return parameter.name;
+    }
+
+    SDL_snprintf(buffer, size, "arg%zu", index + 1);
+    return buffer;
+}
+
+static void ECSIDefinition_AddLuaType(ECSIDefinitionText *text, ECSIParameter parameter);
+
+/// @brief Adds a callback's type for LuaLS, such as "fun(path: string): integer".
+static void ECSIDefinition_AddLuaFunction(ECSIDefinitionText *text, const ECSISignature *signature)
+{
+    char buffer[32];
+    ECSIDefinitionText_Add(text, "fun(");
+
+    for (usz i = 0, written = 0; i < arrlenu(signature->parameters); i++)
+    {
+        if (!signature->parameters[i].out)
+        {
+            ECSIDefinitionText_Add(text, "%s%s: ", written++ == 0 ? "" : ", ", ECSIDefinition_Name(signature->parameters[i], i, buffer, sizeof(buffer)));
+            ECSIDefinition_AddLuaType(text, signature->parameters[i]);
+        }
+    }
+
+    ECSIDefinitionText_Add(text, ")");
+
+    // the result comes first, then the outputs
+    for (usz i = 0, written = 0; i <= arrlenu(signature->parameters); i++)
+    {
+        ECSIParameter result = i == 0 ? signature->result : signature->parameters[i - 1];
+
+        if ((i == 0 && result.type != ECSIParameterType_Void) || (i > 0 && result.out))
+        {
+            ECSIDefinitionText_Add(text, "%s", written++ == 0 ? ": " : ", ");
+            ECSIDefinition_AddLuaType(text, result);
+        }
+    }
+}
+
+/// @brief Adds a parameter's type for LuaLS.
+static void ECSIDefinition_AddLuaType(ECSIDefinitionText *text, ECSIParameter parameter)
+{
+    static const char *const types[ECSIParameterType_Count] = {"nil", "boolean", "integer", "integer", "number", "number", "string", "string", "any", "userdata", "function"};
+
+    if (parameter.type == ECSIParameterType_Fn)
+    {
+        ECSIDefinitionText_Add(text, "(");
+        ECSIDefinition_AddLuaFunction(text, parameter.callback);
+        ECSIDefinitionText_Add(text, ")?");
+    }
+    else if (parameter.type == ECSIParameterType_Handle && SDL_strcmp(parameter.handle->name, "ecs.panel") == 0)
+    {
+        ECSIDefinitionText_Add(text, "ecs.Panel");
+    }
+    else if (parameter.type == ECSIParameterType_Handle && SDL_strcmp(parameter.handle->name, "ecs.popup") == 0)
+    {
+        ECSIDefinitionText_Add(text, "ecs.Popup");
+    }
+    else if (parameter.type == ECSIParameterType_Handle && SDL_strcmp(parameter.handle->name, "ecs.surface") == 0)
+    {
+        ECSIDefinitionText_Add(text, "ecs.Surface");
+    }
+    else
+    {
+        ECSIDefinitionText_Add(text, "%s", types[parameter.type]);
+    }
+}
+
+/// @brief Adds a parameter's C declaration, such as "f32 x", "const char **retName" or "void (*callback)(i32 arg1)".
+static void ECSIDefinition_AddCDeclaration(ECSIDefinitionText *text, ECSIParameter parameter, const char *name);
+
+/// @brief Adds a callback's parameter list in C, such as "(i32 arg1, f32 arg2)".
+static void ECSIDefinition_AddCParameters(ECSIDefinitionText *text, const ECSISignature *signature)
+{
+    char buffer[32];
+    ECSIDefinitionText_Add(text, "(");
+
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
+    {
+        ECSIDefinitionText_Add(text, "%s", i == 0 ? "" : ", ");
+        ECSIDefinition_AddCDeclaration(text, signature->parameters[i], ECSIDefinition_Name(signature->parameters[i], i, buffer, sizeof(buffer)));
+    }
+
+    ECSIDefinitionText_Add(text, "%s)", arrlenu(signature->parameters) == 0 ? "void" : "");
+}
+
+static void ECSIDefinition_AddCDeclaration(ECSIDefinitionText *text, ECSIParameter parameter, const char *name)
+{
+    static const char *const types[ECSIParameterType_Count] = {"void", "bool", "i32", "i64", "f32", "f64", "const char *", "SHUSlice ", "const ECSValue *", "void *", ""};
+    const char *type = types[parameter.type];
+
+    if (parameter.type == ECSIParameterType_Fn)
+    {
+        char declarator[64];
+        SDL_snprintf(declarator, sizeof(declarator), "(*%s)", name);
+        ECSIDefinition_AddCDeclaration(text, parameter.callback->result, declarator);
+        ECSIDefinition_AddCParameters(text, parameter.callback);
+        return;
+    }
+
+    if (parameter.type == ECSIParameterType_Handle)
+    {
+        type = SDL_strcmp(parameter.handle->name, "ecs.panel") == 0 ? "ECSPanel " : SDL_strcmp(parameter.handle->name, "ecs.popup") == 0 ? "ECSPopup " : SDL_strcmp(parameter.handle->name, "ecs.surface") == 0 ? "ECSSurface *" : "void *";
+    }
+    else if (parameter.type == ECSIParameterType_Value && parameter.out)
+    {
+        // an out value is a value that the caller gives and the function fills
+        ECSIDefinitionText_Add(text, "ECSValue *%s", name);
+        return;
+    }
+
+    // a type that ends with a pointer needs no space before the name
+    usz length = SDL_strlen(type);
+    bool pointer = length > 0 && type[length - 1] == '*';
+    bool spaced = length > 0 && type[length - 1] == ' ';
+    ECSIDefinitionText_Add(text, "%s%s%s%s", type, pointer || spaced ? "" : " ", parameter.out ? "*" : "", name);
+}
+
+/// @brief Writes a text file.
+static SHUResult ECSIDefinition_Save(const char *folder, const char *name, const char *extension, const ECSIDefinitionText *text)
+{
+    char *path = NULL;
+
+    if (text->failed || SDL_asprintf(&path, "%s%s%s", folder, name, extension) < 0)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    bool saved = SDL_SaveFile(path, text->data, SDL_strlen(text->data));
+
+    if (!saved)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot write '%s': %s", path, SDL_GetError());
+    }
+
+    SDL_free(path);
+    return saved ? SHUResult_Ok : SHUResult_ErrFile;
+}
+
+/// @brief Turns a plugin's name into the start of C names: "sketch_c" becomes "SketchC".
+static void ECSIDefinition_Pascal(const char *name, char *buffer, usz size)
+{
+    usz length = 0;
+    bool upper = true;
+
+    for (const char *c = name; *c != '\0' && length + 1 < size; c++)
+    {
+        if (!SDL_isalnum((unsigned char)*c))
+        {
+            upper = true;
+            continue;
+        }
+
+        buffer[length++] = upper ? (char)SDL_toupper((unsigned char)*c) : *c;
+        upper = false;
+    }
+
+    buffer[length] = '\0';
+}
+
+/// @brief Turns a function's local name into a C member name: dots become underscores.
+static void ECSIDefinition_Member(const char *local, char *buffer, usz size)
+{
+    SDL_strlcpy(buffer, local, size);
+
+    for (char *c = buffer; *c != '\0'; c++)
+    {
+        *c = *c == '.' ? '_' : *c;
+    }
+}
+
+#pragma endregion Definitions
+
+SHUResult ECSIServices_WriteDefinitions(ECSPlugin provider, const char *folder)
+{
+    SDL_assert(provider != NULL);
+    SDL_assert(folder != NULL);
+
+    const char *plugin = ECSIPlugin_GetName(provider);
+    char pascal[128];
+    char buffer[32];
+    char member[256];
+    ECSIDefinitionText lua = {0};
+    ECSIDefinitionText c = {0};
+    ECSIDefinition_Pascal(plugin, pascal, sizeof(pascal));
+
+    ECSIDefinitionText_Add(&lua, "---@meta %s\n-- The functions of the plugin %s, for editors. OpenECS --definitions wrote this file.\n-- A Lua plugin whose manifest depends on %s gets them with require(\"%s\").\n\n---@class %s\nlocal %s = {}\n", plugin, plugin, plugin, plugin, plugin, pascal);
+    ECSIDefinitionText_Add(&c, "// The functions of the plugin %s, for plugins in C. OpenECS --definitions wrote this file.\n#pragma once\n\n#include \"OpenECS.h\"\n\n/// @brief The functions of the plugin %s. %sFunctions_Get fills them.\ntypedef struct %sFunctions\n{\n", plugin, plugin, pascal, pascal);
+
+    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
+    {
+        const ECSIFunction *function = SERVICES.functions[i].value;
+        const ECSISignature *signature = &function->signature;
+        const char *local = SDL_strchr(function->name, '.') + 1;
+
+        if (function->plugin != provider)
+        {
+            continue;
+        }
+
+        // Lua: the description, the parameters, the result and the outputs, then the function
+        ECSIDefinitionText_Add(&lua, "\n---%s\n", function->description);
+
+        for (usz j = 0; j < arrlenu(signature->parameters); j++)
+        {
+            if (!signature->parameters[j].out)
+            {
+                ECSIDefinitionText_Add(&lua, "---@param %s ", ECSIDefinition_Name(signature->parameters[j], j, buffer, sizeof(buffer)));
+                ECSIDefinition_AddLuaType(&lua, signature->parameters[j]);
+                ECSIDefinitionText_Add(&lua, "\n");
+            }
+        }
+
+        for (usz j = 0; j <= arrlenu(signature->parameters); j++)
+        {
+            ECSIParameter result = j == 0 ? signature->result : signature->parameters[j - 1];
+
+            if ((j == 0 && result.type != ECSIParameterType_Void) || (j > 0 && result.out))
+            {
+                ECSIDefinitionText_Add(&lua, "---@return ");
+                ECSIDefinition_AddLuaType(&lua, result);
+                ECSIDefinitionText_Add(&lua, "%s%s\n", result.name == NULL ? "" : " ", result.name == NULL ? "" : result.name);
+            }
+        }
+
+        // a local name with a dot is not a Lua name, so it is written as a key
+        if (SDL_strchr(local, '.') == NULL)
+        {
+            ECSIDefinitionText_Add(&lua, "function %s.%s(", pascal, local);
+        }
+        else
+        {
+            ECSIDefinitionText_Add(&lua, "%s[\"%s\"] = function(", pascal, local);
+        }
+
+        for (usz j = 0, written = 0; j < arrlenu(signature->parameters); j++)
+        {
+            if (!signature->parameters[j].out)
+            {
+                ECSIDefinitionText_Add(&lua, "%s%s", written++ == 0 ? "" : ", ", ECSIDefinition_Name(signature->parameters[j], j, buffer, sizeof(buffer)));
+            }
+        }
+
+        ECSIDefinitionText_Add(&lua, ") end\n");
+
+        // C: a member that points to the function
+        char declarator[300];
+        ECSIDefinition_Member(local, member, sizeof(member));
+        SDL_snprintf(declarator, sizeof(declarator), "(*%s)", member);
+        ECSIDefinitionText_Add(&c, "    /// @brief %s\n    ", function->description);
+        ECSIDefinition_AddCDeclaration(&c, signature->result, declarator);
+        ECSIDefinition_AddCParameters(&c, signature);
+        ECSIDefinitionText_Add(&c, ";\n");
+    }
+
+    ECSIDefinitionText_Add(&lua, "\nreturn %s\n", pascal);
+    ECSIDefinitionText_Add(&c, "} %sFunctions;\n\n/// @brief Looks up every function of the plugin %s. Call it from ECSPlugin_Init; the plugin's manifest must depend on %s.\n/// @return SHUResult_Ok, or the error of the first function that cannot be looked up.\nstatic inline SHUResult %sFunctions_Get(ECSPlugin plugin, %sFunctions *retFunctions)\n{\n    ECSFunction function = NULL;\n", pascal, plugin, plugin, pascal, pascal);
+
+    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
+    {
+        const ECSIFunction *function = SERVICES.functions[i].value;
+
+        if (function->plugin == provider)
+        {
+            ECSIDefinition_Member(SDL_strchr(function->name, '.') + 1, member, sizeof(member));
+            ECSIDefinitionText_Add(&c, "\n    SHU_ReturnResult(ECSService_GetFunction(plugin, &function, \"%s\", \"%s\"));\n    retFunctions->%s = (typeof(retFunctions->%s))function;\n", function->name, function->signature.text, member, member);
+        }
+    }
+
+    ECSIDefinitionText_Add(&c, "\n    return SHUResult_Ok;\n}\n");
+
+    SHUResult result = ECSIDefinition_Save(folder, plugin, ".lua", &lua);
+    result = result ? result : ECSIDefinition_Save(folder, plugin, ".h", &c);
+    SDL_free(lua.data);
+    SDL_free(c.data);
+    return result;
 }

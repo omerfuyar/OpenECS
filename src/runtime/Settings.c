@@ -7,10 +7,8 @@
 
 #pragma region Source Only
 
-/// @brief The user's hand-edited settings file, in the configuration folder.
+/// @brief The user's settings file, in the configuration folder.
 #define OPENECS_SETTINGS_USER_FILE "settings.lua"
-/// @brief The file that the settings window writes, in the configuration folder.
-#define OPENECS_SETTINGS_WINDOW_FILE "settings-window.lua"
 
 /// @brief What a value of each setting type must be, for messages.
 static const char *const OPENECS_SETTING_TYPE_TEXTS[] = {
@@ -19,9 +17,10 @@ static const char *const OPENECS_SETTING_TYPE_TEXTS[] = {
     [ECSSettingType_Number] = "a number",
     [ECSSettingType_String] = "a text",
     [ECSSettingType_Choice] = "one of these texts:",
-    [ECSSettingType_Key] = "a key combination text",
+    [ECSSettingType_Key] = "a key combination, such as \"Ctrl+Shift+P\"",
     [ECSSettingType_List] = "a list",
     [ECSSettingType_Table] = "a table",
+    [ECSSettingType_Color] = "a colour, such as \"#18191C\" or \"#18191CFF\"",
 };
 
 /// @brief A declared setting.
@@ -40,10 +39,10 @@ typedef struct ECSISetting
 } ECSISetting;
 
 /// @brief Names of the layers, for explanations; the core and plugin layers hold defaults.
-static const char *const OPENECS_SETTINGS_LAYER_NAMES[ECSISettingsLayer_Count] = {"default", "default", "preset", "window", "user"};
+static const char *const OPENECS_SETTINGS_LAYER_NAMES[ECSISettingsLayer_Count] = {"default", "default", "preset", "user"};
 
 /// @brief Names of the setting types, for explanations, in the order of ECSSettingType.
-static const char *const OPENECS_SETTING_TYPE_NAMES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table"};
+static const char *const OPENECS_SETTING_TYPE_NAMES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", "color"};
 
 /// @brief Copies every field of a table into another, while its fields are walked.
 typedef struct ECSISettingsFileCopier
@@ -66,11 +65,11 @@ static struct
         char *key; // the setting's own copy of its name
         ECSISetting *value;
     } *settings;                                // stb_ds hash map, in declaration order
-    ECSValue *layers[ECSISettingsLayer_Count]; // the preset, window and user layers: tables of setting names and values
+    ECSValue *layers[ECSISettingsLayer_Count]; // the core, preset and user layers: tables of setting names and values
     char *paths[ECSISettingsLayer_Count];      // the file of each of those layers
     ECSValue *plugins;                          // list of extra plugin names
-    ECSValue *keys[ECSISettingsLayer_Count];   // the window and user layers' key bindings: key texts and function names
-    ECSValue *windowFile;                       // the whole settings window's file, which ECSSetting_Set changes and writes
+    ECSValue *keys[ECSISettingsLayer_Count];   // the core's and the user's keys tables
+    ECSValue *userFile;                         // the whole user's settings file, which ECSSetting_Set changes and writes
     char *appId;                                // chooses the tool's own part of the user's files
     ECSISetting **changed;                     // stb_ds array of settings whose owners are not told yet
 } SETTINGS = {0};
@@ -90,8 +89,18 @@ static bool ECSISetting_Check(const ECSISetting *setting, const ECSValue *value)
     case ECSSettingType_Number:
         return type == ECSValueType_Integer || type == ECSValueType_Number;
     case ECSSettingType_String:
-    case ECSSettingType_Key:
         return type == ECSValueType_String;
+    case ECSSettingType_Key:
+    {
+        u32 key = 0;
+        u32 modifiers = 0;
+        return type == ECSValueType_String && ECSISettings_ParseKey(ECSValue_GetString(value, ""), false, &key, &modifiers) == SHUResult_Ok;
+    }
+    case ECSSettingType_Color:
+    {
+        u32 color = 0;
+        return type == ECSValueType_String && ECSISettings_ParseColor(ECSValue_GetString(value, ""), &color);
+    }
     case ECSSettingType_Choice:
         for (usz i = 0; type == ECSValueType_String && i < arrlenu(setting->choices); i++)
         {
@@ -189,8 +198,19 @@ static SHUResult ECSISetting_SetDefault(ECSISetting *setting, const ECSSettingDe
         ECSValue_SetNumber(setting->defaultValue, desc->defaultNumber);
         return SHUResult_Ok;
     case ECSSettingType_String:
-    case ECSSettingType_Key:
         return ECSValue_SetString(setting->defaultValue, desc->defaultString == NULL ? "" : desc->defaultString);
+    case ECSSettingType_Key:
+    case ECSSettingType_Color:
+        SHU_ReturnResult(ECSValue_SetString(setting->defaultValue, desc->defaultString == NULL ? "" : desc->defaultString));
+
+        // a core setting's default comes from the core's settings file, and is checked there
+        if (desc->defaultString != NULL && !ECSISetting_Check(setting, setting->defaultValue))
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The default of setting '%s' must be %s.", desc->name, OPENECS_SETTING_TYPE_TEXTS[desc->type]);
+            return SHUResult_ErrBadData;
+        }
+
+        return SHUResult_Ok;
     case ECSSettingType_Choice:
         for (const char *const *choice = desc->choices; *choice != NULL; choice++)
         {
@@ -227,7 +247,7 @@ static SHUResult ECSISetting_SetDefault(ECSISetting *setting, const ECSSettingDe
 /// @param defaultValue The default as a value, or NULL to take it from the description.
 static SHUResult ECSISettings_Declare(ECSPlugin owner, const ECSSettingDesc *desc, const ECSValue *defaultValue)
 {
-    if (desc->type > ECSSettingType_Table || (desc->type == ECSSettingType_Choice && (desc->choices == NULL || desc->choices[0] == NULL)))
+    if (desc->type > ECSSettingType_Color || (desc->type == ECSSettingType_Choice && (desc->choices == NULL || desc->choices[0] == NULL)))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Setting '%s' has an invalid type or no choices.", desc->name);
         return SHUResult_ErrBadData;
@@ -341,11 +361,39 @@ static SHUResult ECSISettings_BuildLayer(ECSISettingsLayer layer, const ECSValue
     return reader.result;
 }
 
-/// @brief Copies the key bindings of a part of a user file into a layer's keys.
+/// @brief Merges a field of a keys table into another keys table, while its fields are walked: a table of keys, such as prefix, merges field by field, and anything else replaces the field.
+static void ECSISettings_MergeKey(const char *name, const ECSValue *field, void *userData)
+{
+    ECSISettingsFileCopier *copier = userData;
+    ECSValue *target = (ECSValue *)ECSValue_GetTableField(copier->target, name);
+
+    if (copier->result)
+    {
+        return;
+    }
+
+    if (ECSValue_GetType(field) == ECSValueType_Table && ECSValue_GetType(target) == ECSValueType_Table)
+    {
+        ECSISettingsFileCopier inner = {.target = target, .result = SHUResult_Ok};
+        ECSIValue_TableForEachField(field, ECSISettings_CopyField, &inner);
+        copier->result = inner.result;
+        return;
+    }
+
+    ECSISettings_CopyField(name, field, copier);
+}
+
+/// @brief Merges the keys table of a part of a settings file into a layer's keys.
 static SHUResult ECSISettings_ReadKeys(ECSISettingsLayer layer, const ECSValue *part)
 {
+    if (SETTINGS.keys[layer] == NULL)
+    {
+        SHU_ReturnResult(ECSValue_Create(&SETTINGS.keys[layer]));
+        ECSValue_SetTable(SETTINGS.keys[layer]);
+    }
+
     ECSISettingsFileCopier copier = {.target = SETTINGS.keys[layer], .result = SHUResult_Ok};
-    ECSIValue_TableForEachField(ECSValue_GetTableField(part, "keys"), ECSISettings_CopyField, &copier);
+    ECSIValue_TableForEachField(ECSValue_GetTableField(part, "keys"), ECSISettings_MergeKey, &copier);
     return copier.result;
 }
 
@@ -375,14 +423,8 @@ static SHUResult ECSISettings_ReadFile(ECSISettingsLayer layer, const char *fold
     }
 
     result = result ? result : ECSISettings_BuildLayer(layer, file);
-    result = result ? result : ECSValue_Create(&SETTINGS.keys[layer]);
-
-    if (!result)
-    {
-        ECSValue_SetTable(SETTINGS.keys[layer]);
-        result = ECSISettings_ReadKeys(layer, file);
-        result = result ? result : ECSISettings_ReadKeys(layer, ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId));
-    }
+    result = result ? result : ECSISettings_ReadKeys(layer, file);
+    result = result ? result : ECSISettings_ReadKeys(layer, ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId));
 
     result = result ? result : ECSISettings_ReadPlugins(file);
     result = result ? result : ECSISettings_ReadPlugins(ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId));
@@ -447,24 +489,19 @@ SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSe
     ECSValue_SetTable(SETTINGS.layers[ECSISettingsLayer_Core]);
     SETTINGS.paths[ECSISettingsLayer_Core] = SDL_strdup(corePath);
 
+    SHU_ReturnResult(ECSValue_Create(&SETTINGS.plugins), ECSValue_Destroy(&coreFile););
+    ECSValue_SetTable(SETTINGS.plugins);
+
+    // like a user file, the core's file may name plugins that every tool loads
     ECSISettingsFileReader reader = {.layer = SETTINGS.layers[ECSISettingsLayer_Core], .result = SHUResult_Ok};
     reader.result = SETTINGS.paths[ECSISettingsLayer_Core] == NULL ? SHUResult_ErrAllocation : ECSILua_ReadData(corePath, coreFile);
     ECSIValue_TableForEachField(reader.result ? NULL : coreFile, ECSISettings_ReadField, &reader);
+    reader.result = reader.result ? reader.result : ECSISettings_ReadPlugins(coreFile);
+    reader.result = reader.result ? reader.result : ECSISettings_ReadKeys(ECSISettingsLayer_Core, coreFile);
     ECSValue_Destroy(&coreFile);
     SHU_ReturnResult(reader.result);
 
-    SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[ECSISettingsLayer_Preset]));
-    SHU_ReturnResult(ECSIValue_Copy(SETTINGS.layers[ECSISettingsLayer_Preset], presetSettings));
-    SETTINGS.paths[ECSISettingsLayer_Preset] = SDL_strdup(presetPath);
-
-    if (SETTINGS.paths[ECSISettingsLayer_Preset] == NULL)
-    {
-        return SHUResult_ErrAllocation;
-    }
-
-    SHU_ReturnResult(ECSValue_Create(&SETTINGS.plugins));
-    ECSValue_SetTable(SETTINGS.plugins);
-
+    SHU_ReturnResult(ECSISettings_SetPreset(presetSettings, presetPath));
     SETTINGS.appId = SDL_strdup(appId);
 
     if (SETTINGS.appId == NULL)
@@ -477,8 +514,126 @@ SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSe
         return SHUResult_Ok;
     }
 
-    SHU_ReturnResult(ECSISettings_ReadFile(ECSISettingsLayer_Window, configFolder, OPENECS_SETTINGS_WINDOW_FILE, &SETTINGS.windowFile));
-    return ECSISettings_ReadFile(ECSISettingsLayer_User, configFolder, OPENECS_SETTINGS_USER_FILE, NULL);
+    return ECSISettings_ReadFile(ECSISettingsLayer_User, configFolder, OPENECS_SETTINGS_USER_FILE, &SETTINGS.userFile);
+}
+
+SHUResult ECSISettings_SetPreset(const ECSValue *presetSettings, const char *presetPath)
+{
+    SDL_assert(presetPath != NULL);
+    SDL_assert(shlenu(SETTINGS.settings) == 0);
+
+    ECSValue_Destroy(&SETTINGS.layers[ECSISettingsLayer_Preset]);
+    SDL_free(SETTINGS.paths[ECSISettingsLayer_Preset]);
+    SETTINGS.paths[ECSISettingsLayer_Preset] = SDL_strdup(presetPath);
+    SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[ECSISettingsLayer_Preset]));
+    SHU_ReturnResult(ECSIValue_Copy(SETTINGS.layers[ECSISettingsLayer_Preset], presetSettings));
+    return SETTINGS.paths[ECSISettingsLayer_Preset] == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
+}
+
+SHUResult ECSISettings_ParseKey(const char *text, bool report, u32 *retKey, u32 *retModifiers)
+{
+    SDL_assert(text != NULL);
+    SDL_assert(retKey != NULL);
+    SDL_assert(retModifiers != NULL);
+
+    char *copy = SDL_strdup(text);
+
+    if (copy == NULL)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    *retKey = SDLK_UNKNOWN;
+    *retModifiers = ECSModifier_None;
+
+    // the parts before the key are modifiers, so a word that is neither makes the text invalid
+    usz keyParts = 0;
+    char *save = NULL;
+
+    for (char *part = SDL_strtok_r(copy, "+", &save); part != NULL; part = SDL_strtok_r(NULL, "+", &save))
+    {
+        if (SDL_strcasecmp(part, "Ctrl") == 0)
+        {
+            *retModifiers |= ECSModifier_Ctrl;
+        }
+        else if (SDL_strcasecmp(part, "Shift") == 0)
+        {
+            *retModifiers |= ECSModifier_Shift;
+        }
+        else if (SDL_strcasecmp(part, "Alt") == 0)
+        {
+            *retModifiers |= ECSModifier_Alt;
+        }
+        else if (SDL_strcasecmp(part, "Super") == 0)
+        {
+            *retModifiers |= ECSModifier_Super;
+        }
+        else
+        {
+            *retKey = SDL_GetKeyFromName(part);
+            keyParts++;
+        }
+    }
+
+    SDL_free(copy);
+
+    if (*retKey == SDLK_UNKNOWN || keyParts != 1)
+    {
+        if (report)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a key combination.", text);
+        }
+
+        return SHUResult_ErrBadData;
+    }
+
+    return SHUResult_Ok;
+}
+
+bool ECSISettings_ParseColor(const char *text, u32 *retColor)
+{
+    SDL_assert(text != NULL);
+    SDL_assert(retColor != NULL);
+
+    usz length = SDL_strlen(text);
+    u32 parts[4] = {0, 0, 0, 0xFF};
+
+    if ((length != 7 && length != 9) || text[0] != '#')
+    {
+        return false;
+    }
+
+    for (usz i = 1; i < length; i++)
+    {
+        if (!SDL_isxdigit((unsigned char)text[i]))
+        {
+            return false;
+        }
+    }
+
+    for (usz i = 0; 2 * i + 1 < length; i++)
+    {
+        char pair[3] = {text[2 * i + 1], text[2 * i + 2], '\0'};
+        parts[i] = (u32)SDL_strtoul(pair, NULL, 16);
+    }
+
+    *retColor = parts[3] << 24 | parts[0] << 16 | parts[1] << 8 | parts[2];
+    return true;
+}
+
+bool ECSISettings_PeekBool(const char *name, bool fallback)
+{
+    for (i32 layer = ECSISettingsLayer_Count - 1; layer >= 0; layer--)
+    {
+        const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[layer], name);
+
+        if (ECSValue_GetType(value) == ECSValueType_Bool)
+        {
+            return ECSValue_GetBool(value, fallback);
+        }
+    }
+
+    return fallback;
 }
 
 void ECSISettings_Terminate(void)
@@ -498,7 +653,7 @@ void ECSISettings_Terminate(void)
     shfree(SETTINGS.settings);
     arrfree(SETTINGS.changed);
     ECSValue_Destroy(&SETTINGS.plugins);
-    ECSValue_Destroy(&SETTINGS.windowFile);
+    ECSValue_Destroy(&SETTINGS.userFile);
     SDL_free(SETTINGS.appId);
     SDL_zero(SETTINGS);
 }
@@ -607,11 +762,6 @@ const ECSValue *ECSISettings_GetPlugins(void)
     return SETTINGS.plugins;
 }
 
-const char *ECSISettings_GetUserPath(void)
-{
-    return SETTINGS.paths[ECSISettingsLayer_User];
-}
-
 SHUResult ECSSetting_Declare(ECSPlugin plugin, const ECSSettingDesc *desc)
 {
     SDL_assert(plugin != NULL);
@@ -659,10 +809,10 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
         return SHUResult_ErrBadData;
     }
 
-    if (SETTINGS.windowFile == NULL)
+    if (SETTINGS.userFile == NULL)
     {
-        SHU_ReturnResult(ECSValue_Create(&SETTINGS.windowFile));
-        ECSValue_SetTable(SETTINGS.windowFile);
+        SHU_ReturnResult(ECSValue_Create(&SETTINGS.userFile));
+        ECSValue_SetTable(SETTINGS.userFile);
     }
 
     // the value in effect is kept, to tell the owner only about a real change
@@ -671,12 +821,12 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
     SHUResult result = ECSIValue_Copy(old, setting->value);
 
     // the tool's own part wins over the part for every tool, so a setting it already has is changed there
-    ECSValue *tool = (ECSValue *)ECSValue_GetTableField(ECSValue_GetTableField(SETTINGS.windowFile, "tools"), SETTINGS.appId);
-    ECSValue *part = ECSValue_GetTableField(tool, name) != NULL ? tool : SETTINGS.windowFile;
+    ECSValue *tool = (ECSValue *)ECSValue_GetTableField(ECSValue_GetTableField(SETTINGS.userFile, "tools"), SETTINGS.appId);
+    ECSValue *part = ECSValue_GetTableField(tool, name) != NULL ? tool : SETTINGS.userFile;
     ECSValue *field = NULL;
     result = result ? result : ECSValue_TableSetField(part, name, &field);
     result = result ? result : ECSIValue_Copy(field, value);
-    result = result ? result : ECSISettings_BuildLayer(ECSISettingsLayer_Window, SETTINGS.windowFile);
+    result = result ? result : ECSISettings_BuildLayer(ECSISettingsLayer_User, SETTINGS.userFile);
 
     // the layer was rebuilt, so every value in effect is found again
     for (usz i = 0; i < shlenu(SETTINGS.settings); i++)
@@ -692,9 +842,9 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
     ECSValue_Destroy(&old);
 
     // without a configuration folder, the change lasts until the program exits
-    if (!result && SETTINGS.paths[ECSISettingsLayer_Window] != NULL)
+    if (!result && SETTINGS.paths[ECSISettingsLayer_User] != NULL)
     {
-        result = ECSILua_WriteData(SETTINGS.paths[ECSISettingsLayer_Window], SETTINGS.windowFile);
+        result = ECSILua_WriteData(SETTINGS.paths[ECSISettingsLayer_User], SETTINGS.userFile);
     }
 
     return result;

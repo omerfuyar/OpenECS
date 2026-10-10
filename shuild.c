@@ -7,13 +7,6 @@
 
 #pragma region Setup
 
-#define PrintUsage() SHU_LogInfo("\n\n\
-Usage:\n\
-./shuild [TYPE [LINK]]\n\n\
-Arguments:\n\
-TYPE\n\tD   Debug (Default)\n\tR   Release\n\tRD  RelWithDebInfo\n\tSR  MinSizeRel\n\
-LINK\n\tS   Static (Default)\n\tD   Dynamic\n")
-
 typedef enum BuildType
 {
     BuildType_Debug,
@@ -25,16 +18,20 @@ typedef enum BuildType
 static const char *const _BUILD_TYPE_STRINGS[] = {"Debug", "Release", "RelWithDebInfo", "MinSizeRel"};
 #define BuildType_String(buildType) _BUILD_TYPE_STRINGS[(buildType)]
 
-static const char *const _LINK_TYPE_STRINGS[] = {"", "Static", "Dynamic"};
-#define LinkType_String(linkType) _LINK_TYPE_STRINGS[(linkType)]
+/// @brief Names of the build types for -b, in the order of BuildType.
+static const char *const BUILD_TYPE_NAMES[] = {"debug", "release", "relwithdebinfo", "minsizerel"};
 
-static BuildType BUILD_TYPE = BuildType_Debug;
-static SHUModuleType LINK_TYPE = SHUModuleType_LibraryStatic;
+/// @brief What the flags choose.
+static struct
+{
+    BuildType type;
+    bool std;      // also build the standard plugins, from std/
+    bool examples; // also build the examples, from examples/
+    bool tests;    // also build the tests
+} CONFIG = {BuildType_Debug, true, false, false};
 
 static SHUI_String BUILD_DIRECTORY = {0};
 static SHUI_String OUTPUT_DIRECTORY = {0};
-
-static const char *const PLUGINS[] = {"sketch_c", "sketch_lua"};
 
 #pragma endregion Setup
 
@@ -70,22 +67,22 @@ int main(int argc, char **argv)
         Shuild_SDL_ttf();
     }
 
-    if (!IsBuilt("lua", LINK_TYPE == SHUModuleType_LibraryDynamic))
+    if (!IsBuilt("lua", false))
     {
         Shuild_lua();
     }
 
-    if (!IsBuilt("clay", LINK_TYPE == SHUModuleType_LibraryDynamic))
+    if (!IsBuilt("clay", false))
     {
         Shuild_clay();
     }
 
-    if (!IsBuilt("ffi", LINK_TYPE == SHUModuleType_LibraryDynamic))
+    if (!IsBuilt("ffi", false))
     {
         Shuild_libffi();
     }
 
-    if (!IsBuilt("stb", LINK_TYPE == SHUModuleType_LibraryDynamic))
+    if (!IsBuilt("stb", false))
     {
         Shuild_stb();
     }
@@ -102,57 +99,77 @@ static void CopyFile(const char *file, const char *directory)
     SHU_UtilRun("cp -r %s %s", file, directory);
 }
 
+static void PrintUsage(void)
+{
+    printf("Usage: ./shuild.ignore [FLAG...]\n\n"
+           "Flags:\n"
+           "  -b, --build TYPE   Build type: debug (the default), with the static analyzer and the sanitizers;\n"
+           "                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release\n"
+           "  -n, --no-std       Do not build the standard plugins of std/\n"
+           "  -e, --examples     Also build the examples of examples/, into bin/examples/\n"
+           "  -t, --tests        Also build the tests, into tests/ beside bin/, and std's into std/tests/ beside bin/\n"
+           "  -h, --help         Show this help\n");
+}
+
+/// @brief Stops the build with what is wrong, the argument, and the usage.
+static void Refuse(const char *what, const char *argument)
+{
+    SHU_LogError(0, "%s: " SHUM_COLOR_RED("'%s'"), what, argument);
+    PrintUsage();
+    exit(1);
+}
+
 static void SetupConfiguration(int argc, char **argv)
 {
-    if (argc >= 2)
+    for (int i = 1; i < argc; i++)
     {
-        if (!strcasecmp(argv[1], "D"))
+        const char *flag = argv[i];
+
+        if (!strcmp(flag, "-b") || !strcmp(flag, "--build"))
         {
-            BUILD_TYPE = BuildType_Debug;
+            const char *name = i + 1 < argc ? argv[++i] : "";
+            usz type = 0;
+
+            while (type < sizeof(BUILD_TYPE_NAMES) / sizeof(*BUILD_TYPE_NAMES) && strcasecmp(name, BUILD_TYPE_NAMES[type]) != 0)
+            {
+                type++;
+            }
+
+            if (type == sizeof(BUILD_TYPE_NAMES) / sizeof(*BUILD_TYPE_NAMES))
+            {
+                Refuse("Unknown build type", name);
+            }
+
+            CONFIG.type = (BuildType)type;
         }
-        else if (!strcasecmp(argv[1], "R"))
+        else if (!strcmp(flag, "-n") || !strcmp(flag, "--no-std"))
         {
-            BUILD_TYPE = BuildType_Release;
+            CONFIG.std = false;
         }
-        else if (!strcasecmp(argv[1], "RD"))
+        else if (!strcmp(flag, "-e") || !strcmp(flag, "--examples"))
         {
-            BUILD_TYPE = BuildType_RelWithDebInfo;
+            CONFIG.examples = true;
         }
-        else if (!strcasecmp(argv[1], "SR"))
+        else if (!strcmp(flag, "-t") || !strcmp(flag, "--tests"))
         {
-            BUILD_TYPE = BuildType_MinSizeRel;
+            CONFIG.tests = true;
+        }
+        else if (!strcmp(flag, "-h") || !strcmp(flag, "--help"))
+        {
+            PrintUsage();
+            exit(0);
         }
         else
         {
-            SHU_LogError(0, "Unknown build type: " SHUM_COLOR_RED("%s"), argv[1]);
-            PrintUsage();
-            exit(1);
+            Refuse(flag[0] == '-' ? "Unknown flag" : "Unknown argument", flag);
         }
     }
 
-    if (argc >= 3)
-    {
-        if (!strcasecmp(argv[2], "S"))
-        {
-            LINK_TYPE = SHUModuleType_LibraryStatic;
-        }
-        else if (!strcasecmp(argv[2], "D"))
-        {
-            LINK_TYPE = SHUModuleType_LibraryDynamic;
-        }
-        else
-        {
-            SHU_LogError(0, "Unknown link type: '%s'", argv[2]);
-            PrintUsage();
-            exit(1);
-        }
-    }
+    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", standard plugins: " SHUM_COLOR_BLUE("%s") ", examples: " SHUM_COLOR_BLUE("%s") ", tests: " SHUM_COLOR_BLUE("%s"),
+                BuildType_String(CONFIG.type), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no", CONFIG.tests ? "yes" : "no");
 
-    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'"), BuildType_String(BUILD_TYPE));
-    SHU_LogInfo("Link type: " SHUM_COLOR_BLUE("'%s'"), LinkType_String(LINK_TYPE));
-
-    SHUI_SFormat(&BUILD_DIRECTORY, ".shu/%s/%s/", LinkType_String(LINK_TYPE), BuildType_String(BUILD_TYPE));
-    SHUI_SFormat(&OUTPUT_DIRECTORY, "build/%s/%s/", LinkType_String(LINK_TYPE), BuildType_String(BUILD_TYPE));
+    SHUI_SFormat(&BUILD_DIRECTORY, ".shu/%s/", BuildType_String(CONFIG.type));
+    SHUI_SFormat(&OUTPUT_DIRECTORY, "build/%s/", BuildType_String(CONFIG.type));
 
     SHU_CacheConfigure(BUILD_DIRECTORY.data);
 }
@@ -164,7 +181,7 @@ static void SetBuildFlags(bool ownCode)
     SHU_CompilerClearFlags();
     SHU_CompilerAddFlags(SHUM_FLAGS_STANDARD_C23);
 
-    switch (BUILD_TYPE)
+    switch (CONFIG.type)
     {
     case BuildType_Debug:
         if (ownCode)
@@ -220,7 +237,7 @@ static void Shuild_SDL(void)
         "-DSDL_SHARED=ON -DSDL_STATIC=OFF "                          // link type
         "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF " // options
         "--log-level=WARNING",                                       // logs
-        sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
+        sourceDir.data, buildDir.data, BuildType_String(CONFIG.type),
         outputPrefixDir.data, outputPrefixDir.data);
 
     SHU_UtilRun(
@@ -255,7 +272,7 @@ static void Shuild_SDL_ttf(void)
         "-DBUILD_SHARED_LIBS=ON "                    // link type
         "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF " // options
         "--log-level=WARNING",                       // logs
-        sourceDir.data, buildDir.data, BuildType_String(BUILD_TYPE),
+        sourceDir.data, buildDir.data, BuildType_String(CONFIG.type),
         outputPrefixDir.data, outputPrefixDir.data);
 
     SHU_UtilRun(
@@ -292,7 +309,7 @@ static void Shuild_lua(void)
     CopyFile("dependencies/lua/luaconf.h", tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+    SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 }
 
 static void Shuild_clay(void)
@@ -307,7 +324,7 @@ static void Shuild_clay(void)
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+    SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 
     // clay.c includes the headers from the submodule, so they are copied for the core after it compiles
     SHUI_SFormat(&tempStr, "%sinclude/clay/", OUTPUT_DIRECTORY.data);
@@ -334,7 +351,7 @@ static void Shuild_stb(void)
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+    SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 }
 
 /// @brief Reads a whole file. Free it with free.
@@ -470,7 +487,7 @@ static void Shuild_libffi(void)
     }
 
     // libffi checks its arguments in Debug builds
-    if (BUILD_TYPE == BuildType_Debug)
+    if (CONFIG.type == BuildType_Debug)
     {
         SHU_CompilerAddDefinitions("FFI_DEBUG", NULL);
         SHU_ModuleAddSourceFile("src/debug.c");
@@ -484,7 +501,7 @@ static void Shuild_libffi(void)
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
-    SHU_ModuleCompile(tempStr.data, LINK_TYPE);
+    SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 }
 
 static void Shuild_OpenECS(void)
@@ -497,7 +514,7 @@ static void Shuild_OpenECS(void)
     SHU_CompilerAddFlags(" -fvisibility=hidden '-Wl,--export-dynamic-symbol=ECS*' '-Wl,-rpath,$ORIGIN'");
 
     // the sanitizers find their settings in src/base/Sanitizers.c by name
-    if (BUILD_TYPE == BuildType_Debug)
+    if (CONFIG.type == BuildType_Debug)
     {
         SHU_CompilerAddFlags(" '-Wl,--export-dynamic-symbol=__*san_default_*'");
     }
@@ -539,59 +556,136 @@ static bool EndsWith(const char *name, const char *suffix)
     return nameLength >= suffixLength && strcmp(name + nameLength - suffixLength, suffix) == 0;
 }
 
+/// @brief Calls a function for each folder in a folder, in no order; names starting with a dot are left out.
+static void ForEachFolder(const char *path, void (*function)(const char *path, const char *name))
+{
+    DIR *folder = opendir(path);
+    struct dirent *entry = NULL;
+
+    while (folder != NULL && (entry = readdir(folder)) != NULL)
+    {
+        if (entry->d_type == DT_DIR && entry->d_name[0] != '.')
+        {
+            function(path, entry->d_name);
+        }
+    }
+
+    if (folder != NULL)
+    {
+        closedir(folder);
+    }
+}
+
+/// @brief Compiles the C files of a plugin's folder, root, into the plugin's native library in output. Does nothing if the folder has no C file.
+static void Shuild_NativePlugin(const char *name, const char *root, const char *output)
+{
+    bool native = false;
+    DIR *folder = opendir(root);
+    struct dirent *entry = NULL;
+
+    while (folder != NULL && (entry = readdir(folder)) != NULL)
+    {
+        native = native || EndsWith(entry->d_name, ".c");
+    }
+
+    if (folder != NULL)
+    {
+        closedir(folder);
+    }
+
+    if (!native)
+    {
+        return;
+    }
+
+    // the include path is relative to the plugin's folder, so it climbs one level for each folder in root
+    SHUI_String include = {0};
+
+    for (const char *c = root; *c != '\0'; c++)
+    {
+        if (*c == '/')
+        {
+            SHUI_SAppendC(&include, "../");
+        }
+    }
+
+    SHUI_SAppendC(&include, OUTPUT_DIRECTORY.data);
+    SHUI_SAppendC(&include, "include/");
+
+    SHU_ModuleBegin(name, root);
+    SetBuildFlags(true);
+    SHU_CompilerAddFlags(" -fvisibility=hidden");
+
+    // plugins see only the copied plugin header and the dependencies' headers, never the core's headers
+    SHU_ModuleAddSourceFile("./");
+    SHU_ModuleAddIncludeDirectory(include.data);
+    SHU_ModuleCompile(output, SHUModuleType_LibraryDynamic);
+}
+
+// a plugin folder of the tests is built in place, in the copy of its folder
+static void Shuild_TestPlugin(const char *path, const char *name)
+{
+    SHUI_String root;
+    SHUI_String output;
+    SHUI_SFormat(&root, "%s%s/", path, name);
+    SHUI_SFormat(&output, "%s%s", OUTPUT_DIRECTORY.data, root.data);
+    Shuild_NativePlugin(name, root.data, output.data);
+}
+
+/// @brief Builds a repository checked out in a folder of OpenECS, std/ or examples/, with the shuild.c of its own (DESIGN 17.7).
+/// Its shuild.c is compiled with shu and shuild from dependencies/ into shuild.ignore in its folder, because shuild finds every path from the folder of the program it runs in.
+/// It runs with the build type, this build's output folder as seen from its folder, and --tests if asked.
+static void Shuild_Repository(const char *folder, bool tests)
+{
+    SHUI_String source;
+    SHUI_SFormat(&source, "%sshuild.c", folder);
+
+    if (SHU_UtilFileExists(source.data) != SHUFileType_Regular)
+    {
+        SHU_LogWarning("%s is not checked out, so it is not built; clone OpenECS with --recursive", folder);
+        return;
+    }
+
+    // the output folder is named from the repository's folder, which is one level deeper for each of its folders
+    SHUI_String output = {0};
+
+    for (const char *c = folder; *c != '\0'; c++)
+    {
+        if (*c == '/')
+        {
+            SHUI_SAppendC(&output, "../");
+        }
+    }
+
+    SHUI_SAppendC(&output, OUTPUT_DIRECTORY.data);
+
+    SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", folder);
+    SHU_UtilRun("gcc -O2 -Idependencies %s -o %sshuild.ignore", source.data, folder);
+    SHU_UtilRun("cd %s && ./shuild.ignore -b %s -o %s%s", folder, BUILD_TYPE_NAMES[CONFIG.type], output.data, tests ? " -t" : "");
+    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'%s'") "\n", folder);
+}
+
 static void Shuild_Plugins(void)
 {
-    for (usz i = 0; i < sizeof(PLUGINS) / sizeof(*PLUGINS); i++)
+    // examples and tests are built when the flags ask for them; a copy from an earlier build is removed otherwise
+    SHU_UtilRun("rm -rf %sbin/examples %stests %sstd", OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data);
+
+    // the tests are copied beside bin/, so their presets and plugins are found next to the test files, and their native plugins are built there
+    if (CONFIG.tests)
     {
-        const char *currentPlugin = PLUGINS[i];
+        SHU_UtilRun("cp -r tests %s", OUTPUT_DIRECTORY.data);
+        ForEachFolder("tests/plugins/", Shuild_TestPlugin);
+    }
 
-        SHUI_String root;
-        SHUI_String output;
-        SHUI_String include;
+    // OpenECS-std builds the standard plugins into bin/plugins/ and their presets into bin/presets/; OpenECS-examples builds the examples into bin/examples/
+    if (CONFIG.std)
+    {
+        Shuild_Repository("std/", CONFIG.tests);
+    }
 
-        SHUI_SFormat(&root, "plugins/%s/", currentPlugin);
-        SHUI_SFormat(&output, "%sbin/plugins/%s/", OUTPUT_DIRECTORY.data, currentPlugin);
-        SHUI_SFormat(&include, "../../%sinclude/", OUTPUT_DIRECTORY.data);
-        SHU_UtilCreateDirectory(output.data);
-
-        // a plugin's C files make its native library; its Lua files, the manifest among them, and its folders of Lua modules are copied
-        bool native = false;
-        DIR *folder = opendir(root.data);
-        struct dirent *entry = NULL;
-
-        while (folder != NULL && (entry = readdir(folder)) != NULL)
-        {
-            SHUI_String file;
-            SHUI_SFormat(&file, "%s%s", root.data, entry->d_name);
-
-            if (EndsWith(entry->d_name, ".c"))
-            {
-                native = true;
-            }
-            else if (EndsWith(entry->d_name, ".lua") || (entry->d_type == DT_DIR && entry->d_name[0] != '.'))
-            {
-                CopyFile(file.data, output.data);
-            }
-        }
-
-        if (folder != NULL)
-        {
-            closedir(folder);
-        }
-
-        if (!native)
-        {
-            continue;
-        }
-
-        SHU_ModuleBegin(currentPlugin, root.data);
-        SetBuildFlags(true);
-        SHU_CompilerAddFlags(" -fvisibility=hidden");
-
-        // plugins see only the copied plugin header and the dependencies' headers, never the core's headers
-        SHU_ModuleAddSourceFile("./");
-        SHU_ModuleAddIncludeDirectory(include.data);
-        SHU_ModuleCompile(output.data, SHUModuleType_LibraryDynamic);
+    if (CONFIG.examples)
+    {
+        Shuild_Repository("examples/", false);
     }
 }
 
@@ -607,6 +701,4 @@ static void Shuild_other(void)
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("resources/", tempStr.data);
 
-    SHU_UtilCreateDirectory(tempStr.data);
-    CopyFile("presets/", tempStr.data);
 }

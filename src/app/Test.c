@@ -1,10 +1,10 @@
 #include "app/Test.h"
 #include "base/Lua.h"
-#include "interface/Keys.h"
 #include "interface/Layout.h"
 #include "interface/Panels.h"
 #include "interface/Window.h"
 #include "runtime/Services.h"
+#include "runtime/Settings.h"
 
 #include "lua/lauxlib.h"
 #include "lua/lua.h"
@@ -17,7 +17,7 @@
 #pragma region Source Only
 
 /// @brief Preset of a test that names none.
-#define OPENECS_TEST_PRESET "default"
+#define OPENECS_TEST_PRESET "launcher"
 /// @brief Pointer moves that test.drag makes between its press and its release.
 #define OPENECS_TEST_DRAG_STEPS 4
 
@@ -33,11 +33,13 @@ static struct
     SDL_Keymod held;              // modifiers held during the pointer events being sent
     usz nextEvent;                // index of the next event to send
     u64 resumeTicks;              // when the test goes on after test.wait, in nanoseconds
+    usz window;                   // the OS window that input events go to, as ECSIWindow_Get counts them; 0 before test.window chooses one, which is the main window
     f32 pointerX;                 // the pointer's last position
     f32 pointerY;
     SDL_MouseButtonFlags buttons; // the buttons held
     char **files;                 // stb_ds array of the paths that the test's files field names
-    char **dropped;               // stb_ds array of the files and texts the test drops, kept until it ends because their events point to them
+    char **dropped;               // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
+    char *presets;                // the folder that the test's presets field names, ending with a separator, or NULL
     char *sessions;               // the folder that the test's sessions field names, ending with a separator, or NULL
 } TEST = {0};
 
@@ -71,10 +73,11 @@ static const char OPENECS_TEST_MATCH[] =
     "  if difference then error((message and message .. ': ' or '') .. difference, 2) end\n"
     "end\n";
 
-/// @brief Adds an input event for the loop, in the test's OS window.
+/// @brief Adds an input event for the loop, in the OS window that test.window chose; the main window if that one has closed.
 static void ECSITest_Send(SDL_Event event)
 {
-    SDL_Window *window = ECSIWindow_GetMain();
+    SDL_Window *window = TEST.window > 1 ? ECSIWindow_Get(TEST.window) : NULL;
+    window = window != NULL ? window : ECSIWindow_GetMain();
     SDL_WindowID id = window != NULL ? SDL_GetWindowID(window) : 0;
 
     switch (event.type)
@@ -93,11 +96,17 @@ static void ECSITest_Send(SDL_Event event)
     case SDL_EVENT_MOUSE_WHEEL:
         event.wheel.windowID = id;
         break;
+    case SDL_EVENT_TEXT_INPUT:
+        event.text.windowID = id;
+        break;
     case SDL_EVENT_DROP_BEGIN:
     case SDL_EVENT_DROP_FILE:
     case SDL_EVENT_DROP_TEXT:
     case SDL_EVENT_DROP_COMPLETE:
         event.drop.windowID = id;
+        break;
+    case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+        event.window.windowID = id;
         break;
     default:
         break;
@@ -195,7 +204,7 @@ static int ECSITest_Key(lua_State *state)
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSIKeys_Parse(text, false, &key, &modifiers))
+    if (ECSISettings_ParseKey(text, false, &key, &modifiers))
     {
         return luaL_error(state, "'%s' is not a key combination", text);
     }
@@ -312,6 +321,14 @@ static int ECSITest_Wheel(lua_State *state)
     return lua_yield(state, 0);
 }
 
+/// @brief test.close(): asks the OS window that test.window chose to close, as its close button does.
+static int ECSITest_Close(lua_State *state)
+{
+    SDL_Event event = {.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED};
+    ECSITest_Send(event);
+    return lua_yield(state, 0);
+}
+
 /// @brief Adds a drop from another application at a position: its begin, a file or text event for each string, and its end.
 static void ECSITest_SendDrop(f32 x, f32 y, Uint32 type, const char *const *texts, usz count)
 {
@@ -337,6 +354,24 @@ static void ECSITest_SendDrop(f32 x, f32 y, Uint32 type, const char *const *text
     event.drop.x = x;
     event.drop.y = y;
     ECSITest_Send(event);
+}
+
+/// @brief test.text(text): types text, as an input method gives it, to the focused panel.
+static int ECSITest_Text(lua_State *state)
+{
+    char *copy = SDL_strdup(luaL_checkstring(state, 1));
+
+    if (copy == NULL)
+    {
+        return luaL_error(state, "out of memory");
+    }
+
+    // the event points to the text, so the test keeps it until it ends
+    arrput(TEST.dropped, copy);
+    SDL_Event event = {.type = SDL_EVENT_TEXT_INPUT};
+    event.text.text = copy;
+    ECSITest_Send(event);
+    return lua_yield(state, 0);
 }
 
 /// @brief test.dropFiles(x, y, paths): drops files from another application at a position.
@@ -414,7 +449,7 @@ static int ECSITest_Session(lua_State *state)
     return 1;
 }
 
-/// @brief test.rect(id): the rectangle of a shown panel.
+/// @brief test.rect(id): the rectangle of a shown panel, and the number of its OS window.
 static int ECSITest_Rect(lua_State *state)
 {
     lua_Integer id = luaL_checkinteger(state, 1);
@@ -431,7 +466,9 @@ static int ECSITest_Rect(lua_State *state)
         return luaL_error(state, "the panel %d is not shown", (int)id);
     }
 
-    lua_createtable(state, 0, 4);
+    lua_createtable(state, 0, 5);
+    lua_pushinteger(state, (lua_Integer)ECSIWindow_NumberOf(panel));
+    lua_setfield(state, -2, "window");
     lua_pushnumber(state, (lua_Number)panel->x);
     lua_setfield(state, -2, "x");
     lua_pushnumber(state, (lua_Number)panel->y);
@@ -443,12 +480,88 @@ static int ECSITest_Rect(lua_State *state)
     return 1;
 }
 
-/// @brief test.screenshot(path): draws a frame and saves it as a PNG file.
+/// @brief test.panel(id): a panel's title and type, whether it has unsaved work, and its fault: the error that stopped it, or why its type is missing.
+static int ECSITest_Panel(lua_State *state)
+{
+    lua_Integer id = luaL_checkinteger(state, 1);
+    ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : NULL;
+
+    if (panel == NULL)
+    {
+        return luaL_error(state, "no panel has the id %d", (int)id);
+    }
+
+    lua_createtable(state, 0, 4);
+    lua_pushstring(state, panel->title);
+    lua_setfield(state, -2, "title");
+    lua_pushstring(state, panel->typeName);
+    lua_setfield(state, -2, "type");
+    lua_pushboolean(state, panel->unsaved);
+    lua_setfield(state, -2, "unsaved");
+
+    if (panel->fault != NULL || panel->type == NULL)
+    {
+        lua_pushstring(state, panel->fault != NULL ? panel->fault : "the panel's type is missing");
+        lua_setfield(state, -2, "fault");
+    }
+
+    return 1;
+}
+
+/// @brief test.popup(number): the rectangle of an open popup, the oldest first, in its OS window, and the number of that window.
+static int ECSITest_Popup(lua_State *state)
+{
+    lua_Integer number = luaL_checkinteger(state, 1);
+    usz count = 0;
+    ECSPopup *popups = ECSIPopups_GetOpen(&count);
+    SDL_FRect rect = {0};
+    usz window = 0;
+
+    if (number < 1 || (usz)number > count || !ECSIWindow_PopupRect(popups[number - 1], &rect, &window))
+    {
+        return luaL_error(state, "there is no shown popup %d", (int)number);
+    }
+
+    lua_createtable(state, 0, 5);
+    lua_pushinteger(state, (lua_Integer)window);
+    lua_setfield(state, -2, "window");
+    lua_pushnumber(state, (lua_Number)rect.x);
+    lua_setfield(state, -2, "x");
+    lua_pushnumber(state, (lua_Number)rect.y);
+    lua_setfield(state, -2, "y");
+    lua_pushnumber(state, (lua_Number)rect.w);
+    lua_setfield(state, -2, "width");
+    lua_pushnumber(state, (lua_Number)rect.h);
+    lua_setfield(state, -2, "height");
+    return 1;
+}
+
+/// @brief test.window(number): chooses the OS window that later input events go to, and that test.screenshot saves: 1 for the main window, then the pop-out windows. Gives the window's position on the screen.
+static int ECSITest_Window(lua_State *state)
+{
+    lua_Integer number = luaL_checkinteger(state, 1);
+    SDL_Window *window = number < 1 ? NULL : ECSIWindow_Get((usz)number);
+    int x = 0;
+    int y = 0;
+
+    if (window == NULL)
+    {
+        return luaL_error(state, "there is no OS window %d", (int)number);
+    }
+
+    TEST.window = (usz)number;
+    SDL_GetWindowPosition(window, &x, &y);
+    lua_pushinteger(state, x);
+    lua_pushinteger(state, y);
+    return 2;
+}
+
+/// @brief test.screenshot(path): draws a frame and saves the picture of the OS window that test.window chose as a PNG file.
 static int ECSITest_Screenshot(lua_State *state)
 {
     const char *path = luaL_checkstring(state, 1);
 
-    if (ECSIWindow_Screenshot(path))
+    if (ECSIWindow_Screenshot(path, TEST.window > 0 ? TEST.window : 1))
     {
         return luaL_error(state, "cannot save a screenshot to '%s'", path);
     }
@@ -464,12 +577,17 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"click", ECSITest_Click},
     {"drag", ECSITest_Drag},
     {"wheel", ECSITest_Wheel},
+    {"text", ECSITest_Text},
     {"dropFiles", ECSITest_DropFiles},
     {"dropText", ECSITest_DropText},
     {"call", ECSITest_Call},
     {"wait", ECSITest_Wait},
     {"session", ECSITest_Session},
     {"rect", ECSITest_Rect},
+    {"panel", ECSITest_Panel},
+    {"popup", ECSITest_Popup},
+    {"window", ECSITest_Window},
+    {"close", ECSITest_Close},
     {"screenshot", ECSITest_Screenshot},
     {NULL, NULL},
 };
@@ -502,6 +620,24 @@ static void ECSITest_Finish(void)
     arrfree(TEST.events);
     arrfree(TEST.eventModifiers);
     TEST.nextEvent = 0;
+}
+
+/// @brief Reads a field of the test table, at -2, that names a folder relative to the test file.
+static void ECSITest_ReadFolder(lua_State *state, const char *field, const char *path, char **retFolder)
+{
+    const char *slash = SDL_strrchr(path, '/');
+
+    if (lua_getfield(state, -2, field) == LUA_TSTRING)
+    {
+        const char *folder = lua_tostring(state, -1);
+
+        if (SDL_asprintf(retFolder, "%.*s%s/", slash != NULL && folder[0] != '/' ? (int)(slash - path + 1) : 0, path, folder) < 0)
+        {
+            *retFolder = NULL;
+        }
+    }
+
+    lua_pop(state, 1);
 }
 
 #pragma endregion Source Only
@@ -581,18 +717,9 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     // the loop leaves the first value that is not a file on the stack, above the table
     lua_pop(state, lua_istable(state, -2) ? 2 : 1);
 
-    // the folder that stands for the saved sessions is relative to the test file too
-    if (lua_getfield(state, -2, "sessions") == LUA_TSTRING)
-    {
-        const char *sessions = lua_tostring(state, -1);
-
-        if (SDL_asprintf(&TEST.sessions, "%.*s%s/", slash != NULL && sessions[0] != '/' ? (int)(slash - path + 1) : 0, path, sessions) < 0)
-        {
-            TEST.sessions = NULL;
-        }
-    }
-
-    lua_pop(state, 1);
+    // the folders that stand for the user's presets and the saved sessions are relative to the test file too
+    ECSITest_ReadFolder(state, "presets", path, &TEST.presets);
+    ECSITest_ReadFolder(state, "sessions", path, &TEST.sessions);
 
     // the run function and the test table wait on the coroutine's stack until its first resume
     TEST.thread = lua_newthread(state);
@@ -625,6 +752,11 @@ char **ECSITest_GetFiles(usz *retCount)
     return TEST.files;
 }
 
+const char *ECSITest_GetPresets(void)
+{
+    return TEST.presets;
+}
+
 const char *ECSITest_GetSessions(void)
 {
     return TEST.sessions;
@@ -647,6 +779,7 @@ void ECSITest_Terminate(void)
     }
 
     arrfree(TEST.dropped);
+    SDL_free(TEST.presets);
     SDL_free(TEST.sessions);
     SDL_zero(TEST);
 }
@@ -732,6 +865,11 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 char **ECSITest_GetFiles(usz *retCount)
 {
     *retCount = 0;
+    return NULL;
+}
+
+const char *ECSITest_GetPresets(void)
+{
     return NULL;
 }
 

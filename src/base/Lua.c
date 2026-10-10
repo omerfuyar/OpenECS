@@ -439,7 +439,7 @@ SHUResult ECSILua_ReadData(const char *path, ECSValue *retValue)
 
     if (luaL_loadfilex(state, path, "t") != LUA_OK)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot read '%s': %s", path, lua_tostring(state, -1));
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot read '%s': %s", path, lua_tostring(state, -1));
         lua_settop(state, top);
         return SHUResult_ErrFile;
     }
@@ -450,14 +450,14 @@ SHUResult ECSILua_ReadData(const char *path, ECSValue *retValue)
 
     if (lua_pcall(state, 0, 1, 0) != LUA_OK)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Error in '%s': %s", path, lua_tostring(state, -1));
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Error in '%s': %s", path, lua_tostring(state, -1));
         lua_settop(state, top);
         return SHUResult_ErrBadData;
     }
 
     if (!lua_istable(state, -1))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' does not return a table.", path);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "'%s' does not return a table.", path);
         lua_settop(state, top);
         return SHUResult_ErrBadData;
     }
@@ -480,7 +480,7 @@ SHUResult ECSILua_WriteData(const char *path, const ECSValue *value)
 
     if (lua_pcall(state, 1, 1, 0) != LUA_OK)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot write '%s': %s", path, lua_tostring(state, -1));
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot write '%s': %s", path, lua_tostring(state, -1));
         lua_settop(state, top);
         return SHUResult_ErrAllocation;
     }
