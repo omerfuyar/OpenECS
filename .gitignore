@@ -4,7 +4,6 @@
 ignore/
 ignore.*
 *.ignore
-shuild
 *.pdb
 build/
 *.o
