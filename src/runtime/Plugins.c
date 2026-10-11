@@ -20,12 +20,12 @@ typedef struct ECSIPlugin
 {
     char *name;
     char *version;
-    char *folder;                       // ends with a separator
-    SDL_SharedObject *library;          // NULL if the plugin has no native code
+    char *folder;              // ends with a separator
+    SDL_SharedObject *library; // NULL if the plugin has no native code
     ECSIPluginShutdownFunction Shutdown;
-    bool failed;                        // its ECSPlugin_Init failed; plugins that depend on it are skipped
-    char **dependencies;                // stb_ds array of the names its manifest depends on
-    ECSPluginStateDesc state;           // Save is NULL if the plugin saves no state of its own
+    bool failed;              // its ECSPlugin_Init failed; plugins that depend on it are skipped
+    char **dependencies;      // stb_ds array of the names its manifest depends on
+    ECSPluginStateDesc state; // Save is NULL if the plugin saves no state of its own
     ECSTimerFunction stateRelease;
     ECSTaskFunction LuaShutdown; // the Lua code's shutdown, or NULL
     ECSTaskFunction luaShutdownRelease;

@@ -239,7 +239,6 @@ void ECSIApp_Start(const ECSIArguments *arguments)
         SDL_free(logPath);
     }
 
-
     // a test's presets field names the folder that stands for the user's presets
     if (APP.test)
     {

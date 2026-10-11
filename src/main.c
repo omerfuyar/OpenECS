@@ -65,7 +65,8 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
 
     for (int i = 1; i < argc; i++)
     {
-        // anything that does not start with a dash is a file
+        // todo unknown flag or argument exits with help
+        //  anything that does not start with a dash is a file
         if (argv[i][0] != '-')
         {
             retArguments->files[retArguments->fileCount++] = argv[i];

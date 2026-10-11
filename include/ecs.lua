@@ -244,7 +244,7 @@ function Popup:setSize(width, height) end
 ---@field title? string The default title of tabs and menus.
 ---@field surface? "pixels"|"gpu" "pixels" if missing.
 ---@field stateVersion? integer The version of the saved state.
----@field continuous? boolean Draw every frame while the panel is shown.
+---@field continuous? boolean Draw every frame while the panel is shown. todo give more detail, what happens if its false ???
 ---@field minWidth? number In layout units.
 ---@field minHeight? number In layout units.
 ---@field create? fun(panel: ecs.Panel, saved: any, version: integer): any Gives the panel's state.
@@ -281,6 +281,7 @@ function ecs.panel.getTitle(panel) end
 ---@param text string
 function ecs.panel.setTitle(panel, text) end
 
+--- todo add docs for these
 ---@param panel ecs.Panel
 ---@return integer id The panel's id, which stays the same across sessions.
 function ecs.panel.getId(panel) end
@@ -682,10 +683,12 @@ function ecs.dialog.message(title, text, buttons) end
 ---@field api integer The plugin API version it was written for.
 ---@field description? string
 ---@field depends? table<string, string> The plugins it needs, each with the lowest version it accepts, such as { ui = "0.1" }.
+--- todo require the type of plugin, merge this 2 native and lua options to a type, then either "native" or "lua"
 ---@field native? string Its native library, such as "libcanvas.so".
 ---@field lua? string The Lua file that runs when it loads, such as "init.lua".
 
 ---What a tool is called and how the desktop knows it.
+--- todo maybe more stuff like application launcher entry ???
 ---@class ecs.AppDesc
 ---@field id string Names the tool's last session and its .desktop file, such as "org.example.Paint".
 ---@field name string
@@ -730,6 +733,7 @@ function ecs.dialog.message(title, text, buttons) end
 ---@field name string
 ---@field version string
 ---@field app ecs.AppDesc
+--- todo this should be required
 ---@field depends? table<string, string> The plugins the tool needs, each with the lowest version it accepts.
 ---@field pluginsDir? string A folder looked in for plugins first, relative to the preset.
 ---@field open? string The function that files from the command line go to; its signature is void(string).
