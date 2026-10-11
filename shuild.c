@@ -15,11 +15,8 @@ typedef enum BuildType
     BuildType_MinSizeRel,
 } BuildType;
 
-static const char *const _BUILD_TYPE_STRINGS[] = {"Debug", "Release", "RelWithDebInfo", "MinSizeRel"};
-#define BuildType_String(buildType) _BUILD_TYPE_STRINGS[(buildType)]
-
-/// @brief Names of the build types for -b, in the order of BuildType.
-static const char *const BUILD_TYPE_NAMES[] = {"debug", "release", "relwithdebinfo", "minsizerel"};
+static const char *const BUILD_TYPE_STRINGS[] = {"Debug", "Release", "RelWithDebInfo", "MinSizeRel"};
+#define BuildType_String(buildType) BUILD_TYPE_STRINGS[(buildType)]
 
 /// @brief What the flags choose.
 static struct
@@ -27,11 +24,9 @@ static struct
     BuildType type;
     bool std;      // also build the standard plugins, from std/
     bool examples; // also build the examples, from examples/
-    bool tests;    // also build the tests
-} CONFIG = {BuildType_Debug, true, false, false};
-
-static SHUI_String BUILD_DIRECTORY = {0};
-static SHUI_String OUTPUT_DIRECTORY = {0};
+    SHUI_String buildDir;
+    SHUI_String outputDir;
+} CONFIG = {BuildType_Debug, true, false, false, {0}, {0}};
 
 #pragma endregion Setup
 
@@ -94,12 +89,14 @@ int main(int argc, char **argv)
     return 0;
 }
 
+#define RunCheck(cmd, ...) SHU_Assert(!SHU_UtilRun(cmd, ##__VA_ARGS__), "Runing " SHUM_COLOR_RED("'%s'") "failed", cmd)
+
 static void CopyFile(const char *file, const char *directory)
 {
-    SHU_UtilRun("cp -r %s %s", file, directory);
+    RunCheck("cp -r %s %s", file, directory);
 }
 
-static void PrintUsage(void)
+static void PrintUsageAndExit(void)
 {
     printf("Usage: ./shuild.ignore [FLAG...]\n\n"
            "Flags:\n"
@@ -107,16 +104,14 @@ static void PrintUsage(void)
            "                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release\n"
            "  -n, --no-std       Do not build the standard plugins of std/\n"
            "  -e, --examples     Also build the examples of examples/, into bin/examples/\n"
-           "  -t, --tests        Also build the tests, into tests/ beside bin/, and std's into std/tests/ beside bin/\n"
            "  -h, --help         Show this help\n");
+    exit(1);
 }
 
-/// @brief Stops the build with what is wrong, the argument, and the usage.
-static void Refuse(const char *what, const char *argument)
+static void Refuse(const char *reason, const char *argument)
 {
-    SHU_LogError(0, "%s: " SHUM_COLOR_RED("'%s'"), what, argument);
-    PrintUsage();
-    exit(1);
+    SHU_LogError(0, "%s: " SHUM_COLOR_RED("'%s'"), reason, argument);
+    PrintUsageAndExit();
 }
 
 static void SetupConfiguration(int argc, char **argv)
@@ -130,12 +125,12 @@ static void SetupConfiguration(int argc, char **argv)
             const char *name = i + 1 < argc ? argv[++i] : "";
             usz type = 0;
 
-            while (type < sizeof(BUILD_TYPE_NAMES) / sizeof(*BUILD_TYPE_NAMES) && strcasecmp(name, BUILD_TYPE_NAMES[type]) != 0)
+            while (type < sizeof(BUILD_TYPE_STRINGS) / sizeof(*BUILD_TYPE_STRINGS) && strcasecmp(name, BuildType_String(type)) != 0)
             {
                 type++;
             }
 
-            if (type == sizeof(BUILD_TYPE_NAMES) / sizeof(*BUILD_TYPE_NAMES))
+            if (type == sizeof(BUILD_TYPE_STRINGS) / sizeof(*BUILD_TYPE_STRINGS))
             {
                 Refuse("Unknown build type", name);
             }
@@ -150,14 +145,9 @@ static void SetupConfiguration(int argc, char **argv)
         {
             CONFIG.examples = true;
         }
-        else if (!strcmp(flag, "-t") || !strcmp(flag, "--tests"))
-        {
-            CONFIG.tests = true;
-        }
         else if (!strcmp(flag, "-h") || !strcmp(flag, "--help"))
         {
-            PrintUsage();
-            exit(0);
+            PrintUsageAndExit();
         }
         else
         {
@@ -165,13 +155,13 @@ static void SetupConfiguration(int argc, char **argv)
         }
     }
 
-    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", standard plugins: " SHUM_COLOR_BLUE("%s") ", examples: " SHUM_COLOR_BLUE("%s") ", tests: " SHUM_COLOR_BLUE("%s"),
-                BuildType_String(CONFIG.type), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no", CONFIG.tests ? "yes" : "no");
+    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", standard plugins: " SHUM_COLOR_BLUE("%s") ", examples: " SHUM_COLOR_BLUE("%s"),
+                BuildType_String(CONFIG.type), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
 
-    SHUI_SFormat(&BUILD_DIRECTORY, ".shu/%s/", BuildType_String(CONFIG.type));
-    SHUI_SFormat(&OUTPUT_DIRECTORY, "build/%s/", BuildType_String(CONFIG.type));
+    SHUI_SFormat(&CONFIG.buildDir, ".shu/%s/", BuildType_String(CONFIG.type));
+    SHUI_SFormat(&CONFIG.outputDir, "build/%s/", BuildType_String(CONFIG.type));
 
-    SHU_CacheConfigure(BUILD_DIRECTORY.data);
+    SHU_CacheConfigure(CONFIG.buildDir.data);
 }
 
 // our code gets warnings, and in Debug the static analyzer and the address and undefined-behaviour sanitizers; dependencies get none of them
@@ -213,7 +203,7 @@ static void SetBuildFlags(bool ownCode)
 static bool IsBuilt(const char *library, bool shared)
 {
     SHUI_String path;
-    SHUI_SFormat(&path, "%slib/lib%s.%s", OUTPUT_DIRECTORY.data, library, shared ? "so" : "a");
+    SHUI_SFormat(&path, "%slib/lib%s.%s", CONFIG.outputDir.data, library, shared ? "so" : "a");
     return SHU_UtilFileExists(path.data) == SHUFileType_Regular;
 }
 
@@ -227,10 +217,10 @@ static void Shuild_SDL(void)
     SHUI_String buildDir;
     SHUI_String outputPrefixDir;
     SHUI_SFormat(&sourceDir, "%sdependencies/SDL/", root);
-    SHUI_SFormat(&buildDir, "%s%sSDL3/", root, BUILD_DIRECTORY.data);
-    SHUI_SFormat(&outputPrefixDir, "%s%s", root, OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&buildDir, "%s%sSDL3/", root, CONFIG.buildDir.data);
+    SHUI_SFormat(&outputPrefixDir, "%s%s", root, CONFIG.outputDir.data);
 
-    SHU_UtilRun(
+    RunCheck(
         "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
         "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
         "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
@@ -240,11 +230,11 @@ static void Shuild_SDL(void)
         sourceDir.data, buildDir.data, BuildType_String(CONFIG.type),
         outputPrefixDir.data, outputPrefixDir.data);
 
-    SHU_UtilRun(
+    RunCheck(
         "cmake --build \"%s\" --parallel > %s",
         buildDir.data, SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
 
-    SHU_UtilRun(
+    RunCheck(
         "cmake --install \"%s\" > %s",
         buildDir.data, SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
 
@@ -262,10 +252,10 @@ static void Shuild_SDL_ttf(void)
     SHUI_String outputPrefixDir;
 
     SHUI_SFormat(&sourceDir, "%sdependencies/SDL_ttf/", root);
-    SHUI_SFormat(&buildDir, "%s%sSDL3_ttf/", root, BUILD_DIRECTORY.data);
-    SHUI_SFormat(&outputPrefixDir, "%s%s/", root, OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&buildDir, "%s%sSDL3_ttf/", root, CONFIG.buildDir.data);
+    SHUI_SFormat(&outputPrefixDir, "%s%s/", root, CONFIG.outputDir.data);
 
-    SHU_UtilRun(
+    RunCheck(
         "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
         "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
         "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
@@ -275,11 +265,11 @@ static void Shuild_SDL_ttf(void)
         sourceDir.data, buildDir.data, BuildType_String(CONFIG.type),
         outputPrefixDir.data, outputPrefixDir.data);
 
-    SHU_UtilRun(
+    RunCheck(
         "cmake --build \"%s\" --parallel > %s",
         buildDir.data, SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
 
-    SHU_UtilRun(
+    RunCheck(
         "cmake --install \"%s\" > %s",
         buildDir.data, SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
 
@@ -301,14 +291,14 @@ static void Shuild_lua(void)
     SHU_ModuleAddSourceFile("onelua.c");
 
     SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%sinclude/lua/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sinclude/lua/", CONFIG.outputDir.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/lua/lua.h", tempStr.data);
     CopyFile("dependencies/lua/lauxlib.h", tempStr.data);
     CopyFile("dependencies/lua/lualib.h", tempStr.data);
     CopyFile("dependencies/lua/luaconf.h", tempStr.data);
 
-    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%slib/", CONFIG.outputDir.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 }
 
@@ -320,14 +310,14 @@ static void Shuild_clay(void)
     SHU_ModuleAddSourceFile("../other/clay/clay.c");
 
     SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "../../%sinclude/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "../../%sinclude/", CONFIG.outputDir.data);
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
-    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%slib/", CONFIG.outputDir.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 
     // clay.c includes the headers from the submodule, so they are copied for the core after it compiles
-    SHUI_SFormat(&tempStr, "%sinclude/clay/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sinclude/clay/", CONFIG.outputDir.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/clay/clay.h", tempStr.data);
     CopyFile("dependencies/other/clay/claySDL3.h", tempStr.data);
@@ -340,17 +330,17 @@ static void Shuild_stb(void)
 
     // stb.c includes the copied glue header, so the headers are copied first
     SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%sinclude/stb/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sinclude/stb/", CONFIG.outputDir.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/stb/stb_ds.h", tempStr.data);
     CopyFile("dependencies/other/stb/stbSDL3.h", tempStr.data);
 
     SHU_ModuleAddSourceFile("stb.c");
 
-    SHUI_SFormat(&tempStr, "../../../%sinclude/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "../../../%sinclude/", CONFIG.outputDir.data);
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
-    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%slib/", CONFIG.outputDir.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 }
 
@@ -462,7 +452,7 @@ static void Shuild_libffi(void)
     // the sources include ffi.h and ffitarget.h, so they are written to the build before libffi compiles
     SHUI_String headers;
     SHUI_String tempStr;
-    SHUI_SFormat(&headers, "%sinclude/libffi/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&headers, "%sinclude/libffi/", CONFIG.outputDir.data);
     SHU_UtilCreateDirectory(headers.data);
     SHUI_SFormat(&tempStr, "%sffi.h", headers.data);
     MakeFfiHeader(target, tempStr.data);
@@ -497,10 +487,10 @@ static void Shuild_libffi(void)
     SHU_ModuleAddIncludeDirectory("include/");
     SHU_ModuleAddIncludeDirectory("src/");
     SHU_ModuleAddIncludeDirectory(targetDirectory);
-    SHUI_SFormat(&tempStr, "../../%sinclude/libffi/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "../../%sinclude/libffi/", CONFIG.outputDir.data);
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
-    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%slib/", CONFIG.outputDir.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 }
 
@@ -523,10 +513,10 @@ static void Shuild_OpenECS(void)
     SHU_ModuleAddIncludeDirectory("include/");
 
     SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%sinclude/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sinclude/", CONFIG.outputDir.data);
     SHU_ModuleAddIncludeDirectory(tempStr.data);
 
-    SHUI_SFormat(&tempStr, "%slib/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%slib/", CONFIG.outputDir.data);
     SHU_ModuleAddLibraryDirectory(tempStr.data);
 
     SHU_ModuleLinkLibrary("clay");
@@ -537,13 +527,13 @@ static void Shuild_OpenECS(void)
     SHU_ModuleLinkLibrary("stb");
     SHU_ModuleLinkLibrary("m");
 
-    SHUI_SFormat(&tempStr, "%sbin/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sbin/", CONFIG.outputDir.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_Executable);
 
     // the shared libraries go next to the executable under the names it asks for, as files rather than links
-    SHU_UtilRun("cp -L %slib/libSDL3.so.0 %slib/libSDL3_ttf.so.0 %s", OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data, tempStr.data);
+    RunCheck("cp -L %slib/libSDL3.so.0 %slib/libSDL3_ttf.so.0 %s", CONFIG.outputDir.data, CONFIG.outputDir.data, tempStr.data);
 
-    SHUI_SFormat(&tempStr, "%sinclude/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sinclude/", CONFIG.outputDir.data);
     CopyFile("include/OpenECS.h", tempStr.data);
     CopyFile("include/ecs.lua", tempStr.data);
 }
@@ -609,7 +599,7 @@ static void Shuild_NativePlugin(const char *name, const char *root, const char *
         }
     }
 
-    SHUI_SAppendC(&include, OUTPUT_DIRECTORY.data);
+    SHUI_SAppendC(&include, CONFIG.outputDir.data);
     SHUI_SAppendC(&include, "include/");
 
     SHU_ModuleBegin(name, root);
@@ -628,23 +618,19 @@ static void Shuild_TestPlugin(const char *path, const char *name)
     SHUI_String root;
     SHUI_String output;
     SHUI_SFormat(&root, "%s%s/", path, name);
-    SHUI_SFormat(&output, "%s%s", OUTPUT_DIRECTORY.data, root.data);
+    SHUI_SFormat(&output, "%s%s", CONFIG.outputDir.data, root.data);
     Shuild_NativePlugin(name, root.data, output.data);
 }
 
 /// @brief Builds a repository checked out in a folder of OpenECS, std/ or examples/, with the shuild.c of its own (DESIGN 17.7).
 /// Its shuild.c is compiled with shu and shuild from dependencies/ into shuild.ignore in its folder, because shuild finds every path from the folder of the program it runs in.
 /// It runs with the build type, this build's output folder as seen from its folder, and --tests if asked.
-static void Shuild_Repository(const char *folder, bool tests)
+static void Shuild_Repository(const char *folder)
 {
     SHUI_String source;
     SHUI_SFormat(&source, "%sshuild.c", folder);
 
-    if (SHU_UtilFileExists(source.data) != SHUFileType_Regular)
-    {
-        SHU_LogWarning("%s is not checked out, so it is not built; clone OpenECS with --recursive", folder);
-        return;
-    }
+    SHU_Assert(SHU_UtilFileExists(source.data) == SHUFileType_Regular, "%s is not checked out, so it is not built; clone OpenECS with --recursive", folder);
 
     // the output folder is named from the repository's folder, which is one level deeper for each of its folders
     SHUI_String output = {0};
@@ -657,48 +643,40 @@ static void Shuild_Repository(const char *folder, bool tests)
         }
     }
 
-    SHUI_SAppendC(&output, OUTPUT_DIRECTORY.data);
+    SHUI_SAppendC(&output, CONFIG.outputDir.data);
 
     SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", folder);
-    SHU_UtilRun("gcc -O2 -Idependencies %s -o %sshuild.ignore", source.data, folder);
-    SHU_UtilRun("cd %s && ./shuild.ignore -b %s -o %s%s", folder, BUILD_TYPE_NAMES[CONFIG.type], output.data, tests ? " -t" : "");
+    RunCheck("gcc -O2 -Idependencies %s -o %sshuild.ignore", source.data, folder);
+    RunCheck("cd %s && ./shuild.ignore -b %s -o %s", folder, BuildType_String(CONFIG.type), output.data);
     SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'%s'") "\n", folder);
 }
 
 static void Shuild_Plugins(void)
 {
     // examples and tests are built when the flags ask for them; a copy from an earlier build is removed otherwise
-    SHU_UtilRun("rm -rf %sbin/examples %stests %sstd", OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data, OUTPUT_DIRECTORY.data);
-
-    // the tests are copied beside bin/, so their presets and plugins are found next to the test files, and their native plugins are built there
-    if (CONFIG.tests)
-    {
-        SHU_UtilRun("cp -r tests %s", OUTPUT_DIRECTORY.data);
-        ForEachFolder("tests/plugins/", Shuild_TestPlugin);
-    }
+    RunCheck("rm -rf %sbin/examples %sstd", CONFIG.outputDir.data, CONFIG.outputDir.data);
 
     // OpenECS-std builds the standard plugins into bin/plugins/ and their presets into bin/presets/; OpenECS-examples builds the examples into bin/examples/
     if (CONFIG.std)
     {
-        Shuild_Repository("std/", CONFIG.tests);
+        Shuild_Repository("std/");
     }
 
     if (CONFIG.examples)
     {
-        Shuild_Repository("examples/", false);
+        Shuild_Repository("examples/");
     }
 }
 
 static void Shuild_other(void)
 {
     SHUI_String tempStr;
-    SHUI_SFormat(&tempStr, "%sinclude/shu/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sinclude/shu/", CONFIG.outputDir.data);
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("dependencies/shu/shu.h", tempStr.data);
 
-    SHUI_SFormat(&tempStr, "%sbin/", OUTPUT_DIRECTORY.data);
+    SHUI_SFormat(&tempStr, "%sbin/", CONFIG.outputDir.data);
 
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("resources/", tempStr.data);
-
 }
