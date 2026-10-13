@@ -11,7 +11,7 @@ This is the only file written for agents. Everything else is written for humans.
 | [README.md](README.md)     | Short introduction, cloning and building.                                                        |
 | [OVERVIEW.md](OVERVIEW.md) | What OpenECS is: scope, the line between core and plugins, principles and product decisions.     |
 | [DESIGN.md](DESIGN.md)     | How OpenECS is built: modules, interfaces, conventions, dependencies and rules for contributors. |
-| [TODO.md](TODO.md)         | Open questions and pending tasks.                                                                |
+| [TODO.md](TODO.md)         | Open questions and pending tasks, of OpenECS and the repositories it ships.                      |
 
 Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 
