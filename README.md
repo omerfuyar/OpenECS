@@ -1,28 +1,33 @@
 # OpenECS
 
-**Docking panels, workspaces, keys, settings and sessions come for free. You write only the panels, in C or Lua.**
+OpenECS (Editor Composition System, I started it as an Entity Component System engine and somehow got here) is the empty shell of an editor style application, written in C. It provides panels that can be split, grouped into tabs, docked, maximized and moved into their own windows, and workspaces that hold them. It also provides plugins in C and Lua, keybindings, settings, saving and restoring sessions, and operating-system features such as the clipboard, drag and drop and dialogs. It runs on Linux.
 
-OpenECS (Editor Composition System, not an entity-component system) is the empty shell of an editor-style application, written in C. It provides panels that can be split, grouped into tabs, docked, maximized and moved into their own windows, and workspaces that hold them. It also provides plugins in C and Lua, keybindings, settings, saving and restoring sessions, and operating-system features such as the clipboard, drag and drop and dialogs. It runs on Linux.
+OpenECS does nothing specific to any job. Plugins decide what each panel shows and does, and a preset names the plugins and the arrangement of a tool. So the same executable becomes a text editor, a paint program, a log viewer etc.
 
-OpenECS does nothing specific to any job. Plugins decide what each panel shows and does, and a preset names the plugins and the arrangement of a tool. So the same executable becomes a text editor, a paint program, a log viewer or the front end of a game engine.
-
-## Who it is for
-
-- **Tool builders** who need a level editor, an asset viewer, a debugger or an internal tool, and do not want to write windows, docking and settings again.
-- **Game and engine developers** who want an editor front end for their engine, with SDL3 and Lua they already know.
-- **C and Lua tinkerers** who like small programs they can read and change.
+Anyone who needs a frontend for their backend (like a game engine and its editor) or wants to build tools that can be used for simple tasks (like a media player or something).
 
 The [standard plugins](https://github.com/omerfuyar/OpenECS-std) give plugins user interfaces, text grids, images, sound, networking, 3D models and files, so a panel starts from more than pixels.
 
 ## Quick start
 
-1. Download the archive from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it, and run an example:
+1. Download the archive from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it, and run:
 
    ``` shell
-   ./OpenECS --fresh --preset examples/1_hello/preset.lua
+   ./OpenECS
    ```
 
-2. Make your own tool from [OpenECS-template](https://github.com/omerfuyar/OpenECS-template): press "Use this template" on GitHub. It holds a preset with a plugin, and a guide that goes through each part. A Lua plugin is a folder with a manifest and a script:
+2. Make your own tool from [OpenECS-template](https://github.com/omerfuyar/OpenECS-template): press "Use this template" on GitHub. It holds a preset with a plugin, and a guide that goes through each part. A Lua plugin is a folder with a manifest and an init script:
+
+   ``` lua
+   -- myplugin/manifest.lua: what the plugin is, read before its code runs
+   return {
+     name = "myplugin", -- the folder's name
+     version = "0.1.0",
+     api = 1,
+     type = "lua",      -- its code starts in init.lua
+     depends = { draw = "0.1" },
+   }
+   ```
 
    ``` lua
    -- myplugin/init.lua
@@ -40,13 +45,30 @@ The [standard plugins](https://github.com/omerfuyar/OpenECS-std) give plugins us
    })
    ```
 
-3. Run your tool with its preset, `./OpenECS --fresh --preset path/to/preset.lua`. Press Alt+W then N to see the panel types of the tool and open one, and Alt+W then `,` for the settings.
+   A preset names the tool, its plugins, and where their panels go:
 
-The [examples](https://github.com/omerfuyar/OpenECS-examples) go on from there, one part at a time.
+   ``` lua
+   -- preset.lua, beside the folder myplugin/
+   return {
+     format = 1,
+     name = "mytool",
+     version = "0.1.0",
+     app = { id = "org.example.MyTool", name = "My tool" },
+     depends = { myplugin = "0.1" },
+     pluginsDir = ".", -- plugins are looked for in this folder first
+     workspaces = {
+       { name = "Main", windows = { { panels = { { type = "myplugin.hello" } } } } },
+     },
+   }
+   ```
+
+3. Run your tool with its preset, `./OpenECS --fresh --preset path/to/preset.lua`. Press Alt+W to see all core key binds. `N` to see the panel types of the tool and open one. `,` for the settings.
+
+See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples from simple to more complex structures.
 
 ## Status
 
-OpenECS is young. It works and you can build on it, but until 1.0 a minor release may change the plugin interface; each release says what changed and how to update. Releases are built for Linux on x86_64; Windows and macOS are planned. Questions, ideas and the plugins you build are welcome in [Discussions](https://github.com/omerfuyar/OpenECS/discussions).
+OpenECS is young. It works and you can build on it, but until 1.0 a minor release may change the plugin interface; each release says what changed and how to update. Releases are built for Linux on x86_64; Windows and macOS, arm architecture are planned. Questions, ideas and the plugins you build are welcome in [Discussions](https://github.com/omerfuyar/OpenECS/discussions). Or post to [Issues](https://github.com/omerfuyar/OpenECS/issues) if you have any reports or problems.
 
 ## Documents
 
@@ -64,8 +86,8 @@ Download the archive for your system from [Releases](https://github.com/omerfuya
 ``` text
 Usage: OpenECS [OPTION...] [FILE...]
 
-Starts the tool a preset describes, or the launcher without one. The preset's open function
-opens each FILE.
+Starts the launcher, which lists the presets of the presets folders and the saved sessions,
+or the tool of a preset or a session. The preset's open function opens each FILE.
 
 Options:
   -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file
@@ -76,8 +98,6 @@ Options:
   -v, --version           Print the version and exit
   -h, --help              Print this help and exit
 ```
-
-Without a preset, OpenECS shows the launcher: it lists the presets and saved sessions, and Up, Down and Return or a click open one. Press Alt+W to see the core's keys; Alt+W then `,` opens the settings window, and Alt+W then N the list of panel types.
 
 ### Examples
 
@@ -91,10 +111,11 @@ The `examples/` folder shows how to write plugins, one part at a time: from `1_h
 
 The archive holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`. `ecs.lua` also describes manifests, presets and settings files: write `---@type ecs.Manifest` or `---@type ecs.Preset` above the file's `return` to get completion and checks, as the examples do.
 
-Plugins offer functions to each other. In Lua, `local draw = require("draw")` gives the functions of the plugin `draw`, if your manifest depends on it. For completion and checks of those functions, write their definition files and add the folder to `workspace.library` too; a C plugin includes the header of the same name. `--definitions` writes them for every plugin it finds, or for a preset's plugins with `--preset`:
+Plugins offer functions to each other. In Lua, `local draw = require("draw")` gives the functions of the plugin `draw`, if your manifest depends on it. For completion and checks of those functions, write their definition files and add the folder to `workspace.library` too; a C plugin includes the header of the same name:
+-- todo make it automatic !!!
 
 ``` shell
-./OpenECS --definitions definitions/
+./OpenECS --preset paint --definitions definitions/
 ```
 
 ## Development
@@ -122,6 +143,10 @@ git submodule update --init --recursive
 ```
 
 ### Dependent Packages
+
+#### Windows
+
+todo winget, llvm or mingw, autoreconf etc.
 
 #### Linux
 
@@ -164,13 +189,11 @@ sudo pacman -S alsa-lib cmake hidapi ibus jack libdecor libthai fribidi libgl li
 
 ### Building
 
-The code is C23, so it needs a C23 compiler such as gcc 14 or later. SDL and SDL_ttf also need cmake and ninja.
-
 Shuild builds the program. Compile the build script once; it compiles itself again when `shuild.c` changes:
 
 ``` shell
 cd OpenECS/
-gcc shuild.c -o shuild.ignore -O3 -Wno-format-truncation
+gcc shuild.c -o shuild.ignore -O3
 ./shuild.ignore -b release -e
 ```
 
@@ -178,8 +201,7 @@ gcc shuild.c -o shuild.ignore -O3 -Wno-format-truncation
 Usage: ./shuild.ignore [FLAG...]
 
 Flags:
-  -b, --build TYPE   Build type: debug (the default), with the static analyzer and the sanitizers;
-                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release
+  -b, --build TYPE   Debug (Default) | Release | RelWithDebInfo | MinSizeRel
   -n, --no-std       Do not build the standard plugins of std/
   -e, --examples     Also build the examples of examples/, into bin/examples/
   -h, --help         Show this help
@@ -192,8 +214,6 @@ The standard plugins and the examples are in their own repositories, checked out
 Dependencies are built the first time only. To build one again, delete its library from `build/<TYPE>/lib/` and the `.shu/` folder; shuild does not make a library again while its compiled files are unchanged.
 
 Shuild compiles again only the files that changed. After changing compiler flags in `shuild.c`, delete `.shu/` (or run `sudo git clean -Xfd` to delete all ignored files) to compile everything again.
-
-The build also writes the definition files of the plugins it built into `build/<TYPE>/definitions/`, and a `.luarc.json` in this folder, `std/` and `examples/` that names them with `include/`. So an editor with LuaLS, such as VS Code with the Lua extension, completes and checks the `ecs` module and `require("ui")` in every Lua file of the three repositories.
 
 Debug builds run the static analyzer while compiling, and the sanitizers while the program runs. A sanitizer prints its report to standard error, and the program exits with an error.
 
@@ -216,7 +236,6 @@ GitHub checks every pull request (DESIGN.md section 19.3). These commands run th
 .github/scripts/build.sh D
 .github/scripts/test.sh build/Debug/bin/OpenECS
 .github/scripts/build.sh R
-.github/scripts/definitions.sh build/Debug/bin/OpenECS
 ```
 
 ## License

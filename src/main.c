@@ -15,8 +15,8 @@
 #define OPENECS_USAGE                                                                                     \
     "Usage: OpenECS [OPTION...] [FILE...]\n"                                                              \
     "\n"                                                                                                  \
-    "Starts the tool a preset describes, or the launcher without one. The preset's open function\n"       \
-    "opens each FILE.\n"                                                                                  \
+    "Starts the launcher, which lists the presets of the presets folders and the saved sessions,\n"      \
+    "or the tool of a preset or a session. The preset's open function opens each FILE.\n"                \
     "\n"                                                                                                  \
     "Options:\n"                                                                                          \
     "  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file\n"         \
