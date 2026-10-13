@@ -711,6 +711,7 @@ ecs.service.register({
 | `value`           | a generic value (10.3): a `const ECSValue *` in C  |
 | `fn<signature>`   | a function to call back (10.4)                     |
 | `out <type>`      | an output parameter; in Lua, an extra return value |
+| `keep fn<signature>` | a callback that the function keeps after it returns (10.4) |
 
 - A parameter may have a name after its type: `void(string path, float volume)`. Names only document; they never change how signatures compare. Definition files use them (10.10).
 - Structures are passed as handles or buffers, never by value.
@@ -735,6 +736,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - **Lua calls Lua:** a plain Lua call, because all plugins share one Lua state.
 - Callbacks (`fn<...>` parameters) work the same way in both directions. In C, a callback is a function pointer of its signature; in Lua, a function. `nil` in Lua is `nullptr` in C.
 - A callback is valid only during the call that gives it. C must not keep it; a Lua function that keeps one gets an error when it calls it later.
+- A `keep fn<signature>` callback stays valid after the call, so a service can call it later, such as when work in the background is done. The function that took it releases it when it no longer calls it: in C with `ECSService_ReleaseCallback(callback)`, which frees the closure of a Lua function; a Lua function just drops it. Callbacks that are never released are freed when the program exits, and those a failed plugin kept are freed with its registrations. A kept callback is called on the main thread only, as every callback is.
 - A callback is a parameter only, never `out` or a result, and its own signature has no callbacks.
 - Strings, buffers and values that a Lua function gives to C stay valid until that function returns again.
 - When a Lua function called from C raises an error or gives a value of the wrong type, the error is reported (14.2) and C gets zeros.
@@ -1088,7 +1090,7 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.4 Dependency versions
 
-- Every dependency is a git submodule that follows its development branch. An update moves every submodule to the latest commit of its branch (`git submodule update --remote`), and passes the checks (19.3) like any change.
+- Every dependency is a git submodule at a fixed commit: the latest commit of its development branch, or of a release tag when the branch lacks files that its release makes. An update moves each submodule to its newest such commit, and passes the checks (19.3) like any change.
 - SDL_ttf brings FreeType, HarfBuzz and PlutoSVG as its own submodules, at the commits SDL_ttf names.
 
 ### 17.5 Tests

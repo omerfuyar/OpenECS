@@ -71,6 +71,7 @@ typedef struct ECSIParameter
     ECSIParameterType type;
     char *name;                        // the name the signature gives it, or nullptr; only for documentation
     bool out;                          // an output parameter: a pointer in C, an extra result in Lua
+    bool keep;                         // a callback that stays valid after the call, until the function that took it releases it
     ECSIHandleType *handle;           // handles: their type
     struct ECSISignature *callback;   // callbacks: their signature, owned by the parameter
 } ECSIParameter;
@@ -135,6 +136,11 @@ static struct
         ECSIHandleType *value;
     } *handleTypes; // stb_ds hash map; handles point to their type
     int handles;    // registry reference of the weak table that maps each object to its Lua handle
+    struct
+    {
+        void *key; // the code that C calls
+        ECSIFunction *value;
+    } *kept; // stb_ds hash map of the closures made for Lua functions that C keeps, until ECSService_ReleaseCallback
 } SERVICES = {0};
 
 static ECSIHandleType *ECSIServices_FindHandleType(const char *name)
@@ -299,8 +305,9 @@ static bool ECSISignature_ReadParameter(const char **text, ECSIParameter *retPar
     const char *word = nullptr;
     usz length = ECSISignature_ReadWord(text, &word);
     retParameter->out = length == 3 && SDL_strncmp(word, "out", 3) == 0;
+    retParameter->keep = length == 4 && SDL_strncmp(word, "keep", 4) == 0;
 
-    if (retParameter->out)
+    if (retParameter->out || retParameter->keep)
     {
         length = ECSISignature_ReadWord(text, &word);
     }
@@ -312,6 +319,12 @@ static bool ECSISignature_ReadParameter(const char **text, ECSIParameter *retPar
         if (length == SDL_strlen(name) && SDL_strncmp(word, name, length) == 0)
         {
             retParameter->type = (ECSIParameterType)type;
+
+            // only a callback is kept
+            if (retParameter->keep && type != ECSIParameterType_Fn)
+            {
+                return false;
+            }
 
             switch (type)
             {
@@ -337,7 +350,7 @@ static SHUResult ECSISignature_Append(char **text, const char *separator, ECSIPa
     const char *inner = parameter.type == ECSIParameterType_Handle ? parameter.handle->name : parameter.type == ECSIParameterType_Fn ? parameter.callback->text
                                                                                                                                        : nullptr;
 
-    if (SDL_asprintf(&next, "%s%s%s%s%s%s%s", *text == nullptr ? "" : *text, separator, parameter.out ? "out " : "", OPENECS_PARAMETER_TYPE_NAMES[parameter.type], inner == nullptr ? "" : "<", inner == nullptr ? "" : inner, inner == nullptr ? "" : ">") < 0)
+    if (SDL_asprintf(&next, "%s%s%s%s%s%s%s", *text == nullptr ? "" : *text, separator, parameter.out ? "out " : parameter.keep ? "keep " : "", OPENECS_PARAMETER_TYPE_NAMES[parameter.type], inner == nullptr ? "" : "<", inner == nullptr ? "" : inner, inner == nullptr ? "" : ">") < 0)
     {
         return SHUResult_ErrAllocation;
     }
@@ -655,7 +668,7 @@ static int ECSIServices_CallC(lua_State *state)
         }
     }
 
-    // a Lua function becomes a closure that C calls; it is valid until this call returns
+    // a Lua function becomes a closure that C calls; it is valid until this call returns, or until C releases it if C keeps it
     for (usz i = 0; !result && i < count; i++)
     {
         if (signature->parameters[i].type == ECSIParameterType_Fn && !lua_isnoneornil(state, indices[i]))
@@ -701,7 +714,13 @@ static int ECSIServices_CallC(lua_State *state)
             ECSValue_Destroy((ECSValue **)&slots[i].pointer);
         }
 
-        if (callbacks[i] != nullptr)
+        if (callbacks[i] != nullptr && signature->parameters[i].keep && !result)
+        {
+            void *code = nullptr;
+            SDL_memcpy(&code, &callbacks[i]->pointer, sizeof(code));
+            hmput(SERVICES.kept, code, callbacks[i]);
+        }
+        else if (callbacks[i] != nullptr)
         {
             ECSIServices_FreeCallback(&callbacks[i]);
         }
@@ -990,7 +1009,7 @@ static void ECSIServices_ReportType(lua_State *state, const ECSIFunction *functi
     }
 }
 
-/// @brief Pushes a callback that C passed to a Lua function: a Lua function that calls it, or nil for nullptr. It is added to the table of callbacks at an index of the stack, which makes it invalid when the call returns.
+/// @brief Pushes a callback that C passed to a Lua function: a Lua function that calls it, or nil for nullptr. Unless it is kept, it is added to the table of callbacks at an index of the stack, which makes it invalid when the call returns.
 static void ECSIServices_PushCallback(lua_State *state, const ECSIFunction *service, ECSIParameter parameter, const void *argument, int callbacks)
 {
     ECSFunction pointer = nullptr;
@@ -1002,11 +1021,16 @@ static void ECSIServices_PushCallback(lua_State *state, const ECSIFunction *serv
         return;
     }
 
-    // the record borrows the service's name and the callback's signature, and is never used after the call
+    // the record borrows the service's name and the callback's signature, which live as long as the service; one that is not kept is never used after the call
     ECSIFunction *callback = lua_newuserdatauv(state, sizeof(ECSIFunction), 0);
     *callback = (ECSIFunction){.name = service->name, .plugin = service->plugin, .signature = *parameter.callback, .pointer = pointer, .caller = LUA_NOREF, .lua = LUA_NOREF, .anchors = LUA_NOREF};
-    lua_pushvalue(state, -1);
-    lua_rawseti(state, callbacks, (lua_Integer)lua_rawlen(state, callbacks) + 1);
+
+    if (!parameter.keep)
+    {
+        lua_pushvalue(state, -1);
+        lua_rawseti(state, callbacks, (lua_Integer)lua_rawlen(state, callbacks) + 1);
+    }
+
     lua_pushcclosure(state, ECSIServices_CallC, 1);
 }
 
@@ -1336,6 +1360,14 @@ void ECSIServices_Terminate(void)
     }
 
     shfree(SERVICES.functions);
+
+    // what C still keeps is freed with the Lua state's references
+    for (usz i = 0; i < hmlenu(SERVICES.kept); i++)
+    {
+        ECSIServices_FreeCallback(&SERVICES.kept[i].value);
+    }
+
+    hmfree(SERVICES.kept);
     SDL_zero(SERVICES);
 }
 
@@ -1353,6 +1385,18 @@ void ECSIServices_RemovePlugin(ECSPlugin plugin)
             // the core made the objects of a Lua plugin's types, so it can still destroy them
             ECSIServices_ForgetHandles(type, type->Destroy == ECSIServices_DestroyLuaObject);
             type->Destroy = nullptr;
+        }
+    }
+
+    // the callbacks that a failed plugin kept are never called again
+    for (usz i = hmlenu(SERVICES.kept); i > 0; i--)
+    {
+        ECSIFunction *callback = SERVICES.kept[i - 1].value;
+
+        if (callback->plugin == plugin)
+        {
+            (void)hmdel(SERVICES.kept, SERVICES.kept[i - 1].key);
+            ECSIServices_FreeCallback(&callback);
         }
     }
 
@@ -1624,6 +1668,21 @@ SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, con
     SHU_ReturnResult(ECSIServices_Find(plugin, name, signature, &function));
     *retFunction = function->pointer;
     return SHUResult_Ok;
+}
+
+void ECSService_ReleaseCallback(ECSFunction callback)
+{
+    void *code = nullptr;
+    SDL_memcpy(&code, &callback, sizeof(code));
+
+    // a C function's pointer, or one that was released, is not in the map
+    ECSIFunction *kept = callback == nullptr || SERVICES.kept == nullptr ? nullptr : hmget(SERVICES.kept, code);
+
+    if (kept != nullptr)
+    {
+        (void)hmdel(SERVICES.kept, code);
+        ECSIServices_FreeCallback(&kept);
+    }
 }
 
 SHUResult ECSIServices_PushPlugin(ECSPlugin plugin, ECSPlugin provider)

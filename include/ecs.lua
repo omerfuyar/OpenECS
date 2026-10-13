@@ -518,7 +518,7 @@ function ecs.handle.value(handle, name) end
 -- Services
 
 ---@class ecs.ServiceFunction
----@field sig string The signature, such as "int(string count, float scale)". Types: void, bool, int, int64, float, double, color, string, buffer, value, handle<name>, fn<signature>, and out before a type.
+---@field sig string The signature, such as "int(string count, float scale)". Types: void, bool, int, int64, float, double, color, string, buffer, value, handle<name>, fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
 ---@field doc? string A one-line description.
 ---@field fn function
 
