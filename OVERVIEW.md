@@ -89,6 +89,7 @@ Some plugins are made and shipped together with OpenECS because the product need
 - **image:** a standard plugin: reading image files, SVG among them, into images that draw draws.
 - **audio:** a standard plugin: reading sound files into sounds that mixer plays.
 - **net:** a standard plugin: TCP connections and servers, and UDP sockets, that never block the program.
+- **web:** a standard plugin: HTTP and HTTPS requests that never block the program.
 - **gltf:** a standard plugin: reading glTF models, for plugins that draw 3D scenes.
 - **fs:** a standard plugin: listing and making folders, copying files and telling what a path is, which Lua's own libraries cannot.
 - **settings:** the settings window, built on ui.
