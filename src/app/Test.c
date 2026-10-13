@@ -23,7 +23,7 @@
 
 static struct
 {
-    lua_State *thread;            // the coroutine of the test's run function, or NULL when no test runs
+    lua_State *thread;            // the coroutine of the test's run function, or nullptr when no test runs
     int threadReference;          // registry reference that keeps the coroutine alive
     bool started;                 // false until the run function is first resumed
     bool failed;                  // true when the test failed
@@ -39,8 +39,8 @@ static struct
     SDL_MouseButtonFlags buttons; // the buttons held
     char **files;                 // stb_ds array of the paths that the test's files field names
     char **dropped;               // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
-    char *presets;                // the folder that the test's presets field names, ending with a separator, or NULL
-    char *sessions;               // the folder that the test's sessions field names, ending with a separator, or NULL
+    char *presets;                // the folder that the test's presets field names, ending with a separator, or nullptr
+    char *sessions;               // the folder that the test's sessions field names, ending with a separator, or nullptr
 } TEST = {0};
 
 /// @brief test.match: compares by contents and names the path of the first difference.
@@ -76,9 +76,9 @@ static const char OPENECS_TEST_MATCH[] =
 /// @brief Adds an input event for the loop, in the OS window that test.window chose; the main window if that one has closed.
 static void ECSITest_Send(SDL_Event event)
 {
-    SDL_Window *window = TEST.window > 1 ? ECSIWindow_Get(TEST.window) : NULL;
-    window = window != NULL ? window : ECSIWindow_GetMain();
-    SDL_WindowID id = window != NULL ? SDL_GetWindowID(window) : 0;
+    SDL_Window *window = TEST.window > 1 ? ECSIWindow_Get(TEST.window) : nullptr;
+    window = window != nullptr ? window : ECSIWindow_GetMain();
+    SDL_WindowID id = window != nullptr ? SDL_GetWindowID(window) : 0;
 
     switch (event.type)
     {
@@ -127,7 +127,7 @@ static SDL_Keymod ECSITest_CheckModifiers(lua_State *state, int index)
     for (const char *part = text; *part != '\0';)
     {
         const char *plus = SDL_strchr(part, '+');
-        usz length = plus != NULL ? (usz)(plus - part) : SDL_strlen(part);
+        usz length = plus != nullptr ? (usz)(plus - part) : SDL_strlen(part);
         usz i = 0;
 
         while (i < SDL_arraysize(names) && (SDL_strlen(names[i]) != length || SDL_strncasecmp(part, names[i], length) != 0))
@@ -217,7 +217,7 @@ static int ECSITest_Key(lua_State *state)
 
     SDL_Event event = {.type = SDL_EVENT_KEY_DOWN};
     event.key.key = key;
-    event.key.scancode = SDL_GetScancodeFromKey(key, NULL);
+    event.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
     event.key.mod = mod;
     event.key.down = true;
     ECSITest_Send(event);
@@ -339,7 +339,7 @@ static void ECSITest_SendDrop(f32 x, f32 y, Uint32 type, const char *const *text
     {
         char *copy = SDL_strdup(texts[i]);
 
-        if (copy != NULL)
+        if (copy != nullptr)
         {
             arrput(TEST.dropped, copy);
             event = (SDL_Event){.type = type};
@@ -361,7 +361,7 @@ static int ECSITest_Text(lua_State *state)
 {
     char *copy = SDL_strdup(luaL_checkstring(state, 1));
 
-    if (copy == NULL)
+    if (copy == nullptr)
     {
         return luaL_error(state, "out of memory");
     }
@@ -383,7 +383,7 @@ static int ECSITest_DropFiles(lua_State *state)
     luaL_checktype(state, 3, LUA_TTABLE);
 
     // the table keeps its strings alive while they are copied
-    const char **paths = NULL;
+    const char **paths = nullptr;
 
     for (lua_Integer i = 1; lua_rawgeti(state, 3, i) == LUA_TSTRING; i++)
     {
@@ -434,7 +434,7 @@ static int ECSITest_Wait(lua_State *state)
 /// @brief test.session(): the session that quitting would save now.
 static int ECSITest_Session(lua_State *state)
 {
-    ECSValue *session = NULL;
+    ECSValue *session = nullptr;
 
     if (ECSValue_Create(&session) || ECSISession_Build(TEST.info, session))
     {
@@ -453,9 +453,9 @@ static int ECSITest_Session(lua_State *state)
 static int ECSITest_Rect(lua_State *state)
 {
     lua_Integer id = luaL_checkinteger(state, 1);
-    ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : NULL;
+    ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : nullptr;
 
-    if (panel == NULL)
+    if (panel == nullptr)
     {
         return luaL_error(state, "no panel has the id %d", (int)id);
     }
@@ -484,9 +484,9 @@ static int ECSITest_Rect(lua_State *state)
 static int ECSITest_Panel(lua_State *state)
 {
     lua_Integer id = luaL_checkinteger(state, 1);
-    ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : NULL;
+    ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : nullptr;
 
-    if (panel == NULL)
+    if (panel == nullptr)
     {
         return luaL_error(state, "no panel has the id %d", (int)id);
     }
@@ -499,12 +499,29 @@ static int ECSITest_Panel(lua_State *state)
     lua_pushboolean(state, panel->unsaved);
     lua_setfield(state, -2, "unsaved");
 
-    if (panel->fault != NULL || panel->type == NULL)
+    if (panel->fault != nullptr || panel->type == nullptr)
     {
-        lua_pushstring(state, panel->fault != NULL ? panel->fault : "the panel's type is missing");
+        lua_pushstring(state, panel->fault != nullptr ? panel->fault : "the panel's type is missing");
         lua_setfield(state, -2, "fault");
     }
 
+    return 1;
+}
+
+/// @brief test.setting(name): a setting's value in effect.
+static int ECSITest_Setting(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+    const ECSValue *value = ECSSetting_Get(name);
+
+    if (value == nullptr)
+    {
+        return luaL_error(state, "no setting is named '%s'", name);
+    }
+
+    // values are pushed onto the main state, and the test runs in its own thread
+    ECSILua_PushValue(value);
+    lua_xmove(ECSILua_GetState(), state, 1);
     return 1;
 }
 
@@ -540,11 +557,11 @@ static int ECSITest_Popup(lua_State *state)
 static int ECSITest_Window(lua_State *state)
 {
     lua_Integer number = luaL_checkinteger(state, 1);
-    SDL_Window *window = number < 1 ? NULL : ECSIWindow_Get((usz)number);
+    SDL_Window *window = number < 1 ? nullptr : ECSIWindow_Get((usz)number);
     int x = 0;
     int y = 0;
 
-    if (window == NULL)
+    if (window == nullptr)
     {
         return luaL_error(state, "there is no OS window %d", (int)number);
     }
@@ -585,11 +602,12 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"session", ECSITest_Session},
     {"rect", ECSITest_Rect},
     {"panel", ECSITest_Panel},
+    {"setting", ECSITest_Setting},
     {"popup", ECSITest_Popup},
     {"window", ECSITest_Window},
     {"close", ECSITest_Close},
     {"screenshot", ECSITest_Screenshot},
-    {NULL, NULL},
+    {nullptr, nullptr},
 };
 
 /// @brief Pushes the test table. It also holds match, which is written in Lua.
@@ -611,10 +629,10 @@ static SHUResult ECSITest_PushTable(lua_State *state)
 /// @brief Ends the test and lets the garbage collector take its coroutine.
 static void ECSITest_Finish(void)
 {
-    if (TEST.thread != NULL)
+    if (TEST.thread != nullptr)
     {
         luaL_unref(ECSILua_GetState(), LUA_REGISTRYINDEX, TEST.threadReference);
-        TEST.thread = NULL;
+        TEST.thread = nullptr;
     }
 
     arrfree(TEST.events);
@@ -631,9 +649,9 @@ static void ECSITest_ReadFolder(lua_State *state, const char *field, const char 
     {
         const char *folder = lua_tostring(state, -1);
 
-        if (SDL_asprintf(retFolder, "%.*s%s/", slash != NULL && folder[0] != '/' ? (int)(slash - path + 1) : 0, path, folder) < 0)
+        if (SDL_asprintf(retFolder, "%.*s%s/", slash != nullptr && folder[0] != '/' ? (int)(slash - path + 1) : 0, path, folder) < 0)
         {
-            *retFolder = NULL;
+            *retFolder = nullptr;
         }
     }
 
@@ -644,14 +662,14 @@ static void ECSITest_ReadFolder(lua_State *state, const char *field, const char 
 
 SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **retPreset)
 {
-    SDL_assert(path != NULL);
-    SDL_assert(info != NULL);
-    SDL_assert(retPreset != NULL);
-    SDL_assert(TEST.thread == NULL);
+    SDL_assert(path != nullptr);
+    SDL_assert(info != nullptr);
+    SDL_assert(retPreset != nullptr);
+    SDL_assert(TEST.thread == nullptr);
 
     lua_State *state = ECSILua_GetState();
     int top = lua_gettop(state);
-    *retPreset = NULL;
+    *retPreset = nullptr;
 
     if (luaL_loadfilex(state, path, "t") != LUA_OK)
     {
@@ -686,12 +704,12 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     const char *preset = lua_getfield(state, -2, "preset") == LUA_TSTRING ? lua_tostring(state, -1) : OPENECS_TEST_PRESET;
     const char *slash = SDL_strrchr(path, '/');
     usz length = SDL_strlen(preset);
-    bool file = SDL_strchr(preset, '/') != NULL || (length > 4 && SDL_strcmp(preset + length - 4, ".lua") == 0);
-    int folderLength = slash != NULL && file && preset[0] != '/' ? (int)(slash - path + 1) : 0;
+    bool file = SDL_strchr(preset, '/') != nullptr || (length > 4 && SDL_strcmp(preset + length - 4, ".lua") == 0);
+    int folderLength = slash != nullptr && file && preset[0] != '/' ? (int)(slash - path + 1) : 0;
 
     if (SDL_asprintf(retPreset, "%.*s%s", folderLength, path, preset) < 0)
     {
-        *retPreset = NULL;
+        *retPreset = nullptr;
         lua_settop(state, top);
         return SHUResult_ErrAllocation;
     }
@@ -704,9 +722,9 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     for (lua_Integer i = 1; lua_istable(state, -1) && lua_rawgeti(state, -1, i) == LUA_TSTRING; i++)
     {
         const char *name = lua_tostring(state, -1);
-        char *copy = NULL;
+        char *copy = nullptr;
 
-        if (SDL_asprintf(&copy, "%.*s%s", slash != NULL && name[0] != '/' ? (int)(slash - path + 1) : 0, path, name) >= 0)
+        if (SDL_asprintf(&copy, "%.*s%s", slash != nullptr && name[0] != '/' ? (int)(slash - path + 1) : 0, path, name) >= 0)
         {
             arrput(TEST.files, copy);
         }
@@ -730,7 +748,7 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     {
         ECSITest_Finish();
         SDL_free(*retPreset);
-        *retPreset = NULL;
+        *retPreset = nullptr;
         lua_settop(state, top);
         return SHUResult_ErrInternal;
     }
@@ -746,7 +764,7 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 
 char **ECSITest_GetFiles(usz *retCount)
 {
-    SDL_assert(retCount != NULL);
+    SDL_assert(retCount != nullptr);
 
     *retCount = arrlenu(TEST.files);
     return TEST.files;
@@ -786,12 +804,12 @@ void ECSITest_Terminate(void)
 
 bool ECSITest_IsRunning(void)
 {
-    return TEST.thread != NULL;
+    return TEST.thread != nullptr;
 }
 
 i32 ECSITest_GetWait(void)
 {
-    if (TEST.thread == NULL)
+    if (TEST.thread == nullptr)
     {
         return -1;
     }
@@ -802,7 +820,7 @@ i32 ECSITest_GetWait(void)
 
 bool ECSITest_Step(void)
 {
-    if (TEST.thread == NULL || SDL_GetTicksNS() < TEST.resumeTicks)
+    if (TEST.thread == nullptr || SDL_GetTicksNS() < TEST.resumeTicks)
     {
         return true;
     }
@@ -848,7 +866,7 @@ bool ECSITest_Step(void)
 
 int ECSITest_GetStatus(void)
 {
-    return TEST.failed || TEST.thread != NULL ? 1 : 0;
+    return TEST.failed || TEST.thread != nullptr ? 1 : 0;
 }
 
 #else
@@ -857,7 +875,7 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 {
     (void)path;
     (void)info;
-    *retPreset = NULL;
+    *retPreset = nullptr;
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Only Debug builds run tests.");
     return SHUResult_ErrPrivileges;
 }
@@ -865,17 +883,17 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 char **ECSITest_GetFiles(usz *retCount)
 {
     *retCount = 0;
-    return NULL;
+    return nullptr;
 }
 
 const char *ECSITest_GetPresets(void)
 {
-    return NULL;
+    return nullptr;
 }
 
 const char *ECSITest_GetSessions(void)
 {
-    return NULL;
+    return nullptr;
 }
 
 void ECSITest_Terminate(void)

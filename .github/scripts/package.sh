@@ -1,6 +1,6 @@
 #!/bin/sh
 # Packs a Release build for one platform into dist/openecs-VERSION-PLATFORM.tar.gz:
-# the program with its plugins, presets, examples and resources; the plugin interface; OpenECS's license and the licenses of what it includes.
+# the program with its plugins, presets, examples and resources; the plugin interface with the standard plugins' definition files; OpenECS's license and the licenses of what it includes.
 set -eu
 
 version="$1"
@@ -14,6 +14,8 @@ mkdir -p "$folder/include" "$folder/licenses"
 cp -r build/Release/bin/. "$folder/"
 cp include/OpenECS.h include/ecs.lua "$folder/include/"
 cp -r build/Release/include/shu "$folder/include/"
+# the build wrote the definition files of the plugins it found, the standard ones, so editors complete their functions with include/ alone
+cp build/Release/definitions/*.lua build/Release/definitions/*.h "$folder/include/"
 cp LICENSE.md README.md "$folder/"
 
 # the libraries linked into the program, and the font it ships
@@ -30,13 +32,13 @@ cp dependencies/clay/LICENSE.md "$folder/licenses/Clay.txt"
 cp dependencies/stb/LICENSE "$folder/licenses/stb.txt"
 cp resources/Roboto-LICENSE.txt "$folder/licenses/Roboto.txt"
 
-# the libraries that the standard plugins include or link, and the font tty ships
+# the libraries that the standard plugins include or link, and the font draw ships
 std=std/dependencies
 cp $std/SDL_net/LICENSE.txt "$folder/licenses/SDL_net.txt"
 cp $std/nanosvg/LICENSE.txt "$folder/licenses/nanosvg.txt"
 cp $std/dr_libs/LICENSE "$folder/licenses/dr_libs.txt"
 cp $std/cgltf/LICENSE "$folder/licenses/cgltf.txt"
-cp std/plugins/tty/fonts/OFL.txt "$folder/licenses/RobotoMono.txt"
+cp std/plugins/draw/fonts/OFL.txt "$folder/licenses/RobotoMono.txt"
 
 cat > "$folder/licenses/README.txt" << NOTICE
 OpenECS $version includes these works. Their licenses are in this folder.

@@ -20,7 +20,7 @@ SDL_Window *ECSIWindow_GetMain(void);
 
 /// @brief Gets the OS window of the current workspace with a number, for tests. A root made since the last frame gets its window first.
 /// @param number 1 for the main window, then the pop-out windows in the order of ECSILayout_GetRoots.
-/// @return The window, or NULL if there is none with that number.
+/// @return The window, or nullptr if there is none with that number.
 SDL_Window *ECSIWindow_Get(usz number);
 
 /// @brief Gets the number of the OS window that shows a panel, as ECSIWindow_Get counts them.
@@ -33,8 +33,8 @@ SDL_Window *ECSIWindow_OfPanel(ECSPanel panel);
 
 /// @brief Gets the root that an OS window shows.
 /// @param id SDL's id of the window.
-/// @param retMain Gets whether it is the main window, or NULL.
-/// @return The root, or NULL if the window shows none now.
+/// @param retMain Gets whether it is the main window, or nullptr.
+/// @return The root, or nullptr if the window shows none now.
 ECSIRoot *ECSIWindow_GetRoot(SDL_WindowID id, bool *retMain);
 
 /// @brief Chooses the OS window of the pointer event being handled. The pointer functions below and ECSIWindow_PanelAt take positions in its layout units.
@@ -46,7 +46,7 @@ void ECSIWindow_SetEventWindow(SDL_WindowID id);
 /// @param y Vertical position in layout units.
 /// @param retX Gets the point's position in the popup's surface.
 /// @param retY Gets the point's position in the popup's surface.
-/// @return The popup, or NULL.
+/// @return The popup, or nullptr.
 ECSPopup ECSIWindow_PopupAt(f32 x, f32 y, f32 *retX, f32 *retY);
 
 /// @brief Converts a point of the event window to a popup's surface pixels, for the popup that got a press, also outside it.
@@ -69,7 +69,7 @@ bool ECSIWindow_PopupRect(ECSPopup popup, SDL_FRect *retRect, usz *retWindow);
 /// @param y Vertical position in layout units.
 /// @param retX Gets the point's position in the OS window of the panel.
 /// @param retY Gets the point's position in the OS window of the panel.
-/// @return The panel, or NULL.
+/// @return The panel, or nullptr.
 ECSPanel ECSIWindow_PanelAt(f32 x, f32 y, f32 *retX, f32 *retY);
 
 /// @brief Gets how long the main loop may wait before the window is drawn again.
@@ -99,19 +99,19 @@ bool ECSIWindow_PointerDown(f32 x, f32 y);
 bool ECSIWindow_PointerMove(f32 x, f32 y);
 
 /// @brief Handles a release of the main pointer button: a dragged panel or group lands where the pointer is.
-/// @return The panel whose grip was clicked without dragging, for its menu, or NULL.
+/// @return The panel whose grip was clicked without dragging, for its menu, or nullptr.
 ECSPanel ECSIWindow_PointerUp(void);
 
 /// @brief Finds the panel whose tab or grip is at a point, as drawn in the last frame.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
-/// @return The panel, or NULL.
+/// @return The panel, or nullptr.
 ECSPanel ECSIWindow_TabAt(f32 x, f32 y);
 
 /// @brief Finds the group whose tab row is at a point, on a tab or not.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
-/// @return The group's shown panel, or NULL.
+/// @return The group's shown panel, or nullptr.
 ECSPanel ECSIWindow_TabRowAt(f32 x, f32 y);
 
 /// @brief Scrolls the tab row at a point, if there is one.
@@ -126,13 +126,13 @@ bool ECSIWindow_ScrollTabs(f32 x, f32 y, f32 steps);
 bool ECSIWindow_CancelDrag(void);
 
 /// @brief Shows or hides the marks of a data drag: every visible panel that accepts the data's type is marked, and the one under the pointer is filled.
-/// @param type The data's type, or NULL to hide the marks. It must stay valid while it is shown.
+/// @param type The data's type, or nullptr to hide the marks. It must stay valid while it is shown.
 /// @param x Horizontal position of the pointer in the event window's layout units.
 /// @param y Vertical position of the pointer in layout units.
 void ECSIWindow_ShowDataDrag(const char *type, f32 x, f32 y);
 
 /// @brief Shows or hides the list of keys that follow the core prefix, in the focused panel's OS window.
-/// @param lines Each key's text and description, one after the other; a NULL key text makes the description a heading. They must stay valid while they are shown.
+/// @param lines Each key's text and description, one after the other; a nullptr key text makes the description a heading. They must stay valid while they are shown.
 /// @param count Number of lines; 0 hides the list.
 void ECSIWindow_ShowPrefixKeys(const char *const *lines, usz count);
 

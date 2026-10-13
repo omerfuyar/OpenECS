@@ -15,15 +15,15 @@
 #define OPENECS_USAGE                                                                                     \
     "Usage: OpenECS [OPTION...] [FILE...]\n"                                                              \
     "\n"                                                                                                  \
-    "Starts the tool a preset describes, or the launcher without one. The preset's open function\n"       \
-    "opens each FILE.\n"                                                                                  \
+    "Starts the launcher, which lists the presets of the presets folders and the saved sessions,\n"      \
+    "or the tool of a preset or a session. The preset's open function opens each FILE.\n"                \
     "\n"                                                                                                  \
     "Options:\n"                                                                                          \
     "  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file\n"         \
     "  -s, --session FILE      Open a saved session\n"                                                    \
     "  -f, --fresh             Start from the preset, not from the tool's last session\n"                 \
     "  -t, --test FILE         Run a test; Debug builds only\n"                                           \
-    "  -d, --definitions DIR   Write the definition files of the plugins' functions into DIR, and exit\n" \
+    "  -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit\n"    \
     "  -v, --version           Print the version and exit\n"                                              \
     "  -h, --help              Print this help and exit\n"
 
@@ -58,15 +58,14 @@ typedef enum ECSIOptionIndex
 } ECSIOptionIndex;
 
 /// @brief Reads the options, and moves the files to the start of argv, over options already read.
-/// @return false if an option is unknown or lacks its value; the reason is printed.
+/// @return false if an option is unknown or lacks its value; the reason and the help are printed.
 static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArguments)
 {
     *retArguments = (ECSIArguments){.preset = OPENECS_DEFAULT_PRESET, .files = argv + 1};
 
     for (int i = 1; i < argc; i++)
     {
-        // todo unknown flag or argument exits with help
-        //  anything that does not start with a dash is a file
+        // anything that does not start with a dash is a file
         if (argv[i][0] != '-')
         {
             retArguments->files[retArguments->fileCount++] = argv[i];
@@ -85,17 +84,17 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
 
         if (option == SDL_arraysize(OPENECS_OPTIONS))
         {
-            fprintf(stderr, "OpenECS: unknown option '%s'; OpenECS --help lists the options.\n", argv[i]);
+            fprintf(stderr, "OpenECS: unknown option '%s'.\n\n%s", argv[i], OPENECS_USAGE);
             return false;
         }
 
-        const char *value = NULL;
+        const char *value = nullptr;
 
         if (OPENECS_OPTIONS[option].takesValue)
         {
             if (i + 1 >= argc)
             {
-                fprintf(stderr, "OpenECS: the option '%s' needs a value; OpenECS --help lists the options.\n", argv[i]);
+                fprintf(stderr, "OpenECS: the option '%s' needs a value.\n\n%s", argv[i], OPENECS_USAGE);
                 return false;
             }
 
@@ -156,14 +155,14 @@ int main(int argc, char **argv)
     }
 
     ECSIApp_Start(&arguments);
-    int status = arguments.definitions != NULL ? (ECSIApp_WriteDefinitions(arguments.definitions) ? 1 : 0) : ECSIApp_Run();
-    const char *option = NULL;
+    int status = arguments.definitions != nullptr ? (ECSIApp_WriteDefinitions(arguments.definitions) ? 1 : 0) : ECSIApp_Run();
+    const char *option = nullptr;
     char *next = ECSIApp_Stop(&option);
 
     // a session or preset opened while OpenECS ran starts a new OpenECS in place of this one; SDL can start a process but not replace one
-    if (next != NULL)
+    if (next != nullptr)
     {
-        execv("/proc/self/exe", (char *[]){argv[0], (char *)option, next, NULL});
+        execv("/proc/self/exe", (char *[]){argv[0], (char *)option, next, nullptr});
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot start again from '%s'.", next);
         SDL_free(next);
         return 1;

@@ -59,7 +59,7 @@ static int ECSISanitizers_Keep(struct dl_phdr_info *info, size_t size, void *dat
     (void)size;
     (void)data;
 
-    if (info->dlpi_name != NULL && info->dlpi_name[0] != '\0')
+    if (info->dlpi_name != nullptr && info->dlpi_name[0] != '\0')
     {
         (void)dlopen(info->dlpi_name, RTLD_LAZY | RTLD_NOLOAD | RTLD_NODELETE);
     }
@@ -71,7 +71,7 @@ static int ECSISanitizers_Keep(struct dl_phdr_info *info, size_t size, void *dat
 
 void ECSISanitizers_KeepLibraries(void)
 {
-    dl_iterate_phdr(ECSISanitizers_Keep, NULL);
+    dl_iterate_phdr(ECSISanitizers_Keep, nullptr);
 }
 
 void ECSISanitizers_CheckLeaks(void)

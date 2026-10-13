@@ -19,22 +19,49 @@ The [standard plugins](https://github.com/omerfuyar/OpenECS-std) give plugins us
 2. Make your own tool from [OpenECS-template](https://github.com/omerfuyar/OpenECS-template): press "Use this template" on GitHub. It holds a preset with a plugin, and a guide that goes through each part. A Lua plugin is a folder with a manifest and an init script:
 
    ``` lua
+   -- myplugin/manifest.lua: what the plugin is, read before its code runs
+   return {
+     name = "myplugin", -- the folder's name
+     version = "0.1.0",
+     api = 1,
+     type = "lua",      -- its code starts in init.lua
+     depends = { draw = "0.1" },
+   }
+   ```
+
+   ``` lua
    -- myplugin/init.lua
    local ecs = require("ecs")
    local draw = require("draw")
 
    ecs.panel.registerType({
-     name = "myplugin.hello",
+     name = "hello", -- the panel type myplugin.hello
      title = "Hello",
      create = function() return {} end,
      draw = function(_, surface)
-       surface:fill(0, 0, surface.width, surface.height, draw.color("background"))
-       draw.text(surface, "Hello from my plugin", 16, 16, 20, draw.color("text"))
+       surface:fill(0, 0, surface.width, surface.height, "background")
+       draw.text(surface, draw.font("ui"), "Hello from my plugin", 16, 16, 20, "text")
      end,
    })
    ```
 
--- todo add add a manifest and preset example too in quick start !!!
+   A preset names the tool, its plugins, and where their panels go:
+
+   ``` lua
+   -- preset.lua, beside the folder myplugin/
+   return {
+     format = 1,
+     name = "mytool",
+     version = "0.1.0",
+     app = { id = "org.example.MyTool", name = "My tool" },
+     depends = { myplugin = "0.1" },
+     pluginsDir = ".", -- plugins are looked for in this folder first
+     workspaces = {
+       { name = "Main", windows = { { panels = { { type = "myplugin.hello" } } } } },
+     },
+   }
+   ```
+
 3. Run your tool with its preset, `./OpenECS --fresh --preset path/to/preset.lua`. Press Alt+W to see all core key binds. `N` to see the panel types of the tool and open one. `,` for the settings.
 
 See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples from simple to more complex structures.
@@ -59,14 +86,15 @@ Download the archive for your system from [Releases](https://github.com/omerfuya
 ``` text
 Usage: OpenECS [OPTION...] [FILE...]
 
-Start the app with default launcher interface which looks for presets inside presets folder and saved sessions in various directories in executable directory.
+Starts the launcher, which lists the presets of the presets folders and the saved sessions,
+or the tool of a preset or a session. The preset's open function opens each FILE.
 
 Options:
   -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file
   -s, --session FILE      Open a saved session
   -f, --fresh             Start from the preset, not from the tool's last session
   -t, --test FILE         Run a test; Debug builds only
-  -d, --definitions DIR   Write the definition files of the plugins' functions into DIR, and exit
+  -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit
   -v, --version           Print the version and exit
   -h, --help              Print this help and exit
 ```
@@ -83,11 +111,10 @@ The `examples/` folder shows how to write plugins, one part at a time: from `1_h
 
 The archive holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`. `ecs.lua` also describes manifests, presets and settings files: write `---@type ecs.Manifest` or `---@type ecs.Preset` above the file's `return` to get completion and checks, as the examples do.
 
-Plugins offer functions to each other. In Lua, `local draw = require("draw")` gives the functions of the plugin `draw`, if your manifest depends on it. For completion and checks of those functions, write their definition files and add the folder to `workspace.library` too; a C plugin includes the header of the same name:
--- todo make it automatic !!!
+Plugins offer functions to each other. In Lua, `local draw = require("draw")` gives the functions of the plugin `draw`, if your manifest depends on it. The archive's `include/` also holds the definition files of the standard plugins, so with that folder in `workspace.library` your editor completes and checks their functions with no more setup; a C plugin includes the header of the same name, such as `draw.h`. For the functions of other plugins, `--definitions` writes the same files for every plugin it finds, or for a preset's plugins with `--preset`; add their folder to `workspace.library` too:
 
 ``` shell
-./OpenECS --preset paint --definitions definitions/
+./OpenECS --definitions definitions/
 ```
 
 ## Development
@@ -115,10 +142,6 @@ git submodule update --init --recursive
 ```
 
 ### Dependent Packages
-
-#### Windows
-
-todo winget, llvm or mingw, autoreconf etc.
 
 #### Linux
 
@@ -187,6 +210,8 @@ Dependencies are built the first time only. To build one again, delete its libra
 
 Shuild compiles again only the files that changed. After changing compiler flags in `shuild.c`, delete `.shu/` (or run `sudo git clean -Xfd` to delete all ignored files) to compile everything again.
 
+The build also writes the definition files of the plugins it built into `build/<TYPE>/definitions/`, and a `.luarc.json` in this folder, `std/` and `examples/` that names them with `include/`. So an editor with LuaLS, such as VS Code with the Lua extension, completes and checks the `ecs` module and `require("ui")` in every Lua file of the three repositories.
+
 Debug builds run the static analyzer while compiling, and the sanitizers while the program runs. A sanitizer prints its report to standard error, and the program exits with an error.
 
 ### Testing
@@ -208,6 +233,7 @@ GitHub checks every pull request (DESIGN.md section 19.3). These commands run th
 .github/scripts/build.sh D
 .github/scripts/test.sh build/Debug/bin/OpenECS
 .github/scripts/build.sh R
+.github/scripts/definitions.sh build/Debug/bin/OpenECS
 ```
 
 ## License

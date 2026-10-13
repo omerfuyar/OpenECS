@@ -18,7 +18,7 @@
 #define OPENECS_WORKSPACE_FUNCTION "ecs.workspace.switch"
 
 /// @brief Choices of the setting ecs.focus; its value comes from the core's settings file.
-static const char *const OPENECS_FOCUS_CHOICES[] = {"click", "hover", NULL};
+static const char *const OPENECS_FOCUS_CHOICES[] = {"click", "hover", nullptr};
 
 /// @brief Headings of the sections of the list of prefix keys, in the order ECSIInput_SectionOf numbers them.
 static const char *const OPENECS_PREFIX_SECTIONS[] = {"Navigation", "Panel", "More"};
@@ -36,17 +36,17 @@ static const struct
 static struct
 {
     bool prefixActive;
-    const char **prefixLines; // stb_ds array of the lines shown after the prefix: key text, description, and so on; a NULL key text makes a heading
+    const char **prefixLines; // stb_ds array of the lines shown after the prefix: key text, description, and so on; a nullptr key text makes a heading
     char **prefixTexts;       // stb_ds array of the key texts made for the lines, such as "1...0"
     ECSPanel pointerPanel;    // panel that got the press; it gets pointer events until the release
     ECSPopup pointerPopup;    // popup that got the press; it gets pointer events until the release
     f32 pointerX;             // the pointer's last position in the OS window, in layout units
     f32 pointerY;
     void *clipboard;          // what a clipboard getter returned last, freed by the next call
-    char *dragType;           // type of the data a panel drags, or NULL
+    char *dragType;           // type of the data a panel drags, or nullptr
     ECSValue *dragValue;      // the dragged data
     char **droppedFiles;      // stb_ds array of the files another application drops, until the drop completes
-    char *droppedText;        // the text another application drops, until the drop completes, or NULL
+    char *droppedText;        // the text another application drops, until the drop completes, or nullptr
     bool swallowText;         // the last key press ran a binding or the core's keys, so the text it types is dropped
     bool textOn;              // text input is on, for the panel below
     ECSPanel textPanel;
@@ -57,7 +57,7 @@ static struct
 /// @brief A file dialog waiting for its answer, with copies of everything SDL reads until it answers.
 typedef struct ECSIDialog
 {
-    ECSPlugin plugin; // NULL for the core
+    ECSPlugin plugin; // nullptr for the core
     ECSDialogDoneFunction Done;
     void *data;
     SDL_DialogFileFilter *filters; // stb_ds array
@@ -156,7 +156,7 @@ static bool ECSIInput_ConfirmQuit(void)
 /// @brief Moves the keyboard focus to a panel; the layout tells both panels.
 static void ECSIInput_Focus(ECSPanel panel)
 {
-    if (panel != NULL)
+    if (panel != nullptr)
     {
         ECSILayout_SetFocus(panel);
     }
@@ -165,9 +165,9 @@ static void ECSIInput_Focus(ECSPanel panel)
 /// @brief Gets the panel that got the pointer press, unless code closed it since.
 static ECSPanel ECSIInput_PointerPanel(void)
 {
-    if (INPUT.pointerPanel != NULL && !ECSILayout_HasPanel(INPUT.pointerPanel))
+    if (INPUT.pointerPanel != nullptr && !ECSILayout_HasPanel(INPUT.pointerPanel))
     {
-        INPUT.pointerPanel = NULL;
+        INPUT.pointerPanel = nullptr;
     }
 
     return INPUT.pointerPanel;
@@ -185,7 +185,7 @@ static ECSPopup ECSIInput_PointerPopup(void)
         open = open || popups[i] == INPUT.pointerPopup;
     }
 
-    INPUT.pointerPopup = open ? INPUT.pointerPopup : NULL;
+    INPUT.pointerPopup = open ? INPUT.pointerPopup : nullptr;
     return INPUT.pointerPopup;
 }
 
@@ -214,9 +214,9 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
     {
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
     {
-        ECSPopup popup = count == 0 ? NULL : ECSIWindow_PopupAt(event->button.x, event->button.y, &x, &y);
+        ECSPopup popup = count == 0 ? nullptr : ECSIWindow_PopupAt(event->button.x, event->button.y, &x, &y);
 
-        if (popup != NULL)
+        if (popup != nullptr)
         {
             INPUT.pointerPopup = popup;
             ECSIInput_SendPopupPointer(popup, ECSPanelEventType_PointerDown, x, y, event->button.button);
@@ -233,40 +233,40 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
     {
         // the popup that got the press gets the moves, also outside it
         ECSPopup pressed = ECSIInput_PointerPopup();
-        ECSPopup popup = count == 0 ? NULL : ECSIWindow_PopupAt(event->motion.x, event->motion.y, &x, &y);
+        ECSPopup popup = count == 0 ? nullptr : ECSIWindow_PopupAt(event->motion.x, event->motion.y, &x, &y);
 
-        if (pressed != NULL)
+        if (pressed != nullptr)
         {
             ECSIWindow_ToPopup(pressed, event->motion.x, event->motion.y, &x, &y);
             ECSIInput_SendPopupPointer(pressed, ECSPanelEventType_PointerMove, x, y, 0);
             return true;
         }
 
-        if (popup != NULL)
+        if (popup != nullptr)
         {
             ECSIInput_SendPopupPointer(popup, ECSPanelEventType_PointerMove, x, y, 0);
         }
 
-        return popup != NULL;
+        return popup != nullptr;
     }
 
     case SDL_EVENT_MOUSE_BUTTON_UP:
     {
         ECSPopup pressed = ECSIInput_PointerPopup();
-        INPUT.pointerPopup = NULL;
+        INPUT.pointerPopup = nullptr;
 
-        if (pressed != NULL)
+        if (pressed != nullptr)
         {
             ECSIWindow_ToPopup(pressed, event->button.x, event->button.y, &x, &y);
             ECSIInput_SendPopupPointer(pressed, ECSPanelEventType_PointerUp, x, y, event->button.button);
         }
 
-        return pressed != NULL;
+        return pressed != nullptr;
     }
 
     case SDL_EVENT_MOUSE_WHEEL:
     {
-        ECSPopup popup = count == 0 ? NULL : ECSIWindow_PopupAt(event->wheel.mouse_x, event->wheel.mouse_y, &x, &y);
+        ECSPopup popup = count == 0 ? nullptr : ECSIWindow_PopupAt(event->wheel.mouse_x, event->wheel.mouse_y, &x, &y);
         f32 direction = event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
         ECSPanelEvent wheel = {
             .type = ECSPanelEventType_Wheel,
@@ -274,12 +274,12 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
             .wheel = {.x = x, .y = y, .amountX = event->wheel.x * direction, .amountY = event->wheel.y * direction},
         };
 
-        if (popup != NULL)
+        if (popup != nullptr)
         {
             ECSIPopup_PostEvent(popup, &wheel);
         }
 
-        return popup != NULL;
+        return popup != nullptr;
     }
 
     // while a menu is open, key presses go to the newest menu; Escape closes it
@@ -293,18 +293,18 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
             .key = {.code = event->key.key},
         };
 
-        if (menu != NULL && event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_ESCAPE)
+        if (menu != nullptr && event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_ESCAPE)
         {
             ECSPopup_Close(menu);
         }
-        else if (menu != NULL)
+        else if (menu != nullptr)
         {
             ECSIPopup_PostEvent(menu, &key);
         }
 
         // a key that goes to a menu types no text
-        INPUT.swallowText = INPUT.swallowText || menu != NULL;
-        return menu != NULL;
+        INPUT.swallowText = INPUT.swallowText || menu != nullptr;
+        return menu != nullptr;
     }
 
     default:
@@ -317,8 +317,8 @@ static void ECSIInput_EndDataDrag(void)
 {
     SDL_free(INPUT.dragType);
     ECSValue_Destroy(&INPUT.dragValue);
-    INPUT.dragType = NULL;
-    ECSIWindow_ShowDataDrag(NULL, 0.0f, 0.0f);
+    INPUT.dragType = nullptr;
+    ECSIWindow_ShowDataDrag(nullptr, 0.0f, 0.0f);
 }
 
 /// @brief Drops data on the panel at a position of the event window, or of another OS window under it, if the panel accepts its type.
@@ -326,7 +326,7 @@ static void ECSIInput_Drop(f32 x, f32 y, const char *type, const ECSValue *value
 {
     ECSPanel panel = ECSIWindow_PanelAt(x, y, &x, &y);
 
-    if (panel != NULL && ECSIPanel_Accepts(panel, type))
+    if (panel != nullptr && ECSIPanel_Accepts(panel, type))
     {
         ECSIPanel_PostDrop(panel, x - panel->x, y - panel->y, type, value, ECSIInput_Modifiers(SDL_GetModState()));
     }
@@ -346,13 +346,13 @@ static void ECSIInput_ForgetDropped(void)
 
     arrfree(INPUT.droppedFiles);
     SDL_free(INPUT.droppedText);
-    INPUT.droppedText = NULL;
+    INPUT.droppedText = nullptr;
 }
 
 /// @brief Delivers what another application dropped: its files as a file-list, and its text as text.
 static void ECSIInput_CompleteDrop(f32 x, f32 y)
 {
-    ECSValue *value = NULL;
+    ECSValue *value = nullptr;
 
     if (arrlenu(INPUT.droppedFiles) > 0 && ECSValue_Create(&value) == SHUResult_Ok)
     {
@@ -361,7 +361,7 @@ static void ECSIInput_CompleteDrop(f32 x, f32 y)
 
         for (usz i = 0; !result && i < arrlenu(INPUT.droppedFiles); i++)
         {
-            ECSValue *item = NULL;
+            ECSValue *item = nullptr;
             result = ECSValue_ListAddItem(value, &item);
             result = result ? result : ECSValue_SetString(item, INPUT.droppedFiles[i]);
         }
@@ -374,7 +374,7 @@ static void ECSIInput_CompleteDrop(f32 x, f32 y)
         ECSValue_Destroy(&value);
     }
 
-    if (INPUT.droppedText != NULL && ECSValue_Create(&value) == SHUResult_Ok)
+    if (INPUT.droppedText != nullptr && ECSValue_Create(&value) == SHUResult_Ok)
     {
         if (ECSValue_SetString(value, INPUT.droppedText) == SHUResult_Ok)
         {
@@ -423,7 +423,7 @@ static i64 ECSIInput_FindPrefixKey(const char *function, u32 key, u32 modifiers,
 }
 
 /// @brief Folds a prefix key into one line with its family, when the family's four functions run on the four arrows with the same modifiers.
-/// @return The line's key text, such as "Shift+Arrows", made for the list; or NULL if the key does not fold.
+/// @return The line's key text, such as "Shift+Arrows", made for the list; or nullptr if the key does not fold.
 static char *ECSIInput_FoldArrows(usz index, bool *listed, const char **retDescription)
 {
     const ECSIKeyBinding *binding = &ECSIKeys_GetPrefixKeys()[index];
@@ -447,12 +447,12 @@ static char *ECSIInput_FoldArrows(usz index, bool *listed, const char **retDescr
 
         // the modifiers keep the user's spelling: the text before the key's name
         const char *plus = SDL_strrchr(binding->text, '+');
-        int modifiersLength = plus == NULL ? 0 : (int)(plus - binding->text + 1);
-        char *text = NULL;
+        int modifiersLength = plus == nullptr ? 0 : (int)(plus - binding->text + 1);
+        char *text = nullptr;
 
         if (SDL_asprintf(&text, "%.*sArrows", modifiersLength, binding->text) < 0)
         {
-            return NULL;
+            return nullptr;
         }
 
         for (usz i = 0; i < 4; i++)
@@ -464,15 +464,15 @@ static char *ECSIInput_FoldArrows(usz index, bool *listed, const char **retDescr
         return text;
     }
 
-    return NULL;
+    return nullptr;
 }
 
 /// @brief Folds every key that switches workspaces into one line, from the first workspace's key to the last one's, such as "1...0".
 /// @return The line's key text, made for the list.
 static char *ECSIInput_FoldWorkspaces(bool *listed)
 {
-    const char *firstKey = NULL;
-    const char *lastKey = NULL;
+    const char *firstKey = nullptr;
+    const char *lastKey = nullptr;
     i64 first = 0;
     i64 last = 0;
 
@@ -487,30 +487,30 @@ static char *ECSIInput_FoldWorkspaces(bool *listed)
             continue;
         }
 
-        i64 number = SDL_strtoll(function + SDL_strlen(OPENECS_WORKSPACE_FUNCTION), NULL, 10);
+        i64 number = SDL_strtoll(function + SDL_strlen(OPENECS_WORKSPACE_FUNCTION), nullptr, 10);
         listed[i] = true;
 
-        if (firstKey == NULL || number < first)
+        if (firstKey == nullptr || number < first)
         {
             firstKey = keys[i].text;
             first = number;
         }
 
-        if (lastKey == NULL || number > last)
+        if (lastKey == nullptr || number > last)
         {
             lastKey = keys[i].text;
             last = number;
         }
     }
 
-    char *text = NULL;
+    char *text = nullptr;
 
     if (first == last)
     {
         return SDL_strdup(firstKey);
     }
 
-    return SDL_asprintf(&text, "%s...%s", firstKey, lastKey) < 0 ? NULL : text;
+    return SDL_asprintf(&text, "%s...%s", firstKey, lastKey) < 0 ? nullptr : text;
 }
 
 /// @brief Orders two keys after the prefix by the order of their functions among the core's, then by their key texts. userData is the keys.
@@ -541,12 +541,12 @@ static void ECSIInput_SetPrefix(bool active)
     {
         const ECSIKeyBinding *keys = ECSIKeys_GetPrefixKeys();
         ECSPanel focus = ECSILayout_GetFocus();
-        bool *listed = NULL;
+        bool *listed = nullptr;
         arrsetlen(listed, arrlenu(keys));
         SDL_memset(listed, 0, arrlenu(listed) * sizeof(bool));
 
         // the keys are listed in the order of the core's functions, whatever order the settings files give them in
-        usz *order = NULL;
+        usz *order = nullptr;
         arrsetlen(order, arrlenu(keys));
 
         for (usz i = 0; i < arrlenu(order); i++)
@@ -560,7 +560,7 @@ static void ECSIInput_SetPrefix(bool active)
         {
             // a section without keys has no heading
             usz start = arrlenu(INPUT.prefixLines);
-            arrput(INPUT.prefixLines, NULL);
+            arrput(INPUT.prefixLines, nullptr);
             arrput(INPUT.prefixLines, OPENECS_PREFIX_SECTIONS[section]);
 
             for (usz position = 0; position < arrlenu(order); position++)
@@ -573,17 +573,17 @@ static void ECSIInput_SetPrefix(bool active)
                     continue;
                 }
 
-                const char *description = NULL;
+                const char *description = nullptr;
                 bool workspace = SDL_strncmp(function, OPENECS_WORKSPACE_FUNCTION, SDL_strlen(OPENECS_WORKSPACE_FUNCTION)) == 0;
                 char *text = workspace ? ECSIInput_FoldWorkspaces(listed) : ECSIInput_FoldArrows(i, listed, &description);
 
-                if (text != NULL)
+                if (text != nullptr)
                 {
                     arrput(INPUT.prefixTexts, text);
                 }
 
-                arrput(INPUT.prefixLines, text != NULL ? text : keys[i].text);
-                arrput(INPUT.prefixLines, workspace ? "Switch to workspace" : description != NULL ? description
+                arrput(INPUT.prefixLines, text != nullptr ? text : keys[i].text);
+                arrput(INPUT.prefixLines, workspace ? "Switch to workspace" : description != nullptr ? description
                                                                                                   : ECSIMenus_LabelOf(function, focus));
             }
 
@@ -632,7 +632,7 @@ static const void *ECSIInput_ClipboardProvide(void *userData, const char *mimeTy
     if (SDL_strcmp(mimeType, data->mimeType) != 0)
     {
         *retSize = 0;
-        return NULL;
+        return nullptr;
     }
 
     *retSize = data->size;
@@ -650,7 +650,7 @@ static void ECSIInput_ClipboardRelease(void *userData)
 static void ECSIInput_ForgetClipboard(void)
 {
     SDL_free(INPUT.clipboard);
-    INPUT.clipboard = NULL;
+    INPUT.clipboard = nullptr;
 }
 
 static void ECSIInput_FreeDialog(ECSIDialog *dialog)
@@ -674,14 +674,14 @@ static void ECSIInput_FreeDialog(ECSIDialog *dialog)
 /// @brief Copies a text that a dialog keeps until it answers.
 static const char *ECSIInput_DialogText(ECSIDialog *dialog, const char *text)
 {
-    char *copy = text == NULL ? NULL : SDL_strdup(text);
+    char *copy = text == nullptr ? nullptr : SDL_strdup(text);
 
-    if (copy != NULL)
+    if (copy != nullptr)
     {
         arrput(dialog->texts, copy);
     }
 
-    dialog->failed = dialog->failed || (text != NULL && copy == NULL);
+    dialog->failed = dialog->failed || (text != nullptr && copy == nullptr);
     return copy;
 }
 
@@ -690,7 +690,7 @@ static void ECSIInput_DialogFinish(void *data)
 {
     ECSIDialog *dialog = data;
     usz count = arrlenu(dialog->files);
-    dialog->Done(dialog->data, count == 0 ? NULL : (const char *const *)dialog->files, count);
+    dialog->Done(dialog->data, count == 0 ? nullptr : (const char *const *)dialog->files, count);
     ECSIInput_FreeDialog(dialog);
 }
 
@@ -700,17 +700,17 @@ static void SDLCALL ECSIInput_DialogAnswer(void *userData, const char *const *fi
     (void)filter;
     ECSIDialog *dialog = userData;
 
-    if (files == NULL)
+    if (files == nullptr)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A file dialog of %s%s failed: %s", dialog->plugin == NULL ? "the core" : "plugin ", dialog->plugin == NULL ? "" : ECSIPlugin_GetName(dialog->plugin), SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A file dialog of %s%s failed: %s", dialog->plugin == nullptr ? "the core" : "plugin ", dialog->plugin == nullptr ? "" : ECSIPlugin_GetName(dialog->plugin), SDL_GetError());
     }
 
-    // a cancelled dialog gives an empty list, which reaches the plugin as NULL, like a failed one
-    for (usz i = 0; files != NULL && files[i] != NULL; i++)
+    // a cancelled dialog gives an empty list, which reaches the plugin as nullptr, like a failed one
+    for (usz i = 0; files != nullptr && files[i] != nullptr; i++)
     {
         char *copy = SDL_strdup(files[i]);
 
-        if (copy != NULL)
+        if (copy != nullptr)
         {
             arrput(dialog->files, copy);
         }
@@ -754,12 +754,12 @@ void ECSIInput_Terminate(void)
 
 bool ECSIInput_Handle(const SDL_Event *event)
 {
-    SDL_assert(event != NULL);
+    SDL_assert(event != nullptr);
 
     // pointer positions are in the layout units of the event's OS window
     SDL_Window *window = SDL_GetWindowFromEvent(event);
 
-    if (window != NULL)
+    if (window != nullptr)
     {
         ECSIWindow_SetEventWindow(SDL_GetWindowID(window));
     }
@@ -779,7 +779,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
         if (!main)
         {
-            ECSPanel *panels = root == NULL ? NULL : ECSILayout_GetRootPanels(root);
+            ECSPanel *panels = root == nullptr ? nullptr : ECSILayout_GetRootPanels(root);
 
             if (ECSIPanels_ConfirmClose(panels, arrlenu(panels), false))
             {
@@ -800,12 +800,16 @@ bool ECSIInput_Handle(const SDL_Event *event)
     case SDL_EVENT_QUIT:
         return !ECSIInput_ConfirmQuit();
 
+    case SDL_EVENT_SYSTEM_THEME_CHANGED:
+        ECSISettings_ApplyTheme();
+        break;
+
     // the panel focused last in an OS window gets the focus when the window gets the system's
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
     {
-        ECSIRoot *root = ECSIWindow_GetRoot(event->window.windowID, NULL);
+        ECSIRoot *root = ECSIWindow_GetRoot(event->window.windowID, nullptr);
 
-        if (root != NULL)
+        if (root != nullptr)
         {
             ECSILayout_FocusRoot(root);
         }
@@ -833,16 +837,16 @@ bool ECSIInput_Handle(const SDL_Event *event)
         }
 
         // on a tab or grip, the middle button closes the panel and the right button opens its menu; on the rest of a tab row, the right button opens the group's menu
-        ECSPanel tab = button->button == SDL_BUTTON_LEFT ? NULL : ECSIWindow_TabAt(button->x, button->y);
-        ECSPanel row = tab == NULL && button->button == SDL_BUTTON_RIGHT ? ECSIWindow_TabRowAt(button->x, button->y) : NULL;
+        ECSPanel tab = button->button == SDL_BUTTON_LEFT ? nullptr : ECSIWindow_TabAt(button->x, button->y);
+        ECSPanel row = tab == nullptr && button->button == SDL_BUTTON_RIGHT ? ECSIWindow_TabRowAt(button->x, button->y) : nullptr;
 
-        if (row != NULL)
+        if (row != nullptr)
         {
             ECSIMenus_Open(row, button->x, button->y, true);
             break;
         }
 
-        if (tab != NULL)
+        if (tab != nullptr)
         {
             if (button->button == SDL_BUTTON_RIGHT)
             {
@@ -865,7 +869,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
         f32 y = 0.0f;
         ECSPanel panel = ECSIWindow_PanelAt(button->x, button->y, &x, &y);
 
-        if (panel != NULL)
+        if (panel != nullptr)
         {
             ECSIInput_Focus(panel);
             INPUT.pointerPanel = panel;
@@ -883,7 +887,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
         INPUT.pointerY = motion->y;
 
         // while a panel drags data, the core marks where it can land and the panel gets no moves
-        if (INPUT.dragType != NULL)
+        if (INPUT.dragType != nullptr)
         {
             ECSIWindow_ShowDataDrag(INPUT.dragType, motion->x, motion->y);
             break;
@@ -897,15 +901,15 @@ bool ECSIInput_Handle(const SDL_Event *event)
         // the panel that got the press gets the moves in the OS window of the press, even outside it
         f32 x = motion->x;
         f32 y = motion->y;
-        ECSPanel panel = ECSIInput_PointerPanel() != NULL ? INPUT.pointerPanel : ECSIWindow_PanelAt(motion->x, motion->y, &x, &y);
+        ECSPanel panel = ECSIInput_PointerPanel() != nullptr ? INPUT.pointerPanel : ECSIWindow_PanelAt(motion->x, motion->y, &x, &y);
 
-        if (panel == NULL)
+        if (panel == nullptr)
         {
             break;
         }
 
         // in hover mode, only real pointer movement over a panel moves focus; dividers and tab rows are outside every panel
-        if (INPUT.pointerPanel == NULL && SDL_strcmp(ECSValue_GetString(ECSSetting_Get("ecs.focus"), ""), "hover") == 0)
+        if (INPUT.pointerPanel == nullptr && SDL_strcmp(ECSValue_GetString(ECSSetting_Get("ecs.focus"), ""), "hover") == 0)
         {
             ECSIInput_Focus(panel);
         }
@@ -920,24 +924,24 @@ bool ECSIInput_Handle(const SDL_Event *event)
         const SDL_MouseButtonEvent *button = &event->button;
 
         // dragged data lands on the panel under the pointer; the panel it came from still gets its release
-        if (INPUT.dragType != NULL)
+        if (INPUT.dragType != nullptr)
         {
             ECSIInput_Drop(button->x, button->y, INPUT.dragType, INPUT.dragValue);
             ECSIInput_EndDataDrag();
         }
 
         // a click on a grip opens the panel's menu
-        ECSPanel clicked = button->button == SDL_BUTTON_LEFT ? ECSIWindow_PointerUp() : NULL;
+        ECSPanel clicked = button->button == SDL_BUTTON_LEFT ? ECSIWindow_PointerUp() : nullptr;
 
-        if (clicked != NULL)
+        if (clicked != nullptr)
         {
             ECSIMenus_Open(clicked, button->x, button->y, false);
         }
 
-        if (ECSIInput_PointerPanel() != NULL)
+        if (ECSIInput_PointerPanel() != nullptr)
         {
             ECSIInput_SendPointer(INPUT.pointerPanel, ECSPanelEventType_PointerUp, button->x, button->y, button->button);
-            INPUT.pointerPanel = NULL;
+            INPUT.pointerPanel = nullptr;
         }
 
         break;
@@ -959,7 +963,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
         f32 y = 0.0f;
         ECSPanel panel = ECSIWindow_PanelAt(wheel->mouse_x, wheel->mouse_y, &x, &y);
 
-        if (panel != NULL)
+        if (panel != nullptr)
         {
             ECSIInput_SendWheel(panel, wheel, x, y);
         }
@@ -986,7 +990,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
             break;
         }
 
-        if (key->key == SDLK_ESCAPE && INPUT.dragType != NULL)
+        if (key->key == SDLK_ESCAPE && INPUT.dragType != nullptr)
         {
             ECSIInput_EndDataDrag();
             break;
@@ -1008,14 +1012,14 @@ bool ECSIInput_Handle(const SDL_Event *event)
         ECSPanel focus = ECSILayout_GetFocus();
         bool modifierKey = (key->key >= SDLK_LCTRL && key->key <= SDLK_RGUI) || key->key == SDLK_MODE;
         u32 modifiers = ECSIInput_Modifiers(key->mod);
-        bool typing = focus != NULL && focus->textInput && (modifiers & (ECSModifier_Ctrl | ECSModifier_Alt | ECSModifier_Super)) == 0;
-        const char *function = modifierKey || typing || (modifiers & ECSModifier_AltGr) != 0 ? NULL : ECSIKeys_Find(key->key, modifiers, focus);
+        bool typing = focus != nullptr && focus->textInput && (modifiers & (ECSModifier_Ctrl | ECSModifier_Alt | ECSModifier_Super)) == 0;
+        const char *function = modifierKey || typing || (modifiers & ECSModifier_AltGr) != 0 ? nullptr : ECSIKeys_Find(key->key, modifiers, focus);
 
-        if (function != NULL)
+        if (function != nullptr)
         {
             ECSIServices_CallBound(function, focus);
         }
-        else if (focus != NULL)
+        else if (focus != nullptr)
         {
             INPUT.swallowText = false;
             ECSIInput_SendKey(focus, ECSPanelEventType_KeyDown, key);
@@ -1028,7 +1032,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
     {
         ECSPanel focus = ECSILayout_GetFocus();
 
-        if (!INPUT.swallowText && focus != NULL && focus->textInput && event->text.text != NULL)
+        if (!INPUT.swallowText && focus != nullptr && focus->textInput && event->text.text != nullptr)
         {
             ECSIPanel_PostText(focus, event->text.text, ECSIInput_Modifiers(SDL_GetModState()));
         }
@@ -1044,9 +1048,9 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
     case SDL_EVENT_DROP_FILE:
     {
-        char *file = event->drop.data == NULL ? NULL : SDL_strdup(event->drop.data);
+        char *file = event->drop.data == nullptr ? nullptr : SDL_strdup(event->drop.data);
 
-        if (file != NULL)
+        if (file != nullptr)
         {
             arrput(INPUT.droppedFiles, file);
         }
@@ -1056,7 +1060,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
     case SDL_EVENT_DROP_TEXT:
         SDL_free(INPUT.droppedText);
-        INPUT.droppedText = event->drop.data == NULL ? NULL : SDL_strdup(event->drop.data);
+        INPUT.droppedText = event->drop.data == nullptr ? nullptr : SDL_strdup(event->drop.data);
         break;
 
     case SDL_EVENT_DROP_COMPLETE:
@@ -1067,7 +1071,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
     {
         ECSPanel focus = ECSILayout_GetFocus();
 
-        if (focus != NULL && !INPUT.prefixActive)
+        if (focus != nullptr && !INPUT.prefixActive)
         {
             ECSIInput_SendKey(focus, ECSPanelEventType_KeyUp, &event->key);
         }
@@ -1086,10 +1090,10 @@ void ECSIInput_UpdateTextInput(void)
 {
     ECSPanel focus = ECSILayout_GetFocus();
     SDL_Window *window = ECSIWindow_OfPanel(focus);
-    bool on = focus != NULL && focus->textInput && focus->fault == NULL;
+    bool on = focus != nullptr && focus->textInput && focus->fault == nullptr;
     SDL_Rect area = {0};
 
-    if (window == NULL)
+    if (window == nullptr)
     {
         return;
     }
@@ -1128,14 +1132,14 @@ void ECSIInput_UpdateTextInput(void)
 
     INPUT.textOn = on;
     INPUT.textWindow = window;
-    INPUT.textPanel = on ? focus : NULL;
+    INPUT.textPanel = on ? focus : nullptr;
     INPUT.textArea = area;
 }
 
 SHUResult ECSPanel_StartDrag(ECSPanel panel, const char *type, const ECSValue *value)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(type != NULL);
+    SDL_assert(panel != nullptr);
+    SDL_assert(type != nullptr);
 
     if (ECSIInput_PointerPanel() != panel)
     {
@@ -1145,8 +1149,8 @@ SHUResult ECSPanel_StartDrag(ECSPanel panel, const char *type, const ECSValue *v
     // a new drag replaces one the panel started before in the same press
     ECSIInput_EndDataDrag();
     INPUT.dragType = SDL_strdup(type);
-    SHUResult result = INPUT.dragType == NULL ? SHUResult_ErrAllocation : ECSValue_Create(&INPUT.dragValue);
-    result = result || value == NULL ? result : ECSIValue_Copy(INPUT.dragValue, value);
+    SHUResult result = INPUT.dragType == nullptr ? SHUResult_ErrAllocation : ECSValue_Create(&INPUT.dragValue);
+    result = result || value == nullptr ? result : ECSIValue_Copy(INPUT.dragValue, value);
 
     if (result)
     {
@@ -1162,7 +1166,7 @@ SHUResult ECSPanel_StartDrag(ECSPanel panel, const char *type, const ECSValue *v
 
 SHUResult ECSClipboard_SetText(const char *text)
 {
-    SDL_assert(text != NULL);
+    SDL_assert(text != nullptr);
 
     ECSIInput_ForgetClipboard();
 
@@ -1179,19 +1183,19 @@ const char *ECSClipboard_GetText(void)
 {
     ECSIInput_ForgetClipboard();
     INPUT.clipboard = SDL_GetClipboardText();
-    return INPUT.clipboard == NULL ? "" : INPUT.clipboard;
+    return INPUT.clipboard == nullptr ? "" : INPUT.clipboard;
 }
 
 SHUResult ECSClipboard_SetData(const char *mimeType, SHUSliceView data)
 {
-    SDL_assert(mimeType != NULL);
-    SDL_assert(data.data != NULL || data.size == 0);
+    SDL_assert(mimeType != nullptr);
+    SDL_assert(data.data != nullptr || data.size == 0);
 
     ECSIInput_ForgetClipboard();
     ECSIClipboardData *copy = SDL_malloc(sizeof(ECSIClipboardData) + data.size);
     char *type = SDL_strdup(mimeType);
 
-    if (copy == NULL || type == NULL)
+    if (copy == nullptr || type == nullptr)
     {
         SDL_free(copy);
         SDL_free(type);
@@ -1217,14 +1221,14 @@ SHUResult ECSClipboard_SetData(const char *mimeType, SHUSliceView data)
 
 SHUResult ECSClipboard_GetData(const char *mimeType, SHUSlice *retData)
 {
-    SDL_assert(mimeType != NULL);
-    SDL_assert(retData != NULL);
+    SDL_assert(mimeType != nullptr);
+    SDL_assert(retData != nullptr);
 
     ECSIInput_ForgetClipboard();
     usz size = 0;
-    INPUT.clipboard = SDL_HasClipboardData(mimeType) ? SDL_GetClipboardData(mimeType, &size) : NULL;
-    *retData = cs(INPUT.clipboard, INPUT.clipboard == NULL ? 0 : size);
-    return INPUT.clipboard == NULL ? SHUResult_ErrNotFound : SHUResult_Ok;
+    INPUT.clipboard = SDL_HasClipboardData(mimeType) ? SDL_GetClipboardData(mimeType, &size) : nullptr;
+    *retData = cs(INPUT.clipboard, INPUT.clipboard == nullptr ? 0 : size);
+    return INPUT.clipboard == nullptr ? SHUResult_ErrNotFound : SHUResult_Ok;
 }
 
 #pragma endregion Clipboard
@@ -1233,18 +1237,18 @@ SHUResult ECSClipboard_GetData(const char *mimeType, SHUSlice *retData)
 
 SHUResult ECSDialog_Show(ECSPlugin plugin, const ECSDialogDesc *desc)
 {
-    SDL_assert(plugin != NULL);
+    SDL_assert(plugin != nullptr);
     return ECSIInput_ShowDialog(plugin, desc);
 }
 
 SHUResult ECSIInput_ShowDialog(ECSPlugin plugin, const ECSDialogDesc *desc)
 {
-    SDL_assert(desc != NULL && desc->Done != NULL);
-    SDL_assert(desc->filters != NULL || desc->filterCount == 0);
+    SDL_assert(desc != nullptr && desc->Done != nullptr);
+    SDL_assert(desc->filters != nullptr || desc->filterCount == 0);
 
     ECSIDialog *dialog = SDL_calloc(1, sizeof(ECSIDialog));
 
-    if (dialog == NULL)
+    if (dialog == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -1288,12 +1292,12 @@ SHUResult ECSIInput_ShowDialog(ECSPlugin plugin, const ECSDialogDesc *desc)
 
 SHUResult ECSDialog_ShowMessage(const char *title, const char *message, const char *const *buttons, usz buttonCount, usz *retButton)
 {
-    SDL_assert(title != NULL && message != NULL && retButton != NULL);
-    SDL_assert(buttons != NULL && buttonCount > 0);
+    SDL_assert(title != nullptr && message != nullptr && retButton != nullptr);
+    SDL_assert(buttons != nullptr && buttonCount > 0);
 
     SDL_MessageBoxButtonData *data = SDL_calloc(buttonCount, sizeof(SDL_MessageBoxButtonData));
 
-    if (data == NULL)
+    if (data == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
