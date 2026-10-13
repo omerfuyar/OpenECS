@@ -1,9 +1,9 @@
 .vscode
 *.exe
 *.old
+ignore/
 ignore.*
 *.ignore
-shuild
 *.pdb
 build/
 *.o
@@ -12,3 +12,6 @@ build/
 *.out
 *.log
 dist/
+.luarc.json
+compile_flags.txt
+.clangd

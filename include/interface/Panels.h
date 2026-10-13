@@ -15,7 +15,7 @@ typedef struct ECSIPanelType
     char *name;
     char *title;
     ECSPlugin plugin;
-    void *typeData;     // what the Bindings module keeps for a Lua panel type, or NULL
+    void *typeData;     // what the Bindings module keeps for a Lua panel type, or nullptr
     char **menuEntries; // stb_ds array of the functions the type adds to its panels' menu
 } ECSIPanelType;
 
@@ -23,7 +23,7 @@ typedef struct ECSIPanelType
 struct ECSIPanel
 {
     u32 id;
-    ECSIPanelType *type; // NULL for a placeholder whose type is missing
+    ECSIPanelType *type; // nullptr for a placeholder whose type is missing
     char *typeName;
     char *title;
     void *state;
@@ -43,14 +43,16 @@ struct ECSIPanel
     bool visible;   // what the panel was last told: shown or hidden
     f32 toldWidth;  // the size the panel was last told
     f32 toldHeight;
-    char *fault;    // the error of a callback, or NULL; a faulted panel shows it and its type is not called again, except Destroy
+    char *fault;    // the error of a callback, or nullptr; a faulted panel shows it and its type is not called again, except Destroy
     char **accepts; // stb_ds array of the types of data the panel accepts when data is dropped on it
+    bool textInput;     // the panel accepts typed text
+    SDL_FRect textArea; // its text cursor, in surface pixels
 };
 
 /// @brief Registers a panel type like ECSPanelType_Register, with data for the Bindings module.
 /// @param plugin The plugin that provides the panel type.
 /// @param desc Description of the panel type.
-/// @param typeData Kept in the type, or NULL.
+/// @param typeData Kept in the type, or nullptr.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIPanel_TypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc, void *typeData);
 
@@ -72,7 +74,7 @@ bool ECSIPanel_CanRestart(ECSPanel panel);
 /// @brief Gets the functions that a panel's type adds to its menu.
 /// @param panel The panel.
 /// @param retCount Number of functions.
-/// @return The function names, or NULL for none. Valid while the type is registered.
+/// @return The function names, or nullptr for none. Valid while the type is registered.
 const char *const *ECSIPanel_GetMenuEntries(ECSPanel panel, usz *retCount);
 
 /// @brief Removes every panel type a plugin registered. Call it before panels of those types exist.
@@ -95,16 +97,20 @@ void ECSIPanels_Terminate(void);
 /// @brief Creates a panel. If its type is missing or fails to create the panel, the panel becomes a placeholder.
 /// @param retPanel The new panel.
 /// @param typeName Name of the panel's type.
-/// @param savedState Saved state to create the panel from, or NULL for a new panel. The panel keeps a copy.
+/// @param savedState Saved state to create the panel from, or nullptr for a new panel. The panel keeps a copy.
 /// @param stateVersion Version of the saved state.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIPanel_Create(ECSPanel *retPanel, const char *typeName, const ECSValue *savedState, u32 stateVersion);
 
-/// @brief Destroys a panel at once and sets the handle to NULL. Use ECSIPanel_Close for a panel that may still have queued events.
+/// @brief Destroys a panel at once and sets the handle to nullptr. Use ECSIPanel_Close for a panel that may still have queued events.
 /// @param panel Panel to destroy.
 void ECSIPanel_Destroy(ECSPanel *panel);
 
-/// @brief Closes a panel that left the layout, and sets the handle to NULL. Its timers stop and it gets no more events; ECSIPanels_DestroyClosed destroys it.
+/// @brief Frees the texture a panel is shown with; the panel makes a new one the next time it is shown. A renderer frees its textures with it, so an OS window that closes releases the textures of its panels first.
+/// @param panel The panel.
+void ECSIPanel_ReleaseTexture(ECSPanel panel);
+
+/// @brief Closes a panel that left the layout, and sets the handle to nullptr. Its timers stop and it gets no more events; ECSIPanels_DestroyClosed destroys it.
 /// @param panel Panel to close.
 void ECSIPanel_Close(ECSPanel *panel);
 
@@ -167,12 +173,18 @@ void ECSIPanel_PostEvent(ECSPanel panel, const ECSPanelEvent *event);
 /// @return true if the panel accepts it.
 bool ECSIPanel_Accepts(ECSPanel panel, const char *type);
 
+/// @brief Queues a Text event for a panel's type, with a copy of the text, which stays valid until the event is delivered.
+/// @param panel Panel that receives the event.
+/// @param text The text, UTF-8.
+/// @param modifiers ECSModifier bits held when it was typed.
+void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers);
+
 /// @brief Queues a Drop event for a panel's type, with copies of the data, which stay valid until the event is delivered.
 /// @param panel Panel that receives the event.
 /// @param x Horizontal position in the panel's surface pixels.
 /// @param y Vertical position in the panel's surface pixels.
 /// @param type The data's type.
-/// @param value The data, or NULL.
+/// @param value The data, or nullptr.
 /// @param modifiers ECSModifier bits held when the data was dropped.
 void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const ECSValue *value, u32 modifiers);
 

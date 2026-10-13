@@ -12,25 +12,66 @@ typedef enum ECSISettingsLayer
 {
     ECSISettingsLayer_Core = 0, // defaults of the core's settings
     ECSISettingsLayer_Plugin,   // defaults of plugins' settings
+    ECSISettingsLayer_Theme,    // the values of the theme that ecs.theme chooses
     ECSISettingsLayer_Preset,
-    ECSISettingsLayer_Window, // the file that the settings window writes
-    ECSISettingsLayer_User,   // the user's hand-edited file
+    ECSISettingsLayer_User, // the user's settings file, which ECSSetting_Set writes
     ECSISettingsLayer_Count,
 } ECSISettingsLayer;
 
 /// @brief Reads the settings layers: the core's settings file, the preset, and the user's files. Missing user files are fine.
 /// @param corePath Path of the core's settings file, which holds the value of every core setting.
-/// @param presetSettings The preset's settings table, or NULL.
+/// @param presetSettings The preset's settings table, or nullptr.
 /// @param presetPath Path of the preset, named where its settings are explained.
 /// @param appId The tool's app id, which chooses the tool's own part of the user's files.
-/// @param configFolder The user's configuration folder, ending with a separator, or NULL if there is none.
+/// @param configFolder The user's configuration folder, ending with a separator, or nullptr if there is none.
 /// @return SHUResult_Ok, SHUResult_ErrFile or SHUResult_ErrBadData if the core's settings file cannot be read, or SHUResult_ErrAllocation. A user file that cannot be read is reported and skipped.
 SHUWUR SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder);
+
+/// @brief Replaces the preset layer, such as with the settings of the session that replaces the preset. Call it before settings are declared.
+/// @param presetSettings The new layer's settings table, or nullptr for none.
+/// @param presetPath The file they come from.
+/// @return SHUResult_Ok or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSISettings_SetPreset(const ECSValue *presetSettings, const char *presetPath);
+
+/// @brief Builds the theme layer from the theme that ecs.theme chooses: "dark", "light", or with "system" the one the system prefers. Settings whose value in effect may have changed are told. Call it after SDL starts, when ecs.theme changes and when the system's theme changes.
+void ECSISettings_ApplyTheme(void);
+
+/// @brief Reads a bool setting from the highest layer that sets it with a bool, before it is declared.
+/// @return The value, or fallback if no layer sets it.
+bool ECSISettings_PeekBool(const char *name, bool fallback);
+
+/// @brief Reads a key combination written as text, such as "Ctrl+Shift+P". Key names are SDL's.
+/// @param text The text.
+/// @param report true to report a text that is not a key combination.
+/// @param retKey The SDL key code.
+/// @param retModifiers The ECSModifier bits.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the text is not a key combination, or SHUResult_ErrAllocation.
+SHUResult ECSISettings_ParseKey(const char *text, bool report, u32 *retKey, u32 *retModifiers);
+
+/// @brief Reads a colour written as "#RRGGBB" or "#RRGGBBAA".
+/// @param text The text.
+/// @param retColor The colour as ARGB.
+/// @return true if the text is a colour.
+bool ECSISettings_ParseColor(const char *text, u32 *retColor);
+
+/// @brief Room for a colour written as "#RRGGBBAA", with the end of the text.
+#define OPENECS_COLOR_TEXT_SIZE 10
+
+/// @brief Writes a colour as "#RRGGBBAA".
+/// @param color The colour, ARGB.
+/// @param text Gets the text.
+void ECSIColor_Format(ECSColor color, char text[OPENECS_COLOR_TEXT_SIZE]);
+
+/// @brief Turns a colour into the premultiplied form that surfaces hold, and back.
+/// @param color The colour, ARGB.
+/// @return The colour with its red, green and blue multiplied by its alpha, or divided by it.
+ECSColor ECSIColor_Premultiply(ECSColor color);
+ECSColor ECSIColor_Unpremultiply(ECSColor color);
 
 /// @brief Frees every declaration and layer.
 void ECSISettings_Terminate(void);
 
-/// @brief Declares a setting of the core. Its name starts with "ecs.", and its default is its value in the core's settings file; the description's default fields are not used.
+/// @brief Declares a setting of the core. Its name starts with "ecs.", and its default is its value in the core's settings file, or else in the file's dark theme; the description's default fields are not used.
 /// @param desc Description of the setting.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, the name is taken, or the core's settings file gives no value of the setting's type, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISettings_DeclareCore(const ECSSettingDesc *desc);
@@ -38,23 +79,23 @@ SHUWUR SHUResult ECSISettings_DeclareCore(const ECSSettingDesc *desc);
 /// @brief Declares a plugin's setting, like ECSSetting_Declare, with its default given as a value. The Bindings module uses it for Lua.
 /// @param plugin The plugin that owns the setting.
 /// @param desc Description of the setting; its default fields are ignored if defaultValue is given, except the choices.
-/// @param defaultValue The default, or NULL to take it from the description.
+/// @param defaultValue The default, or nullptr to take it from the description.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description or the default is invalid or the name is taken, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISettings_DeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *desc, const ECSValue *defaultValue);
 
 /// @brief Gets a declared setting's default: for a core setting, its value in the core's settings file.
 /// @param name Name of the setting.
-/// @return The default, or NULL if no setting has the name. Valid while the setting is declared.
+/// @return The default, or nullptr if no setting has the name. Valid while the setting is declared.
 const ECSValue *ECSISettings_GetDefault(const char *name);
 
-/// @brief Gets the key bindings of a user file: its keys table for every tool, with the tool's own keys, which win.
-/// @param layer ECSISettingsLayer_Window or ECSISettingsLayer_User.
-/// @return A table of key texts and function names, or NULL. Valid until ECSISettings_Terminate.
+/// @brief Gets the keys table of a settings file (DESIGN 7.8): the core's, or the user's for every tool with the tool's own keys merged in, which win.
+/// @param layer ECSISettingsLayer_Core or ECSISettingsLayer_User.
+/// @return The keys table, or nullptr. Valid until ECSISettings_Terminate.
 const ECSValue *ECSISettings_GetKeys(ECSISettingsLayer layer);
 
 /// @brief Describes a declared setting.
 /// @param name Name of the setting.
-/// @param retOwner Its owner; NULL for the core.
+/// @param retOwner Its owner; nullptr for the core.
 /// @param retType Its type.
 /// @param retLayer The layer its value in effect comes from.
 /// @return true if the setting is declared.
@@ -70,12 +111,9 @@ void ECSISettings_RemovePlugin(ECSPlugin plugin);
 /// @brief Reports the settings of the files that are not declared, though their owner runs (ECSIPlugins_OwnerRuns), so a misspelt name is noticed. They are kept. Call it once the plugins are loaded.
 void ECSISettings_ReportUndeclared(void);
 
-/// @brief Gets the plugins that the user's files name for every tool and for this tool.
+/// @brief Gets the plugins that the settings files name: the core's file, and the user's files for every tool and for this tool.
 /// @return A list of plugin names, for ECSIPlugins_Load. Valid until ECSISettings_Terminate.
 const ECSValue *ECSISettings_GetPlugins(void);
 
-/// @brief Gets the path of the user's settings file, which may not exist.
-/// @return The path, or NULL if there is no config folder. Valid until ECSISettings_Terminate.
-const char *ECSISettings_GetUserPath(void);
 
 #pragma endregion Declarations

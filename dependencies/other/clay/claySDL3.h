@@ -1,5 +1,5 @@
 // this file is a glue header of the glue between clay and SDL3
-// copied to build/.../include together with clay.h
+// copied to build/.../include/clay together with clay.h
 // implementation is in clay.c
 
 #ifndef CLAY_HEADER

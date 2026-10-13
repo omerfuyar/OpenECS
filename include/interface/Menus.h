@@ -17,13 +17,13 @@ void ECSIMenus_Terminate(void);
 
 /// @brief Checks whether a core function can act on a panel now, so menus and the list of prefix keys offer it.
 /// @param function Name of the function.
-/// @param panel The focused panel, or NULL.
+/// @param panel The focused panel, or nullptr.
 /// @return true if it can.
 bool ECSIMenus_Offers(const char *function, ECSPanel panel);
 
 /// @brief Gets the label of a function: what it does to a panel now, or its description.
 /// @param function Name of the function.
-/// @param panel The focused panel, or NULL.
+/// @param panel The focused panel, or nullptr.
 /// @return The label, valid while the function is registered.
 const char *ECSIMenus_LabelOf(const char *function, ECSPanel panel);
 

@@ -2,18 +2,34 @@
 
 What is not decided yet, and work that is waiting. When an item is settled, write the decision into [OVERVIEW.md](OVERVIEW.md) or [DESIGN.md](DESIGN.md) and remove it from here.
 
-## Open questions
-
-- **ui plugin.** Should a first-party ui plugin offer drawing and user-interface elements to other plugins? (OVERVIEW 3.3, DESIGN 5.4)
-- **Other first-party plugins.** Which other plugins ship with OpenECS? (OVERVIEW 3.3)
-- **Domain plugins.** Should plugins for specific domains, such as glTF models, audio or networking, live in their own repositories instead of being first-party? (OVERVIEW 3.3)
-- **Lua plugins of several files.** Should a plugin's `require` find modules in the plugin's folder and run them in the plugin's environment, so they can also `require("ecs")`? Now it gives Lua's `require` every name but `"ecs"`. (DESIGN 9.6)
-- **How the launcher draws its list.** Its panel shows text, and no plugin can draw text yet. Should it wait for the ui plugin, or draw its text itself into a pixels surface for now? (DESIGN 5.4, 13.8)
-- **Build system.** The repository builds with shuild. Decide whether it stays, then add build and test commands to README.md.
-
 ## Tasks
 
-- **Implement the rest of DESIGN.md.** Not done yet: GPU surfaces, pop-out windows, opening panels in a new OS window, the panel menu's pop-out entry, popups, the first-party ui, settings and launcher plugins, and the launcher preset, which OpenECS and tests start with when they name no preset (DESIGN 13.8, 17.5).
-- **Releases for other platforms.** Shuild builds on Linux only. The release workflow has entries for Linux on aarch64, Windows and macOS, commented out until the build supports them (DESIGN 19.4).
-- **Rendering prototype.** The main window draws with a 2D GPU renderer. Still to confirm: one GPU device for several OS windows, a panel's GPU texture shown in any window, and an offscreen renderer drawing into that texture (DESIGN 5.3, 5.4).
-- **Wayland test on Hyprland.** Dragging a panel out of its window, popups, and moving focus between OS windows (DESIGN 7.1, 7.2, 18).
+- **Implement the rest of DESIGN.md.** Not done yet: GPU surfaces.
+- **Releases for other platforms.** Shuild builds on Linux only. The release workflow has entries for Linux on aarch64, Windows and macOS, commented out until the build supports them (DESIGN 19.4). README.md's list of packages is for Linux only; Windows needs its own: the compiler (LLVM or MinGW), cmake and ninja from winget, and what libffi's build needs in place of autoreconf.
+- **Portable builds of std and examples.** Their `shuild.c` lists folders with `dirent.h`, which Windows does not have. Shuild has no function that lists a folder; one in shuild would let the builds use shuild and the standard library only.
+- **Rendering prototype.** Every OS window draws with a 2D renderer on one shared GPU device. Still to confirm: a panel's GPU texture shown in any window, and an offscreen renderer drawing into that texture (DESIGN 5.3, 5.4).
+- **Wayland test on Hyprland.** Dragging a panel out of its window and into another one, popups, moving focus between OS windows, and the title bar's moving and resizing (DESIGN 6.10, 6.11, 7.1, 7.2, 18). The tests run on SDL's offscreen driver, where windows have places on the screen.
+- **Pauses of a few seconds.** Reported on Hyprland and on openSUSE Tumbleweed. Vsync is off on Wayland now (DESIGN 3.1), which should end them; to confirm there.
+- **A crash when pop-out windows close or are tiled.** Reported on the same systems: a jump to a null address. It does not happen on X11 or on weston. Pop-out windows now share one GPU device and release their popups first; to confirm there, with the steps that cause it.
+
+## Questions
+
+- **Desktop entries.** A preset gives the tool's identity (DESIGN 13.2). It could also describe the tool's entry in the system's application launcher: its categories, and the file types its `open` function takes, so installing a tool adds it to the launcher and to "Open with". To decide: whether presets describe it, and whether OpenECS or an installer writes the `.desktop` file.
+
+## Reaching users
+
+What helps people find OpenECS and stay. Before announcing a release widely:
+
+- **A demo GIF** of 20 to 30 seconds at the top of README.md: dragging panels, popping one out, the settings window, and a plugin's code beside its panel.
+- **Screenshots** of the examples for README.md and the release descriptions.
+- **GitHub settings**, which the owner sets: topics (`sdl3`, `lua`, `editor`, `plugin-system`, `c23`, `tooling`), a social preview image, Discussions turned on, and issues labelled "good first issue".
+
+Then announce in this order, each post written for its community: SDL's forum and the Handmade Network; r/C_Programming, r/lua, r/gamedev, r/linux and r/opensource; Show HN and Lobsters; the Lua mailing list. After a release, a short devlog, and a monthly "how I built X with OpenECS" post.
+
+What would grow it most:
+
+- **Releases for Windows and macOS**, since most tool builders are not on Linux (see Tasks).
+- **A flagship tool** that is useful without writing code, such as a log viewer, a glTF viewer or a terminal, built from the standard plugins.
+- **A showcase** in README.md of plugins and tools others build.
+- **One place to talk**, Discord or Matrix, linked from README.md.
+

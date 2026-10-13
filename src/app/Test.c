@@ -1,10 +1,10 @@
 #include "app/Test.h"
 #include "base/Lua.h"
-#include "interface/Keys.h"
 #include "interface/Layout.h"
 #include "interface/Panels.h"
 #include "interface/Window.h"
 #include "runtime/Services.h"
+#include "runtime/Settings.h"
 
 #include "lua/lauxlib.h"
 #include "lua/lua.h"
@@ -17,13 +17,13 @@
 #pragma region Source Only
 
 /// @brief Preset of a test that names none.
-#define OPENECS_TEST_PRESET "default"
+#define OPENECS_TEST_PRESET "launcher"
 /// @brief Pointer moves that test.drag makes between its press and its release.
 #define OPENECS_TEST_DRAG_STEPS 4
 
 static struct
 {
-    lua_State *thread;            // the coroutine of the test's run function, or NULL when no test runs
+    lua_State *thread;            // the coroutine of the test's run function, or nullptr when no test runs
     int threadReference;          // registry reference that keeps the coroutine alive
     bool started;                 // false until the run function is first resumed
     bool failed;                  // true when the test failed
@@ -33,12 +33,14 @@ static struct
     SDL_Keymod held;              // modifiers held during the pointer events being sent
     usz nextEvent;                // index of the next event to send
     u64 resumeTicks;              // when the test goes on after test.wait, in nanoseconds
+    usz window;                   // the OS window that input events go to, as ECSIWindow_Get counts them; 0 before test.window chooses one, which is the main window
     f32 pointerX;                 // the pointer's last position
     f32 pointerY;
     SDL_MouseButtonFlags buttons; // the buttons held
     char **files;                 // stb_ds array of the paths that the test's files field names
-    char **dropped;               // stb_ds array of the files and texts the test drops, kept until it ends because their events point to them
-    char *sessions;               // the folder that the test's sessions field names, ending with a separator, or NULL
+    char **dropped;               // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
+    char *presets;                // the folder that the test's presets field names, ending with a separator, or nullptr
+    char *sessions;               // the folder that the test's sessions field names, ending with a separator, or nullptr
 } TEST = {0};
 
 /// @brief test.match: compares by contents and names the path of the first difference.
@@ -71,11 +73,12 @@ static const char OPENECS_TEST_MATCH[] =
     "  if difference then error((message and message .. ': ' or '') .. difference, 2) end\n"
     "end\n";
 
-/// @brief Adds an input event for the loop, in the test's OS window.
+/// @brief Adds an input event for the loop, in the OS window that test.window chose; the main window if that one has closed.
 static void ECSITest_Send(SDL_Event event)
 {
-    SDL_Window *window = ECSIWindow_GetMain();
-    SDL_WindowID id = window != NULL ? SDL_GetWindowID(window) : 0;
+    SDL_Window *window = TEST.window > 1 ? ECSIWindow_Get(TEST.window) : nullptr;
+    window = window != nullptr ? window : ECSIWindow_GetMain();
+    SDL_WindowID id = window != nullptr ? SDL_GetWindowID(window) : 0;
 
     switch (event.type)
     {
@@ -93,11 +96,17 @@ static void ECSITest_Send(SDL_Event event)
     case SDL_EVENT_MOUSE_WHEEL:
         event.wheel.windowID = id;
         break;
+    case SDL_EVENT_TEXT_INPUT:
+        event.text.windowID = id;
+        break;
     case SDL_EVENT_DROP_BEGIN:
     case SDL_EVENT_DROP_FILE:
     case SDL_EVENT_DROP_TEXT:
     case SDL_EVENT_DROP_COMPLETE:
         event.drop.windowID = id;
+        break;
+    case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+        event.window.windowID = id;
         break;
     default:
         break;
@@ -118,7 +127,7 @@ static SDL_Keymod ECSITest_CheckModifiers(lua_State *state, int index)
     for (const char *part = text; *part != '\0';)
     {
         const char *plus = SDL_strchr(part, '+');
-        usz length = plus != NULL ? (usz)(plus - part) : SDL_strlen(part);
+        usz length = plus != nullptr ? (usz)(plus - part) : SDL_strlen(part);
         usz i = 0;
 
         while (i < SDL_arraysize(names) && (SDL_strlen(names[i]) != length || SDL_strncasecmp(part, names[i], length) != 0))
@@ -195,7 +204,7 @@ static int ECSITest_Key(lua_State *state)
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSIKeys_Parse(text, false, &key, &modifiers))
+    if (ECSISettings_ParseKey(text, false, &key, &modifiers))
     {
         return luaL_error(state, "'%s' is not a key combination", text);
     }
@@ -208,7 +217,7 @@ static int ECSITest_Key(lua_State *state)
 
     SDL_Event event = {.type = SDL_EVENT_KEY_DOWN};
     event.key.key = key;
-    event.key.scancode = SDL_GetScancodeFromKey(key, NULL);
+    event.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
     event.key.mod = mod;
     event.key.down = true;
     ECSITest_Send(event);
@@ -312,6 +321,14 @@ static int ECSITest_Wheel(lua_State *state)
     return lua_yield(state, 0);
 }
 
+/// @brief test.close(): asks the OS window that test.window chose to close, as its close button does.
+static int ECSITest_Close(lua_State *state)
+{
+    SDL_Event event = {.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED};
+    ECSITest_Send(event);
+    return lua_yield(state, 0);
+}
+
 /// @brief Adds a drop from another application at a position: its begin, a file or text event for each string, and its end.
 static void ECSITest_SendDrop(f32 x, f32 y, Uint32 type, const char *const *texts, usz count)
 {
@@ -322,7 +339,7 @@ static void ECSITest_SendDrop(f32 x, f32 y, Uint32 type, const char *const *text
     {
         char *copy = SDL_strdup(texts[i]);
 
-        if (copy != NULL)
+        if (copy != nullptr)
         {
             arrput(TEST.dropped, copy);
             event = (SDL_Event){.type = type};
@@ -339,6 +356,24 @@ static void ECSITest_SendDrop(f32 x, f32 y, Uint32 type, const char *const *text
     ECSITest_Send(event);
 }
 
+/// @brief test.text(text): types text, as an input method gives it, to the focused panel.
+static int ECSITest_Text(lua_State *state)
+{
+    char *copy = SDL_strdup(luaL_checkstring(state, 1));
+
+    if (copy == nullptr)
+    {
+        return luaL_error(state, "out of memory");
+    }
+
+    // the event points to the text, so the test keeps it until it ends
+    arrput(TEST.dropped, copy);
+    SDL_Event event = {.type = SDL_EVENT_TEXT_INPUT};
+    event.text.text = copy;
+    ECSITest_Send(event);
+    return lua_yield(state, 0);
+}
+
 /// @brief test.dropFiles(x, y, paths): drops files from another application at a position.
 static int ECSITest_DropFiles(lua_State *state)
 {
@@ -348,7 +383,7 @@ static int ECSITest_DropFiles(lua_State *state)
     luaL_checktype(state, 3, LUA_TTABLE);
 
     // the table keeps its strings alive while they are copied
-    const char **paths = NULL;
+    const char **paths = nullptr;
 
     for (lua_Integer i = 1; lua_rawgeti(state, 3, i) == LUA_TSTRING; i++)
     {
@@ -399,7 +434,7 @@ static int ECSITest_Wait(lua_State *state)
 /// @brief test.session(): the session that quitting would save now.
 static int ECSITest_Session(lua_State *state)
 {
-    ECSValue *session = NULL;
+    ECSValue *session = nullptr;
 
     if (ECSValue_Create(&session) || ECSISession_Build(TEST.info, session))
     {
@@ -414,13 +449,13 @@ static int ECSITest_Session(lua_State *state)
     return 1;
 }
 
-/// @brief test.rect(id): the rectangle of a shown panel.
+/// @brief test.rect(id): the rectangle of a shown panel, and the number of its OS window.
 static int ECSITest_Rect(lua_State *state)
 {
     lua_Integer id = luaL_checkinteger(state, 1);
-    ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : NULL;
+    ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : nullptr;
 
-    if (panel == NULL)
+    if (panel == nullptr)
     {
         return luaL_error(state, "no panel has the id %d", (int)id);
     }
@@ -431,7 +466,9 @@ static int ECSITest_Rect(lua_State *state)
         return luaL_error(state, "the panel %d is not shown", (int)id);
     }
 
-    lua_createtable(state, 0, 4);
+    lua_createtable(state, 0, 5);
+    lua_pushinteger(state, (lua_Integer)ECSIWindow_NumberOf(panel));
+    lua_setfield(state, -2, "window");
     lua_pushnumber(state, (lua_Number)panel->x);
     lua_setfield(state, -2, "x");
     lua_pushnumber(state, (lua_Number)panel->y);
@@ -443,12 +480,105 @@ static int ECSITest_Rect(lua_State *state)
     return 1;
 }
 
-/// @brief test.screenshot(path): draws a frame and saves it as a PNG file.
+/// @brief test.panel(id): a panel's title and type, whether it has unsaved work, and its fault: the error that stopped it, or why its type is missing.
+static int ECSITest_Panel(lua_State *state)
+{
+    lua_Integer id = luaL_checkinteger(state, 1);
+    ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : nullptr;
+
+    if (panel == nullptr)
+    {
+        return luaL_error(state, "no panel has the id %d", (int)id);
+    }
+
+    lua_createtable(state, 0, 4);
+    lua_pushstring(state, panel->title);
+    lua_setfield(state, -2, "title");
+    lua_pushstring(state, panel->typeName);
+    lua_setfield(state, -2, "type");
+    lua_pushboolean(state, panel->unsaved);
+    lua_setfield(state, -2, "unsaved");
+
+    if (panel->fault != nullptr || panel->type == nullptr)
+    {
+        lua_pushstring(state, panel->fault != nullptr ? panel->fault : "the panel's type is missing");
+        lua_setfield(state, -2, "fault");
+    }
+
+    return 1;
+}
+
+/// @brief test.setting(name): a setting's value in effect.
+static int ECSITest_Setting(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+    const ECSValue *value = ECSSetting_Get(name);
+
+    if (value == nullptr)
+    {
+        return luaL_error(state, "no setting is named '%s'", name);
+    }
+
+    // values are pushed onto the main state, and the test runs in its own thread
+    ECSILua_PushValue(value);
+    lua_xmove(ECSILua_GetState(), state, 1);
+    return 1;
+}
+
+/// @brief test.popup(number): the rectangle of an open popup, the oldest first, in its OS window, and the number of that window.
+static int ECSITest_Popup(lua_State *state)
+{
+    lua_Integer number = luaL_checkinteger(state, 1);
+    usz count = 0;
+    ECSPopup *popups = ECSIPopups_GetOpen(&count);
+    SDL_FRect rect = {0};
+    usz window = 0;
+
+    if (number < 1 || (usz)number > count || !ECSIWindow_PopupRect(popups[number - 1], &rect, &window))
+    {
+        return luaL_error(state, "there is no shown popup %d", (int)number);
+    }
+
+    lua_createtable(state, 0, 5);
+    lua_pushinteger(state, (lua_Integer)window);
+    lua_setfield(state, -2, "window");
+    lua_pushnumber(state, (lua_Number)rect.x);
+    lua_setfield(state, -2, "x");
+    lua_pushnumber(state, (lua_Number)rect.y);
+    lua_setfield(state, -2, "y");
+    lua_pushnumber(state, (lua_Number)rect.w);
+    lua_setfield(state, -2, "width");
+    lua_pushnumber(state, (lua_Number)rect.h);
+    lua_setfield(state, -2, "height");
+    return 1;
+}
+
+/// @brief test.window(number): chooses the OS window that later input events go to, and that test.screenshot saves: 1 for the main window, then the pop-out windows. Gives the window's position on the screen.
+static int ECSITest_Window(lua_State *state)
+{
+    lua_Integer number = luaL_checkinteger(state, 1);
+    SDL_Window *window = number < 1 ? nullptr : ECSIWindow_Get((usz)number);
+    int x = 0;
+    int y = 0;
+
+    if (window == nullptr)
+    {
+        return luaL_error(state, "there is no OS window %d", (int)number);
+    }
+
+    TEST.window = (usz)number;
+    SDL_GetWindowPosition(window, &x, &y);
+    lua_pushinteger(state, x);
+    lua_pushinteger(state, y);
+    return 2;
+}
+
+/// @brief test.screenshot(path): draws a frame and saves the picture of the OS window that test.window chose as a PNG file.
 static int ECSITest_Screenshot(lua_State *state)
 {
     const char *path = luaL_checkstring(state, 1);
 
-    if (ECSIWindow_Screenshot(path))
+    if (ECSIWindow_Screenshot(path, TEST.window > 0 ? TEST.window : 1))
     {
         return luaL_error(state, "cannot save a screenshot to '%s'", path);
     }
@@ -464,14 +594,20 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"click", ECSITest_Click},
     {"drag", ECSITest_Drag},
     {"wheel", ECSITest_Wheel},
+    {"text", ECSITest_Text},
     {"dropFiles", ECSITest_DropFiles},
     {"dropText", ECSITest_DropText},
     {"call", ECSITest_Call},
     {"wait", ECSITest_Wait},
     {"session", ECSITest_Session},
     {"rect", ECSITest_Rect},
+    {"panel", ECSITest_Panel},
+    {"setting", ECSITest_Setting},
+    {"popup", ECSITest_Popup},
+    {"window", ECSITest_Window},
+    {"close", ECSITest_Close},
     {"screenshot", ECSITest_Screenshot},
-    {NULL, NULL},
+    {nullptr, nullptr},
 };
 
 /// @brief Pushes the test table. It also holds match, which is written in Lua.
@@ -493,10 +629,10 @@ static SHUResult ECSITest_PushTable(lua_State *state)
 /// @brief Ends the test and lets the garbage collector take its coroutine.
 static void ECSITest_Finish(void)
 {
-    if (TEST.thread != NULL)
+    if (TEST.thread != nullptr)
     {
         luaL_unref(ECSILua_GetState(), LUA_REGISTRYINDEX, TEST.threadReference);
-        TEST.thread = NULL;
+        TEST.thread = nullptr;
     }
 
     arrfree(TEST.events);
@@ -504,18 +640,36 @@ static void ECSITest_Finish(void)
     TEST.nextEvent = 0;
 }
 
+/// @brief Reads a field of the test table, at -2, that names a folder relative to the test file.
+static void ECSITest_ReadFolder(lua_State *state, const char *field, const char *path, char **retFolder)
+{
+    const char *slash = SDL_strrchr(path, '/');
+
+    if (lua_getfield(state, -2, field) == LUA_TSTRING)
+    {
+        const char *folder = lua_tostring(state, -1);
+
+        if (SDL_asprintf(retFolder, "%.*s%s/", slash != nullptr && folder[0] != '/' ? (int)(slash - path + 1) : 0, path, folder) < 0)
+        {
+            *retFolder = nullptr;
+        }
+    }
+
+    lua_pop(state, 1);
+}
+
 #pragma endregion Source Only
 
 SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **retPreset)
 {
-    SDL_assert(path != NULL);
-    SDL_assert(info != NULL);
-    SDL_assert(retPreset != NULL);
-    SDL_assert(TEST.thread == NULL);
+    SDL_assert(path != nullptr);
+    SDL_assert(info != nullptr);
+    SDL_assert(retPreset != nullptr);
+    SDL_assert(TEST.thread == nullptr);
 
     lua_State *state = ECSILua_GetState();
     int top = lua_gettop(state);
-    *retPreset = NULL;
+    *retPreset = nullptr;
 
     if (luaL_loadfilex(state, path, "t") != LUA_OK)
     {
@@ -550,12 +704,12 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     const char *preset = lua_getfield(state, -2, "preset") == LUA_TSTRING ? lua_tostring(state, -1) : OPENECS_TEST_PRESET;
     const char *slash = SDL_strrchr(path, '/');
     usz length = SDL_strlen(preset);
-    bool file = SDL_strchr(preset, '/') != NULL || (length > 4 && SDL_strcmp(preset + length - 4, ".lua") == 0);
-    int folderLength = slash != NULL && file && preset[0] != '/' ? (int)(slash - path + 1) : 0;
+    bool file = SDL_strchr(preset, '/') != nullptr || (length > 4 && SDL_strcmp(preset + length - 4, ".lua") == 0);
+    int folderLength = slash != nullptr && file && preset[0] != '/' ? (int)(slash - path + 1) : 0;
 
     if (SDL_asprintf(retPreset, "%.*s%s", folderLength, path, preset) < 0)
     {
-        *retPreset = NULL;
+        *retPreset = nullptr;
         lua_settop(state, top);
         return SHUResult_ErrAllocation;
     }
@@ -568,9 +722,9 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     for (lua_Integer i = 1; lua_istable(state, -1) && lua_rawgeti(state, -1, i) == LUA_TSTRING; i++)
     {
         const char *name = lua_tostring(state, -1);
-        char *copy = NULL;
+        char *copy = nullptr;
 
-        if (SDL_asprintf(&copy, "%.*s%s", slash != NULL && name[0] != '/' ? (int)(slash - path + 1) : 0, path, name) >= 0)
+        if (SDL_asprintf(&copy, "%.*s%s", slash != nullptr && name[0] != '/' ? (int)(slash - path + 1) : 0, path, name) >= 0)
         {
             arrput(TEST.files, copy);
         }
@@ -581,18 +735,9 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     // the loop leaves the first value that is not a file on the stack, above the table
     lua_pop(state, lua_istable(state, -2) ? 2 : 1);
 
-    // the folder that stands for the saved sessions is relative to the test file too
-    if (lua_getfield(state, -2, "sessions") == LUA_TSTRING)
-    {
-        const char *sessions = lua_tostring(state, -1);
-
-        if (SDL_asprintf(&TEST.sessions, "%.*s%s/", slash != NULL && sessions[0] != '/' ? (int)(slash - path + 1) : 0, path, sessions) < 0)
-        {
-            TEST.sessions = NULL;
-        }
-    }
-
-    lua_pop(state, 1);
+    // the folders that stand for the user's presets and the saved sessions are relative to the test file too
+    ECSITest_ReadFolder(state, "presets", path, &TEST.presets);
+    ECSITest_ReadFolder(state, "sessions", path, &TEST.sessions);
 
     // the run function and the test table wait on the coroutine's stack until its first resume
     TEST.thread = lua_newthread(state);
@@ -603,7 +748,7 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     {
         ECSITest_Finish();
         SDL_free(*retPreset);
-        *retPreset = NULL;
+        *retPreset = nullptr;
         lua_settop(state, top);
         return SHUResult_ErrInternal;
     }
@@ -619,10 +764,15 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 
 char **ECSITest_GetFiles(usz *retCount)
 {
-    SDL_assert(retCount != NULL);
+    SDL_assert(retCount != nullptr);
 
     *retCount = arrlenu(TEST.files);
     return TEST.files;
+}
+
+const char *ECSITest_GetPresets(void)
+{
+    return TEST.presets;
 }
 
 const char *ECSITest_GetSessions(void)
@@ -647,18 +797,19 @@ void ECSITest_Terminate(void)
     }
 
     arrfree(TEST.dropped);
+    SDL_free(TEST.presets);
     SDL_free(TEST.sessions);
     SDL_zero(TEST);
 }
 
 bool ECSITest_IsRunning(void)
 {
-    return TEST.thread != NULL;
+    return TEST.thread != nullptr;
 }
 
 i32 ECSITest_GetWait(void)
 {
-    if (TEST.thread == NULL)
+    if (TEST.thread == nullptr)
     {
         return -1;
     }
@@ -669,7 +820,7 @@ i32 ECSITest_GetWait(void)
 
 bool ECSITest_Step(void)
 {
-    if (TEST.thread == NULL || SDL_GetTicksNS() < TEST.resumeTicks)
+    if (TEST.thread == nullptr || SDL_GetTicksNS() < TEST.resumeTicks)
     {
         return true;
     }
@@ -715,7 +866,7 @@ bool ECSITest_Step(void)
 
 int ECSITest_GetStatus(void)
 {
-    return TEST.failed || TEST.thread != NULL ? 1 : 0;
+    return TEST.failed || TEST.thread != nullptr ? 1 : 0;
 }
 
 #else
@@ -724,7 +875,7 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 {
     (void)path;
     (void)info;
-    *retPreset = NULL;
+    *retPreset = nullptr;
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Only Debug builds run tests.");
     return SHUResult_ErrPrivileges;
 }
@@ -732,12 +883,17 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 char **ECSITest_GetFiles(usz *retCount)
 {
     *retCount = 0;
-    return NULL;
+    return nullptr;
+}
+
+const char *ECSITest_GetPresets(void)
+{
+    return nullptr;
 }
 
 const char *ECSITest_GetSessions(void)
 {
-    return NULL;
+    return nullptr;
 }
 
 void ECSITest_Terminate(void)

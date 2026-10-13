@@ -135,7 +135,7 @@ static SHUResult ECSILua_ToValue(int index, ECSValue *value, u32 depth)
 
     for (usz i = 1; i <= count; i++)
     {
-        ECSValue *item = NULL;
+        ECSValue *item = nullptr;
         SHU_ReturnResult(ECSValue_ListAddItem(value, &item));
 
         lua_rawgeti(state, index, (lua_Integer)i);
@@ -145,7 +145,7 @@ static SHUResult ECSILua_ToValue(int index, ECSValue *value, u32 depth)
     }
 
     // the names stay alive in the table while it is on the stack
-    const char **names = NULL;
+    const char **names = nullptr;
     lua_pushnil(state);
 
     while (lua_next(state, index) != 0)
@@ -168,7 +168,7 @@ static SHUResult ECSILua_ToValue(int index, ECSValue *value, u32 depth)
 
     for (usz i = 0; i < arrlenu(names) && !result; i++)
     {
-        ECSValue *field = NULL;
+        ECSValue *field = nullptr;
         result = ECSValue_TableSetField(value, names[i], &field);
 
         if (!result)
@@ -228,7 +228,7 @@ static void ECSILua_PushOrderedValue(const ECSValue *value)
     lua_setfield(state, -2, "items");
 
     lua_newtable(state);
-    ECSIValue_TableForEachField(value, ECSILua_PushOrderedField, NULL);
+    ECSIValue_TableForEachField(value, ECSILua_PushOrderedField, nullptr);
     lua_setfield(state, -2, "fields");
 }
 
@@ -247,7 +247,7 @@ static void ECSILua_PushOrderedField(const char *name, const ECSValue *field, vo
 /// @brief Adds a stack trace to the message of an error raised in a protected call.
 static int ECSILua_Traceback(lua_State *state)
 {
-    luaL_traceback(state, state, luaL_tolstring(state, 1, NULL), 1);
+    luaL_traceback(state, state, luaL_tolstring(state, 1, nullptr), 1);
     return 1;
 }
 
@@ -271,7 +271,7 @@ static void *ECSILua_Allocate(void *userData, void *block, size_t oldSize, size_
     if (newSize == 0)
     {
         SDL_free(block);
-        return NULL;
+        return nullptr;
     }
 
     return SDL_realloc(block, newSize);
@@ -281,7 +281,7 @@ static void *ECSILua_Allocate(void *userData, void *block, size_t oldSize, size_
 static int ECSILua_Panic(lua_State *state)
 {
     const char *message = lua_tostring(state, -1);
-    SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, "Lua error outside a protected call: %s", message == NULL ? "?" : message);
+    SDL_LogCritical(SDL_LOG_CATEGORY_APPLICATION, "Lua error outside a protected call: %s", message == nullptr ? "?" : message);
     return 0;
 }
 
@@ -289,28 +289,28 @@ static int ECSILua_Panic(lua_State *state)
 static void ECSILua_Warn(void *userData, const char *message, int toContinue)
 {
     (void)userData;
-    static char *pending = NULL;
+    static char *pending = nullptr;
 
-    if (pending == NULL && !toContinue && message[0] == '@')
+    if (pending == nullptr && !toContinue && message[0] == '@')
     {
         return;
     }
 
-    char *joined = NULL;
+    char *joined = nullptr;
 
-    if (SDL_asprintf(&joined, "%s%s", pending == NULL ? "" : pending, message) < 0)
+    if (SDL_asprintf(&joined, "%s%s", pending == nullptr ? "" : pending, message) < 0)
     {
-        joined = NULL;
+        joined = nullptr;
     }
 
     SDL_free(pending);
     pending = joined;
 
-    if (!toContinue && pending != NULL)
+    if (!toContinue && pending != nullptr)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Lua: %s", pending);
         SDL_free(pending);
-        pending = NULL;
+        pending = nullptr;
     }
 }
 
@@ -318,15 +318,15 @@ static void ECSILua_Warn(void *userData, const char *message, int toContinue)
 
 SHUResult ECSILua_Initialize(void)
 {
-    LUA.state = lua_newstate(ECSILua_Allocate, NULL, luaL_makeseed(NULL));
+    LUA.state = lua_newstate(ECSILua_Allocate, nullptr, luaL_makeseed(nullptr));
 
-    if (LUA.state == NULL)
+    if (LUA.state == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
 
     lua_atpanic(LUA.state, ECSILua_Panic);
-    lua_setwarnf(LUA.state, ECSILua_Warn, NULL);
+    lua_setwarnf(LUA.state, ECSILua_Warn, nullptr);
 
     // every library is open for plugins; data files see only a few, through their own environment
     luaL_openlibs(LUA.state);
@@ -343,7 +343,7 @@ SHUResult ECSILua_Initialize(void)
 
 void ECSILua_Terminate(void)
 {
-    if (LUA.state != NULL)
+    if (LUA.state != nullptr)
     {
         lua_close(LUA.state);
     }
@@ -353,15 +353,15 @@ void ECSILua_Terminate(void)
 
 lua_State *ECSILua_GetState(void)
 {
-    SDL_assert(LUA.state != NULL);
+    SDL_assert(LUA.state != nullptr);
 
     return LUA.state;
 }
 
 SHUResult ECSILua_GetValue(int index, ECSValue *value)
 {
-    SDL_assert(LUA.state != NULL);
-    SDL_assert(value != NULL);
+    SDL_assert(LUA.state != nullptr);
+    SDL_assert(value != nullptr);
 
     return ECSILua_ToValue(index, value, 0);
 }
@@ -375,7 +375,7 @@ static void ECSILua_PushField(const char *name, const ECSValue *field, void *use
 
 void ECSILua_PushValue(const ECSValue *value)
 {
-    SDL_assert(LUA.state != NULL);
+    SDL_assert(LUA.state != nullptr);
 
     lua_State *state = LUA.state;
     luaL_checkstack(state, 3, "a value is nested too deeply");
@@ -411,12 +411,12 @@ void ECSILua_PushValue(const ECSValue *value)
         lua_rawseti(state, -2, (lua_Integer)i + 1);
     }
 
-    ECSIValue_TableForEachField(value, ECSILua_PushField, NULL);
+    ECSIValue_TableForEachField(value, ECSILua_PushField, nullptr);
 }
 
 SHUResult ECSILua_Call(int argumentCount, int resultCount)
 {
-    SDL_assert(LUA.state != NULL);
+    SDL_assert(LUA.state != nullptr);
 
     lua_State *state = LUA.state;
     int base = lua_gettop(state) - argumentCount;
@@ -430,16 +430,16 @@ SHUResult ECSILua_Call(int argumentCount, int resultCount)
 
 SHUResult ECSILua_ReadData(const char *path, ECSValue *retValue)
 {
-    SDL_assert(LUA.state != NULL);
-    SDL_assert(path != NULL);
-    SDL_assert(retValue != NULL);
+    SDL_assert(LUA.state != nullptr);
+    SDL_assert(path != nullptr);
+    SDL_assert(retValue != nullptr);
 
     lua_State *state = LUA.state;
     int top = lua_gettop(state);
 
     if (luaL_loadfilex(state, path, "t") != LUA_OK)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot read '%s': %s", path, lua_tostring(state, -1));
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot read '%s': %s", path, lua_tostring(state, -1));
         lua_settop(state, top);
         return SHUResult_ErrFile;
     }
@@ -450,14 +450,14 @@ SHUResult ECSILua_ReadData(const char *path, ECSValue *retValue)
 
     if (lua_pcall(state, 0, 1, 0) != LUA_OK)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Error in '%s': %s", path, lua_tostring(state, -1));
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Error in '%s': %s", path, lua_tostring(state, -1));
         lua_settop(state, top);
         return SHUResult_ErrBadData;
     }
 
     if (!lua_istable(state, -1))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' does not return a table.", path);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "'%s' does not return a table.", path);
         lua_settop(state, top);
         return SHUResult_ErrBadData;
     }
@@ -469,8 +469,8 @@ SHUResult ECSILua_ReadData(const char *path, ECSValue *retValue)
 
 SHUResult ECSILua_WriteData(const char *path, const ECSValue *value)
 {
-    SDL_assert(LUA.state != NULL);
-    SDL_assert(path != NULL);
+    SDL_assert(LUA.state != nullptr);
+    SDL_assert(path != nullptr);
 
     lua_State *state = LUA.state;
     int top = lua_gettop(state);
@@ -480,7 +480,7 @@ SHUResult ECSILua_WriteData(const char *path, const ECSValue *value)
 
     if (lua_pcall(state, 1, 1, 0) != LUA_OK)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot write '%s': %s", path, lua_tostring(state, -1));
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot write '%s': %s", path, lua_tostring(state, -1));
         lua_settop(state, top);
         return SHUResult_ErrAllocation;
     }
@@ -490,9 +490,9 @@ SHUResult ECSILua_WriteData(const char *path, const ECSValue *value)
 
     // the folder of the file
     char *folder = SDL_strdup(path);
-    char *temporary = NULL;
+    char *temporary = nullptr;
 
-    if (folder == NULL || SDL_asprintf(&temporary, "%s.tmp", path) < 0)
+    if (folder == nullptr || SDL_asprintf(&temporary, "%s.tmp", path) < 0)
     {
         SDL_free(folder);
         lua_settop(state, top);
@@ -501,12 +501,12 @@ SHUResult ECSILua_WriteData(const char *path, const ECSValue *value)
 
     char *slash = SDL_strrchr(folder, '/');
 
-    if (slash != NULL)
+    if (slash != nullptr)
     {
         slash[1] = '\0';
     }
 
-    bool written = (slash == NULL || SDL_CreateDirectory(folder)) && SDL_SaveFile(temporary, text, length) && SDL_RenamePath(temporary, path);
+    bool written = (slash == nullptr || SDL_CreateDirectory(folder)) && SDL_SaveFile(temporary, text, length) && SDL_RenamePath(temporary, path);
 
     if (!written)
     {

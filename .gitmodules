@@ -22,3 +22,9 @@
 [submodule "dependencies/stb"]
 	path = dependencies/stb
 	url = https://github.com/nothings/stb
+[submodule "std"]
+	path = std
+	url = https://github.com/omerfuyar/OpenECS-std.git
+[submodule "examples"]
+	path = examples
+	url = https://github.com/omerfuyar/OpenECS-examples.git

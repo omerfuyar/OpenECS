@@ -27,7 +27,7 @@ lua_State *ECSILua_GetState(void);
 SHUWUR SHUResult ECSILua_GetValue(int index, ECSValue *value);
 
 /// @brief Pushes a value onto the Lua stack. A table becomes a Lua table with its list items and named fields.
-/// @param value The value, or NULL for nil.
+/// @param value The value, or nullptr for nil.
 void ECSILua_PushValue(const ECSValue *value);
 
 /// @brief Calls the Lua function below its arguments on the stack, in a protected call.

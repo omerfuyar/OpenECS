@@ -1,11 +1,13 @@
 #!/bin/sh
-# Runs every test in tests/ with a Debug executable, and fails if a test fails or a sanitizer reports a problem.
+# Runs the examples' tests with a Debug executable: the examples are OpenECS's tests, and the build copies them into bin/examples/.
+# Fails if a test fails or a sanitizer reports a problem.
 set -u
 
 executable="$1"
+bin=$(dirname "$executable")
 failed=0
 
-for test in tests/*.lua; do
+for test in "$bin"/examples/*/test*.lua; do
     if "$executable" --test "$test" > build/test.log 2>&1 && ! grep -q -E 'Sanitizer|runtime error:' build/test.log; then
         echo "pass $test"
     else

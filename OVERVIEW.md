@@ -1,12 +1,12 @@
 # OpenECS Overview
 
-This document explains what OpenECS is, what it covers, what it leaves to plugins, and how it behaves for the user.
+This document explains what OpenECS is, what it covers, what it leaves to plugins, and how it behaves to the user.
 
-**How to read it:**
+**See also:**
 
-- Everything here is decided. Open questions and pending work are in [TODO.md](TODO.md).
-- How OpenECS is built (interfaces, file formats, rules for code) is in [DESIGN.md](DESIGN.md).
-- Terms used in this document are explained in the glossary at the end.
+- How OpenECS is built technically is in [DESIGN.md](DESIGN.md).
+- Open questions and pending work are in [TODO.md](TODO.md).
+- Terms used in this document context are explained in the glossary at the end.
 
 ---
 
@@ -24,21 +24,22 @@ This document explains what OpenECS is, what it covers, what it leaves to plugin
 10. Presets, sessions and settings
 11. Operating-system integration
 12. Principles
+
 - Glossary
 
 ---
 
 ## 1. Summary
 
-OpenECS is a program, written in C, that provides the empty shell of an editor-style application. Think of a modern editor or creative tool: areas that can be split side by side, grouped into tabs, maximized, moved into their own windows and arranged into workspaces. OpenECS provides that machinery, plus keybindings, settings, plugin loading, saving and restoring of sessions.
+OpenECS is a program, written in C, that provides the domain agnostic features of an editor style application. Essentially the frontend. You can think of Blender, Unity, Davinci Resolve, VS Code or any application that has an editor which include tabs, panels, pop out windows, workspaces etc. All these features are provided by OpenECS.
 
-OpenECS does not know what any area is for. It has no idea what a text editor or a paint program is. What each area shows and does comes from **plugins**: add-on modules written in C or in Lua.
+In OpenECS, what each area shows and does comes from **plugins**: add-on modules written in C or in Lua.
 
-So the same program becomes a text editor, a paint program or the front end of a game engine, depending on which plugins and **preset** it loads.
+So the same program becomes a text editor, a paint program, the front end of a game engine, or even a game itself, depending on which plugins and **preset** it loads.
 
-OpenECS is an executable, not a library.
+From that perspective, OpenECS can be considered as a cross platform application development platform if you want to use it as that.
 
-## 2. The user's view
+## 2. Using OpenECS applications
 
 1. The user starts a tool, for example "Paint" from the desktop's application menu. This runs OpenECS with the paint preset. Started without a preset, OpenECS shows a launcher that lists presets and saved sessions.
 2. OpenECS loads the preset's plugins and the plugins they depend on.
@@ -46,19 +47,19 @@ OpenECS is an executable, not a library.
 4. The window is divided into **panels**, such as a canvas, a colour palette or a layer list. Panels grouped in the same place show a **tab row**; a panel on its own shows none.
 5. The user drags panels to split the window differently, groups them as tabs, maximizes one, or moves one into its own window, popping out from main window.
 6. The user switches between **workspaces**, for example "drawing" and "organizing". Switching is instant.
-7. The user presses keys. The focused panel's keys work, the core's own actions are always reachable, and the user's own keybindings win over everything else.
-8. The user opens the settings window. A setting that is overridden elsewhere is shown faded, with a hint that says where it is set.
+7. The user presses keys. Core forwards input to currently focused panel. The core's own actions are always reachable, and the user's own keybindings win over everything else.
+8. The user opens the settings window, sees every setting with its value and what it does, and changes it. The panel list shows every kind of panel the tool's plugins offer, and opens the one the user chooses.
 9. When the user quits, OpenECS asks what to do with unsaved work, then remembers the arrangement for next time. The user can also save sessions to files and open them later.
 
 ## 3. Scope: core and plugins
 
-The most important rule of OpenECS is the line between the **core** (OpenECS itself) and **plugins** (everything else). The core is small. It provides the machinery of an editor-style application and nothing specific to any job.
+The most important rule of OpenECS is the line between the **core** (OpenECS itself) and **plugins** (everything else). The core is small. As said, its domain agnostic and it provides the machinery of applications.
 
 ### 3.1 What the core provides
 
-- Layout: panels, splits, groups, maximizing, pop-out windows and workspaces.
+- Layout: panels, splits, groups, maximizing, pop out windows and workspaces.
 - A drawing surface for every panel, and putting it on screen. The core offers **no drawing commands**: nothing like "draw a rectangle" or "draw text".
-- Its own small interface: tab rows, dividers, drag highlights and menus.
+- Its own small interface: the windows' title bars, tab rows, dividers, drag highlights and menus.
 - Input: focus, keybindings, the mouse pointer and text input.
 - Events and actions for everything about panels and layout.
 - Plugin loading, and the services and events through which plugins work together.
@@ -80,10 +81,21 @@ Everything else. If the core's own machinery needs it, it is core; if only some 
 
 Some plugins are made and shipped together with OpenECS because the product needs them:
 
-- **sdl:** built into the executable. Gives native plugins access to SDL (section 4).
-- **ui:** drawing (shapes, text, images) and user-interface elements, offered as a service to other plugins.
-- **settings:** the settings window.
-- **launcher:** picks a preset or session when OpenECS starts without one.
+- **sdl:** built into the executable. Gives native plugins the core's SDL objects (section 4).
+- **draw:** a **standard plugin**: drawing shapes, lines, triangles, images and text into panels, offered as a service to other plugins.
+- **mixer:** a standard plugin: playing sounds, several at once.
+- **ui:** a standard plugin: user-interface elements with layout, such as buttons, toggles, sliders, dropdowns and lists, which call back when the user clicks or types. They are generic, so tools build their own views from them.
+- **textgrid:** a standard plugin: grids of characters for terminals, consoles and logs, drawn with draw at any size.
+- **image:** a standard plugin: reading image files, SVG among them, into images that draw draws.
+- **audio:** a standard plugin: reading sound files into sounds that mixer plays.
+- **net:** a standard plugin: TCP connections and servers, and UDP sockets, that never block the program.
+- **gltf:** a standard plugin: reading glTF models, for plugins that draw 3D scenes.
+- **fs:** a standard plugin: listing and making folders, copying files and telling what a path is, which Lua's own libraries cannot.
+- **settings:** the settings window, built on ui.
+- **panels:** the list of the tool's panel types, by plugin, which opens the one the user chooses, built on ui.
+- **launcher:** picks a preset or session when OpenECS starts without one, built on ui.
+
+Apart from sdl, they are plugins like any other. They use only the plugin API, the core neither knows nor favours them, and a user can replace any of them with a plugin of the same name.
 
 ### 3.4 Platform
 
@@ -93,13 +105,13 @@ OpenECS targets Linux only for now.
 
 - **Security.** There is no permission system and no protection against malicious plugins or files.
 - **Accessibility.** The application is not designed with accessibility in mind.
-- **Look and feel.** A theme is a few core settings (colours, font, sizes) that the core's interface uses and plugins can read.
+- **Look and feel.** A theme is a set of core settings (colours, font, sizes) that the core's interface uses and plugins can read. OpenECS ships a dark and a light theme, and follows the system's choice by default.
 - **Undo and redo.** Each panel or plugin keeps its own history and binds its own keys; the core keeps no global history.
 - **Not in the design:** automatic saving while OpenECS runs, crash recovery, enabling or disabling plugins while OpenECS runs, and a library version of OpenECS.
 
 ## 4. Architecture
 
-```
+``` text
 +--------------------------------------------------------------+
 |  Plugins: native (C) and Lua                                 |
 +--------------------------------------------------------------+
@@ -112,7 +124,7 @@ OpenECS targets Linux only for now.
 +--------------------------------------------------------------+
 ```
 
-**Plugins talk only to the plugin API.** They never receive an SDL, Lua, Clay or libffi object from it. For example, a native plugin that needs SDL goes through the built-in **sdl** plugin.
+**Plugins talk only to the plugin API.** They never receive an SDL, Lua, Clay or libffi object from it. For example, a native plugin that needs one of the core's SDL objects, such as the graphics device, gets it through the built-in **sdl** plugin.
 
 ## 5. Panels
 
@@ -199,11 +211,11 @@ On Wayland, the display system decides where a new OS window appears.
 
 When a plugin opens a panel, for example when a file browser asks the text plugin to open a file, the panel goes to a predictable place. The caller can name a different place. By default, the panel joins the group of the most recently focused panel of the same type; if there is none, it joins the focused group.
 
-### 6.6 Maximize, pop-out and workspaces
+### 6.6 Maximize, pop out and workspaces
 
 - **Maximize** makes one group fill its OS window. The other panels stay alive but hidden.
-- **Pop-out** moves a panel into a new OS window. That window holds a full layout of its own. Floating panels that overlap others inside one OS window are not part of the design.
-- Switching **workspaces** is instant, because nothing is rebuilt. Pop-out windows belong to their workspace and are hidden while the user is in another one.
+- **pop out** moves a panel into a new OS window. That window holds a full layout of its own. Floating panels that overlap others inside one OS window are not part of the design.
+- Switching **workspaces** is instant, because nothing is rebuilt. pop out windows belong to their workspace and are hidden while the user is in another one.
 
 ### 6.7 Locked panels
 
@@ -211,7 +223,7 @@ A preset or a user can lock parts of the layout, for example a toolbar or a 3D v
 
 ### 6.8 Menus
 
-A panel's menu, opened from its tab or grip, has the core's entries (close, maximize, pop out, split, move to workspace) plus entries that the panel's type adds for its own panels. A group's menu, opened from the rest of its tab row, lists its tabs and acts on the whole group. Menus offer only what can be done now, and group entries of one kind into submenus. Inside its own area, a panel shows its own menus with popups.
+A panel's menu, opened from its tab or grip, has the core's entries (close, maximize, pop out, move to workspace) plus entries that the panel's type adds for its own panels. A group's menu, opened from the rest of its tab row, lists its tabs and acts on the whole group. Menus offer only what can be done now, and group entries of one kind into submenus. Inside its own area, a panel shows its own menus with popups.
 
 ## 7. Keys and focus
 
@@ -228,18 +240,18 @@ Pointer events always go to the panel under the pointer, whatever has focus. Dur
 
 The default is *click*. In hover mode, only real pointer movement changes focus, not a layout change under a still pointer.
 
-### 7.2 Keybindings are settings
+### 7.2 Keys tables
 
-A keybinding is a setting whose value is a key combination. It follows the same layers as every other setting (section 10.4), so the user can change any binding.
+Keys are bound in **keys tables**. A keys table maps key combinations to the functions they run, and has the same shape wherever it is written: in the core's settings file, in a preset, and in the user's settings file. Keys tables follow the same layers as settings (section 10.4), so the user can change any key, and `false` removes a key that a lower layer binds.
 
 ### 7.3 Who may bind what
 
 - **Plugins** bind keys only for their own panel types. Those bindings work only while such a panel has focus.
 - **Presets** and the **user's settings** can also bind keys for a workspace or for the whole tool, to any registered service function, by name. For example, a paint preset binds Ctrl+N to `canvas.new`, so Ctrl+N creates a canvas even while the palette has focus.
 
-When several bindings match a key press, the binding set in the highest settings layer wins: the user's over the preset's over a plugin's. Within one layer, the most specific binding wins: one panel, then a panel type, then a workspace, then the whole tool. If no binding matches, the key goes to the focused panel, so a panel can run its own key logic, such as modal editing.
+When several bindings match a key press, the binding set in the highest settings layer wins: the user's over the preset's over the defaults, which the core and the plugins give. Within one layer, the most specific binding wins: a panel type, then a workspace, then the whole tool. If no binding matches, the key goes to the focused panel, so a panel can run its own key logic, such as modal editing.
 
-A key press that triggers a binding types no text.
+A key press that triggers a binding types no text. While the focused panel takes text, keys pressed without Ctrl, Alt or Super go to it, so typing never runs a binding.
 
 ### 7.4 The core's keys
 
@@ -321,7 +333,7 @@ A preset is a complete application representation. That is why a preset may do t
 
 A **session** uses the same format as a preset, but OpenECS writes it.
 
-- When the user quits, OpenECS saves the session and restores it the next time the same tool starts. This is not automatic saving: nothing is saved while OpenECS runs.
+- A tool starts from its preset. With the setting that keeps sessions, which is off by default, OpenECS saves the session when the user quits and restores it the next time the same tool starts. Nothing is saved while OpenECS runs.
 - The user can save a session to a file at any time and open it later.
 - A session is a snapshot. It does not link back to the preset it started from.
 
@@ -332,17 +344,15 @@ A **session** uses the same format as a preset, but OpenECS writes it.
 
 ### 10.4 Settings
 
-Settings come in layers. A higher layer overrides the lower ones:
+Settings come in three layers. A higher layer overrides the lower ones:
 
-1. The core's settings, from a file shipped with OpenECS.
-2. Plugin defaults.
-3. The preset.
-4. Changes made in the settings window, kept in a file that OpenECS writes.
-5. The user's hand-edited settings file.
+1. Defaults: the core's settings file, shipped with OpenECS, and the defaults that plugins declare.
+2. The preset.
+3. The user's settings file.
 
-The user's hand-edited file is the top layer, and the core never rewrites it, so the user's comments and formatting stay. The settings window shows a setting that a higher layer overrides as faded, with a hint that names the file where it is set.
+The settings window changes the user's settings file, and the user can also edit it by hand. The window rewrites the file when it saves a change, so comments in the file are not kept.
 
-- Settings have types, so a wrong value in a hand-edited file produces a clear message.
+- Settings have types, so a wrong value in a file produces a clear message, and the default is used.
 - Settings of plugins that are not loaded are kept, not removed.
 - The user's files can hold settings for every tool and, in a separate section, settings for one tool only.
 - The user's settings can name extra plugins to load in every tool, for example the user's own Lua scripts.
@@ -398,7 +408,7 @@ The user's hand-edited file is the top layer, and the core never rewrites it, so
 
 **Group.** One or more panels that share one place in the layout; one of them is shown at a time.
 
-**Keybinding.** A link between a key combination and a function. It is a setting.
+**Keybinding.** A link between a key combination and a function, written in a keys table (7.2).
 
 **Launcher.** The tool that OpenECS shows when it starts without a preset. It lists presets and saved sessions, and opens the one the user chooses.
 
@@ -428,7 +438,9 @@ The user's hand-edited file is the top layer, and the core never rewrites it, so
 
 **Plugin API.** The functions and types through which plugins use the core.
 
-**Pop-out.** Moving a panel into a new OS window.
+**Standard plugin.** A first-party plugin whose services other plugins build on, such as draw and ui.
+
+**pop out.** Moving a panel into a new OS window.
 
 **Popup.** A small, temporary window, such as a menu or a tooltip, that belongs to a panel.
 
