@@ -23,7 +23,7 @@
     "  -s, --session FILE      Open a saved session\n"                                                    \
     "  -f, --fresh             Start from the preset, not from the tool's last session\n"                 \
     "  -t, --test FILE         Run a test; Debug builds only\n"                                           \
-    "  -d, --definitions DIR   Write the definition files of the plugins' functions into DIR, and exit\n" \
+    "  -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit\n"    \
     "  -v, --version           Print the version and exit\n"                                              \
     "  -h, --help              Print this help and exit\n"
 
@@ -88,7 +88,7 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
             return false;
         }
 
-        const char *value = NULL;
+        const char *value = nullptr;
 
         if (OPENECS_OPTIONS[option].takesValue)
         {
@@ -155,14 +155,14 @@ int main(int argc, char **argv)
     }
 
     ECSIApp_Start(&arguments);
-    int status = arguments.definitions != NULL ? (ECSIApp_WriteDefinitions(arguments.definitions) ? 1 : 0) : ECSIApp_Run();
-    const char *option = NULL;
+    int status = arguments.definitions != nullptr ? (ECSIApp_WriteDefinitions(arguments.definitions) ? 1 : 0) : ECSIApp_Run();
+    const char *option = nullptr;
     char *next = ECSIApp_Stop(&option);
 
     // a session or preset opened while OpenECS ran starts a new OpenECS in place of this one; SDL can start a process but not replace one
-    if (next != NULL)
+    if (next != nullptr)
     {
-        execv("/proc/self/exe", (char *[]){argv[0], (char *)option, next, NULL});
+        execv("/proc/self/exe", (char *[]){argv[0], (char *)option, next, nullptr});
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot start again from '%s'.", next);
         SDL_free(next);
         return 1;

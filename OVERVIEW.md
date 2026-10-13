@@ -59,7 +59,7 @@ The most important rule of OpenECS is the line between the **core** (OpenECS its
 
 - Layout: panels, splits, groups, maximizing, pop out windows and workspaces.
 - A drawing surface for every panel, and putting it on screen. The core offers **no drawing commands**: nothing like "draw a rectangle" or "draw text".
-- Its own small interface: tab rows, dividers, drag highlights and menus.
+- Its own small interface: the windows' title bars, tab rows, dividers, drag highlights and menus.
 - Input: focus, keybindings, the mouse pointer and text input.
 - Events and actions for everything about panels and layout.
 - Plugin loading, and the services and events through which plugins work together.
@@ -82,14 +82,15 @@ Everything else. If the core's own machinery needs it, it is core; if only some 
 Some plugins are made and shipped together with OpenECS because the product needs them:
 
 - **sdl:** built into the executable. Gives native plugins the core's SDL objects (section 4).
-- **draw:** a **standard plugin**: drawing shapes and text into panels, offered as a service to other plugins.
-- **ui:** a standard plugin: user-interface elements with layout, which call back when the user clicks or types.
-- **tty:** a standard plugin: grids of characters for terminals, consoles and logs, drawn at any size.
-- **image:** a standard plugin: reading image files, SVG among them, and drawing them into panels.
-- **audio:** a standard plugin: reading sound files and playing them.
-- **net:** a standard plugin: TCP connections and servers that never block the program.
+- **draw:** a **standard plugin**: drawing shapes, lines, triangles, images and text into panels, offered as a service to other plugins.
+- **mixer:** a standard plugin: playing sounds, several at once.
+- **ui:** a standard plugin: user-interface elements with layout, such as buttons, toggles, sliders, dropdowns and lists, which call back when the user clicks or types. They are generic, so tools build their own views from them.
+- **textgrid:** a standard plugin: grids of characters for terminals, consoles and logs, drawn with draw at any size.
+- **image:** a standard plugin: reading image files, SVG among them, into images that draw draws.
+- **audio:** a standard plugin: reading sound files into sounds that mixer plays.
+- **net:** a standard plugin: TCP connections and servers, and UDP sockets, that never block the program.
 - **gltf:** a standard plugin: reading glTF models, for plugins that draw 3D scenes.
-- **fs:** a standard plugin: listing, making, copying, moving and removing files and folders, which Lua's own libraries cannot.
+- **fs:** a standard plugin: listing and making folders, copying files and telling what a path is, which Lua's own libraries cannot.
 - **settings:** the settings window, built on ui.
 - **panels:** the list of the tool's panel types, by plugin, which opens the one the user chooses, built on ui.
 - **launcher:** picks a preset or session when OpenECS starts without one, built on ui.
@@ -104,7 +105,7 @@ OpenECS targets Linux only for now.
 
 - **Security.** There is no permission system and no protection against malicious plugins or files.
 - **Accessibility.** The application is not designed with accessibility in mind.
-- **Look and feel.** A theme is a few core settings (colours, font, sizes) that the core's interface uses and plugins can read.
+- **Look and feel.** A theme is a set of core settings (colours, font, sizes) that the core's interface uses and plugins can read. OpenECS ships a dark and a light theme, and follows the system's choice by default.
 - **Undo and redo.** Each panel or plugin keeps its own history and binds its own keys; the core keeps no global history.
 - **Not in the design:** automatic saving while OpenECS runs, crash recovery, enabling or disabling plugins while OpenECS runs, and a library version of OpenECS.
 

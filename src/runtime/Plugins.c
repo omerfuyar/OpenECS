@@ -35,30 +35,24 @@ static const ECSIFieldRule OPENECS_MANIFEST_RULES[] = {
 /// @brief A native plugin's ECSPlugin_Init.
 typedef SHUResult (*ECSIPluginInitFunction)(ECSPlugin plugin);
 
-/// @brief A native plugin's ECSPlugin_Shutdown.
-typedef void (*ECSIPluginShutdownFunction)(ECSPlugin plugin);
-
 typedef struct ECSIPlugin
 {
     char *name;
     char *version;
     char *description;         // from the manifest, or empty
     char *folder;              // ends with a separator
-    SDL_SharedObject *library; // NULL if the plugin has no native code
-    ECSIPluginShutdownFunction Shutdown;
-    bool failed;              // its ECSPlugin_Init failed; plugins that depend on it are skipped
-    char **dependencies;      // stb_ds array of the names its manifest depends on
-    ECSPluginStateDesc state; // Save is NULL if the plugin saves no state of its own
-    ECSTimerFunction stateRelease;
-    ECSTaskFunction LuaShutdown; // the Lua code's shutdown, or NULL
-    ECSTaskFunction luaShutdownRelease;
-    void *luaShutdownData;
+    SDL_SharedObject *library; // nullptr if the plugin has no native code
+    bool failed;               // its code failed to start; plugins that depend on it are skipped
+    char **dependencies;       // stb_ds array of the names its manifest depends on
+    bool registered;           // it registered desc
+    ECSPluginDesc desc;        // its own state and its Destroy, from ECSPlugin_Register
+    ECSTaskFunction release;   // releases desc's data when the plugin goes away, or nullptr
 } ECSIPlugin;
 
 /// @brief State while the plugins of a table are loaded.
 typedef struct ECSIPluginLoader
 {
-    const char *dependent; // the plugin whose dependencies these are, or NULL for the plugins a preset or user names
+    const char *dependent; // the plugin whose dependencies these are, or nullptr for the plugins a preset or user names
     SHUResult result;
 } ECSIPluginLoader;
 
@@ -94,24 +88,17 @@ static ECSIPlugin *ECSIPlugin_Find(const char *name)
     return shget(PLUGINS.plugins, name);
 }
 
-/// @brief Forgets a plugin's state description, and releases its data.
-static void ECSIPlugin_ForgetState(ECSIPlugin *plugin)
+/// @brief Forgets a plugin's description, and releases its data.
+static void ECSIPlugin_Forget(ECSIPlugin *plugin)
 {
-    if (plugin->stateRelease != NULL)
+    if (plugin->release != nullptr)
     {
-        plugin->stateRelease(plugin->state.data);
+        plugin->release(plugin->desc.data);
     }
 
-    plugin->state = (ECSPluginStateDesc){0};
-    plugin->stateRelease = NULL;
-
-    if (plugin->luaShutdownRelease != NULL)
-    {
-        plugin->luaShutdownRelease(plugin->luaShutdownData);
-    }
-
-    plugin->LuaShutdown = NULL;
-    plugin->luaShutdownRelease = NULL;
+    plugin->desc = (ECSPluginDesc){0};
+    plugin->registered = false;
+    plugin->release = nullptr;
 }
 
 static void ECSIPlugin_Free(ECSIPlugin *plugin)
@@ -129,7 +116,7 @@ static void ECSIPlugin_Free(ECSIPlugin *plugin)
 }
 
 /// @brief Gives a plugin folder as a full path, so it stays right if the working folder changes.
-/// @return A copy to free with SDL_free, or NULL if out of memory.
+/// @return A copy to free with SDL_free, or nullptr if out of memory.
 static char *ECSIPlugin_AbsoluteFolder(const char *folder)
 {
     if (folder[0] == '/')
@@ -138,11 +125,11 @@ static char *ECSIPlugin_AbsoluteFolder(const char *folder)
     }
 
     char *current = SDL_GetCurrentDirectory();
-    char *full = NULL;
+    char *full = nullptr;
 
-    if (current == NULL || SDL_asprintf(&full, "%s%s", current, folder) < 0)
+    if (current == nullptr || SDL_asprintf(&full, "%s%s", current, folder) < 0)
     {
-        full = NULL;
+        full = nullptr;
     }
 
     SDL_free(current);
@@ -156,7 +143,7 @@ static void ECSIPlugin_AddDependency(const char *name, const ECSValue *field, vo
     ECSIPlugin *plugin = userData;
     char *copy = SDL_strdup(name);
 
-    if (copy != NULL)
+    if (copy != nullptr)
     {
         arrput(plugin->dependencies, copy);
     }
@@ -174,7 +161,7 @@ static void ECSIPlugin_ReadVersion(const char *text, u64 retParts[3])
 {
     for (usz i = 0; i < 3; i++)
     {
-        char *end = NULL;
+        char *end = nullptr;
         retParts[i] = SDL_strtoull(text, &end, 10);
         text = *end == '.' ? end + 1 : end;
     }
@@ -220,7 +207,7 @@ static void ECSIManifest_ReportMissing(const char *name)
 /// @brief Reports a manifest that is not valid.
 static OPENECS_PRINTF(2, 3) void ECSIManifest_Report(const char *path, const char *format, ...)
 {
-    char *problem = NULL;
+    char *problem = nullptr;
     va_list arguments;
     va_start(arguments, format);
     int length = SDL_vasprintf(&problem, format, arguments);
@@ -234,7 +221,7 @@ static void ECSIManifest_CheckDependency(const char *name, const ECSValue *field
 {
     bool *valid = userData;
 
-    if (*valid && !ECSIValue_IsVersion(ECSValue_GetString(field, NULL)))
+    if (*valid && !ECSIValue_IsVersion(ECSValue_GetString(field, nullptr)))
     {
         *valid = false;
         SDL_SetError("the version of '%s' in 'depends' must be a version text, such as \"0.1\"", name);
@@ -246,11 +233,11 @@ static void ECSIManifest_CheckDependency(const char *name, const ECSValue *field
 /// @return true if it is valid.
 static bool ECSIManifest_Check(const char *name, const char *path, const ECSValue *file)
 {
-    char *problem = NULL;
+    char *problem = nullptr;
 
     if (!ECSIValue_CheckFields(file, OPENECS_MANIFEST_RULES, SDL_arraysize(OPENECS_MANIFEST_RULES), &problem))
     {
-        ECSIManifest_Report(path, "%s", problem != NULL ? problem : "out of memory");
+        ECSIManifest_Report(path, "%s", problem != nullptr ? problem : "out of memory");
         SDL_free(problem);
         return false;
     }
@@ -264,7 +251,7 @@ static bool ECSIManifest_Check(const char *name, const char *path, const ECSValu
     {
         ECSIManifest_Report(path, "'name' must be the name of its folder, '%s'", name);
     }
-    else if (!ECSIValue_IsVersion(ECSValue_GetString(ECSValue_GetTableField(file, "version"), NULL)))
+    else if (!ECSIValue_IsVersion(ECSValue_GetString(ECSValue_GetTableField(file, "version"), nullptr)))
     {
         ECSIManifest_Report(path, "'version' must be a version text, such as \"1.2.0\"");
     }
@@ -295,14 +282,14 @@ static SHUResult ECSIManifest_Find(const char *name, ECSIManifest *retManifest)
 
     for (usz i = 0; i < PLUGINS.directoryCount; i++)
     {
-        char *path = NULL;
+        char *path = nullptr;
 
         if (SDL_asprintf(&path, "%s%s/manifest.lua", PLUGINS.directories[i], name) < 0)
         {
             return SHUResult_ErrAllocation;
         }
 
-        if (!SDL_GetPathInfo(path, NULL))
+        if (!SDL_GetPathInfo(path, nullptr))
         {
             SDL_free(path);
             continue;
@@ -317,7 +304,7 @@ static SHUResult ECSIManifest_Find(const char *name, ECSIManifest *retManifest)
 
         if (SDL_asprintf(&retManifest->folder, "%s%s/", PLUGINS.directories[i], name) < 0)
         {
-            retManifest->folder = NULL;
+            retManifest->folder = nullptr;
             ECSIManifest_Free(retManifest);
             return SHUResult_ErrAllocation;
         }
@@ -356,11 +343,11 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
         .folder = ECSIPlugin_AbsoluteFolder(manifest->folder),
     };
     ECSIPlugin *record = SDL_malloc(sizeof(ECSIPlugin));
-    ECSIPluginInitFunction Init = NULL;
+    ECSIPluginInitFunction Init = nullptr;
 
     ECSIValue_TableForEachField(ECSValue_GetTableField(file, "depends"), ECSIPlugin_AddDependency, &plugin);
 
-    if (plugin.name == NULL || plugin.version == NULL || plugin.description == NULL || plugin.folder == NULL || record == NULL)
+    if (plugin.name == nullptr || plugin.version == nullptr || plugin.description == nullptr || plugin.folder == nullptr || record == nullptr)
     {
         SDL_free(record);
         ECSIPlugin_Free(&plugin);
@@ -369,7 +356,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
 
     if (native)
     {
-        char *path = NULL;
+        char *path = nullptr;
 
         if (SDL_asprintf(&path, OPENECS_LIBRARY_FORMAT, manifest->folder, name) >= 0)
         {
@@ -377,7 +364,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
             SDL_free(path);
         }
 
-        if (plugin.library == NULL)
+        if (plugin.library == nullptr)
         {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot load the library of plugin '%s': %s", name, SDL_GetError());
             SDL_free(record);
@@ -386,9 +373,8 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
         }
 
         Init = (ECSIPluginInitFunction)SDL_LoadFunction(plugin.library, "ECSPlugin_Init");
-        plugin.Shutdown = (ECSIPluginShutdownFunction)SDL_LoadFunction(plugin.library, "ECSPlugin_Shutdown");
 
-        if (Init == NULL)
+        if (Init == nullptr)
         {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' does not export ECSPlugin_Init.", name);
             SDL_UnloadObject(plugin.library);
@@ -402,22 +388,21 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
     *record = plugin;
     shput(PLUGINS.plugins, record->name, record);
 
-    SHUResult result = Init == NULL ? SHUResult_Ok : Init(record);
+    SHUResult result = Init == nullptr ? SHUResult_Ok : Init(record);
 
     if (result)
     {
-        // a plugin whose Init fails cleans up before it returns, so it gets no Shutdown
-        record->Shutdown = NULL;
+        // a plugin whose Init fails cleans up before it returns, so its Destroy does not run
         record->failed = true;
         PLUGINS.hooks.RemoveRegistrations(record);
-        ECSIPlugin_ForgetState(record);
+        ECSIPlugin_Forget(record);
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' failed to start (%s).", name, SHUResult_String(result));
         return result;
     }
 
     if (!native)
     {
-        char *path = NULL;
+        char *path = nullptr;
         result = SDL_asprintf(&path, "%s" OPENECS_LUA_ENTRY, manifest->folder) < 0 ? SHUResult_ErrAllocation : PLUGINS.hooks.StartLua(record, manifest->folder, path);
         SDL_free(path);
 
@@ -425,7 +410,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
         {
             record->failed = true;
             PLUGINS.hooks.RemoveRegistrations(record);
-            ECSIPlugin_ForgetState(record);
+            ECSIPlugin_Forget(record);
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' failed to start its Lua code (%s).", name, SHUResult_String(result));
             return result;
         }
@@ -436,13 +421,13 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
 }
 
 /// @brief Loads a plugin after the plugins it depends on, if it is not loaded yet.
-/// @param minimum The minimum version that the caller needs, or NULL.
+/// @param minimum The minimum version that the caller needs, or nullptr.
 static SHUResult ECSIPlugin_Load(const char *name, const char *minimum)
 {
     ECSIPlugin *plugin = ECSIPlugin_Find(name);
-    const char *version = NULL;
+    const char *version = nullptr;
 
-    if (plugin != NULL)
+    if (plugin != nullptr)
     {
         version = plugin->version;
     }
@@ -461,14 +446,14 @@ static SHUResult ECSIPlugin_Load(const char *name, const char *minimum)
 
     ECSIManifest manifest = {0};
 
-    if (plugin == NULL)
+    if (plugin == nullptr)
     {
         SHU_ReturnResult(ECSIManifest_Find(name, &manifest));
         version = ECSValue_GetString(ECSValue_GetTableField(manifest.file, "version"), "0.0.0");
     }
 
     // the version is checked before the plugin's code runs
-    if (minimum != NULL && !ECSIPlugin_VersionMatches(version, minimum))
+    if (minimum != nullptr && !ECSIPlugin_VersionMatches(version, minimum))
     {
         char neededBy[OPENECS_PLUGINS_REPORT_SIZE];
         ECSIPlugin_NeededBy(cs(neededBy, sizeof(neededBy)));
@@ -477,7 +462,7 @@ static SHUResult ECSIPlugin_Load(const char *name, const char *minimum)
         return SHUResult_ErrBadData;
     }
 
-    if (plugin != NULL)
+    if (plugin != nullptr)
     {
         return plugin->failed ? SHUResult_ErrBadData : SHUResult_Ok;
     }
@@ -492,18 +477,18 @@ static void ECSIPlugin_LoadField(const char *name, const ECSValue *field, void *
     ECSIPluginLoader *loader = userData;
 
     // a dependency that fails skips the plugin that needs it, so the rest is not loaded for it
-    if (loader->dependent != NULL && loader->result)
+    if (loader->dependent != nullptr && loader->result)
     {
         return;
     }
 
-    SHUResult result = ECSIPlugin_Load(name, ECSValue_GetString(field, NULL));
+    SHUResult result = ECSIPlugin_Load(name, ECSValue_GetString(field, nullptr));
 
     if (result)
     {
         loader->result = result;
 
-        if (loader->dependent != NULL)
+        if (loader->dependent != nullptr)
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is skipped because '%s' failed.", loader->dependent, name);
         }
@@ -511,7 +496,7 @@ static void ECSIPlugin_LoadField(const char *name, const ECSValue *field, void *
 }
 
 /// @brief Loads the plugins that a table names: named fields with a minimum version, and list items with a name only.
-/// @param dependent The plugin whose dependencies these are; it stops at the first failure. NULL loads every plugin it can.
+/// @param dependent The plugin whose dependencies these are; it stops at the first failure. nullptr loads every plugin it can.
 static SHUResult ECSIPlugin_LoadAll(const ECSValue *plugins, const char *dependent)
 {
     ECSIPluginLoader loader = {.dependent = dependent, .result = SHUResult_Ok};
@@ -519,11 +504,11 @@ static SHUResult ECSIPlugin_LoadAll(const ECSValue *plugins, const char *depende
 
     for (usz i = 0; i < ECSValue_GetListCount(plugins); i++)
     {
-        const char *name = ECSValue_GetString(ECSValue_GetListItem(plugins, i), NULL);
+        const char *name = ECSValue_GetString(ECSValue_GetListItem(plugins, i), nullptr);
 
-        if (name != NULL)
+        if (name != nullptr)
         {
-            ECSIPlugin_LoadField(name, NULL, &loader);
+            ECSIPlugin_LoadField(name, nullptr, &loader);
         }
     }
 
@@ -534,16 +519,16 @@ static SHUResult ECSIPlugin_LoadAll(const ECSValue *plugins, const char *depende
 
 SHUResult ECSIPlugins_Load(const char *const *directories, usz directoryCount, const ECSValue *plugins, const char *neededBy)
 {
-    SDL_assert(directories != NULL);
-    SDL_assert(neededBy != NULL);
+    SDL_assert(directories != nullptr);
+    SDL_assert(neededBy != nullptr);
 
     PLUGINS.directories = directories;
     PLUGINS.directoryCount = directoryCount;
     PLUGINS.neededBy = neededBy;
-    SHUResult result = ECSIPlugin_LoadAll(plugins, NULL);
-    PLUGINS.directories = NULL;
+    SHUResult result = ECSIPlugin_LoadAll(plugins, nullptr);
+    PLUGINS.directories = nullptr;
     PLUGINS.directoryCount = 0;
-    PLUGINS.neededBy = NULL;
+    PLUGINS.neededBy = nullptr;
 
     if (PLUGINS.invalid)
     {
@@ -553,25 +538,18 @@ SHUResult ECSIPlugins_Load(const char *const *directories, usz directoryCount, c
     return result ? SHUResult_Err : SHUResult_Ok;
 }
 
-void ECSIPlugins_Shutdown(void)
+void ECSIPlugins_Destroy(void)
 {
     for (usz i = shlenu(PLUGINS.plugins); i > 0; i--)
     {
         ECSIPlugin *plugin = PLUGINS.plugins[i - 1].value;
 
-        // the Lua code started after the native code, so it shuts down first
-        if (plugin->LuaShutdown != NULL)
+        if (plugin->desc.Destroy != nullptr)
         {
-            plugin->LuaShutdown(plugin->luaShutdownData);
+            plugin->desc.Destroy(plugin->desc.data);
         }
 
-        if (plugin->Shutdown != NULL)
-        {
-            plugin->Shutdown(plugin);
-        }
-
-        plugin->LuaShutdown = NULL;
-        plugin->Shutdown = NULL;
+        plugin->desc.Destroy = nullptr;
     }
 }
 
@@ -589,9 +567,9 @@ void ECSIPlugins_Unload(void)
     {
         ECSIPlugin *plugin = PLUGINS.plugins[i - 1].value;
 
-        ECSIPlugin_ForgetState(plugin);
+        ECSIPlugin_Forget(plugin);
 
-        if (plugin->library != NULL)
+        if (plugin->library != nullptr)
         {
             SDL_UnloadObject(plugin->library);
         }
@@ -608,72 +586,59 @@ void ECSIPlugins_Unload(void)
 
 void ECSIPlugins_SetHooks(const ECSIPluginHooks *hooks)
 {
-    SDL_assert(hooks != NULL && hooks->StartLua != NULL && hooks->RemoveRegistrations != NULL);
+    SDL_assert(hooks != nullptr && hooks->StartLua != nullptr && hooks->RemoveRegistrations != nullptr);
 
     PLUGINS.hooks = *hooks;
 }
 
 const char *ECSIPlugin_GetVersion(ECSPlugin plugin)
 {
-    SDL_assert(plugin != NULL);
+    SDL_assert(plugin != nullptr);
 
     return plugin->version;
 }
 
 const char *ECSIPlugin_GetName(ECSPlugin plugin)
 {
-    SDL_assert(plugin != NULL);
+    SDL_assert(plugin != nullptr);
 
     return plugin->name;
 }
 
 const char *ECSIPlugin_GetDescription(ECSPlugin plugin)
 {
-    SDL_assert(plugin != NULL);
+    SDL_assert(plugin != nullptr);
 
     return plugin->description;
 }
 
-SHUResult ECSIPlugin_RegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc, ECSTimerFunction release)
+SHUResult ECSIPlugin_Register(ECSPlugin plugin, const ECSPluginDesc *desc, ECSTaskFunction release)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(desc != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(desc != nullptr);
 
-    if (desc->Save == NULL || desc->Restore == NULL || plugin->state.Save != NULL)
+    if ((desc->SaveState == nullptr) != (desc->RestoreState == nullptr) || plugin->registered)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' registers its state without Save and Restore, or a second time.", plugin->name);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' registers itself with only one of SaveState and RestoreState, or a second time.", plugin->name);
         return SHUResult_ErrBadData;
     }
 
-    plugin->state = *desc;
-    plugin->stateRelease = release;
+    plugin->desc = *desc;
+    plugin->registered = true;
+    plugin->release = release;
     return SHUResult_Ok;
-}
-
-void ECSIPlugin_SetLuaShutdown(ECSPlugin plugin, ECSTaskFunction function, ECSTaskFunction release, void *data)
-{
-    SDL_assert(plugin != NULL);
-
-    if (plugin->luaShutdownRelease != NULL)
-    {
-        plugin->luaShutdownRelease(plugin->luaShutdownData);
-    }
-
-    plugin->LuaShutdown = function;
-    plugin->luaShutdownRelease = release;
-    plugin->luaShutdownData = data;
 }
 
 const char *ECSPlugin_GetFolder(ECSPlugin plugin)
 {
-    SDL_assert(plugin != NULL);
+    SDL_assert(plugin != nullptr);
 
     return plugin->folder;
 }
 
-SHUResult ECSPlugin_RegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc)
+SHUResult ECSPlugin_Register(ECSPlugin plugin, const ECSPluginDesc *desc)
 {
-    return ECSIPlugin_RegisterState(plugin, desc, NULL);
+    return ECSIPlugin_Register(plugin, desc, nullptr);
 }
 
 void ECSIPlugins_RestoreStates(const ECSValue *states)
@@ -683,14 +648,14 @@ void ECSIPlugins_RestoreStates(const ECSValue *states)
         ECSIPlugin *plugin = PLUGINS.plugins[i].value;
         const ECSValue *entry = ECSValue_GetTableField(states, plugin->name);
 
-        if (plugin->state.Restore == NULL || entry == NULL)
+        if (plugin->desc.RestoreState == nullptr || entry == nullptr)
         {
             continue;
         }
 
         i64 version = ECSValue_GetInteger(ECSValue_GetTableField(entry, "stateVersion"), 0);
 
-        if (plugin->state.Restore(plugin->state.data, ECSValue_GetTableField(entry, "state"), version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0))
+        if (plugin->desc.RestoreState(plugin->desc.data, ECSValue_GetTableField(entry, "state"), version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not restore its state from the session.", plugin->name);
         }
@@ -699,18 +664,18 @@ void ECSIPlugins_RestoreStates(const ECSValue *states)
 
 SHUResult ECSIPlugins_SaveStates(ECSValue *states)
 {
-    SDL_assert(states != NULL);
+    SDL_assert(states != nullptr);
 
     ECSValue_SetTable(states);
 
     for (usz i = 0; i < shlenu(PLUGINS.plugins); i++)
     {
         ECSIPlugin *plugin = PLUGINS.plugins[i].value;
-        ECSValue *saved = NULL;
-        ECSValue *entry = NULL;
-        ECSValue *field = NULL;
+        ECSValue *saved = nullptr;
+        ECSValue *entry = nullptr;
+        ECSValue *field = nullptr;
 
-        if (plugin->state.Save == NULL)
+        if (plugin->desc.SaveState == nullptr)
         {
             continue;
         }
@@ -718,7 +683,7 @@ SHUResult ECSIPlugins_SaveStates(ECSValue *states)
         SHU_ReturnResult(ECSValue_Create(&saved));
 
         // a failed save keeps the state the session already had
-        if (plugin->state.Save(plugin->state.data, saved))
+        if (plugin->desc.SaveState(plugin->desc.data, saved))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not save its state.", plugin->name);
             ECSValue_Destroy(&saved);
@@ -738,7 +703,7 @@ SHUResult ECSIPlugins_SaveStates(ECSValue *states)
 
         if (!result)
         {
-            ECSValue_SetInteger(field, plugin->state.version);
+            ECSValue_SetInteger(field, plugin->desc.stateVersion);
         }
 
         ECSValue_Destroy(&saved);
@@ -750,17 +715,17 @@ SHUResult ECSIPlugins_SaveStates(ECSValue *states)
 
 void ECSIPlugin_ReportError(ECSPlugin plugin, const char *message)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(message != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(message != nullptr);
 
-    char *key = NULL;
+    char *key = nullptr;
 
     if (SDL_asprintf(&key, "%s: %s", plugin->name, message) < 0)
     {
         return;
     }
 
-    if (PLUGINS.errors == NULL)
+    if (PLUGINS.errors == nullptr)
     {
         sh_new_strdup(PLUGINS.errors);
     }
@@ -777,8 +742,8 @@ void ECSIPlugin_ReportError(ECSPlugin plugin, const char *message)
 
 bool ECSIPlugin_DependsOn(ECSPlugin plugin, ECSPlugin other)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(other != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(other != nullptr);
 
     for (usz i = 0; i < arrlenu(plugin->dependencies); i++)
     {
@@ -793,11 +758,11 @@ bool ECSIPlugin_DependsOn(ECSPlugin plugin, ECSPlugin other)
 
 bool ECSIPlugins_OwnerRuns(const char *name)
 {
-    SDL_assert(name != NULL);
+    SDL_assert(name != nullptr);
 
     const char *dot = SDL_strchr(name, '.');
 
-    if (dot == NULL)
+    if (dot == nullptr)
     {
         return false;
     }
@@ -811,15 +776,38 @@ bool ECSIPlugins_OwnerRuns(const char *name)
 
     // the plugins are keyed by whole names, so the owner's name is copied
     char *owner = SDL_strndup(name, length);
-    ECSIPlugin *plugin = owner == NULL || PLUGINS.plugins == NULL ? NULL : ECSIPlugin_Find(owner);
+    ECSIPlugin *plugin = owner == nullptr || PLUGINS.plugins == nullptr ? nullptr : ECSIPlugin_Find(owner);
     SDL_free(owner);
-    return plugin != NULL && !plugin->failed;
+    return plugin != nullptr && !plugin->failed;
+}
+
+char *ECSIPlugin_FullName(ECSPlugin plugin, const char *localName)
+{
+    SDL_assert(plugin != nullptr);
+
+    usz prefixLength = SDL_strlen(plugin->name);
+
+    if (localName == nullptr || localName[0] == '\0')
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' registers something without a name.", plugin->name);
+        return nullptr;
+    }
+
+    // the core adds the plugin's name, so a name that has it already is a mistake
+    if (SDL_strncmp(localName, plugin->name, prefixLength) == 0 && localName[prefixLength] == '.')
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is given without '%s.', which the core adds, so it is '%s.%s'.", localName, plugin->name, plugin->name, localName);
+        return nullptr;
+    }
+
+    char *name = nullptr;
+    return SDL_asprintf(&name, "%s.%s", plugin->name, localName) < 0 ? nullptr : name;
 }
 
 bool ECSIPlugin_OwnsName(ECSPlugin plugin, const char *name)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(name != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(name != nullptr);
 
     usz prefixLength = SDL_strlen(plugin->name);
 
@@ -834,9 +822,9 @@ bool ECSIPlugin_OwnsName(ECSPlugin plugin, const char *name)
 
 void ECS_Log(ECSPlugin plugin, ECSLogLevel level, const char *format, ...)
 {
-    SDL_assert(plugin != NULL);
+    SDL_assert(plugin != nullptr);
     SDL_assert(level <= ECSLogLevel_Error);
-    SDL_assert(format != NULL);
+    SDL_assert(format != nullptr);
 
     static const SDL_LogPriority PRIORITIES[] = {
         [ECSLogLevel_Debug] = SDL_LOG_PRIORITY_DEBUG,
@@ -851,7 +839,7 @@ void ECS_Log(ECSPlugin plugin, ECSLogLevel level, const char *format, ...)
         return;
     }
 
-    char *message = NULL;
+    char *message = nullptr;
     va_list arguments;
     va_start(arguments, format);
     int length = SDL_vasprintf(&message, format, arguments);
@@ -866,10 +854,10 @@ void ECS_Log(ECSPlugin plugin, ECSLogLevel level, const char *format, ...)
 
 ECSPlugin ECSIPlugins_Get(const char *name)
 {
-    SDL_assert(name != NULL);
+    SDL_assert(name != nullptr);
 
-    ECSIPlugin *plugin = PLUGINS.plugins == NULL ? NULL : ECSIPlugin_Find(name);
-    return plugin == NULL || plugin->failed ? NULL : plugin;
+    ECSIPlugin *plugin = PLUGINS.plugins == nullptr ? nullptr : ECSIPlugin_Find(name);
+    return plugin == nullptr || plugin->failed ? nullptr : plugin;
 }
 
 ECSPlugin ECSIPlugins_GetAt(usz index)
@@ -883,5 +871,5 @@ ECSPlugin ECSIPlugins_GetAt(usz index)
         }
     }
 
-    return NULL;
+    return nullptr;
 }

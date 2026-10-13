@@ -18,7 +18,7 @@ static struct
 /// @brief Frees a popup and what the window shows it with.
 static void ECSIPopup_Free(ECSPopup popup)
 {
-    if (POPUPS.Release != NULL)
+    if (POPUPS.Release != nullptr)
     {
         POPUPS.Release(popup);
     }
@@ -31,7 +31,7 @@ static void ECSIPopup_DeliverEvent(void *target, const ECSPanelEvent *event)
 {
     ECSPopup popup = target;
 
-    if (!popup->closed && popup->desc.Event != NULL)
+    if (!popup->closed && popup->desc.Event != nullptr)
     {
         popup->desc.Event(popup->desc.data, event);
     }
@@ -43,7 +43,7 @@ static void ECSIPopup_DeliverClosed(void *target, const ECSPanelEvent *event)
     (void)event;
     ECSPopup popup = target;
 
-    if (popup->desc.Closed != NULL)
+    if (popup->desc.Closed != nullptr)
     {
         popup->desc.Closed(popup->desc.data);
     }
@@ -87,7 +87,7 @@ void ECSIPopups_Terminate(void)
 
 ECSPopup *ECSIPopups_GetOpen(usz *retCount)
 {
-    SDL_assert(retCount != NULL);
+    SDL_assert(retCount != nullptr);
 
     *retCount = arrlenu(POPUPS.open);
     return POPUPS.open;
@@ -103,7 +103,7 @@ ECSPopup ECSIPopups_GetMenu(void)
         }
     }
 
-    return NULL;
+    return nullptr;
 }
 
 void ECSIPopups_CloseAll(void)
@@ -120,7 +120,7 @@ void ECSIPopups_CloseHidden(void)
     {
         ECSPanel panel = POPUPS.open[i - 1]->panel;
 
-        if (panel->closed || panel->fault != NULL || !panel->visible)
+        if (panel->closed || panel->fault != nullptr || !panel->visible)
         {
             ECSPopup_Close(POPUPS.open[i - 1]);
         }
@@ -157,22 +157,22 @@ bool ECSIPopups_WantsFrame(void)
 
 bool ECSIPopup_Draw(ECSPopup popup)
 {
-    SDL_assert(popup != NULL);
+    SDL_assert(popup != nullptr);
 
     i32 width = (i32)SDL_max(1.0f, SDL_roundf(popup->desc.width));
     i32 height = (i32)SDL_max(1.0f, SDL_roundf(popup->desc.height));
 
-    if (!popup->needsDraw && popup->pixels != NULL && popup->pixels->w == width && popup->pixels->h == height)
+    if (!popup->needsDraw && popup->pixels != nullptr && popup->pixels->w == width && popup->pixels->h == height)
     {
         return false;
     }
 
-    if (popup->pixels == NULL || popup->pixels->w != width || popup->pixels->h != height)
+    if (popup->pixels == nullptr || popup->pixels->w != width || popup->pixels->h != height)
     {
         SDL_DestroySurface(popup->pixels);
         popup->pixels = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_ARGB8888);
 
-        if (popup->pixels == NULL)
+        if (popup->pixels == nullptr)
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot make the %dx%d pixels of a popup: %s", width, height, SDL_GetError());
             return false;
@@ -200,21 +200,21 @@ bool ECSIPopup_Draw(ECSPopup popup)
 
 void ECSIPopup_PostEvent(ECSPopup popup, const ECSPanelEvent *event)
 {
-    SDL_assert(popup != NULL);
-    SDL_assert(event != NULL);
+    SDL_assert(popup != nullptr);
+    SDL_assert(event != nullptr);
 
     ECSIEvents_Post(ECSIPopup_DeliverEvent, popup, event);
 }
 
 SHUResult ECSPopup_Open(ECSPanel panel, const ECSPopupDesc *desc, ECSPopup *retPopup)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(desc != NULL);
-    SDL_assert(retPopup != NULL);
+    SDL_assert(panel != nullptr);
+    SDL_assert(desc != nullptr);
+    SDL_assert(retPopup != nullptr);
 
-    *retPopup = NULL;
+    *retPopup = nullptr;
 
-    if (desc->Draw == NULL || desc->width <= 0.0f || desc->height <= 0.0f)
+    if (desc->Draw == nullptr || desc->width <= 0.0f || desc->height <= 0.0f)
     {
         return SHUResult_ErrBadData;
     }
@@ -226,7 +226,7 @@ SHUResult ECSPopup_Open(ECSPanel panel, const ECSPopupDesc *desc, ECSPopup *retP
 
     ECSPopup popup = SDL_calloc(1, sizeof(struct ECSIPopup));
 
-    if (popup == NULL)
+    if (popup == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -242,7 +242,7 @@ SHUResult ECSPopup_Open(ECSPanel panel, const ECSPopupDesc *desc, ECSPopup *retP
 
 void ECSPopup_Close(ECSPopup popup)
 {
-    SDL_assert(popup != NULL);
+    SDL_assert(popup != nullptr);
 
     if (popup->closed)
     {
@@ -267,14 +267,14 @@ void ECSPopup_Close(ECSPopup popup)
 
 void ECSPopup_Redraw(ECSPopup popup)
 {
-    SDL_assert(popup != NULL);
+    SDL_assert(popup != nullptr);
 
     popup->needsDraw = true;
 }
 
 void ECSPopup_SetSize(ECSPopup popup, f32 width, f32 height)
 {
-    SDL_assert(popup != NULL);
+    SDL_assert(popup != nullptr);
 
     popup->desc.width = width > 0.0f ? width : popup->desc.width;
     popup->desc.height = height > 0.0f ? height : popup->desc.height;

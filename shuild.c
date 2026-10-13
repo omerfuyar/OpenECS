@@ -41,6 +41,7 @@ static void Shuild_libffi(void);
 static void Shuild_OpenECS(void);
 static void Shuild_Plugins(void);
 static void Shuild_other(void);
+static void Shuild_Definitions(void);
 
 int main(int argc, char **argv)
 {
@@ -83,6 +84,7 @@ int main(int argc, char **argv)
     Shuild_other();
     Shuild_OpenECS();
     Shuild_Plugins();
+    Shuild_Definitions();
 
     return 0;
 }
@@ -598,4 +600,41 @@ static void Shuild_other(void)
 
     SHU_UtilCreateDirectory(tempStr.data);
     CopyFile("resources/", tempStr.data);
+}
+
+/// @brief Writes a .luarc.json file that points LuaLS at OpenECS's ecs.lua and the definition files, so editors complete what Lua code uses.
+static void WriteLuaConfig(const char *folder, const char *include, const char *definitions)
+{
+    SHUI_String path;
+    SHUI_SFormat(&path, "%s.luarc.json", folder);
+    FILE *file = fopen(path.data, "wb");
+
+    if (file != NULL)
+    {
+        fprintf(file, "{\n  \"workspace.library\": [\"%s\", \"%s\"]\n}\n", include, definitions);
+        fclose(file);
+    }
+}
+
+// editors complete the functions of other plugins from their definition files, which the built program writes for every plugin it finds;
+// the .luarc.json files, which git ignores, point LuaLS at them from OpenECS, std/ and examples/
+static void Shuild_Definitions(void)
+{
+    SHUI_String definitions;
+    SHUI_SFormat(&definitions, "%sdefinitions/", CONFIG.outputDir.data);
+
+    // a program that fails to write them does not stop the build
+    RunCheck("rm -rf %s && (%sbin/OpenECS --definitions %s > %sdefinitions.log 2>&1 || true)", definitions.data, CONFIG.outputDir.data, definitions.data, CONFIG.outputDir.data);
+
+    if (SHU_UtilFileExists(definitions.data) != SHUFileType_Directory)
+    {
+        SHU_LogWarning("The definition files are not written; " SHUM_COLOR_RED("'%sdefinitions.log'") " says why.", CONFIG.outputDir.data);
+        return;
+    }
+
+    SHUI_String up;
+    SHUI_SFormat(&up, "../%s", definitions.data);
+    WriteLuaConfig("", "include", definitions.data);
+    WriteLuaConfig("std/", "../include", up.data);
+    WriteLuaConfig("examples/", "../include", up.data);
 }

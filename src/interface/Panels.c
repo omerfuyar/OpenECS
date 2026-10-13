@@ -4,6 +4,7 @@
 #include "runtime/Events.h"
 #include "runtime/Plugins.h"
 #include "runtime/Services.h"
+#include "runtime/Settings.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -46,7 +47,7 @@ static bool ECSIPanel_ResizePixels(ECSPanel panel)
     int width = (int)SDL_max(1.0f, SDL_roundf(panel->width));
     int height = (int)SDL_max(1.0f, SDL_roundf(panel->height));
 
-    if (panel->pixels != NULL && panel->pixels->w == width && panel->pixels->h == height)
+    if (panel->pixels != nullptr && panel->pixels->w == width && panel->pixels->h == height)
     {
         return true;
     }
@@ -54,20 +55,20 @@ static bool ECSIPanel_ResizePixels(ECSPanel panel)
     SDL_DestroySurface(panel->pixels);
     panel->pixels = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_ARGB8888);
 
-    if (panel->texture != NULL)
+    if (panel->texture != nullptr)
     {
         SDL_DestroyTexture(panel->texture);
-        panel->texture = NULL;
+        panel->texture = nullptr;
     }
 
-    return panel->pixels != NULL;
+    return panel->pixels != nullptr;
 }
 
 static void ECSIPanel_DeliverEvent(void *target, const ECSPanelEvent *event)
 {
     ECSPanel panel = target;
 
-    if (!panel->closed && panel->fault == NULL && panel->type != NULL && panel->type->desc.Event != NULL)
+    if (!panel->closed && panel->fault == nullptr && panel->type != nullptr && panel->type->desc.Event != nullptr)
     {
         panel->type->desc.Event(panel->state, event);
     }
@@ -127,27 +128,27 @@ void ECSIPanels_Terminate(void)
 
 SHUResult ECSIPanel_Create(ECSPanel *retPanel, const char *typeName, const ECSValue *savedState, u32 stateVersion)
 {
-    SDL_assert(retPanel != NULL);
-    SDL_assert(typeName != NULL);
+    SDL_assert(retPanel != nullptr);
+    SDL_assert(typeName != nullptr);
 
     ECSIPanelType *type = ECSIPanel_TypeFind(typeName);
     ECSPanel panel = SDL_calloc(1, sizeof(struct ECSIPanel));
 
-    if (panel == NULL)
+    if (panel == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
 
     panel->typeName = SDL_strdup(typeName);
-    panel->title = SDL_strdup(type == NULL ? typeName : type->title);
+    panel->title = SDL_strdup(type == nullptr ? typeName : type->title);
 
-    if (panel->typeName == NULL || panel->title == NULL || (savedState != NULL && ECSValue_Create(&panel->savedState)))
+    if (panel->typeName == nullptr || panel->title == nullptr || (savedState != nullptr && ECSValue_Create(&panel->savedState)))
     {
         ECSIPanel_Destroy(&panel);
         return SHUResult_ErrAllocation;
     }
 
-    if (savedState != NULL)
+    if (savedState != nullptr)
     {
         SHU_ReturnResult(ECSIValue_Copy(panel->savedState, savedState), ECSIPanel_Destroy(&panel););
     }
@@ -156,7 +157,7 @@ SHUResult ECSIPanel_Create(ECSPanel *retPanel, const char *typeName, const ECSVa
     panel->stateVersion = stateVersion;
     panel->needsDraw = true;
 
-    if (type == NULL)
+    if (type == nullptr)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' is missing; showing a placeholder.", typeName);
     }
@@ -170,8 +171,8 @@ SHUResult ECSIPanel_Create(ECSPanel *retPanel, const char *typeName, const ECSVa
             // the panel has no state to destroy, so it becomes a placeholder that keeps its saved state
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' failed to create a panel; showing a placeholder.", typeName);
             ECSIPanel_Fault(panel, "The panel type failed to create the panel.");
-            panel->type = NULL;
-            panel->state = NULL;
+            panel->type = nullptr;
+            panel->state = nullptr;
         }
     }
 
@@ -181,17 +182,17 @@ SHUResult ECSIPanel_Create(ECSPanel *retPanel, const char *typeName, const ECSVa
 
 void ECSIPanel_Destroy(ECSPanel *panel)
 {
-    SDL_assert(panel != NULL && *panel != NULL);
+    SDL_assert(panel != nullptr && *panel != nullptr);
 
     ECSPanel target = *panel;
     ECSIEvents_StopTimersOf(target);
 
-    if (target->type != NULL)
+    if (target->type != nullptr)
     {
         target->type->desc.Destroy(target->state);
     }
 
-    if (target->texture != NULL)
+    if (target->texture != nullptr)
     {
         SDL_DestroyTexture(target->texture);
     }
@@ -204,23 +205,23 @@ void ECSIPanel_Destroy(ECSPanel *panel)
     SDL_free(target->title);
     SDL_free(target);
 
-    *panel = NULL;
+    *panel = nullptr;
 }
 
 void ECSIPanel_ReleaseTexture(ECSPanel panel)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
-    if (panel->texture != NULL)
+    if (panel->texture != nullptr)
     {
         SDL_DestroyTexture(panel->texture);
-        panel->texture = NULL;
+        panel->texture = nullptr;
     }
 }
 
 void ECSIPanel_Close(ECSPanel *panel)
 {
-    SDL_assert(panel != NULL && *panel != NULL);
+    SDL_assert(panel != nullptr && *panel != nullptr);
     SDL_assert(!(*panel)->closed);
 
     ECSIEvents_StopTimersOf(*panel);
@@ -230,7 +231,7 @@ void ECSIPanel_Close(ECSPanel *panel)
     ECSIPanel_ReleaseTexture(*panel);
     (*panel)->closed = true;
     arrput(PANELS.closed, *panel);
-    *panel = NULL;
+    *panel = nullptr;
 }
 
 void ECSIPanels_DestroyClosed(void)
@@ -245,7 +246,7 @@ void ECSIPanels_DestroyClosed(void)
 
 void ECSIPanel_SetId(ECSPanel panel, u32 id)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
     if (id != 0)
     {
@@ -256,10 +257,10 @@ void ECSIPanel_SetId(ECSPanel panel, u32 id)
 
 SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retPanel)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(retPanel != NULL);
+    SDL_assert(panel != nullptr);
+    SDL_assert(retPanel != nullptr);
 
-    ECSValue *field = NULL;
+    ECSValue *field = nullptr;
     ECSValue_SetTable(retPanel);
     SHU_ReturnResult(ECSValue_TableSetField(retPanel, "id", &field));
     ECSValue_SetInteger(field, panel->id);
@@ -268,9 +269,9 @@ SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retPanel)
 
     const ECSValue *state = panel->savedState;
     u32 version = panel->stateVersion;
-    ECSValue *saved = NULL;
+    ECSValue *saved = nullptr;
 
-    if (panel->fault == NULL && panel->type != NULL && panel->type->desc.SaveState != NULL)
+    if (panel->fault == nullptr && panel->type != nullptr && panel->type->desc.SaveState != nullptr)
     {
         SHU_ReturnResult(ECSValue_Create(&saved));
 
@@ -284,7 +285,7 @@ SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retPanel)
             ECSValue_Destroy(&panel->savedState);
             panel->savedState = saved;
             panel->stateVersion = panel->type->desc.stateVersion;
-            saved = NULL;
+            saved = nullptr;
             state = panel->savedState;
             version = panel->stateVersion;
         }
@@ -292,7 +293,7 @@ SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retPanel)
 
     SHUResult result = SHUResult_Ok;
 
-    if (state != NULL)
+    if (state != nullptr)
     {
         result = ECSValue_TableSetField(retPanel, "stateVersion", &field);
 
@@ -311,7 +312,7 @@ SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retPanel)
 
 void ECSIPanel_SetRect(ECSPanel panel, f32 x, f32 y, f32 width, f32 height)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
     if (SDL_roundf(panel->width) != SDL_roundf(width) || SDL_roundf(panel->height) != SDL_roundf(height))
     {
@@ -326,30 +327,30 @@ void ECSIPanel_SetRect(ECSPanel panel, f32 x, f32 y, f32 width, f32 height)
 
 bool ECSIPanel_WantsFrame(ECSPanel panel)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
-    return panel->needsDraw || (panel->fault == NULL && panel->type != NULL && panel->type->desc.continuous);
+    return panel->needsDraw || (panel->fault == nullptr && panel->type != nullptr && panel->type->desc.continuous);
 }
 
 void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(renderer != NULL);
+    SDL_assert(panel != nullptr);
+    SDL_assert(renderer != nullptr);
 
     // placeholders and faulted panels have no pixels; the layout draws their text
-    if (panel->type == NULL || panel->fault != NULL || panel->type->desc.Draw == NULL || panel->width < 1.0f || panel->height < 1.0f)
+    if (panel->type == nullptr || panel->fault != nullptr || panel->type->desc.Draw == nullptr || panel->width < 1.0f || panel->height < 1.0f)
     {
         return;
     }
 
     // a texture belongs to one renderer, and the panel may have moved to another OS window
-    if (panel->texture != NULL && SDL_GetRendererFromTexture(panel->texture) != renderer)
+    if (panel->texture != nullptr && SDL_GetRendererFromTexture(panel->texture) != renderer)
     {
         SDL_DestroyTexture(panel->texture);
-        panel->texture = NULL;
+        panel->texture = nullptr;
     }
 
-    if (ECSIPanel_WantsFrame(panel) || panel->texture == NULL)
+    if (ECSIPanel_WantsFrame(panel) || panel->texture == nullptr)
     {
         if (!ECSIPanel_ResizePixels(panel))
         {
@@ -358,11 +359,11 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
 
         SDL_Surface *pixels = panel->pixels;
 
-        if (panel->texture == NULL)
+        if (panel->texture == nullptr)
         {
             panel->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, pixels->w, pixels->h);
 
-            if (panel->texture == NULL)
+            if (panel->texture == nullptr)
             {
                 SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot create a %dx%d texture: %s", pixels->w, pixels->h, SDL_GetError());
                 return;
@@ -389,25 +390,25 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
 
         // the surface is valid only during Draw, so a Lua handle of it is too
         ECSIServices_ForgetHandle(&surface);
-        SDL_UpdateTexture(panel->texture, NULL, pixels->pixels, pixels->pitch);
+        SDL_UpdateTexture(panel->texture, nullptr, pixels->pixels, pixels->pitch);
     }
 }
 
 void ECSIPanel_Show(ECSPanel panel, SDL_Renderer *renderer)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(renderer != NULL);
+    SDL_assert(panel != nullptr);
+    SDL_assert(renderer != nullptr);
 
-    if (panel->texture != NULL && panel->fault == NULL)
+    if (panel->texture != nullptr && panel->fault == nullptr)
     {
         SDL_FRect rect = {panel->x, panel->y, panel->width, panel->height};
-        SDL_RenderTexture(renderer, panel->texture, NULL, &rect);
+        SDL_RenderTexture(renderer, panel->texture, nullptr, &rect);
     }
 }
 
 void ECSIPanel_SetVisible(ECSPanel panel, bool visible)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
     if (visible != panel->visible)
     {
@@ -430,11 +431,11 @@ void ECSIPanel_SetVisible(ECSPanel panel, bool visible)
 
 void ECSIPanel_Emit(const char *name, ECSPanel panel)
 {
-    SDL_assert(name != NULL);
-    SDL_assert(panel != NULL);
+    SDL_assert(name != nullptr);
+    SDL_assert(panel != nullptr);
 
-    ECSValue *value = NULL;
-    ECSValue *field = NULL;
+    ECSValue *value = nullptr;
+    ECSValue *field = nullptr;
 
     if (ECSValue_Create(&value) || ECSValue_TableSetField(value, "panel", &field))
     {
@@ -454,18 +455,18 @@ void ECSIPanel_Emit(const char *name, ECSPanel panel)
 
 void ECSIPanel_PostEvent(ECSPanel panel, const ECSPanelEvent *event)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(event != NULL);
+    SDL_assert(panel != nullptr);
+    SDL_assert(event != nullptr);
 
     ECSIEvents_Post(ECSIPanel_DeliverEvent, panel, event);
 }
 
 bool ECSIPanel_Accepts(ECSPanel panel, const char *type)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(type != NULL);
+    SDL_assert(panel != nullptr);
+    SDL_assert(type != nullptr);
 
-    for (usz i = 0; !panel->closed && panel->fault == NULL && i < arrlenu(panel->accepts); i++)
+    for (usz i = 0; !panel->closed && panel->fault == nullptr && i < arrlenu(panel->accepts); i++)
     {
         if (SDL_strcmp(panel->accepts[i], type) == 0)
         {
@@ -478,26 +479,26 @@ bool ECSIPanel_Accepts(ECSPanel panel, const char *type)
 
 void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const ECSValue *value, u32 modifiers)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(type != NULL);
+    SDL_assert(panel != nullptr);
+    SDL_assert(type != nullptr);
 
     ECSDropData data = SDL_calloc(1, sizeof(*data));
-    SHUResult result = data == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
+    SHUResult result = data == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
     result = result ? result : ECSValue_Create(&data->value);
-    result = result || value == NULL ? result : ECSIValue_Copy(data->value, value);
+    result = result || value == nullptr ? result : ECSIValue_Copy(data->value, value);
 
     if (!result)
     {
         data->panel = panel;
         data->type = SDL_strdup(type);
-        result = data->type == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
+        result = data->type == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
     }
 
     if (result)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Data of type '%s' is not dropped on '%s': out of memory.", type, panel->title);
 
-        if (data != NULL)
+        if (data != nullptr)
         {
             SDL_free(data->type);
             ECSValue_Destroy(&data->value);
@@ -513,14 +514,14 @@ void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const EC
 
 void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(text != NULL);
+    SDL_assert(panel != nullptr);
+    SDL_assert(text != nullptr);
 
     // the panel and the text are kept in one block: the panel first, then the text
     usz length = SDL_strlen(text);
     ECSPanel *target = SDL_malloc(sizeof(ECSPanel) + length + 1);
 
-    if (target == NULL)
+    if (target == nullptr)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Typed text is lost: out of memory.");
         return;
@@ -536,7 +537,7 @@ void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers)
 
 void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f32 y, f32 width, f32 height)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
     panel->textInput = accept;
     panel->textArea = (SDL_FRect){x, y, width, height};
@@ -544,17 +545,17 @@ void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f32 y, f32 width,
 
 SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char *const *types, usz count)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(types != NULL || count == 0);
+    SDL_assert(panel != nullptr);
+    SDL_assert(types != nullptr || count == 0);
 
     ECSIPanel_ClearAccepts(panel);
 
     for (usz i = 0; i < count; i++)
     {
-        SDL_assert(types[i] != NULL);
+        SDL_assert(types[i] != nullptr);
         char *copy = SDL_strdup(types[i]);
 
-        if (copy == NULL)
+        if (copy == nullptr)
         {
             ECSIPanel_ClearAccepts(panel);
             return SHUResult_ErrAllocation;
@@ -568,19 +569,19 @@ SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char *const *types, usz cou
 
 const char *ECSDropData_GetType(ECSDropData data)
 {
-    SDL_assert(data != NULL);
+    SDL_assert(data != nullptr);
     return data->type;
 }
 
 const ECSValue *ECSDropData_GetValue(ECSDropData data)
 {
-    SDL_assert(data != NULL);
+    SDL_assert(data != nullptr);
     return data->value;
 }
 
 void ECSIPanels_RemovePlugin(ECSPlugin plugin)
 {
-    SDL_assert(plugin != NULL);
+    SDL_assert(plugin != nullptr);
 
     // backwards, because shdel moves the last type into the hole
     for (usz i = shlenu(PANELS.types); i > 0; i--)
@@ -597,16 +598,16 @@ void ECSIPanels_RemovePlugin(ECSPlugin plugin)
 
 bool ECSIPanels_ConfirmClose(const ECSPanel *panels, usz count, bool quitting)
 {
-    SDL_assert(panels != NULL || count == 0);
+    SDL_assert(panels != nullptr || count == 0);
 
     char *list = SDL_strdup("");
     usz unsaved = 0;
 
-    for (usz i = 0; i < count && list != NULL; i++)
+    for (usz i = 0; i < count && list != nullptr; i++)
     {
         if (panels[i]->unsaved)
         {
-            char *next = NULL;
+            char *next = nullptr;
             SDL_asprintf(&next, "%s\n- %s", list, panels[i]->title);
             SDL_free(list);
             list = next;
@@ -633,14 +634,14 @@ bool ECSIPanels_ConfirmClose(const ECSPanel *panels, usz count, bool quitting)
         {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, OPENECS_ANSWER_CANCEL, "Cancel"},
     };
 
-    char *message = NULL;
-    SDL_asprintf(&message, "%s unsaved work:%s", unsaved == 1 ? "This panel has" : "These panels have", list == NULL ? "" : list);
+    char *message = nullptr;
+    SDL_asprintf(&message, "%s unsaved work:%s", unsaved == 1 ? "This panel has" : "These panels have", list == nullptr ? "" : list);
     SDL_free(list);
 
     const SDL_MessageBoxData data = {
         .flags = SDL_MESSAGEBOX_WARNING,
         .title = "Unsaved work",
-        .message = message == NULL ? "Some panels have unsaved work." : message,
+        .message = message == nullptr ? "Some panels have unsaved work." : message,
         .numbuttons = SDL_arraysize(buttons),
         .buttons = buttons,
     };
@@ -671,7 +672,7 @@ bool ECSIPanels_ConfirmClose(const ECSPanel *panels, usz count, bool quitting)
             continue;
         }
 
-        if (panel->type == NULL || panel->fault != NULL || panel->type->desc.Save == NULL || panel->type->desc.Save(panel->state))
+        if (panel->type == nullptr || panel->fault != nullptr || panel->type->desc.Save == nullptr || panel->type->desc.Save(panel->state))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel '%s' could not save its work; closing is cancelled.", panel->title);
             return false;
@@ -685,33 +686,33 @@ bool ECSIPanels_ConfirmClose(const ECSPanel *panels, usz count, bool quitting)
 
 u32 ECSIPanels_GetStateVersion(const char *typeName)
 {
-    SDL_assert(typeName != NULL);
+    SDL_assert(typeName != nullptr);
 
     ECSIPanelType *type = ECSIPanel_TypeFind(typeName);
-    return type == NULL ? 0 : type->desc.stateVersion;
+    return type == nullptr ? 0 : type->desc.stateVersion;
 }
 
 bool ECSIPanel_CanRestart(ECSPanel panel)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
-    return panel->fault != NULL || panel->type == NULL;
+    return panel->fault != nullptr || panel->type == nullptr;
 }
 
 bool ECSIPanel_Restart(ECSPanel panel)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
     ECSIPanelType *type = ECSIPanel_TypeFind(panel->typeName);
 
-    if (!ECSIPanel_CanRestart(panel) || type == NULL)
+    if (!ECSIPanel_CanRestart(panel) || type == nullptr)
     {
-        SDL_Log("'%s' cannot be restarted%s.", panel->title, type == NULL ? "; its type is still missing" : "");
+        SDL_Log("'%s' cannot be restarted%s.", panel->title, type == nullptr ? "; its type is still missing" : "");
         return false;
     }
 
     // a faulted panel's type is not called again, except Destroy, which frees the old state
-    if (panel->type != NULL && panel->state != NULL)
+    if (panel->type != nullptr && panel->state != nullptr)
     {
         panel->type->desc.Destroy(panel->state);
     }
@@ -721,16 +722,16 @@ bool ECSIPanel_Restart(ECSPanel panel)
     ECSIPanel_ClearAccepts(panel);
     panel->textInput = false;
     SDL_free(panel->fault);
-    panel->fault = NULL;
-    panel->state = NULL;
+    panel->fault = nullptr;
+    panel->state = nullptr;
     panel->type = type;
     panel->needsDraw = true;
 
     if (type->desc.Create(panel, panel->savedState, panel->stateVersion, &panel->state))
     {
         ECSIPanel_Fault(panel, "The panel type failed to create the panel again.");
-        panel->type = NULL;
-        panel->state = NULL;
+        panel->type = nullptr;
+        panel->state = nullptr;
         return false;
     }
 
@@ -740,11 +741,11 @@ bool ECSIPanel_Restart(ECSPanel panel)
 
 const char *const *ECSIPanel_GetMenuEntries(ECSPanel panel, usz *retCount)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(retCount != NULL);
+    SDL_assert(panel != nullptr);
+    SDL_assert(retCount != nullptr);
 
-    *retCount = panel->type == NULL ? 0 : arrlenu(panel->type->menuEntries);
-    return *retCount == 0 ? NULL : (const char *const *)panel->type->menuEntries;
+    *retCount = panel->type == nullptr ? 0 : arrlenu(panel->type->menuEntries);
+    return *retCount == 0 ? nullptr : (const char *const *)panel->type->menuEntries;
 }
 
 /// @brief Orders panel types by the name of their plugin, then by title.
@@ -759,19 +760,19 @@ static int SDLCALL ECSIPanel_CompareTypes(const void *a, const void *b)
 /// @brief Sets a field of a table to a string.
 static SHUResult ECSIPanel_SetStringField(ECSValue *table, const char *name, const char *string)
 {
-    ECSValue *field = NULL;
+    ECSValue *field = nullptr;
     SHU_ReturnResult(ECSValue_TableSetField(table, name, &field));
     return ECSValue_SetString(field, string);
 }
 
 SHUResult ECSPanelType_List(ECSValue *retList)
 {
-    SDL_assert(retList != NULL);
+    SDL_assert(retList != nullptr);
 
     usz count = shlenu(PANELS.types);
-    ECSIPanelType **types = count == 0 ? NULL : SDL_malloc(count * sizeof(ECSIPanelType *));
+    ECSIPanelType **types = count == 0 ? nullptr : SDL_malloc(count * sizeof(ECSIPanelType *));
 
-    if (count > 0 && types == NULL)
+    if (count > 0 && types == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -787,7 +788,7 @@ SHUResult ECSPanelType_List(ECSValue *retList)
 
     for (usz i = 0; i < count && !result; i++)
     {
-        ECSValue *entry = NULL;
+        ECSValue *entry = nullptr;
         result = ECSValue_ListAddItem(retList, &entry);
 
         if (!result)
@@ -807,12 +808,12 @@ SHUResult ECSPanelType_List(ECSValue *retList)
 
 SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, const char *function)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(panelType != NULL && function != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(panelType != nullptr && function != nullptr);
 
     ECSIPanelType *type = ECSIPanel_TypeFind(panelType);
 
-    if (type == NULL || type->plugin != plugin)
+    if (type == nullptr || type->plugin != plugin)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' adds a menu entry to '%s', which is not one of its panel types.", ECSIPlugin_GetName(plugin), panelType);
         return SHUResult_ErrBadData;
@@ -820,7 +821,7 @@ SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, con
 
     char *copy = SDL_strdup(function);
 
-    if (copy == NULL)
+    if (copy == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -831,10 +832,10 @@ SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, con
 
 void ECSIPanel_Fault(ECSPanel panel, const char *message)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(message != NULL);
+    SDL_assert(panel != nullptr);
+    SDL_assert(message != nullptr);
 
-    if (panel->fault == NULL)
+    if (panel->fault == nullptr)
     {
         panel->fault = SDL_strdup(message);
         panel->needsDraw = true;
@@ -843,44 +844,53 @@ void ECSIPanel_Fault(ECSPanel panel, const char *message)
 
 SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc)
 {
-    return ECSIPanel_TypeRegister(plugin, desc, NULL);
+    return ECSIPanel_TypeRegister(plugin, desc, nullptr);
 }
 
 SHUResult ECSIPanel_TypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc, void *typeData)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(desc != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(desc != nullptr);
 
     const char *pluginName = ECSIPlugin_GetName(plugin);
 
-    if (desc->name == NULL || desc->Create == NULL || desc->Destroy == NULL)
+    if (desc->name == nullptr || desc->Create == nullptr || desc->Destroy == nullptr)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' registered an incomplete panel type.", pluginName);
         return SHUResult_ErrBadData;
     }
 
-    if (!ECSIPlugin_OwnsName(plugin, desc->name))
+    // the description gives the local name, and the type is known by its full name
+    char *fullName = ECSIPlugin_FullName(plugin, desc->name);
+
+    if (fullName == nullptr)
     {
         return SHUResult_ErrBadData;
     }
+
+    ECSPanelTypeDesc named = *desc;
+    named.name = fullName;
+    desc = &named;
 
     if (desc->surface != ECSSurfaceType_Pixels)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' asks for a GPU surface, which is not implemented yet.", desc->name);
+        SDL_free(fullName);
         return SHUResult_ErrBadData;
     }
 
-    if (ECSIPanel_TypeFind(desc->name) != NULL)
+    if (ECSIPanel_TypeFind(desc->name) != nullptr)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' is already registered.", desc->name);
+        SDL_free(fullName);
         return SHUResult_ErrBadData;
     }
 
     ECSIPanelType *type = SDL_malloc(sizeof(ECSIPanelType));
-    char *name = SDL_strdup(desc->name);
-    char *title = SDL_strdup(desc->title == NULL ? desc->name : desc->title);
+    char *name = fullName;
+    char *title = SDL_strdup(desc->title == nullptr ? desc->name : desc->title);
 
-    if (type == NULL || name == NULL || title == NULL)
+    if (type == nullptr || name == nullptr || title == nullptr)
     {
         SDL_free(type);
         SDL_free(name);
@@ -898,15 +908,22 @@ SHUResult ECSIPanel_TypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
 
 SHUResult ECSPanel_StartTimer(ECSPanel panel, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(panel->type != NULL); // placeholders run no code
+    SDL_assert(panel != nullptr);
+    SDL_assert(panel->type != nullptr); // placeholders run no code
 
-    return ECSIEvents_StartTimer(panel->type->plugin, panel, retTimer, seconds, repeat, function, NULL, data);
+    return ECSIEvents_StartTimer(panel->type->plugin, panel, retTimer, seconds, repeat, function, nullptr, data);
+}
+
+bool ECSPanel_IsUnsaved(ECSPanel panel)
+{
+    SDL_assert(panel != nullptr);
+
+    return panel->unsaved;
 }
 
 void ECSPanel_SetUnsaved(ECSPanel panel, bool unsaved)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
     // the tab shows the mark
     panel->needsDraw = panel->needsDraw || panel->unsaved != unsaved;
@@ -915,14 +932,17 @@ void ECSPanel_SetUnsaved(ECSPanel panel, bool unsaved)
 
 void ECSPanel_Redraw(ECSPanel panel)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
     panel->needsDraw = true;
 }
 
-void ECSSurface_Fill(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height, u32 color)
+void ECSSurface_Fill(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height, ECSColor color)
 {
-    SDL_assert(surface != NULL);
+    SDL_assert(surface != nullptr);
+
+    // surfaces hold premultiplied colours
+    color = ECSIColor_Premultiply(color);
 
     if (surface->type != ECSSurfaceType_Pixels)
     {
@@ -947,33 +967,33 @@ void ECSSurface_Fill(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height, u
 
 const char *ECSPanel_GetTitle(ECSPanel panel)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
     return panel->title;
 }
 
 u32 ECSPanel_GetId(ECSPanel panel)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
     return panel->id;
 }
 
 const char *ECSPanel_GetType(ECSPanel panel)
 {
-    SDL_assert(panel != NULL);
+    SDL_assert(panel != nullptr);
 
     return panel->typeName;
 }
 
 void ECSPanel_SetTitle(ECSPanel panel, const char *title)
 {
-    SDL_assert(panel != NULL);
-    SDL_assert(title != NULL);
+    SDL_assert(panel != nullptr);
+    SDL_assert(title != nullptr);
 
     char *copy = SDL_strdup(title);
 
-    if (copy != NULL)
+    if (copy != nullptr)
     {
         SDL_free(panel->title);
         panel->title = copy;

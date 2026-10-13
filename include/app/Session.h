@@ -13,11 +13,11 @@ typedef struct ECSIPresetInfo
     char *name;
     char *appId;
     char *appName;
-    char *pluginsDirectory; // NULL if the preset names none; ends with a separator
+    char *pluginsDirectory; // nullptr if the preset names none; ends with a separator
     ECSValue *file;         // the whole file; its depends field names the plugins it needs
 } ECSIPresetInfo;
 
-/// @brief Folders of the files that presets and sessions are read from and written to. Each ends with a separator, or is NULL if there is none.
+/// @brief Folders of the files that presets and sessions are read from and written to. Each ends with a separator, or is nullptr if there is none.
 typedef struct ECSISessionFolders
 {
     const char *presets;  // the user's presets
@@ -29,14 +29,14 @@ typedef struct ECSISessionFolders
 /// @brief Finds a preset's file.
 /// @param retPath The path. Free it with SDL_free.
 /// @param nameOrPath A preset name, looked up in the user's presets, then in the presets shipped with OpenECS; or a path, which has a '/' or ends with .lua.
-/// @param userFolder The user's presets folder, ending with a separator, or NULL.
+/// @param userFolder The user's presets folder, ending with a separator, or nullptr.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISession_FindPreset(char **retPath, const char *nameOrPath, const char *userFolder);
 
 /// @brief Finds a tool's last session file.
-/// @param stateFolder The state folder, ending with a separator, or NULL.
+/// @param stateFolder The state folder, ending with a separator, or nullptr.
 /// @param appId The tool's app id.
-/// @return The path, or NULL if there is no state folder. Free it with SDL_free.
+/// @return The path, or nullptr if there is no state folder. Free it with SDL_free.
 char *ECSISession_GetLastPath(const char *stateFolder, const char *appId);
 
 /// @brief Reads a preset's identity and the plugins it needs.
@@ -62,14 +62,14 @@ SHUWUR SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info)
 SHUWUR SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession);
 
 /// @brief Keeps the folders, and registers the core's functions ecs.session.save and ecs.session.open for keys and menus. They ask for the file.
-/// @param folders The folders. The sessions folder is where the dialogs start, or the system chooses if it is NULL; it is created when a dialog opens.
+/// @param folders The folders. The sessions folder is where the dialogs start, or the system chooses if it is nullptr; it is created when a dialog opens.
 /// @param canOpen false during a test, which starts from its preset alone and cannot restart; ECSSession_Open and ECSSession_OpenPreset then refuse.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISession_Initialize(const ECSISessionFolders *folders, bool canOpen);
 
 /// @brief Gets the session or preset that ECSSession_Open or ECSSession_OpenPreset chose, which OpenECS starts again from once it stops.
-/// @param retOption The command-line option that names it, "--session" or "--preset"; NULL if not needed.
-/// @return The file's path, or NULL. Valid until ECSISession_Terminate.
+/// @param retOption The command-line option that names it, "--session" or "--preset"; nullptr if not needed.
+/// @return The file's path, or nullptr. Valid until ECSISession_Terminate.
 const char *ECSISession_GetNext(const char **retOption);
 
 /// @brief Frees what the Session module holds.

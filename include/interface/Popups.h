@@ -11,18 +11,18 @@ struct ECSIPopup
 {
     ECSPanel panel;
     ECSPopupDesc desc;
-    SDL_Surface *pixels; // what it drew last, or NULL before it is first drawn
+    SDL_Surface *pixels; // what it drew last, or nullptr before it is first drawn
     bool needsDraw;
     bool closed;   // out of the list of open popups, waiting for its Closed function and ECSIPopups_DestroyClosed; it gets no more events
     bool released; // its Closed function has run, so ECSIPopups_DestroyClosed frees it
-    void *window;  // what the window shows it with, or NULL
+    void *window;  // what the window shows it with, or nullptr
 };
 
 /// @brief Function that frees what the window shows a popup with, before the popup is freed.
 typedef void (*ECSIPopupReleaseFunction)(ECSPopup popup);
 
 /// @brief Sets the function that frees what the window shows a popup with.
-/// @param function The function, or NULL.
+/// @param function The function, or nullptr.
 void ECSIPopups_SetRelease(ECSIPopupReleaseFunction function);
 
 /// @brief Closes every popup, runs the Closed functions that have not run, and frees the popups. Call it before the panels and the window are terminated.
@@ -34,7 +34,7 @@ void ECSIPopups_Terminate(void);
 ECSPopup *ECSIPopups_GetOpen(usz *retCount);
 
 /// @brief Gets the newest open menu, which takes the key presses.
-/// @return The menu, or NULL if no menu is open.
+/// @return The menu, or nullptr if no menu is open.
 ECSPopup ECSIPopups_GetMenu(void);
 
 /// @brief Closes every open popup, as a press outside them does.

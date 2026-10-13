@@ -29,7 +29,7 @@ typedef struct ECSISetting
     char *name;
     char *description;
     ECSSettingType type;
-    ECSPlugin owner; // NULL for the core
+    ECSPlugin owner; // nullptr for the core
     ECSValue *defaultValue;
     char **choices;        // stb_ds array; choice settings only
     const ECSValue *value; // the value in effect: the default, or a value of a layer
@@ -70,7 +70,7 @@ static struct
     } *settings;                                // stb_ds hash map, in declaration order
     ECSValue *layers[ECSISettingsLayer_Count]; // the core, theme, preset and user layers: tables of setting names and values
     ECSValue *themes;                           // the themes of the settings files, by name: tables of setting names and values
-    char *theme;                                // the name of the theme in the theme layer, or NULL before one is chosen
+    char *theme;                                // the name of the theme in the theme layer, or nullptr before one is chosen
     char *paths[ECSISettingsLayer_Count];      // the file of each of those layers
     ECSValue *plugins;                          // list of extra plugin names
     ECSValue *keys[ECSISettingsLayer_Count];   // the core's and the user's keys tables
@@ -137,13 +137,13 @@ static void ECSISetting_WriteChoices(const ECSISetting *setting, SHUSlice text)
 }
 
 /// @brief Reports a value of the wrong type for a setting.
-/// @param file The file that gave the value, or NULL if a plugin did.
+/// @param file The file that gave the value, or nullptr if a plugin did.
 static void ECSISetting_ReportType(const ECSISetting *setting, const char *file)
 {
     char choices[256];
     ECSISetting_WriteChoices(setting, cs(choices, sizeof(choices)));
 
-    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Setting '%s'%s%s%s must be %s%s; that value is ignored.", setting->name, file == NULL ? "" : " in '", file == NULL ? "" : file, file == NULL ? "" : "'", OPENECS_SETTING_TYPE_TEXTS[setting->type], choices);
+    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Setting '%s'%s%s%s must be %s%s; that value is ignored.", setting->name, file == nullptr ? "" : " in '", file == nullptr ? "" : file, file == nullptr ? "" : "'", OPENECS_SETTING_TYPE_TEXTS[setting->type], choices);
 }
 
 /// @brief Finds the value in effect of a setting: the highest layer that sets it with the right type, or the default.
@@ -153,7 +153,7 @@ static void ECSISetting_Resolve(ECSISetting *setting)
     {
         const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[layer], setting->name);
 
-        if (value == NULL)
+        if (value == nullptr)
         {
             continue;
         }
@@ -169,7 +169,7 @@ static void ECSISetting_Resolve(ECSISetting *setting)
     }
 
     setting->value = setting->defaultValue;
-    setting->layer = setting->owner == NULL ? ECSISettingsLayer_Core : ECSISettingsLayer_Plugin;
+    setting->layer = setting->owner == nullptr ? ECSISettingsLayer_Core : ECSISettingsLayer_Plugin;
 }
 
 static void ECSISetting_Free(ECSISetting *setting)
@@ -203,13 +203,13 @@ static SHUResult ECSISetting_SetDefault(ECSISetting *setting, const ECSSettingDe
         ECSValue_SetNumber(setting->defaultValue, desc->defaultNumber);
         return SHUResult_Ok;
     case ECSSettingType_String:
-        return ECSValue_SetString(setting->defaultValue, desc->defaultString == NULL ? "" : desc->defaultString);
+        return ECSValue_SetString(setting->defaultValue, desc->defaultString == nullptr ? "" : desc->defaultString);
     case ECSSettingType_Key:
     case ECSSettingType_Color:
-        SHU_ReturnResult(ECSValue_SetString(setting->defaultValue, desc->defaultString == NULL ? "" : desc->defaultString));
+        SHU_ReturnResult(ECSValue_SetString(setting->defaultValue, desc->defaultString == nullptr ? "" : desc->defaultString));
 
         // a core setting's default comes from the core's settings file, and is checked there
-        if (desc->defaultString != NULL && !ECSISetting_Check(setting, setting->defaultValue))
+        if (desc->defaultString != nullptr && !ECSISetting_Check(setting, setting->defaultValue))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The default of setting '%s' must be %s.", desc->name, OPENECS_SETTING_TYPE_TEXTS[desc->type]);
             return SHUResult_ErrBadData;
@@ -217,11 +217,11 @@ static SHUResult ECSISetting_SetDefault(ECSISetting *setting, const ECSSettingDe
 
         return SHUResult_Ok;
     case ECSSettingType_Choice:
-        for (const char *const *choice = desc->choices; *choice != NULL; choice++)
+        for (const char *const *choice = desc->choices; *choice != nullptr; choice++)
         {
             char *copy = SDL_strdup(*choice);
 
-            if (copy == NULL)
+            if (copy == nullptr)
             {
                 return SHUResult_ErrAllocation;
             }
@@ -230,7 +230,7 @@ static SHUResult ECSISetting_SetDefault(ECSISetting *setting, const ECSSettingDe
         }
 
         // the first choice is the default if the description names none
-        SHU_ReturnResult(ECSValue_SetString(setting->defaultValue, desc->defaultString == NULL ? setting->choices[0] : desc->defaultString));
+        SHU_ReturnResult(ECSValue_SetString(setting->defaultValue, desc->defaultString == nullptr ? setting->choices[0] : desc->defaultString));
 
         if (!ECSISetting_Check(setting, setting->defaultValue))
         {
@@ -249,16 +249,16 @@ static SHUResult ECSISetting_SetDefault(ECSISetting *setting, const ECSSettingDe
 }
 
 /// @brief Declares a setting for the core or a plugin; the caller has checked the name.
-/// @param defaultValue The default as a value, or NULL to take it from the description.
+/// @param defaultValue The default as a value, or nullptr to take it from the description.
 static SHUResult ECSISettings_Declare(ECSPlugin owner, const ECSSettingDesc *desc, const ECSValue *defaultValue)
 {
-    if (desc->type > ECSSettingType_Color || (desc->type == ECSSettingType_Choice && (desc->choices == NULL || desc->choices[0] == NULL)))
+    if (desc->type > ECSSettingType_Color || (desc->type == ECSSettingType_Choice && (desc->choices == nullptr || desc->choices[0] == nullptr)))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Setting '%s' has an invalid type or no choices.", desc->name);
         return SHUResult_ErrBadData;
     }
 
-    if (shget(SETTINGS.settings, desc->name) != NULL)
+    if (shget(SETTINGS.settings, desc->name) != nullptr)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Setting '%s' is already declared.", desc->name);
         return SHUResult_ErrBadData;
@@ -266,19 +266,19 @@ static SHUResult ECSISettings_Declare(ECSPlugin owner, const ECSSettingDesc *des
 
     ECSISetting *setting = SDL_calloc(1, sizeof(ECSISetting));
 
-    if (setting == NULL)
+    if (setting == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
 
     setting->name = SDL_strdup(desc->name);
-    setting->description = SDL_strdup(desc->description == NULL ? "" : desc->description);
+    setting->description = SDL_strdup(desc->description == nullptr ? "" : desc->description);
     setting->type = desc->type;
     setting->owner = owner;
     setting->Changed = desc->Changed;
     setting->data = desc->data;
 
-    if (setting->name == NULL || setting->description == NULL)
+    if (setting->name == nullptr || setting->description == nullptr)
     {
         ECSISetting_Free(setting);
         return SHUResult_ErrAllocation;
@@ -286,7 +286,7 @@ static SHUResult ECSISettings_Declare(ECSPlugin owner, const ECSSettingDesc *des
 
     SHU_ReturnResult(ECSISetting_SetDefault(setting, desc), ECSISetting_Free(setting););
 
-    if (defaultValue != NULL)
+    if (defaultValue != nullptr)
     {
         if (!ECSISetting_Check(setting, defaultValue))
         {
@@ -309,9 +309,9 @@ static SHUResult ECSISettings_Declare(ECSPlugin owner, const ECSSettingDesc *des
 static void ECSISettings_ReadField(const char *name, const ECSValue *field, void *userData)
 {
     ECSISettingsFileReader *reader = userData;
-    ECSValue *copy = NULL;
+    ECSValue *copy = nullptr;
 
-    if (reader->result || SDL_strchr(name, '.') == NULL)
+    if (reader->result || SDL_strchr(name, '.') == nullptr)
     {
         return;
     }
@@ -323,7 +323,7 @@ static void ECSISettings_ReadField(const char *name, const ECSValue *field, void
 static void ECSISettings_CopyField(const char *name, const ECSValue *field, void *userData)
 {
     ECSISettingsFileCopier *copier = userData;
-    ECSValue *copy = NULL;
+    ECSValue *copy = nullptr;
 
     if (!copier->result)
     {
@@ -339,10 +339,10 @@ static SHUResult ECSISettings_ReadPlugins(const ECSValue *part)
 
     for (usz i = 0; i < ECSValue_GetListCount(plugins); i++)
     {
-        const char *name = ECSValue_GetString(ECSValue_GetListItem(plugins, i), NULL);
-        ECSValue *item = NULL;
+        const char *name = ECSValue_GetString(ECSValue_GetListItem(plugins, i), nullptr);
+        ECSValue *item = nullptr;
 
-        if (name != NULL)
+        if (name != nullptr)
         {
             SHU_ReturnResult(ECSValue_ListAddItem(SETTINGS.plugins, &item));
             SHU_ReturnResult(ECSValue_SetString(item, name));
@@ -393,7 +393,7 @@ static SHUResult ECSISettings_ReadThemes(const ECSValue *part)
 {
     const ECSValue *themes = ECSValue_GetTableField(part, "themes");
 
-    if (SETTINGS.themes == NULL)
+    if (SETTINGS.themes == nullptr)
     {
         SHU_ReturnResult(ECSValue_Create(&SETTINGS.themes));
         ECSValue_SetTable(SETTINGS.themes);
@@ -407,7 +407,7 @@ static SHUResult ECSISettings_ReadThemes(const ECSValue *part)
 /// @brief Merges the keys table of a part of a settings file into a layer's keys.
 static SHUResult ECSISettings_ReadKeys(ECSISettingsLayer layer, const ECSValue *part)
 {
-    if (SETTINGS.keys[layer] == NULL)
+    if (SETTINGS.keys[layer] == nullptr)
     {
         SHU_ReturnResult(ECSValue_Create(&SETTINGS.keys[layer]));
         ECSValue_SetTable(SETTINGS.keys[layer]);
@@ -419,18 +419,18 @@ static SHUResult ECSISettings_ReadKeys(ECSISettingsLayer layer, const ECSValue *
 }
 
 /// @brief Reads a user file into its layer and adds the plugins it names. A missing file, or one that cannot be read, gives an empty table.
-/// @param retFile The whole file, kept by the caller, or NULL to free it.
+/// @param retFile The whole file, kept by the caller, or nullptr to free it.
 static SHUResult ECSISettings_ReadFile(ECSISettingsLayer layer, const char *folder, const char *fileName, ECSValue **retFile)
 {
     if (SDL_asprintf(&SETTINGS.paths[layer], "%s%s", folder, fileName) < 0)
     {
-        SETTINGS.paths[layer] = NULL;
+        SETTINGS.paths[layer] = nullptr;
         return SHUResult_ErrAllocation;
     }
 
-    ECSValue *file = NULL;
+    ECSValue *file = nullptr;
     SHU_ReturnResult(ECSValue_Create(&file));
-    SHUResult result = SDL_GetPathInfo(SETTINGS.paths[layer], NULL) ? ECSILua_ReadData(SETTINGS.paths[layer], file) : SHUResult_Ok;
+    SHUResult result = SDL_GetPathInfo(SETTINGS.paths[layer], nullptr) ? ECSILua_ReadData(SETTINGS.paths[layer], file) : SHUResult_Ok;
 
     // a file that cannot be read is already reported, and skipped
     if (result == SHUResult_ErrFile || result == SHUResult_ErrBadData)
@@ -452,7 +452,7 @@ static SHUResult ECSISettings_ReadFile(ECSISettingsLayer layer, const char *fold
     result = result ? result : ECSISettings_ReadThemes(file);
     result = result ? result : ECSISettings_ReadThemes(ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId));
 
-    if (retFile != NULL && !result)
+    if (retFile != nullptr && !result)
     {
         *retFile = file;
     }
@@ -467,7 +467,7 @@ static SHUResult ECSISettings_ReadFile(ECSISettingsLayer layer, const char *fold
 /// @brief Adds a field of an explanation, copied from a value.
 static SHUResult ECSISettings_ExplainField(ECSValue *explanation, const char *name, const ECSValue *value)
 {
-    ECSValue *field = NULL;
+    ECSValue *field = nullptr;
     SHU_ReturnResult(ECSValue_TableSetField(explanation, name, &field));
     return ECSIValue_Copy(field, value);
 }
@@ -475,7 +475,7 @@ static SHUResult ECSISettings_ExplainField(ECSValue *explanation, const char *na
 /// @brief Adds a text field of an explanation.
 static SHUResult ECSISettings_ExplainText(ECSValue *explanation, const char *name, const char *text)
 {
-    ECSValue *field = NULL;
+    ECSValue *field = nullptr;
     SHU_ReturnResult(ECSValue_TableSetField(explanation, name, &field));
     return ECSValue_SetString(field, text);
 }
@@ -483,7 +483,7 @@ static SHUResult ECSISettings_ExplainText(ECSValue *explanation, const char *nam
 static ECSISetting *ECSISettings_Find(const char *name)
 {
     // shget would allocate a map that is missing
-    return SETTINGS.settings == NULL ? NULL : shget(SETTINGS.settings, name);
+    return SETTINGS.settings == nullptr ? nullptr : shget(SETTINGS.settings, name);
 }
 
 /// @brief Reports a field of a layer that is not a declared setting; the data is the layer's file.
@@ -491,7 +491,7 @@ static void ECSISettings_ReportField(const char *name, const ECSValue *field, vo
 {
     (void)field;
 
-    if (ECSISettings_Find(name) == NULL && ECSIPlugins_OwnerRuns(name))
+    if (ECSISettings_Find(name) == nullptr && ECSIPlugins_OwnerRuns(name))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' in '%s' is not a declared setting; it is kept.", name, (const char *)userData);
     }
@@ -501,12 +501,12 @@ static void ECSISettings_ReportField(const char *name, const ECSValue *field, vo
 
 SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder)
 {
-    SDL_assert(corePath != NULL);
-    SDL_assert(presetPath != NULL);
-    SDL_assert(appId != NULL);
+    SDL_assert(corePath != nullptr);
+    SDL_assert(presetPath != nullptr);
+    SDL_assert(appId != nullptr);
 
     // the core's settings file is required: the core's settings have no other values
-    ECSValue *coreFile = NULL;
+    ECSValue *coreFile = nullptr;
     SHU_ReturnResult(ECSValue_Create(&coreFile));
     SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[ECSISettingsLayer_Core]), ECSValue_Destroy(&coreFile););
     ECSValue_SetTable(SETTINGS.layers[ECSISettingsLayer_Core]);
@@ -517,8 +517,8 @@ SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSe
 
     // like a user file, the core's file may name plugins that every tool loads
     ECSISettingsFileReader reader = {.layer = SETTINGS.layers[ECSISettingsLayer_Core], .result = SHUResult_Ok};
-    reader.result = SETTINGS.paths[ECSISettingsLayer_Core] == NULL ? SHUResult_ErrAllocation : ECSILua_ReadData(corePath, coreFile);
-    ECSIValue_TableForEachField(reader.result ? NULL : coreFile, ECSISettings_ReadField, &reader);
+    reader.result = SETTINGS.paths[ECSISettingsLayer_Core] == nullptr ? SHUResult_ErrAllocation : ECSILua_ReadData(corePath, coreFile);
+    ECSIValue_TableForEachField(reader.result ? nullptr : coreFile, ECSISettings_ReadField, &reader);
     reader.result = reader.result ? reader.result : ECSISettings_ReadPlugins(coreFile);
     reader.result = reader.result ? reader.result : ECSISettings_ReadKeys(ECSISettingsLayer_Core, coreFile);
     reader.result = reader.result ? reader.result : ECSISettings_ReadThemes(coreFile);
@@ -528,12 +528,12 @@ SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSe
     SHU_ReturnResult(ECSISettings_SetPreset(presetSettings, presetPath));
     SETTINGS.appId = SDL_strdup(appId);
 
-    if (SETTINGS.appId == NULL)
+    if (SETTINGS.appId == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
 
-    if (configFolder == NULL)
+    if (configFolder == nullptr)
     {
         return SHUResult_Ok;
     }
@@ -543,7 +543,7 @@ SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSe
 
 SHUResult ECSISettings_SetPreset(const ECSValue *presetSettings, const char *presetPath)
 {
-    SDL_assert(presetPath != NULL);
+    SDL_assert(presetPath != nullptr);
     SDL_assert(shlenu(SETTINGS.settings) == 0);
 
     ECSValue_Destroy(&SETTINGS.layers[ECSISettingsLayer_Preset]);
@@ -551,18 +551,18 @@ SHUResult ECSISettings_SetPreset(const ECSValue *presetSettings, const char *pre
     SETTINGS.paths[ECSISettingsLayer_Preset] = SDL_strdup(presetPath);
     SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[ECSISettingsLayer_Preset]));
     SHU_ReturnResult(ECSIValue_Copy(SETTINGS.layers[ECSISettingsLayer_Preset], presetSettings));
-    return SETTINGS.paths[ECSISettingsLayer_Preset] == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
+    return SETTINGS.paths[ECSISettingsLayer_Preset] == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
 }
 
 SHUResult ECSISettings_ParseKey(const char *text, bool report, u32 *retKey, u32 *retModifiers)
 {
-    SDL_assert(text != NULL);
-    SDL_assert(retKey != NULL);
-    SDL_assert(retModifiers != NULL);
+    SDL_assert(text != nullptr);
+    SDL_assert(retKey != nullptr);
+    SDL_assert(retModifiers != nullptr);
 
     char *copy = SDL_strdup(text);
 
-    if (copy == NULL)
+    if (copy == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -572,9 +572,9 @@ SHUResult ECSISettings_ParseKey(const char *text, bool report, u32 *retKey, u32 
 
     // the parts before the key are modifiers, so a word that is neither makes the text invalid
     usz keyParts = 0;
-    char *save = NULL;
+    char *save = nullptr;
 
-    for (char *part = SDL_strtok_r(copy, "+", &save); part != NULL; part = SDL_strtok_r(NULL, "+", &save))
+    for (char *part = SDL_strtok_r(copy, "+", &save); part != nullptr; part = SDL_strtok_r(nullptr, "+", &save))
     {
         if (SDL_strcasecmp(part, "Ctrl") == 0)
         {
@@ -616,8 +616,8 @@ SHUResult ECSISettings_ParseKey(const char *text, bool report, u32 *retKey, u32 
 
 bool ECSISettings_ParseColor(const char *text, u32 *retColor)
 {
-    SDL_assert(text != NULL);
-    SDL_assert(retColor != NULL);
+    SDL_assert(text != nullptr);
+    SDL_assert(retColor != nullptr);
 
     usz length = SDL_strlen(text);
     u32 parts[4] = {0, 0, 0, 0xFF};
@@ -638,7 +638,7 @@ bool ECSISettings_ParseColor(const char *text, u32 *retColor)
     for (usz i = 0; 2 * i + 1 < length; i++)
     {
         char pair[3] = {text[2 * i + 1], text[2 * i + 2], '\0'};
-        parts[i] = (u32)SDL_strtoul(pair, NULL, 16);
+        parts[i] = (u32)SDL_strtoul(pair, nullptr, 16);
     }
 
     *retColor = parts[3] << 24 | parts[0] << 16 | parts[1] << 8 | parts[2];
@@ -648,25 +648,25 @@ bool ECSISettings_ParseColor(const char *text, u32 *retColor)
 void ECSISettings_ApplyTheme(void)
 {
     // ecs.theme comes from the layers above the defaults, as its value in effect does, or else from the core's settings file
-    const char *chosen = NULL;
+    const char *chosen = nullptr;
 
-    for (i32 layer = ECSISettingsLayer_User; layer >= ECSISettingsLayer_Core && chosen == NULL; layer--)
+    for (i32 layer = ECSISettingsLayer_User; layer >= ECSISettingsLayer_Core && chosen == nullptr; layer--)
     {
-        chosen = layer == ECSISettingsLayer_Theme || layer == ECSISettingsLayer_Plugin ? NULL : ECSValue_GetString(ECSValue_GetTableField(SETTINGS.layers[layer], "ecs.theme"), NULL);
+        chosen = layer == ECSISettingsLayer_Theme || layer == ECSISettingsLayer_Plugin ? nullptr : ECSValue_GetString(ECSValue_GetTableField(SETTINGS.layers[layer], "ecs.theme"), nullptr);
     }
 
-    const char *name = chosen != NULL && (SDL_strcmp(chosen, "dark") == 0 || SDL_strcmp(chosen, "light") == 0) ? chosen : SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT ? "light"
+    const char *name = chosen != nullptr && (SDL_strcmp(chosen, "dark") == 0 || SDL_strcmp(chosen, "light") == 0) ? chosen : SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT ? "light"
                                                                                                                                                                          : OPENECS_SETTINGS_DEFAULT_THEME;
 
-    if (SETTINGS.theme != NULL && SDL_strcmp(SETTINGS.theme, name) == 0)
+    if (SETTINGS.theme != nullptr && SDL_strcmp(SETTINGS.theme, name) == 0)
     {
         return;
     }
 
     char *copy = SDL_strdup(name);
-    ECSValue *layer = NULL;
+    ECSValue *layer = nullptr;
 
-    if (copy == NULL || ECSValue_Create(&layer) || ECSIValue_Copy(layer, ECSValue_GetTableField(SETTINGS.themes, name)))
+    if (copy == nullptr || ECSValue_Create(&layer) || ECSIValue_Copy(layer, ECSValue_GetTableField(SETTINGS.themes, name)))
     {
         SDL_free(copy);
         ECSValue_Destroy(&layer);
@@ -674,7 +674,7 @@ void ECSISettings_ApplyTheme(void)
     }
 
     // the settings whose value came from the old theme, or comes from the new one, may have changed
-    ECSISetting **themed = NULL;
+    ECSISetting **themed = nullptr;
 
     for (usz i = 0; i < shlenu(SETTINGS.settings); i++)
     {
@@ -722,6 +722,57 @@ void ECSISettings_ApplyTheme(void)
     SDL_Log("The theme is '%s'.", name);
 }
 
+bool ECSColor_Parse(const char *text, ECSColor *retColor)
+{
+    SDL_assert(text != nullptr);
+    SDL_assert(retColor != nullptr);
+
+    if (text[0] == '#')
+    {
+        return ECSISettings_ParseColor(text, retColor);
+    }
+
+    // a colour of the theme is the core's colour setting of that name: "textDim" is ecs.colorTextDim
+    char name[64];
+
+    if (text[0] == '\0' || SDL_snprintf(name, sizeof(name), "ecs.color%c%s", SDL_toupper((unsigned char)text[0]), text + 1) >= (int)sizeof(name))
+    {
+        return false;
+    }
+
+    ECSISetting *setting = ECSISettings_Find(name);
+    return setting != nullptr && setting->type == ECSSettingType_Color && ECSISettings_ParseColor(ECSValue_GetString(setting->value, ""), retColor);
+}
+
+void ECSIColor_Format(ECSColor color, char text[OPENECS_COLOR_TEXT_SIZE])
+{
+    SDL_snprintf(text, OPENECS_COLOR_TEXT_SIZE, "#%02X%02X%02X%02X", (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF, color >> 24);
+}
+
+ECSColor ECSIColor_Premultiply(ECSColor color)
+{
+    u32 alpha = color >> 24;
+    u32 red = ((color >> 16) & 0xFF) * alpha / 255;
+    u32 green = ((color >> 8) & 0xFF) * alpha / 255;
+    u32 blue = (color & 0xFF) * alpha / 255;
+    return alpha << 24 | red << 16 | green << 8 | blue;
+}
+
+ECSColor ECSIColor_Unpremultiply(ECSColor color)
+{
+    u32 alpha = color >> 24;
+
+    if (alpha == 0 || alpha == 0xFF)
+    {
+        return color;
+    }
+
+    u32 red = SDL_min(((color >> 16) & 0xFF) * 255 / alpha, 255u);
+    u32 green = SDL_min(((color >> 8) & 0xFF) * 255 / alpha, 255u);
+    u32 blue = SDL_min((color & 0xFF) * 255 / alpha, 255u);
+    return alpha << 24 | red << 16 | green << 8 | blue;
+}
+
 bool ECSISettings_PeekBool(const char *name, bool fallback)
 {
     for (i32 layer = ECSISettingsLayer_Count - 1; layer >= 0; layer--)
@@ -763,33 +814,33 @@ void ECSISettings_Terminate(void)
 
 SHUResult ECSISettings_DeclareCore(const ECSSettingDesc *desc)
 {
-    SDL_assert(desc != NULL);
-    SDL_assert(desc->name != NULL && SDL_strncmp(desc->name, "ecs.", 4) == 0);
+    SDL_assert(desc != nullptr);
+    SDL_assert(desc->name != nullptr && SDL_strncmp(desc->name, "ecs.", 4) == 0);
 
     // the colours of the core's interface have their values in the themes
     const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[ECSISettingsLayer_Core], desc->name);
-    value = value != NULL ? value : ECSValue_GetTableField(ECSValue_GetTableField(SETTINGS.themes, OPENECS_SETTINGS_DEFAULT_THEME), desc->name);
+    value = value != nullptr ? value : ECSValue_GetTableField(ECSValue_GetTableField(SETTINGS.themes, OPENECS_SETTINGS_DEFAULT_THEME), desc->name);
 
-    if (value == NULL)
+    if (value == nullptr)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The core's settings file '%s' has no value for '%s'.", SETTINGS.paths[ECSISettingsLayer_Core], desc->name);
         return SHUResult_ErrBadData;
     }
 
-    return ECSISettings_Declare(NULL, desc, value);
+    return ECSISettings_Declare(nullptr, desc, value);
 }
 
 const ECSValue *ECSISettings_GetDefault(const char *name)
 {
-    SDL_assert(name != NULL);
+    SDL_assert(name != nullptr);
 
     ECSISetting *setting = ECSISettings_Find(name);
-    return setting == NULL ? NULL : setting->defaultValue;
+    return setting == nullptr ? nullptr : setting->defaultValue;
 }
 
 void ECSISettings_RemovePlugin(ECSPlugin plugin)
 {
-    SDL_assert(plugin != NULL);
+    SDL_assert(plugin != nullptr);
 
     // backwards, because shdel moves the last setting into the hole
     for (usz i = shlenu(SETTINGS.settings); i > 0; i--)
@@ -822,12 +873,12 @@ const ECSValue *ECSISettings_GetKeys(ECSISettingsLayer layer)
 
 bool ECSISettings_Describe(const char *name, ECSPlugin *retOwner, ECSSettingType *retType, ECSISettingsLayer *retLayer)
 {
-    SDL_assert(name != NULL);
-    SDL_assert(retOwner != NULL && retType != NULL && retLayer != NULL);
+    SDL_assert(name != nullptr);
+    SDL_assert(retOwner != nullptr && retType != nullptr && retLayer != nullptr);
 
     ECSISetting *setting = ECSISettings_Find(name);
 
-    if (setting == NULL)
+    if (setting == nullptr)
     {
         return false;
     }
@@ -845,7 +896,7 @@ void ECSISettings_DeliverChanges(void)
     {
         ECSISetting *setting = SETTINGS.changed[i];
 
-        if (setting->Changed != NULL)
+        if (setting->Changed != nullptr)
         {
             setting->Changed(setting->data);
         }
@@ -869,40 +920,47 @@ const ECSValue *ECSISettings_GetPlugins(void)
 
 SHUResult ECSSetting_Declare(ECSPlugin plugin, const ECSSettingDesc *desc)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(desc != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(desc != nullptr);
 
-    return ECSISettings_DeclarePlugin(plugin, desc, NULL);
+    return ECSISettings_DeclarePlugin(plugin, desc, nullptr);
 }
 
 SHUResult ECSISettings_DeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *desc, const ECSValue *defaultValue)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(desc != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(desc != nullptr);
 
-    if (desc->name == NULL || !ECSIPlugin_OwnsName(plugin, desc->name))
+    // the description gives the local name, and the setting is known by its full name
+    char *name = ECSIPlugin_FullName(plugin, desc->name);
+
+    if (name == nullptr)
     {
         return SHUResult_ErrBadData;
     }
 
-    return ECSISettings_Declare(plugin, desc, defaultValue);
+    ECSSettingDesc named = *desc;
+    named.name = name;
+    SHUResult result = ECSISettings_Declare(plugin, &named, defaultValue);
+    SDL_free(name);
+    return result;
 }
 
 const ECSValue *ECSSetting_Get(const char *name)
 {
-    SDL_assert(name != NULL);
+    SDL_assert(name != nullptr);
 
     ECSISetting *setting = ECSISettings_Find(name);
-    return setting == NULL ? NULL : setting->value;
+    return setting == nullptr ? nullptr : setting->value;
 }
 
 SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
 {
-    SDL_assert(name != NULL);
+    SDL_assert(name != nullptr);
 
     ECSISetting *setting = ECSISettings_Find(name);
 
-    if (setting == NULL)
+    if (setting == nullptr)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Setting '%s' is not declared.", name);
         return SHUResult_ErrNotFound;
@@ -910,25 +968,25 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
 
     if (!ECSISetting_Check(setting, value))
     {
-        ECSISetting_ReportType(setting, NULL);
+        ECSISetting_ReportType(setting, nullptr);
         return SHUResult_ErrBadData;
     }
 
-    if (SETTINGS.userFile == NULL)
+    if (SETTINGS.userFile == nullptr)
     {
         SHU_ReturnResult(ECSValue_Create(&SETTINGS.userFile));
         ECSValue_SetTable(SETTINGS.userFile);
     }
 
     // the value in effect is kept, to tell the owner only about a real change
-    ECSValue *old = NULL;
+    ECSValue *old = nullptr;
     SHU_ReturnResult(ECSValue_Create(&old));
     SHUResult result = ECSIValue_Copy(old, setting->value);
 
     // the tool's own part wins over the part for every tool, so a setting it already has is changed there
     ECSValue *tool = (ECSValue *)ECSValue_GetTableField(ECSValue_GetTableField(SETTINGS.userFile, "tools"), SETTINGS.appId);
-    ECSValue *part = ECSValue_GetTableField(tool, name) != NULL ? tool : SETTINGS.userFile;
-    ECSValue *field = NULL;
+    ECSValue *part = ECSValue_GetTableField(tool, name) != nullptr ? tool : SETTINGS.userFile;
+    ECSValue *field = nullptr;
     result = result ? result : ECSValue_TableSetField(part, name, &field);
     result = result ? result : ECSIValue_Copy(field, value);
     result = result ? result : ECSISettings_BuildLayer(ECSISettingsLayer_User, SETTINGS.userFile);
@@ -947,7 +1005,7 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
     ECSValue_Destroy(&old);
 
     // without a configuration folder, the change lasts until the program exits
-    if (!result && SETTINGS.paths[ECSISettingsLayer_User] != NULL)
+    if (!result && SETTINGS.paths[ECSISettingsLayer_User] != nullptr)
     {
         result = ECSILua_WriteData(SETTINGS.paths[ECSISettingsLayer_User], SETTINGS.userFile);
     }
@@ -957,13 +1015,13 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
 
 SHUResult ECSSetting_List(ECSValue *retList)
 {
-    SDL_assert(retList != NULL);
+    SDL_assert(retList != nullptr);
 
     ECSValue_SetTable(retList);
 
     for (usz i = 0; i < shlenu(SETTINGS.settings); i++)
     {
-        ECSValue *item = NULL;
+        ECSValue *item = nullptr;
         SHU_ReturnResult(ECSValue_ListAddItem(retList, &item));
         SHU_ReturnResult(ECSValue_SetString(item, SETTINGS.settings[i].key));
     }
@@ -973,12 +1031,12 @@ SHUResult ECSSetting_List(ECSValue *retList)
 
 SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation)
 {
-    SDL_assert(name != NULL);
-    SDL_assert(retExplanation != NULL);
+    SDL_assert(name != nullptr);
+    SDL_assert(retExplanation != nullptr);
 
     ECSISetting *setting = ECSISettings_Find(name);
 
-    if (setting == NULL)
+    if (setting == nullptr)
     {
         return SHUResult_ErrNotFound;
     }
@@ -987,26 +1045,27 @@ SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation)
     SHU_ReturnResult(ECSISettings_ExplainText(retExplanation, "name", setting->name));
     SHU_ReturnResult(ECSISettings_ExplainText(retExplanation, "type", OPENECS_SETTING_TYPE_NAMES[setting->type]));
     SHU_ReturnResult(ECSISettings_ExplainText(retExplanation, "description", setting->description));
-    SHU_ReturnResult(ECSISettings_ExplainText(retExplanation, "owner", setting->owner == NULL ? "ecs" : ECSIPlugin_GetName(setting->owner)));
+    SHU_ReturnResult(ECSISettings_ExplainText(retExplanation, "owner", setting->owner == nullptr ? "ecs" : ECSIPlugin_GetName(setting->owner)));
     SHU_ReturnResult(ECSISettings_ExplainField(retExplanation, "value", setting->value));
+    SHU_ReturnResult(ECSISettings_ExplainField(retExplanation, "default", setting->defaultValue));
     SHU_ReturnResult(ECSISettings_ExplainText(retExplanation, "layer", OPENECS_SETTINGS_LAYER_NAMES[setting->layer]));
 
-    if (SETTINGS.paths[setting->layer] != NULL)
+    if (SETTINGS.paths[setting->layer] != nullptr)
     {
         SHU_ReturnResult(ECSISettings_ExplainText(retExplanation, "file", SETTINGS.paths[setting->layer]));
     }
 
-    ECSValue *choices = NULL;
+    ECSValue *choices = nullptr;
 
     for (usz i = 0; i < arrlenu(setting->choices); i++)
     {
-        ECSValue *item = NULL;
-        SHU_ReturnResult(choices == NULL ? ECSValue_TableSetField(retExplanation, "choices", &choices) : SHUResult_Ok);
+        ECSValue *item = nullptr;
+        SHU_ReturnResult(choices == nullptr ? ECSValue_TableSetField(retExplanation, "choices", &choices) : SHUResult_Ok);
         SHU_ReturnResult(ECSValue_ListAddItem(choices, &item));
         SHU_ReturnResult(ECSValue_SetString(item, setting->choices[i]));
     }
 
-    ECSValue *layers = NULL;
+    ECSValue *layers = nullptr;
     SHU_ReturnResult(ECSValue_TableSetField(retExplanation, "layers", &layers));
     ECSValue_SetTable(layers);
     SHU_ReturnResult(ECSISettings_ExplainField(layers, "default", setting->defaultValue));
@@ -1015,7 +1074,7 @@ SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation)
     {
         const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[layer], setting->name);
 
-        if (value != NULL)
+        if (value != nullptr)
         {
             SHU_ReturnResult(ECSISettings_ExplainField(layers, OPENECS_SETTINGS_LAYER_NAMES[layer], value));
         }

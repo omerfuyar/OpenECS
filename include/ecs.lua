@@ -4,6 +4,11 @@
 -- This file only describes the module for editors; OpenECS gives each plugin its own ecs table.
 
 -- A function that keys can run says so. Keys call it with no arguments, which acts on the focused panel as the user does: locks stop it.
+-- A function that creates a name, such as ecs.panel.registerType, takes the local name: the core adds the plugin's name and a dot, so "view" of the plugin canvas is "canvas.view".
+-- Every other function takes full names.
+
+---A colour: "#RRGGBB", "#RRGGBBAA" with opacity, or the name of a colour of the theme, such as "text" for the setting ecs.colorText.
+---@alias ecs.Color string
 
 ---@class ecs
 local ecs = {}
@@ -34,7 +39,7 @@ function ecs.log.error(text) end
 ---@alias ecs.SettingType "bool"|"integer"|"number"|"string"|"choice"|"key"|"list"|"table"|"color"
 
 ---@class ecs.SettingDesc
----@field name string The plugin's name, a dot and the setting's name, such as "canvas.grid".
+---@field name string The local name, such as "grid"; the setting is "canvas.grid".
 ---@field type ecs.SettingType
 ---@field description? string
 ---@field choices? string[] The texts a "choice" setting can have.
@@ -67,16 +72,14 @@ function ecs.settings.set(name, value) end
 ---@return string? message
 function ecs.settings.list() end
 
----@class ecs.SettingExplanation
----@field name string
----@field type ecs.SettingType
----@field description string
+---A declared setting, as ecs.settings.explain gives it: its description, with its full name, and where its value comes from.
+---@class ecs.SettingExplanation: ecs.SettingDesc
+---@field name string The full name, such as "canvas.grid".
 ---@field owner string The plugin that declared the setting.
 ---@field value any The value in effect.
----@field layer "default"|"preset"|"user" The layer the value comes from.
+---@field layer "default"|"theme"|"preset"|"user" The layer the value comes from.
 ---@field file? string The file of that layer; missing for defaults.
----@field choices? string[]
----@field layers { default: any, preset: any, user: any } The value of each layer that sets it.
+---@field layers { default: any, theme: any, preset: any, user: any } The value of each layer that sets it.
 
 ---Explains a setting: its value in effect, the layer it comes from, and what each layer says.
 ---@param name string
@@ -104,27 +107,16 @@ function ecs.timer.start(seconds, repeat_, fn) end
 
 -- Panels
 
+---A panel: a handle of type ecs.panel. Its data are fields, and what it does are methods.
 ---@class ecs.Panel
+---@field title string The title its tab shows; setting it changes the tab.
+---@field id integer Read only: the panel's id, which stays the same across sessions, and which events and ecs.layout.find use.
+---@field type string Read only: the name of the panel's type, such as "canvas.view".
+---@field unsaved boolean Whether the panel has unsaved work, which shows a mark on its tab; before it closes, the user is asked to save it.
 local Panel = {}
 
 ---Asks for the panel to be drawn again.
 function Panel:redraw() end
-
----@return string title
-function Panel:getTitle() end
-
----@param text string
-function Panel:setTitle(text) end
-
----@return integer id The panel's id, which stays the same across sessions.
-function Panel:getId() end
-
----@return string type The name of the panel's type.
-function Panel:getType() end
-
----Marks the panel as having unsaved work, which shows a mark on its tab.
----@param unsaved boolean
-function Panel:setUnsaved(unsaved) end
 
 ---Starts a timer that stops when the panel is closed.
 ---@param seconds number
@@ -174,19 +166,19 @@ local Surface = {}
 ---@param y integer
 ---@param width integer
 ---@param height integer
----@param color integer ARGB, such as 0xFFFF0000; it replaces the pixels.
+---@param color ecs.Color It replaces the pixels.
 function Surface:fill(x, y, width, height, color) end
 
 ---Sets a pixel. Pixels outside the surface are clipped. Lua only: C writes the surface's pixels directly.
 ---@param x integer
 ---@param y integer
----@param color integer ARGB, such as 0xFFFF0000.
+---@param color ecs.Color
 function Surface:setPixel(x, y, color) end
 
 ---Lua only: C reads the surface's pixels directly.
 ---@param x integer
 ---@param y integer
----@return integer color ARGB.
+---@return string color "#RRGGBBAA".
 function Surface:getPixel(x, y) end
 
 ---Copies a row of pixels, clipped to the surface. Lua only: C writes the surface's pixels directly.
@@ -240,11 +232,11 @@ function Popup:setSize(width, height) end
 ---@field text? string For text: the typed text, UTF-8.
 
 ---@class ecs.PanelTypeDesc
----@field name string The plugin's name, a dot and the type's name, such as "canvas.view".
+---@field name string The local name, such as "view"; the type is "canvas.view".
 ---@field title? string The default title of tabs and menus.
 ---@field surface? "pixels"|"gpu" "pixels" if missing.
 ---@field stateVersion? integer The version of the saved state.
----@field continuous? boolean Draw every frame while the panel is shown. todo give more detail, what happens if its false ???
+---@field continuous? boolean true: draw runs every frame while the panel is shown, for animation. false, or missing: draw runs only when the panel is shown, resized or asks with panel:redraw().
 ---@field minWidth? number In layout units.
 ---@field minHeight? number In layout units.
 ---@field create? fun(panel: ecs.Panel, saved: any, version: integer): any Gives the panel's state.
@@ -281,80 +273,8 @@ function ecs.panel.addMenuEntry(type, functionName) end
 ---@return ecs.PanelTypeEntry[] types Sorted by plugin, then by title.
 function ecs.panel.types() end
 
----@param panel ecs.Panel
-function ecs.panel.redraw(panel) end
-
----@param panel ecs.Panel
----@return string title
-function ecs.panel.getTitle(panel) end
-
----@param panel ecs.Panel
----@param text string
-function ecs.panel.setTitle(panel, text) end
-
---- todo add docs for these
----@param panel ecs.Panel
----@return integer id The panel's id, which stays the same across sessions.
-function ecs.panel.getId(panel) end
-
----@param panel ecs.Panel
----@return string type The name of the panel's type.
-function ecs.panel.getType(panel) end
-
----@param panel ecs.Panel
----@param unsaved boolean
-function ecs.panel.setUnsaved(panel, unsaved) end
-
----@param panel ecs.Panel
----@param seconds number
----@param repeat_ boolean
----@param fn fun()
----@return ecs.Timer
-function ecs.panel.startTimer(panel, seconds, repeat_, fn) end
-
----@param panel ecs.Panel
----@param accept boolean
----@param x? number
----@param y? number
----@param width? number
----@param height? number
-function ecs.panel.setTextInput(panel, accept, x, y, width, height) end
-
----@param panel ecs.Panel
----@param types string[]
-function ecs.panel.acceptDrops(panel, types) end
-
----@param panel ecs.Panel
----@param type string
----@param value? any
----@return true|nil ok
----@return string? message
-function ecs.panel.startDrag(panel, type, value) end
-
----@param panel ecs.Panel
----@param desc ecs.PopupDesc
----@return ecs.Popup? popup
----@return string? message
-function ecs.panel.openPopup(panel, desc) end
-
 ---Restarts the focused panel from its last saved state, if it failed. Keys can run it.
 function ecs.panel.restart() end
-
--- Popups
-
----@class ecs.popup
-ecs.popup = {}
-
----@param popup ecs.Popup
-function ecs.popup.close(popup) end
-
----@param popup ecs.Popup
-function ecs.popup.redraw(popup) end
-
----@param popup ecs.Popup
----@param width number
----@param height number
-function ecs.popup.setSize(popup, width, height) end
 
 -- Layout and workspaces
 
@@ -450,6 +370,9 @@ function ecs.layout.lock() end
 ---Opens the last closed panel again. Keys can run it.
 function ecs.layout.reopen() end
 
+---Builds every workspace again from the preset, or from the session the command line named, after asking about unsaved work. The plugins keep running. Keys can run it.
+function ecs.layout.reset() end
+
 ---@class ecs.workspace
 ---@field switch1 fun() Switches to workspace 1. Keys can run it.
 ---@field switch2 fun() Switches to workspace 2. Keys can run it.
@@ -476,6 +399,14 @@ function ecs.workspace.getName(number) end
 
 ---@param number integer From 1.
 function ecs.workspace.switch(number) end
+
+-- App
+
+---@class ecs.app
+ecs.app = {}
+
+---Quits, as the main window's close button does: the user is asked about unsaved work first and may cancel. Keys can run it.
+function ecs.app.quit() end
 
 -- Session
 
@@ -545,12 +476,12 @@ function Subscription:cancel() end
 ecs.event = {}
 
 ---Declares an event that the plugin emits.
----@param name string The plugin's name, a dot and the event's name.
+---@param name string The local name, such as "changed"; the event is "canvas.changed".
 ---@param description? string
 function ecs.event.declare(name, description) end
 
 ---Emits a declared event of the plugin.
----@param name string
+---@param name string The full name, such as "canvas.changed".
 ---@param value? any
 function ecs.event.emit(name, value) end
 
@@ -569,11 +500,11 @@ function ecs.event.subscribe(name, fn) end
 ecs.handle = {}
 
 ---Registers a handle type of the plugin.
----@param name string
+---@param name string The local name, such as "brush"; signatures name it "handle<canvas.brush>".
 function ecs.handle.registerType(name) end
 
 ---Makes a handle that stands for a Lua value. Lua only: in C, a handle is the object's pointer.
----@param name string A handle type of the plugin.
+---@param name string A handle type of the plugin, by its full name.
 ---@param value any
 ---@return ecs.Handle
 function ecs.handle.new(name, value) end
@@ -587,19 +518,18 @@ function ecs.handle.value(handle, name) end
 -- Services
 
 ---@class ecs.ServiceFunction
----@field sig string The signature, such as "int(string, float)".
+---@field sig string The signature, such as "int(string count, float scale)". Types: void, bool, int, int64, float, double, color, string, buffer, value, handle<name>, fn<signature>, and out before a type.
 ---@field doc? string A one-line description.
 ---@field fn function
 
 ---@class ecs.service
 ecs.service = {}
 
----Registers functions named "<prefix>.<local name>".
----@param prefix string Starts with the plugin's name.
+---Registers functions of the plugin, by their local names: { clear = {...} } of the plugin canvas registers "canvas.clear".
 ---@param functions table<string, ecs.ServiceFunction>
 ---@return true|nil ok
 ---@return string? message Which function is not registered, and why.
-function ecs.service.register(prefix, functions) end
+function ecs.service.register(functions) end
 
 ---Gets a registered function.
 ---@param name string Such as "canvas.clear".
@@ -610,10 +540,13 @@ function ecs.service.get(name, signature) end
 
 -- Plugin
 
----@class ecs.PluginStateDesc
----@field version? integer
----@field save fun(): any Gives the state to save in the session.
----@field restore fun(saved: any, version: integer)
+---A plugin's own life, apart from its panels: the state it saves in sessions, and what it does before the program exits.
+---A plugin is created when its code runs at load, and destroyed before the program exits, as a panel is created when it opens and destroyed when it closes.
+---@class ecs.PluginDesc
+---@field stateVersion? integer The version of the state it saves now; restoreState gets the version the state was saved with.
+---@field saveState? fun(): any Gives the state to save in the session.
+---@field restoreState? fun(saved: any, version: integer) Restores the state of a session, before its panels are created.
+---@field destroy? fun() Runs before the program exits, while timers and events still work.
 
 ---@class ecs.plugin
 ---@field name string
@@ -621,13 +554,9 @@ function ecs.service.get(name, signature) end
 ---@field folder string The folder the plugin was loaded from, ending with a separator, such as for its images.
 ecs.plugin = {}
 
----Saves state of the plugin in the session, apart from its panels'.
----@param desc ecs.PluginStateDesc
-function ecs.plugin.registerState(desc) end
-
----Sets the function that runs when the plugin shuts down.
----@param fn fun()
-function ecs.plugin.onShutdown(fn) end
+---Registers the plugin's description, once. saveState and restoreState go together.
+---@param desc ecs.PluginDesc
+function ecs.plugin.register(desc) end
 
 -- Clipboard
 
@@ -688,12 +617,9 @@ function ecs.dialog.message(title, text, buttons) end
 ---@field api integer The plugin API version it was written for.
 ---@field description? string
 ---@field depends? table<string, string> The plugins it needs, each with the lowest version it accepts, such as { ui = "0.1" }.
---- todo require the type of plugin, merge this 2 native and lua options to a type, then either "native" or "lua"
----@field native? string Its native library, such as "libcanvas.so".
----@field lua? string The Lua file that runs when it loads, such as "init.lua".
+---@field type "native"|"lua" Where its code is: "native" is its library in its folder, named as the platform names libraries, such as libcanvas.so; "lua" is init.lua in its folder.
 
 ---What a tool is called and how the desktop knows it.
---- todo maybe more stuff like application launcher entry ???
 ---@class ecs.AppDesc
 ---@field id string Names the tool's last session and its .desktop file, such as "org.example.Paint".
 ---@field name string
@@ -738,8 +664,7 @@ function ecs.dialog.message(title, text, buttons) end
 ---@field name string
 ---@field version string
 ---@field app ecs.AppDesc
---- todo this should be required
----@field depends? table<string, string> The plugins the tool needs, each with the lowest version it accepts.
+---@field depends table<string, string> The plugins the tool needs, each with the lowest version it accepts.
 ---@field pluginsDir? string A folder looked in for plugins first, relative to the preset.
 ---@field open? string The function that files from the command line go to; its signature is void(string).
 ---@field settings? table<string, any> Values of settings, over the plugins' defaults.
@@ -758,5 +683,6 @@ function ecs.dialog.message(title, text, buttons) end
 ---@field keys? ecs.Keys Keys for every tool.
 ---@field plugins? string[] Plugins that every tool loads.
 ---@field tools? table<string, table<string, any>> Settings for one tool, by its app id.
+---@field themes? table<string, table<string, any>> Values of settings for each theme, by its name, "dark" or "light", which add to the core's.
 
 return ecs

@@ -20,15 +20,15 @@ typedef enum ECSISettingsLayer
 
 /// @brief Reads the settings layers: the core's settings file, the preset, and the user's files. Missing user files are fine.
 /// @param corePath Path of the core's settings file, which holds the value of every core setting.
-/// @param presetSettings The preset's settings table, or NULL.
+/// @param presetSettings The preset's settings table, or nullptr.
 /// @param presetPath Path of the preset, named where its settings are explained.
 /// @param appId The tool's app id, which chooses the tool's own part of the user's files.
-/// @param configFolder The user's configuration folder, ending with a separator, or NULL if there is none.
+/// @param configFolder The user's configuration folder, ending with a separator, or nullptr if there is none.
 /// @return SHUResult_Ok, SHUResult_ErrFile or SHUResult_ErrBadData if the core's settings file cannot be read, or SHUResult_ErrAllocation. A user file that cannot be read is reported and skipped.
 SHUWUR SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder);
 
 /// @brief Replaces the preset layer, such as with the settings of the session that replaces the preset. Call it before settings are declared.
-/// @param presetSettings The new layer's settings table, or NULL for none.
+/// @param presetSettings The new layer's settings table, or nullptr for none.
 /// @param presetPath The file they come from.
 /// @return SHUResult_Ok or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISettings_SetPreset(const ECSValue *presetSettings, const char *presetPath);
@@ -54,6 +54,20 @@ SHUResult ECSISettings_ParseKey(const char *text, bool report, u32 *retKey, u32 
 /// @return true if the text is a colour.
 bool ECSISettings_ParseColor(const char *text, u32 *retColor);
 
+/// @brief Room for a colour written as "#RRGGBBAA", with the end of the text.
+#define OPENECS_COLOR_TEXT_SIZE 10
+
+/// @brief Writes a colour as "#RRGGBBAA".
+/// @param color The colour, ARGB.
+/// @param text Gets the text.
+void ECSIColor_Format(ECSColor color, char text[OPENECS_COLOR_TEXT_SIZE]);
+
+/// @brief Turns a colour into the premultiplied form that surfaces hold, and back.
+/// @param color The colour, ARGB.
+/// @return The colour with its red, green and blue multiplied by its alpha, or divided by it.
+ECSColor ECSIColor_Premultiply(ECSColor color);
+ECSColor ECSIColor_Unpremultiply(ECSColor color);
+
 /// @brief Frees every declaration and layer.
 void ECSISettings_Terminate(void);
 
@@ -65,23 +79,23 @@ SHUWUR SHUResult ECSISettings_DeclareCore(const ECSSettingDesc *desc);
 /// @brief Declares a plugin's setting, like ECSSetting_Declare, with its default given as a value. The Bindings module uses it for Lua.
 /// @param plugin The plugin that owns the setting.
 /// @param desc Description of the setting; its default fields are ignored if defaultValue is given, except the choices.
-/// @param defaultValue The default, or NULL to take it from the description.
+/// @param defaultValue The default, or nullptr to take it from the description.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description or the default is invalid or the name is taken, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISettings_DeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *desc, const ECSValue *defaultValue);
 
 /// @brief Gets a declared setting's default: for a core setting, its value in the core's settings file.
 /// @param name Name of the setting.
-/// @return The default, or NULL if no setting has the name. Valid while the setting is declared.
+/// @return The default, or nullptr if no setting has the name. Valid while the setting is declared.
 const ECSValue *ECSISettings_GetDefault(const char *name);
 
 /// @brief Gets the keys table of a settings file (DESIGN 7.8): the core's, or the user's for every tool with the tool's own keys merged in, which win.
 /// @param layer ECSISettingsLayer_Core or ECSISettingsLayer_User.
-/// @return The keys table, or NULL. Valid until ECSISettings_Terminate.
+/// @return The keys table, or nullptr. Valid until ECSISettings_Terminate.
 const ECSValue *ECSISettings_GetKeys(ECSISettingsLayer layer);
 
 /// @brief Describes a declared setting.
 /// @param name Name of the setting.
-/// @param retOwner Its owner; NULL for the core.
+/// @param retOwner Its owner; nullptr for the core.
 /// @param retType Its type.
 /// @param retLayer The layer its value in effect comes from.
 /// @return true if the setting is declared.

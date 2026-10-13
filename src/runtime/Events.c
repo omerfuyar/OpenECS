@@ -14,7 +14,7 @@ typedef struct ECSITimer
     bool repeat;
     bool stopped; // freed when no timer is running
     ECSTimerFunction Function;
-    ECSTimerFunction Release; // NULL if the data needs no release
+    ECSTimerFunction Release; // nullptr if the data needs no release
     void *data;
 } ECSITimer;
 
@@ -29,7 +29,7 @@ typedef struct ECSIQueuedEvent
 /// @brief A declared named event.
 typedef struct ECSINamedEvent
 {
-    ECSPlugin plugin; // NULL for the core's events
+    ECSPlugin plugin; // nullptr for the core's events
     char *description;
 } ECSINamedEvent;
 
@@ -38,7 +38,7 @@ struct ECSISubscription
     ECSPlugin plugin;
     char *name;
     ECSEventFunction Function;
-    ECSTimerFunction Release; // NULL if the data needs no release
+    ECSTimerFunction Release; // nullptr if the data needs no release
     void *data;
     bool cancelled; // freed when no event is being delivered
 };
@@ -107,7 +107,7 @@ static struct
 
 static void ECSIEvents_FreeSubscription(struct ECSISubscription *subscription)
 {
-    if (subscription->Release != NULL)
+    if (subscription->Release != nullptr)
     {
         subscription->Release(subscription->data);
     }
@@ -162,10 +162,10 @@ static void ECSIEvents_DeliverEmission(void *target, const ECSPanelEvent *event)
     SDL_free(emission);
 }
 
-/// @brief Declares a named event; plugin is NULL for the core's.
+/// @brief Declares a named event; plugin is nullptr for the core's.
 static SHUResult ECSIEvents_Declare(ECSPlugin plugin, const char *name, const char *description)
 {
-    if (EVENTS.named == NULL)
+    if (EVENTS.named == nullptr)
     {
         sh_new_strdup(EVENTS.named);
     }
@@ -178,7 +178,7 @@ static SHUResult ECSIEvents_Declare(ECSPlugin plugin, const char *name, const ch
 
     ECSINamedEvent named = {.plugin = plugin, .description = SDL_strdup(description)};
 
-    if (named.description == NULL)
+    if (named.description == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -192,9 +192,9 @@ static SHUResult ECSIEvents_Emit(const char *name, const ECSValue *value)
 {
     ECSIEmission *emission = SDL_calloc(1, sizeof(ECSIEmission));
 
-    if (emission == NULL || (emission->name = SDL_strdup(name)) == NULL || ECSValue_Create(&emission->value) || (value != NULL && ECSIValue_Copy(emission->value, value)))
+    if (emission == nullptr || (emission->name = SDL_strdup(name)) == nullptr || ECSValue_Create(&emission->value) || (value != nullptr && ECSIValue_Copy(emission->value, value)))
     {
-        if (emission != NULL)
+        if (emission != nullptr)
         {
             SDL_free(emission->name);
             ECSValue_Destroy(&emission->value);
@@ -210,7 +210,7 @@ static SHUResult ECSIEvents_Emit(const char *name, const ECSValue *value)
 
 static void ECSIEvents_FreeTimer(ECSITimer *timer)
 {
-    if (timer->Release != NULL)
+    if (timer->Release != nullptr)
     {
         timer->Release(timer->data);
     }
@@ -314,7 +314,7 @@ static int SDLCALL ECSIEvents_Worker(void *unused)
 
         work.Work(work.data);
 
-        if (work.Done != NULL && ECS_RunOnMainThread(work.Done, work.data))
+        if (work.Done != nullptr && ECS_RunOnMainThread(work.Done, work.data))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Background work of plugin '%s' finished, but its done function cannot be queued.", ECSIPlugin_GetName(work.plugin));
         }
@@ -333,9 +333,9 @@ static SHUResult ECSIEvents_StartWorkers(void)
 
     for (int i = 0; i < count; i++)
     {
-        SDL_Thread *worker = SDL_CreateThread(ECSIEvents_Worker, "OpenECS worker", NULL);
+        SDL_Thread *worker = SDL_CreateThread(ECSIEvents_Worker, "OpenECS worker", nullptr);
 
-        if (worker != NULL)
+        if (worker != nullptr)
         {
             arrput(WORKERS.workers, worker);
         }
@@ -351,14 +351,14 @@ SHUResult ECSIEvents_Initialize(void)
     WORKERS.lock = SDL_CreateMutex();
     WORKERS.ready = SDL_CreateCondition();
 
-    if (WORKERS.lock == NULL || WORKERS.ready == NULL)
+    if (WORKERS.lock == nullptr || WORKERS.ready == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
 
     for (usz i = 0; i < SDL_arraysize(OPENECS_CORE_EVENTS); i++)
     {
-        SHU_ReturnResult(ECSIEvents_Declare(NULL, OPENECS_CORE_EVENTS[i][0], OPENECS_CORE_EVENTS[i][1]));
+        SHU_ReturnResult(ECSIEvents_Declare(nullptr, OPENECS_CORE_EVENTS[i][0], OPENECS_CORE_EVENTS[i][1]));
     }
 
     return SHUResult_Ok;
@@ -366,8 +366,8 @@ SHUResult ECSIEvents_Initialize(void)
 
 void ECSIEvents_EmitCore(const char *name, const ECSValue *value)
 {
-    SDL_assert(name != NULL);
-    SDL_assert(shgeti(EVENTS.named, name) >= 0 && EVENTS.named[shgeti(EVENTS.named, name)].value.plugin == NULL);
+    SDL_assert(name != nullptr);
+    SDL_assert(shgeti(EVENTS.named, name) >= 0 && EVENTS.named[shgeti(EVENTS.named, name)].value.plugin == nullptr);
 
     if (ECSIEvents_Emit(name, value))
     {
@@ -377,11 +377,11 @@ void ECSIEvents_EmitCore(const char *name, const ECSValue *value)
 
 SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, const char *name, ECSSubscription *retSubscription, ECSEventFunction function, ECSTimerFunction release, void *data)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(name != NULL && retSubscription != NULL && function != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(name != nullptr && retSubscription != nullptr && function != nullptr);
 
-    *retSubscription = NULL;
-    ptrdiff_t index = EVENTS.named == NULL ? -1 : shgeti(EVENTS.named, name);
+    *retSubscription = nullptr;
+    ptrdiff_t index = EVENTS.named == nullptr ? -1 : shgeti(EVENTS.named, name);
 
     if (index < 0)
     {
@@ -392,7 +392,7 @@ SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, const char *name, ECSSubscripti
     // a plugin hears only the core, itself, and the plugins it depends on
     ECSPlugin owner = EVENTS.named[index].value.plugin;
 
-    if (owner != NULL && !ECSIPlugin_DependsOn(plugin, owner))
+    if (owner != nullptr && !ECSIPlugin_DependsOn(plugin, owner))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' subscribes to '%s', but its manifest does not depend on '%s'.", ECSIPlugin_GetName(plugin), name, ECSIPlugin_GetName(owner));
         return SHUResult_ErrBadData;
@@ -400,7 +400,7 @@ SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, const char *name, ECSSubscripti
 
     struct ECSISubscription *subscription = SDL_calloc(1, sizeof(struct ECSISubscription));
 
-    if (subscription == NULL || (subscription->name = SDL_strdup(name)) == NULL)
+    if (subscription == nullptr || (subscription->name = SDL_strdup(name)) == nullptr)
     {
         SDL_free(subscription);
         return SHUResult_ErrAllocation;
@@ -417,7 +417,7 @@ SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, const char *name, ECSSubscripti
 
 void ECSIEvents_RemovePlugin(ECSPlugin plugin)
 {
-    SDL_assert(plugin != NULL);
+    SDL_assert(plugin != nullptr);
 
     for (usz i = 0; i < arrlenu(EVENTS.subscriptions); i++)
     {
@@ -445,18 +445,21 @@ void ECSIEvents_RemovePlugin(ECSPlugin plugin)
 
 SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *description)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(name != NULL && description != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(name != nullptr && description != nullptr);
 
-    return ECSIPlugin_OwnsName(plugin, name) ? ECSIEvents_Declare(plugin, name, description) : SHUResult_ErrBadData;
+    char *fullName = ECSIPlugin_FullName(plugin, name);
+    SHUResult result = fullName == nullptr ? SHUResult_ErrBadData : ECSIEvents_Declare(plugin, fullName, description);
+    SDL_free(fullName);
+    return result;
 }
 
 SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name, const ECSValue *value)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(name != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(name != nullptr);
 
-    ptrdiff_t index = EVENTS.named == NULL ? -1 : shgeti(EVENTS.named, name);
+    ptrdiff_t index = EVENTS.named == nullptr ? -1 : shgeti(EVENTS.named, name);
 
     if (index < 0 || EVENTS.named[index].value.plugin != plugin)
     {
@@ -469,25 +472,25 @@ SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name, const ECSValue *valu
 
 SHUResult ECSEvent_Subscribe(ECSPlugin plugin, const char *name, ECSSubscription *retSubscription, ECSEventFunction function, void *data)
 {
-    return ECSIEvents_Subscribe(plugin, name, retSubscription, function, NULL, data);
+    return ECSIEvents_Subscribe(plugin, name, retSubscription, function, nullptr, data);
 }
 
 void ECSEvent_Unsubscribe(ECSSubscription *subscription)
 {
-    SDL_assert(subscription != NULL);
+    SDL_assert(subscription != nullptr);
 
-    if (*subscription != NULL)
+    if (*subscription != nullptr)
     {
         (*subscription)->cancelled = true;
-        *subscription = NULL;
+        *subscription = nullptr;
         ECSIEvents_FreeCancelled();
     }
 }
 
 void ECSIEvents_Post(ECSIEventDeliverFunction deliver, void *target, const ECSPanelEvent *event)
 {
-    SDL_assert(deliver != NULL);
-    SDL_assert(event != NULL);
+    SDL_assert(deliver != nullptr);
+    SDL_assert(event != nullptr);
 
     ECSIQueuedEvent queued = {.Deliver = deliver, .target = target, .event = *event};
     arrput(EVENTS.queue, queued);
@@ -513,14 +516,14 @@ void ECSIEvents_Deliver(void)
 
 SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, const void *owner, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(retTimer != NULL);
-    SDL_assert(function != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(retTimer != nullptr);
+    SDL_assert(function != nullptr);
     SDL_assert(seconds > 0.0 || (seconds == 0.0 && !repeat));
 
     ECSITimer *timer = SDL_malloc(sizeof(ECSITimer));
 
-    if (timer == NULL)
+    if (timer == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -545,7 +548,7 @@ SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, const void *owner, ECSTimer *r
 
 void ECSIEvents_StopTimersOf(const void *owner)
 {
-    SDL_assert(owner != NULL);
+    SDL_assert(owner != nullptr);
 
     for (usz i = 0; i < arrlenu(EVENTS.timers); i++)
     {
@@ -560,7 +563,7 @@ void ECSIEvents_StopTimersOf(const void *owner)
 
 void ECSIEvents_StopTimersOfPlugin(ECSPlugin plugin)
 {
-    SDL_assert(plugin != NULL);
+    SDL_assert(plugin != nullptr);
 
     for (usz i = 0; i < arrlenu(EVENTS.timers); i++)
     {
@@ -649,7 +652,7 @@ void ECSIEvents_Terminate(void)
 
     for (usz i = 0; i < arrlenu(WORKERS.workers); i++)
     {
-        SDL_WaitThread(WORKERS.workers[i], NULL);
+        SDL_WaitThread(WORKERS.workers[i], nullptr);
     }
 
     SDL_SetAtomicInt(&WORKERS.stopped, 1);
@@ -657,8 +660,8 @@ void ECSIEvents_Terminate(void)
     arrfree(WORKERS.queue);
     SDL_DestroyCondition(WORKERS.ready);
     SDL_DestroyMutex(WORKERS.lock);
-    WORKERS.lock = NULL;
-    WORKERS.ready = NULL;
+    WORKERS.lock = nullptr;
+    WORKERS.ready = nullptr;
 
     // a release that stops another timer frees nothing here; every timer is freed in this loop
     EVENTS.freeingTimers = true;
@@ -702,23 +705,23 @@ void ECSIEvents_Terminate(void)
 
 SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
 {
-    return ECSIEvents_StartTimer(plugin, NULL, retTimer, seconds, repeat, function, NULL, data);
+    return ECSIEvents_StartTimer(plugin, nullptr, retTimer, seconds, repeat, function, nullptr, data);
 }
 
 void ECSTimer_Stop(ECSTimer *timer)
 {
-    SDL_assert(timer != NULL && *timer != NULL);
+    SDL_assert(timer != nullptr && *timer != nullptr);
 
     (*timer)->stopped = true;
-    *timer = NULL;
+    *timer = nullptr;
     ECSIEvents_FreeStoppedTimers();
 }
 
 SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data)
 {
-    SDL_assert(plugin != NULL);
-    SDL_assert(work != NULL);
-    SDL_assert(WORKERS.lock != NULL);
+    SDL_assert(plugin != nullptr);
+    SDL_assert(work != nullptr);
+    SDL_assert(WORKERS.lock != nullptr);
 
     SDL_LockMutex(WORKERS.lock);
     SHUResult result = WORKERS.stopping ? SHUResult_ErrInternal : ECSIEvents_StartWorkers();
@@ -736,11 +739,11 @@ SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFun
 
 SHUResult ECS_RunOnMainThread(ECSTaskFunction function, void *data)
 {
-    SDL_assert(function != NULL);
+    SDL_assert(function != nullptr);
 
     ECSIMainTask *task = SDL_malloc(sizeof(ECSIMainTask));
 
-    if (task == NULL)
+    if (task == nullptr)
     {
         return SHUResult_ErrAllocation;
     }

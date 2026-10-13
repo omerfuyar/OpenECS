@@ -30,12 +30,12 @@ The [standard plugins](https://github.com/omerfuyar/OpenECS-std) give plugins us
    local draw = require("draw")
 
    ecs.panel.registerType({
-     name = "myplugin.hello",
+     name = "hello", -- the panel type myplugin.hello
      title = "Hello",
      create = function() return {} end,
      draw = function(_, surface)
-       surface:fill(0, 0, surface.width, surface.height, draw.color("background"))
-       draw.text(surface, "Hello from my plugin", 16, 16, 20, draw.color("text"))
+       surface:fill(0, 0, surface.width, surface.height, "background")
+       draw.text(surface, draw.font("ui"), "Hello from my plugin", 16, 16, 20, "text")
      end,
    })
    ```
@@ -72,7 +72,7 @@ Options:
   -s, --session FILE      Open a saved session
   -f, --fresh             Start from the preset, not from the tool's last session
   -t, --test FILE         Run a test; Debug builds only
-  -d, --definitions DIR   Write the definition files of the plugins' functions into DIR, and exit
+  -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit
   -v, --version           Print the version and exit
   -h, --help              Print this help and exit
 ```
@@ -91,10 +91,10 @@ The `examples/` folder shows how to write plugins, one part at a time: from `1_h
 
 The archive holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`. `ecs.lua` also describes manifests, presets and settings files: write `---@type ecs.Manifest` or `---@type ecs.Preset` above the file's `return` to get completion and checks, as the examples do.
 
-Plugins offer functions to each other. In Lua, `local draw = require("draw")` gives the functions of the plugin `draw`, if your manifest depends on it. For completion and checks of those functions, write their definition files and add the folder to `workspace.library` too; a C plugin includes the header of the same name:
+Plugins offer functions to each other. In Lua, `local draw = require("draw")` gives the functions of the plugin `draw`, if your manifest depends on it. For completion and checks of those functions, write their definition files and add the folder to `workspace.library` too; a C plugin includes the header of the same name. `--definitions` writes them for every plugin it finds, or for a preset's plugins with `--preset`:
 
 ``` shell
-./OpenECS --preset paint --definitions definitions/
+./OpenECS --definitions definitions/
 ```
 
 ## Development
@@ -122,10 +122,6 @@ git submodule update --init --recursive
 ```
 
 ### Dependent Packages
-
-#### Windows
-
-todo winget, llvm or mingw, autoreconf etc.
 
 #### Linux
 
@@ -197,6 +193,8 @@ Dependencies are built the first time only. To build one again, delete its libra
 
 Shuild compiles again only the files that changed. After changing compiler flags in `shuild.c`, delete `.shu/` (or run `sudo git clean -Xfd` to delete all ignored files) to compile everything again.
 
+The build also writes the definition files of the plugins it built into `build/<TYPE>/definitions/`, and a `.luarc.json` in this folder, `std/` and `examples/` that names them with `include/`. So an editor with LuaLS, such as VS Code with the Lua extension, completes and checks the `ecs` module and `require("ui")` in every Lua file of the three repositories.
+
 Debug builds run the static analyzer while compiling, and the sanitizers while the program runs. A sanitizer prints its report to standard error, and the program exits with an error.
 
 ### Testing
@@ -218,6 +216,7 @@ GitHub checks every pull request (DESIGN.md section 19.3). These commands run th
 .github/scripts/build.sh D
 .github/scripts/test.sh build/Debug/bin/OpenECS
 .github/scripts/build.sh R
+.github/scripts/definitions.sh build/Debug/bin/OpenECS
 ```
 
 ## License

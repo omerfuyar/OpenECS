@@ -81,12 +81,12 @@ static const ECSIFieldRule OPENECS_PANEL_RULES[] = {
 static struct
 {
     const ECSIPresetInfo *info; // the preset or session in use, which saved sessions are written from
-    char *presets;              // the user's presets, or NULL
-    char *folder;               // the saved sessions, where the dialogs that ask for session files start, or NULL
-    char *state;                // the state folder, or NULL
+    char *presets;              // the user's presets, or nullptr
+    char *folder;               // the saved sessions, where the dialogs that ask for session files start, or nullptr
+    char *state;                // the state folder, or nullptr
     char *origin;               // the preset, or the session the command line named, that ecs.layout.reset builds the layout from
     bool canOpen;               // false during a test
-    char *next;                 // the session or preset that OpenECS starts again from once it stops, or NULL
+    char *next;                 // the session or preset that OpenECS starts again from once it stops, or nullptr
     bool nextIsPreset;          // true when next is a preset
 } SESSION = {0};
 
@@ -111,7 +111,7 @@ typedef struct ECSISessionReader
 /// @brief Reports a problem at the part of the file being read.
 static OPENECS_PRINTF(2, 3) void ECSISession_Report(const ECSISessionReader *reader, const char *format, ...)
 {
-    char *message = NULL;
+    char *message = nullptr;
     va_list arguments;
     va_start(arguments, format);
     int length = SDL_vasprintf(&message, format, arguments);
@@ -130,7 +130,7 @@ static usz ECSISession_Enter(ECSISessionReader *reader, const char *field, usz i
     usz length = SDL_strlen(reader->path);
     usz room = sizeof(reader->path) - length;
 
-    if (field != NULL)
+    if (field != nullptr)
     {
         SDL_snprintf(reader->path + length, room, length == 0 ? "%s" : ".%s", field);
     }
@@ -150,14 +150,14 @@ static void ECSISession_Leave(ECSISessionReader *reader, usz length)
 /// @brief Checks a table's named fields against rules, and reports the first problem at the part being read.
 static bool ECSISession_CheckFields(ECSISessionReader *reader, const ECSValue *table, const ECSIFieldRule *rules, usz count)
 {
-    char *problem = NULL;
+    char *problem = nullptr;
 
     if (ECSIValue_CheckFields(table, rules, count, &problem))
     {
         return true;
     }
 
-    ECSISession_Report(reader, "%s", problem != NULL ? problem : "out of memory");
+    ECSISession_Report(reader, "%s", problem != nullptr ? problem : "out of memory");
     SDL_free(problem);
     return false;
 }
@@ -187,12 +187,12 @@ static bool ECSISession_CheckNode(ECSISessionReader *reader, const ECSValue *nod
         return false;
     }
 
-    const char *split = ECSValue_GetString(ECSValue_GetTableField(node, "split"), NULL);
+    const char *split = ECSValue_GetString(ECSValue_GetTableField(node, "split"), nullptr);
     const ECSValue *panels = ECSValue_GetTableField(node, "panels");
     usz parts = ECSValue_GetListCount(node);
     bool valid = true;
 
-    if (split != NULL)
+    if (split != nullptr)
     {
         if (SDL_strcmp(split, "horizontal") != 0 && SDL_strcmp(split, "vertical") != 0)
         {
@@ -200,7 +200,7 @@ static bool ECSISession_CheckNode(ECSISessionReader *reader, const ECSValue *nod
             return false;
         }
 
-        if (panels != NULL || parts == 0)
+        if (panels != nullptr || parts == 0)
         {
             ECSISession_Report(reader, "a split has its parts as list items, at least one, and no 'panels'");
             return false;
@@ -208,7 +208,7 @@ static bool ECSISession_CheckNode(ECSISessionReader *reader, const ECSValue *nod
 
         for (usz i = 0; valid && i < parts; i++)
         {
-            usz length = ECSISession_Enter(reader, NULL, i);
+            usz length = ECSISession_Enter(reader, nullptr, i);
             valid = ECSISession_CheckNode(reader, ECSValue_GetListItem(node, i));
             ECSISession_Leave(reader, length);
         }
@@ -223,11 +223,11 @@ static bool ECSISession_CheckNode(ECSISessionReader *reader, const ECSValue *nod
     }
 
     usz panelsLength = ECSISession_Enter(reader, "panels", 0);
-    valid = panels == NULL || ECSISession_CheckFields(reader, panels, NULL, 0);
+    valid = panels == nullptr || ECSISession_CheckFields(reader, panels, nullptr, 0);
 
     for (usz i = 0; valid && i < ECSValue_GetListCount(panels); i++)
     {
-        usz length = ECSISession_Enter(reader, NULL, i);
+        usz length = ECSISession_Enter(reader, nullptr, i);
         valid = ECSISession_CheckFields(reader, ECSValue_GetListItem(panels, i), OPENECS_PANEL_RULES, SDL_arraysize(OPENECS_PANEL_RULES));
         ECSISession_Leave(reader, length);
     }
@@ -240,7 +240,7 @@ static bool ECSISession_CheckNode(ECSISessionReader *reader, const ECSValue *nod
 static bool ECSISession_CheckList(ECSISessionReader *reader, const char *field, const ECSValue *list, bool (*CheckItem)(ECSISessionReader *, const ECSValue *))
 {
     usz listLength = ECSISession_Enter(reader, field, 0);
-    bool valid = ECSISession_CheckFields(reader, list, NULL, 0);
+    bool valid = ECSISession_CheckFields(reader, list, nullptr, 0);
 
     if (valid && ECSValue_GetListCount(list) == 0)
     {
@@ -250,7 +250,7 @@ static bool ECSISession_CheckList(ECSISessionReader *reader, const char *field, 
 
     for (usz i = 0; valid && i < ECSValue_GetListCount(list); i++)
     {
-        usz length = ECSISession_Enter(reader, NULL, i);
+        usz length = ECSISession_Enter(reader, nullptr, i);
         valid = CheckItem(reader, ECSValue_GetListItem(list, i));
         ECSISession_Leave(reader, length);
     }
@@ -271,7 +271,7 @@ static void ECSISession_CheckDependency(const char *name, const ECSValue *field,
 {
     ECSISessionReader *reader = userData;
 
-    if (reader->valid && !ECSIValue_IsVersion(ECSValue_GetString(field, NULL)))
+    if (reader->valid && !ECSIValue_IsVersion(ECSValue_GetString(field, nullptr)))
     {
         ECSISession_Report(reader, "the version of '%s' must be a version text, such as \"0.1\"", name);
         reader->valid = false;
@@ -296,7 +296,7 @@ static bool ECSISession_Check(const char *path, const ECSValue *file)
         return false;
     }
 
-    if (!ECSIValue_IsVersion(ECSValue_GetString(ECSValue_GetTableField(file, "version"), NULL)))
+    if (!ECSIValue_IsVersion(ECSValue_GetString(ECSValue_GetTableField(file, "version"), nullptr)))
     {
         ECSISession_Report(&reader, "'version' must be a version text, such as \"1.0.0\"");
         return false;
@@ -335,7 +335,7 @@ static SHUResult ECSISession_ReadPanel(ECSISessionReader *reader, const ECSValue
     const ECSValue *state = ECSValue_GetTableField(saved, "state");
     i64 version = ECSValue_GetInteger(ECSValue_GetTableField(saved, "stateVersion"), 0);
     i64 id = ECSValue_GetInteger(ECSValue_GetTableField(saved, "id"), 0);
-    ECSPanel panel = NULL;
+    ECSPanel panel = nullptr;
 
     SHU_ReturnResult(ECSIPanel_Create(&panel, type, state, version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0));
     ECSIPanel_SetId(panel, id > 0 && id <= SDL_MAX_UINT32 ? (u32)id : 0);
@@ -354,18 +354,18 @@ static SHUResult ECSISession_ReadNode(ECSISessionReader *reader, const ECSValue 
 {
     const ECSValue *split = ECSValue_GetTableField(saved, "split");
 
-    if (split != NULL)
+    if (split != nullptr)
     {
         SHU_ReturnResult(ECSILayout_SplitCreate(retNode, SDL_strcmp(ECSValue_GetString(split, ""), "vertical") == 0));
 
         for (usz i = 0; i < ECSValue_GetListCount(saved); i++)
         {
             const ECSValue *savedChild = ECSValue_GetListItem(saved, i);
-            usz length = ECSISession_Enter(reader, NULL, i);
-            ECSINode *child = NULL;
+            usz length = ECSISession_Enter(reader, nullptr, i);
+            ECSINode *child = nullptr;
             SHUResult result = ECSISession_ReadNode(reader, savedChild, &child);
 
-            if (child != NULL)
+            if (child != nullptr)
             {
                 ECSILayout_SplitAdd(*retNode, child, ECSISession_GetSize(savedChild, "size", 0.0f), ECSISession_GetSize(savedChild, "share", 1.0f));
             }
@@ -391,7 +391,7 @@ static SHUResult ECSISession_ReadNode(ECSISessionReader *reader, const ECSValue 
 
     for (usz i = 0; i < ECSValue_GetListCount(panels); i++)
     {
-        usz length = ECSISession_Enter(reader, NULL, i);
+        usz length = ECSISession_Enter(reader, nullptr, i);
         SHUResult result = ECSISession_ReadPanel(reader, ECSValue_GetListItem(panels, i), *retNode);
         ECSISession_Leave(reader, length);
         SHU_ReturnResult(result, ECSILayout_NodeDestroy(retNode););
@@ -408,17 +408,17 @@ static SHUResult ECSISession_ReadWorkspace(ECSISessionReader *reader, const ECSV
     const ECSValue *windows = ECSValue_GetTableField(saved, "windows");
     usz count = SDL_max(1, ECSValue_GetListCount(windows));
     ECSIRootDesc *roots = SDL_calloc(count, sizeof(ECSIRootDesc));
-    SHUResult result = roots == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
+    SHUResult result = roots == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
 
     reader->focusId = ECSValue_GetInteger(ECSValue_GetTableField(saved, "focus"), 0);
-    reader->focus = NULL;
+    reader->focus = nullptr;
 
     for (usz i = 0; !result && i < ECSValue_GetListCount(windows); i++)
     {
         const ECSValue *tree = ECSValue_GetListItem(windows, i);
         usz length = ECSISession_Enter(reader, "windows", 0);
-        ECSISession_Enter(reader, NULL, i);
-        reader->maximized = NULL;
+        ECSISession_Enter(reader, nullptr, i);
+        reader->maximized = nullptr;
         result = ECSISession_ReadNode(reader, tree, &roots[i].tree);
         roots[i].maximized = reader->maximized;
 
@@ -439,9 +439,9 @@ static SHUResult ECSISession_ReadWorkspace(ECSISessionReader *reader, const ECSV
     }
     else
     {
-        for (usz i = 0; roots != NULL && i < count; i++)
+        for (usz i = 0; roots != nullptr && i < count; i++)
         {
-            if (roots[i].tree != NULL)
+            if (roots[i].tree != nullptr)
             {
                 ECSILayout_NodeDestroy(&roots[i].tree);
             }
@@ -463,7 +463,7 @@ static SHUResult ECSISession_ReadWorkspaces(const char *path, const ECSValue *fi
 
     for (usz i = 0; i < ECSValue_GetListCount(workspaces); i++)
     {
-        usz length = ECSISession_Enter(&reader, NULL, i);
+        usz length = ECSISession_Enter(&reader, nullptr, i);
         SHU_ReturnResult(ECSISession_ReadWorkspace(&reader, ECSValue_GetListItem(workspaces, i)));
         ECSISession_Leave(&reader, length);
     }
@@ -511,7 +511,7 @@ static void ECSISession_SaveChosen(void *data, const char *const *files, usz cou
 {
     (void)data;
     usz length = count > 0 ? SDL_strlen(files[0]) : 0;
-    char *path = NULL;
+    char *path = nullptr;
 
     if (count == 0 || SDL_asprintf(&path, "%s%s", files[0], length >= 4 && SDL_strcmp(files[0] + length - 4, ".lua") == 0 ? "" : ".lua") < 0)
     {
@@ -544,21 +544,21 @@ static void ECSISession_OpenChosen(void *data, const char *const *files, usz cou
 /// @brief Shows a dialog of saved sessions and presets, which starts in the sessions folder. A save dialog suggests a file named after the preset, so a new file is made by pressing Save.
 static SHUResult ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunction Done)
 {
-    if (SESSION.folder != NULL && !SDL_CreateDirectory(SESSION.folder))
+    if (SESSION.folder != nullptr && !SDL_CreateDirectory(SESSION.folder))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot make the sessions folder '%s': %s", SESSION.folder, SDL_GetError());
     }
 
-    char *location = NULL;
+    char *location = nullptr;
 
-    if (type == ECSDialogType_SaveFile && SESSION.folder != NULL && SDL_asprintf(&location, "%s%s.lua", SESSION.folder, SESSION.info->name != NULL ? SESSION.info->name : "session") < 0)
+    if (type == ECSDialogType_SaveFile && SESSION.folder != nullptr && SDL_asprintf(&location, "%s%s.lua", SESSION.folder, SESSION.info->name != nullptr ? SESSION.info->name : "session") < 0)
     {
-        location = NULL;
+        location = nullptr;
     }
 
     ECSDialogFilter filter = {"OpenECS sessions and presets", "lua"};
-    ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = location != NULL ? location : SESSION.folder, .Done = Done};
-    SHUResult result = ECSIInput_ShowDialog(NULL, &desc);
+    ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = location != nullptr ? location : SESSION.folder, .Done = Done};
+    SHUResult result = ECSIInput_ShowDialog(nullptr, &desc);
     SDL_free(location);
     return result;
 }
@@ -566,7 +566,7 @@ static SHUResult ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunctio
 /// @brief What keys and menus run as ecs.session.save: saving without a path, which asks for the file.
 static void ECSISession_SaveBound(void)
 {
-    if (ECSSession_Save(NULL))
+    if (ECSSession_Save(nullptr))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask where to save the session.");
     }
@@ -575,7 +575,7 @@ static void ECSISession_SaveBound(void)
 /// @brief What keys and menus run as ecs.session.open: opening without a path, which asks for the file. ECSSession_Open reports why it refuses.
 static void ECSISession_OpenBound(void)
 {
-    if (ECSSession_Open(NULL) == SHUResult_ErrAllocation)
+    if (ECSSession_Open(nullptr) == SHUResult_ErrAllocation)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask which session to open.");
     }
@@ -584,7 +584,7 @@ static void ECSISession_OpenBound(void)
 /// @brief Adds the .lua files of a folder to a list, unless the list has a file of the same name. A folder that does not exist adds nothing.
 static SHUResult ECSISession_FindFiles(ECSISessionFile **files, const char *folder)
 {
-    if (folder == NULL)
+    if (folder == nullptr)
     {
         return SHUResult_Ok;
     }
@@ -598,12 +598,12 @@ static SHUResult ECSISession_FindFiles(ECSISessionFile **files, const char *fold
         ECSISessionFile file = {.name = SDL_strndup(names[i], SDL_strlen(names[i]) - 4)};
         bool listed = false;
 
-        for (usz j = 0; file.name != NULL && j < arrlenu(*files); j++)
+        for (usz j = 0; file.name != nullptr && j < arrlenu(*files); j++)
         {
             listed = listed || SDL_strcmp((*files)[j].name, file.name) == 0;
         }
 
-        if (file.name == NULL || (!listed && SDL_asprintf(&file.path, "%s%s", folder, names[i]) < 0))
+        if (file.name == nullptr || (!listed && SDL_asprintf(&file.path, "%s%s", folder, names[i]) < 0))
         {
             result = SHUResult_ErrAllocation;
         }
@@ -629,7 +629,7 @@ static int ECSISession_CompareFiles(const void *a, const void *b)
 /// @brief Sets a field of a list entry to a text.
 static SHUResult ECSISession_SetText(ECSValue *entry, const char *name, const char *text)
 {
-    ECSValue *field = NULL;
+    ECSValue *field = nullptr;
     SHU_ReturnResult(ECSValue_TableSetField(entry, name, &field));
     return ECSValue_SetString(field, text);
 }
@@ -639,12 +639,12 @@ static SHUResult ECSISession_SetTime(ECSValue *entry, const char *name, const ch
 {
     SDL_PathInfo info = {0};
 
-    if (path == NULL || !SDL_GetPathInfo(path, &info))
+    if (path == nullptr || !SDL_GetPathInfo(path, &info))
     {
         return SHUResult_Ok;
     }
 
-    ECSValue *field = NULL;
+    ECSValue *field = nullptr;
     SHU_ReturnResult(ECSValue_TableSetField(entry, name, &field));
     ECSValue_SetInteger(field, info.modify_time / (SDL_Time)SDL_NS_PER_SECOND);
     return SHUResult_Ok;
@@ -673,7 +673,7 @@ static SHUResult ECSISession_FillList(ECSValue *retList, ECSISessionFile *files,
 
         if (!result && (!presets || ECSValue_GetBool(ECSValue_GetTableField(info.file, "listed"), true)))
         {
-            ECSValue *entry = NULL;
+            ECSValue *entry = nullptr;
             result = ECSValue_ListAddItem(retList, &entry);
 
             if (!result)
@@ -736,7 +736,7 @@ static SHUResult ECSISession_OpenFile(const char *path, bool preset)
 
     char *next = SDL_strdup(path);
 
-    if (next == NULL)
+    if (next == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -763,27 +763,27 @@ static bool ECSISession_CanOpen(void)
 
 SHUResult ECSISession_FindPreset(char **retPath, const char *nameOrPath, const char *userFolder)
 {
-    SDL_assert(retPath != NULL);
-    SDL_assert(nameOrPath != NULL);
+    SDL_assert(retPath != nullptr);
+    SDL_assert(nameOrPath != nullptr);
 
     // a name has no folder and no extension
     usz length = SDL_strlen(nameOrPath);
 
-    if (SDL_strchr(nameOrPath, '/') != NULL || (length > 4 && SDL_strcmp(nameOrPath + length - 4, ".lua") == 0))
+    if (SDL_strchr(nameOrPath, '/') != nullptr || (length > 4 && SDL_strcmp(nameOrPath + length - 4, ".lua") == 0))
     {
         *retPath = SDL_strdup(nameOrPath);
-        return *retPath == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
+        return *retPath == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
     }
 
     // the user's preset wins over a first-party preset of the same name
-    if (userFolder != NULL)
+    if (userFolder != nullptr)
     {
         if (SDL_asprintf(retPath, "%s%s.lua", userFolder, nameOrPath) < 0)
         {
             return SHUResult_ErrAllocation;
         }
 
-        if (SDL_GetPathInfo(*retPath, NULL))
+        if (SDL_GetPathInfo(*retPath, nullptr))
         {
             return SHUResult_Ok;
         }
@@ -796,13 +796,13 @@ SHUResult ECSISession_FindPreset(char **retPath, const char *nameOrPath, const c
 
 char *ECSISession_GetLastPath(const char *stateFolder, const char *appId)
 {
-    SDL_assert(appId != NULL);
+    SDL_assert(appId != nullptr);
 
-    char *path = NULL;
+    char *path = nullptr;
 
-    if (stateFolder != NULL && SDL_asprintf(&path, "%s%s/%s", stateFolder, appId, OPENECS_LAST_SESSION_FILE) < 0)
+    if (stateFolder != nullptr && SDL_asprintf(&path, "%s%s/%s", stateFolder, appId, OPENECS_LAST_SESSION_FILE) < 0)
     {
-        path = NULL;
+        path = nullptr;
     }
 
     return path;
@@ -810,8 +810,8 @@ char *ECSISession_GetLastPath(const char *stateFolder, const char *appId)
 
 SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
 {
-    SDL_assert(path != NULL);
-    SDL_assert(retInfo != NULL);
+    SDL_assert(path != nullptr);
+    SDL_assert(retInfo != nullptr);
 
     SDL_zerop(retInfo);
     SHU_ReturnResult(ECSValue_Create(&retInfo->file));
@@ -825,18 +825,18 @@ SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
 
     const ECSValue *file = retInfo->file;
     const ECSValue *app = ECSValue_GetTableField(file, "app");
-    const char *appId = ECSValue_GetString(ECSValue_GetTableField(app, "id"), NULL);
-    const char *pluginsDirectory = ECSValue_GetString(ECSValue_GetTableField(file, "pluginsDir"), NULL);
+    const char *appId = ECSValue_GetString(ECSValue_GetTableField(app, "id"), nullptr);
+    const char *pluginsDirectory = ECSValue_GetString(ECSValue_GetTableField(file, "pluginsDir"), nullptr);
 
     retInfo->name = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "name"), ""));
     retInfo->appName = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(app, "name"), ""));
     retInfo->appId = SDL_strdup(appId);
 
-    if (pluginsDirectory != NULL)
+    if (pluginsDirectory != nullptr)
     {
         // relative to the preset's folder, unless it is absolute
         const char *slash = SDL_strrchr(path, '/');
-        int folderLength = slash == NULL || pluginsDirectory[0] == '/' ? 0 : (int)(slash - path + 1);
+        int folderLength = slash == nullptr || pluginsDirectory[0] == '/' ? 0 : (int)(slash - path + 1);
 
         if (SDL_asprintf(&retInfo->pluginsDirectory, "%.*s%s/", folderLength, path, pluginsDirectory) < 0)
         {
@@ -844,7 +844,7 @@ SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
         }
     }
 
-    if (retInfo->name == NULL || retInfo->appName == NULL || retInfo->appId == NULL)
+    if (retInfo->name == nullptr || retInfo->appName == nullptr || retInfo->appId == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -854,7 +854,7 @@ SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
 
 void ECSISession_FreeInfo(ECSIPresetInfo *info)
 {
-    SDL_assert(info != NULL);
+    SDL_assert(info != nullptr);
 
     SDL_free(info->name);
     SDL_free(info->appId);
@@ -866,8 +866,8 @@ void ECSISession_FreeInfo(ECSIPresetInfo *info)
 
 SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info)
 {
-    SDL_assert(path != NULL);
-    SDL_assert(info != NULL);
+    SDL_assert(path != nullptr);
+    SDL_assert(info != nullptr);
 
     SESSION.info = info;
     SHU_ReturnResult(ECSIKeys_SetTool(ECSValue_GetTableField(info->file, "keys")));
@@ -881,11 +881,11 @@ SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info)
 
 SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
 {
-    SDL_assert(info != NULL);
-    SDL_assert(retSession != NULL);
+    SDL_assert(info != nullptr);
+    SDL_assert(retSession != nullptr);
 
     // a copy of the file the session came from, so fields the core does not use are kept
-    ECSValue *field = NULL;
+    ECSValue *field = nullptr;
     usz current = 0;
     SHUResult result = ECSIValue_Copy(retSession, info->file);
     result = result ? result : ECSValue_TableSetField(retSession, "format", &field);
@@ -896,7 +896,7 @@ SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
     }
 
     // the plugin directory is written resolved, because the session lives in another folder
-    if (!result && info->pluginsDirectory != NULL)
+    if (!result && info->pluginsDirectory != nullptr)
     {
         result = ECSValue_TableSetField(retSession, "pluginsDir", &field);
         result = result ? result : ECSValue_SetString(field, info->pluginsDirectory);
@@ -911,9 +911,9 @@ SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
     for (usz i = 0; !result && i < ECSValue_GetListCount(field); i++)
     {
         const ECSValue *keys = ECSIKeys_GetWorkspace(i);
-        ECSValue *copy = NULL;
+        ECSValue *copy = nullptr;
 
-        if (keys != NULL)
+        if (keys != nullptr)
         {
             result = ECSValue_TableSetField((ECSValue *)ECSValue_GetListItem(field, i), "keys", &copy);
             result = result ? result : ECSIValue_Copy(copy, keys);
@@ -932,15 +932,15 @@ SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
 
 SHUResult ECSISession_Initialize(const ECSISessionFolders *folders, bool canOpen)
 {
-    SDL_assert(folders != NULL);
+    SDL_assert(folders != nullptr);
 
-    SESSION.presets = folders->presets == NULL ? NULL : SDL_strdup(folders->presets);
-    SESSION.folder = folders->sessions == NULL ? NULL : SDL_strdup(folders->sessions);
-    SESSION.state = folders->state == NULL ? NULL : SDL_strdup(folders->state);
+    SESSION.presets = folders->presets == nullptr ? nullptr : SDL_strdup(folders->presets);
+    SESSION.folder = folders->sessions == nullptr ? nullptr : SDL_strdup(folders->sessions);
+    SESSION.state = folders->state == nullptr ? nullptr : SDL_strdup(folders->state);
     SESSION.origin = SDL_strdup(folders->origin);
     SESSION.canOpen = canOpen;
 
-    if ((folders->presets != NULL && SESSION.presets == NULL) || (folders->sessions != NULL && SESSION.folder == NULL) || (folders->state != NULL && SESSION.state == NULL) || SESSION.origin == NULL)
+    if ((folders->presets != nullptr && SESSION.presets == nullptr) || (folders->sessions != nullptr && SESSION.folder == nullptr) || (folders->state != nullptr && SESSION.state == nullptr) || SESSION.origin == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -953,7 +953,7 @@ SHUResult ECSISession_Initialize(const ECSISessionFolders *folders, bool canOpen
 
 const char *ECSISession_GetNext(const char **retOption)
 {
-    if (retOption != NULL)
+    if (retOption != nullptr)
     {
         *retOption = SESSION.nextIsPreset ? "--preset" : "--session";
     }
@@ -978,7 +978,7 @@ SHUResult ECSSession_Open(const char *path)
         return SHUResult_ErrPrivileges;
     }
 
-    if (path == NULL)
+    if (path == nullptr)
     {
         return ECSISession_ShowDialog(ECSDialogType_OpenFile, ECSISession_OpenChosen);
     }
@@ -988,14 +988,14 @@ SHUResult ECSSession_Open(const char *path)
 
 SHUResult ECSSession_OpenPreset(const char *nameOrPath)
 {
-    SDL_assert(nameOrPath != NULL);
+    SDL_assert(nameOrPath != nullptr);
 
     if (!ECSISession_CanOpen())
     {
         return SHUResult_ErrPrivileges;
     }
 
-    char *path = NULL;
+    char *path = nullptr;
     SHU_ReturnResult(ECSISession_FindPreset(&path, nameOrPath, SESSION.presets));
     SHUResult result = ECSISession_OpenFile(path, true);
     SDL_free(path);
@@ -1004,11 +1004,11 @@ SHUResult ECSSession_OpenPreset(const char *nameOrPath)
 
 SHUResult ECSSession_ListPresets(ECSValue *retList)
 {
-    SDL_assert(retList != NULL);
+    SDL_assert(retList != nullptr);
 
     // the user's presets first, so they win over first-party presets of the same name
-    ECSISessionFile *files = NULL;
-    char *firstParty = NULL;
+    ECSISessionFile *files = nullptr;
+    char *firstParty = nullptr;
     SHUResult result = SDL_asprintf(&firstParty, "%spresets/", SDL_GetBasePath()) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok;
     result = result ? result : ECSISession_FindFiles(&files, SESSION.presets);
     result = result ? result : ECSISession_FindFiles(&files, firstParty);
@@ -1021,9 +1021,9 @@ SHUResult ECSSession_ListPresets(ECSValue *retList)
 
 SHUResult ECSSession_ListSessions(ECSValue *retList)
 {
-    SDL_assert(retList != NULL);
+    SDL_assert(retList != nullptr);
 
-    ECSISessionFile *files = NULL;
+    ECSISessionFile *files = nullptr;
     SHUResult result = ECSISession_FindFiles(&files, SESSION.folder);
     result = result ? result : ECSISession_FillList(retList, files, false);
 
@@ -1033,14 +1033,14 @@ SHUResult ECSSession_ListSessions(ECSValue *retList)
 
 SHUResult ECSSession_Save(const char *path)
 {
-    SDL_assert(SESSION.info != NULL);
+    SDL_assert(SESSION.info != nullptr);
 
-    if (path == NULL)
+    if (path == nullptr)
     {
         return ECSISession_ShowDialog(ECSDialogType_SaveFile, ECSISession_SaveChosen);
     }
 
-    ECSValue *session = NULL;
+    ECSValue *session = nullptr;
     SHU_ReturnResult(ECSValue_Create(&session));
     SHUResult result = ECSISession_Build(SESSION.info, session);
     result = result ? result : ECSILua_WriteData(path, session);

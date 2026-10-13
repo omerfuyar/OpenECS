@@ -69,27 +69,27 @@ static void ECSIValue_MakeTable(ECSValue *value)
 
 SHUResult ECSValue_Create(ECSValue **retValue)
 {
-    SDL_assert(retValue != NULL);
+    SDL_assert(retValue != nullptr);
 
     *retValue = SDL_calloc(1, sizeof(ECSValue));
-    return *retValue == NULL ? SHUResult_ErrAllocation : SHUResult_Ok;
+    return *retValue == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
 }
 
 void ECSValue_Destroy(ECSValue **value)
 {
-    SDL_assert(value != NULL);
+    SDL_assert(value != nullptr);
 
-    if (*value != NULL)
+    if (*value != nullptr)
     {
         ECSIValue_Clear(*value);
         SDL_free(*value);
-        *value = NULL;
+        *value = nullptr;
     }
 }
 
 SHUResult ECSIValue_Copy(ECSValue *value, const ECSValue *source)
 {
-    SDL_assert(value != NULL);
+    SDL_assert(value != nullptr);
     SDL_assert(value != source);
 
     switch (ECSValue_GetType(source))
@@ -116,14 +116,14 @@ SHUResult ECSIValue_Copy(ECSValue *value, const ECSValue *source)
 
     for (usz i = 0; i < arrlenu(source->items); i++)
     {
-        ECSValue *item = NULL;
+        ECSValue *item = nullptr;
         SHU_ReturnResult(ECSValue_ListAddItem(value, &item));
         SHU_ReturnResult(ECSIValue_Copy(item, source->items[i]));
     }
 
     for (usz i = 0; i < shlenu(source->fields); i++)
     {
-        ECSValue *field = NULL;
+        ECSValue *field = nullptr;
         SHU_ReturnResult(ECSValue_TableSetField(value, source->fields[i].key, &field));
         SHU_ReturnResult(ECSIValue_Copy(field, source->fields[i].value));
     }
@@ -182,7 +182,7 @@ bool ECSIValue_Equal(const ECSValue *first, const ECSValue *second)
 
 void ECSIValue_TableForEachField(const ECSValue *table, ECSIValueFieldFunction function, void *userData)
 {
-    SDL_assert(function != NULL);
+    SDL_assert(function != nullptr);
 
     if (ECSValue_GetType(table) != ECSValueType_Table)
     {
@@ -197,11 +197,11 @@ void ECSIValue_TableForEachField(const ECSValue *table, ECSIValueFieldFunction f
 
 bool ECSIValue_CheckFields(const ECSValue *table, const ECSIFieldRule *rules, usz count, char **retProblem)
 {
-    SDL_assert(rules != NULL || count == 0);
-    SDL_assert(retProblem != NULL);
+    SDL_assert(rules != nullptr || count == 0);
+    SDL_assert(retProblem != nullptr);
 
     static const char *const TYPE_NAMES[] = {"any value", "true or false", "a whole number", "a number", "a text", "a table"};
-    *retProblem = NULL;
+    *retProblem = nullptr;
 
     if (ECSValue_GetType(table) != ECSValueType_Table)
     {
@@ -213,14 +213,14 @@ bool ECSIValue_CheckFields(const ECSValue *table, const ECSIFieldRule *rules, us
     {
         const char *name = table->fields[i].key;
         const ECSValue *field = table->fields[i].value;
-        const ECSIFieldRule *rule = NULL;
+        const ECSIFieldRule *rule = nullptr;
 
-        for (usz j = 0; j < count && rule == NULL; j++)
+        for (usz j = 0; j < count && rule == nullptr; j++)
         {
-            rule = SDL_strcmp(rules[j].name, name) == 0 ? &rules[j] : NULL;
+            rule = SDL_strcmp(rules[j].name, name) == 0 ? &rules[j] : nullptr;
         }
 
-        if (rule == NULL)
+        if (rule == nullptr)
         {
             SDL_asprintf(retProblem, "'%s' is not a field it can have", name);
             return false;
@@ -259,7 +259,7 @@ bool ECSIValue_CheckFields(const ECSValue *table, const ECSIFieldRule *rules, us
 
     for (usz i = 0; i < count; i++)
     {
-        if (rules[i].required && ECSValue_GetTableField(table, rules[i].name) == NULL)
+        if (rules[i].required && ECSValue_GetTableField(table, rules[i].name) == nullptr)
         {
             SDL_asprintf(retProblem, "it needs the field '%s'", rules[i].name);
             return false;
@@ -273,7 +273,7 @@ bool ECSIValue_IsVersion(const char *text)
 {
     usz numbers = 0;
 
-    while (text != NULL && numbers < 3 && SDL_isdigit((unsigned char)*text))
+    while (text != nullptr && numbers < 3 && SDL_isdigit((unsigned char)*text))
     {
         while (SDL_isdigit((unsigned char)*text))
         {
@@ -290,12 +290,12 @@ bool ECSIValue_IsVersion(const char *text)
         text++;
     }
 
-    return numbers > 0 && text != NULL && *text == '\0';
+    return numbers > 0 && text != nullptr && *text == '\0';
 }
 
 ECSValueType ECSValue_GetType(const ECSValue *value)
 {
-    return value == NULL ? ECSValueType_Nil : value->type;
+    return value == nullptr ? ECSValueType_Nil : value->type;
 }
 
 bool ECSValue_GetBool(const ECSValue *value, bool fallback)
@@ -347,17 +347,17 @@ usz ECSValue_GetListCount(const ECSValue *table)
 
 const ECSValue *ECSValue_GetListItem(const ECSValue *table, usz index)
 {
-    return index < ECSValue_GetListCount(table) ? table->items[index] : NULL;
+    return index < ECSValue_GetListCount(table) ? table->items[index] : nullptr;
 }
 
 const ECSValue *ECSValue_GetTableField(const ECSValue *table, const char *name)
 {
-    SDL_assert(name != NULL);
+    SDL_assert(name != nullptr);
 
     // shget would allocate a map that is missing
-    if (ECSValue_GetType(table) != ECSValueType_Table || table->fields == NULL)
+    if (ECSValue_GetType(table) != ECSValueType_Table || table->fields == nullptr)
     {
-        return NULL;
+        return nullptr;
     }
 
     // the cast is safe: shget only reads a map that exists, but its macro takes a modifiable one
@@ -366,14 +366,14 @@ const ECSValue *ECSValue_GetTableField(const ECSValue *table, const char *name)
 
 void ECSValue_SetNil(ECSValue *value)
 {
-    SDL_assert(value != NULL);
+    SDL_assert(value != nullptr);
 
     ECSIValue_Clear(value);
 }
 
 void ECSValue_SetBool(ECSValue *value, bool boolean)
 {
-    SDL_assert(value != NULL);
+    SDL_assert(value != nullptr);
 
     ECSIValue_Clear(value);
     value->type = ECSValueType_Bool;
@@ -382,7 +382,7 @@ void ECSValue_SetBool(ECSValue *value, bool boolean)
 
 void ECSValue_SetInteger(ECSValue *value, i64 integer)
 {
-    SDL_assert(value != NULL);
+    SDL_assert(value != nullptr);
 
     ECSIValue_Clear(value);
     value->type = ECSValueType_Integer;
@@ -391,7 +391,7 @@ void ECSValue_SetInteger(ECSValue *value, i64 integer)
 
 void ECSValue_SetNumber(ECSValue *value, f64 number)
 {
-    SDL_assert(value != NULL);
+    SDL_assert(value != nullptr);
 
     ECSIValue_Clear(value);
     value->type = ECSValueType_Number;
@@ -400,12 +400,12 @@ void ECSValue_SetNumber(ECSValue *value, f64 number)
 
 SHUResult ECSValue_SetString(ECSValue *value, const char *string)
 {
-    SDL_assert(value != NULL);
-    SDL_assert(string != NULL);
+    SDL_assert(value != nullptr);
+    SDL_assert(string != nullptr);
 
     char *copy = SDL_strdup(string);
 
-    if (copy == NULL)
+    if (copy == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -418,7 +418,7 @@ SHUResult ECSValue_SetString(ECSValue *value, const char *string)
 
 void ECSValue_SetTable(ECSValue *value)
 {
-    SDL_assert(value != NULL);
+    SDL_assert(value != nullptr);
 
     ECSIValue_Clear(value);
     value->type = ECSValueType_Table;
@@ -426,8 +426,8 @@ void ECSValue_SetTable(ECSValue *value)
 
 SHUResult ECSValue_ListAddItem(ECSValue *table, ECSValue **retItem)
 {
-    SDL_assert(table != NULL);
-    SDL_assert(retItem != NULL);
+    SDL_assert(table != nullptr);
+    SDL_assert(retItem != nullptr);
 
     ECSIValue_MakeTable(table);
     SHU_ReturnResult(ECSValue_Create(retItem));
@@ -437,21 +437,21 @@ SHUResult ECSValue_ListAddItem(ECSValue *table, ECSValue **retItem)
 
 SHUResult ECSValue_TableSetField(ECSValue *table, const char *name, ECSValue **retField)
 {
-    SDL_assert(table != NULL);
-    SDL_assert(name != NULL);
-    SDL_assert(retField != NULL);
+    SDL_assert(table != nullptr);
+    SDL_assert(name != nullptr);
+    SDL_assert(retField != nullptr);
 
     ECSIValue_MakeTable(table);
 
     // keys are copied; the mode is set before shget, which would allocate a map without it
-    if (table->fields == NULL)
+    if (table->fields == nullptr)
     {
         sh_new_strdup(table->fields);
     }
 
     ECSValue *field = shget(table->fields, name);
 
-    if (field != NULL)
+    if (field != nullptr)
     {
         *retField = field;
         return SHUResult_Ok;
