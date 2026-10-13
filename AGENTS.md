@@ -23,7 +23,6 @@ Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 | `examples/`     | Submodule: OpenECS-examples, examples for plugin authors (DESIGN.md, sections 17.6 and 17.7).                          |
 | `dependencies/` | Third-party git submodules.                                                                                            |
 | `resources/`    | Files the program loads at run time.                                                                                   |
-| `tests/`        | Tests that Debug builds run (DESIGN.md, section 17.5).                                                                 |
 | `shuild.c`      | The build script (see README.md).                                                                                      |
 | `.github/`      | Checks, release workflow and their scripts, rulesets and release descriptions (DESIGN.md, section 19).                 |
 | `LICENSE.md`    | OpenECS's license, zlib.                                                                                               |
@@ -50,7 +49,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 
 - Write text and code for a human reader: simple, short and easy to read. Do not bloat.
 - Keep `include/OpenECS.h` and `include/ecs.lua` in step, with every reference and document (DESIGN.md, section 11.5).
-- Build in Debug and in Release, and run the tests, before pushing (DESIGN.md, section 19.3).
+- Build in Debug and in Release, and run the examples' tests, before pushing (DESIGN.md, section 19.3).
 
 **Ask first**
 
@@ -74,7 +73,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Publish the branch at the start of the work, then push each commit to it.
 - Put small changes on the branch you work on; do not open a branch for each of them. Keep few branches at a time, each a whole piece of work, so they do not conflict.
 - Write a release's description once, when the release is ready, before the pull request from `dev` into `main`; not with each change.
-- A change between releases may break an example. Before a release, bring the examples up to date so their tests pass (DESIGN.md, section 17.6).
+- The examples are the tests. A change that breaks an example changes the example in OpenECS-examples in the same piece of work, so every test passes (DESIGN.md, sections 17.5 and 17.6).
 - Commit messages have one line per change, starting with `-`. Details go on lines starting with `--`.
 
 ## Writing documents

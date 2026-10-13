@@ -150,10 +150,9 @@ static void ECSIMenus_AddTypeEntries(ECSIMenuEntry **entries, ECSPanel panel)
     }
 }
 
-/// @brief Builds a panel's menu: what acts on the panel and its group, the submenus that split and move it, then its type's entries.
+/// @brief Builds a panel's menu: what acts on the panel and its group, the submenu that moves it, then its type's entries.
 static void ECSIMenus_BuildPanelMenu(ECSIMenuEntry **entries, ECSPanel panel)
 {
-    ECSIMenuEntry *split = NULL;
     ECSIMenuEntry *move = NULL;
     ECSIMenuEntry *workspaces = NULL;
 
@@ -163,10 +162,6 @@ static void ECSIMenus_BuildPanelMenu(ECSIMenuEntry **entries, ECSPanel panel)
     ECSIMenus_AddFunction(entries, "ecs.layout.popOut", NULL, panel);
     ECSIMenus_AddFunction(entries, "ecs.layout.lock", NULL, panel);
     ECSIMenus_AddFunction(entries, "ecs.layout.reopen", NULL, panel);
-
-    ECSIMenus_AddFunction(&split, "ecs.layout.splitRight", "Right", panel);
-    ECSIMenus_AddFunction(&split, "ecs.layout.splitDown", "Down", panel);
-    ECSIMenus_AddSubmenu(entries, "Split", split);
 
     ECSIMenus_AddFunction(&move, "ecs.layout.moveLeft", "Left", panel);
     ECSIMenus_AddFunction(&move, "ecs.layout.moveRight", "Right", panel);
@@ -389,28 +384,6 @@ static void ECSIMenus_Restart(void)
     }
 }
 
-/// @brief Opens another panel of the focused panel's type beside it, for the type's plugin.
-static void ECSIMenus_Split(ECSZone zone)
-{
-    ECSPanel focus = ECSILayout_GetFocus();
-    ECSPanel opened = NULL;
-
-    if (focus != NULL && focus->type != NULL && ECSLayout_Open(focus->type->plugin, &opened, focus->typeName, NULL, focus, zone))
-    {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot open another '%s'.", focus->typeName);
-    }
-}
-
-static void ECSIMenus_SplitRight(void)
-{
-    ECSIMenus_Split(ECSZone_Right);
-}
-
-static void ECSIMenus_SplitDown(void)
-{
-    ECSIMenus_Split(ECSZone_Bottom);
-}
-
 /// @brief Shows the menu of workspaces near the top left of the focused panel, or of the window without one.
 static void ECSIMenus_ShowWorkspaces(void)
 {
@@ -473,8 +446,6 @@ static const struct
     {"ecs.layout.lock", ECSIMenus_Lock, "Lock or unlock the group"},
     {"ecs.layout.reopen", ECSIMenus_Reopen, "Reopen the last closed panel"},
     {"ecs.panel.restart", ECSIMenus_Restart, "Restart the failed panel"},
-    {"ecs.layout.splitRight", ECSIMenus_SplitRight, "Open another one on the right"},
-    {"ecs.layout.splitDown", ECSIMenus_SplitDown, "Open another one below"},
     ECSIMenus_WorkspaceEntries(1),
     ECSIMenus_WorkspaceEntries(2),
     ECSIMenus_WorkspaceEntries(3),
@@ -518,11 +489,6 @@ bool ECSIMenus_Offers(const char *function, ECSPanel panel)
     if (SDL_strcmp(function, "ecs.layout.reopen") == 0)
     {
         return ECSILayout_CanReopen();
-    }
-
-    if (SDL_strncmp(function, "ecs.layout.split", SDL_strlen("ecs.layout.split")) == 0)
-    {
-        return panel != NULL && panel->type != NULL;
     }
 
     // a panel alone in its OS window stays, and so does a locked one

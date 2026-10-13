@@ -20,6 +20,7 @@ typedef struct ECSIPlugin
 {
     char *name;
     char *version;
+    char *description;         // from the manifest, or empty
     char *folder;              // ends with a separator
     SDL_SharedObject *library; // NULL if the plugin has no native code
     ECSIPluginShutdownFunction Shutdown;
@@ -99,6 +100,7 @@ static void ECSIPlugin_Free(ECSIPlugin *plugin)
 
     arrfree(plugin->dependencies);
     SDL_free(plugin->name);
+    SDL_free(plugin->description);
     SDL_free(plugin->version);
     SDL_free(plugin->folder);
 }
@@ -261,6 +263,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
     ECSIPlugin plugin = {
         .name = SDL_strdup(name),
         .version = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "version"), "0.0.0")),
+        .description = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "description"), "")),
         .folder = ECSIPlugin_AbsoluteFolder(manifest->folder),
     };
     ECSIPlugin *record = SDL_malloc(sizeof(ECSIPlugin));
@@ -268,7 +271,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
 
     ECSIValue_TableForEachField(ECSValue_GetTableField(file, "depends"), ECSIPlugin_AddDependency, &plugin);
 
-    if (plugin.name == NULL || plugin.version == NULL || plugin.folder == NULL || record == NULL)
+    if (plugin.name == NULL || plugin.version == NULL || plugin.description == NULL || plugin.folder == NULL || record == NULL)
     {
         SDL_free(record);
         ECSIPlugin_Free(&plugin);
@@ -529,6 +532,13 @@ const char *ECSIPlugin_GetName(ECSPlugin plugin)
     SDL_assert(plugin != NULL);
 
     return plugin->name;
+}
+
+const char *ECSIPlugin_GetDescription(ECSPlugin plugin)
+{
+    SDL_assert(plugin != NULL);
+
+    return plugin->description;
 }
 
 SHUResult ECSIPlugin_RegisterState(ECSPlugin plugin, const ECSPluginStateDesc *desc, ECSTimerFunction release)

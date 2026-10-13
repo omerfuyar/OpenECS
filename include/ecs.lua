@@ -270,6 +270,17 @@ function ecs.panel.registerType(desc) end
 ---@return string? message
 function ecs.panel.addMenuEntry(type, functionName) end
 
+---A registered panel type in a list.
+---@class ecs.PanelTypeEntry
+---@field name string The panel type's name, such as "canvas.view", which ecs.layout.open takes.
+---@field title string Its default title.
+---@field plugin string The name of the plugin that registered it.
+---@field description string That plugin's description, from its manifest.
+
+---Lists the registered panel types, so a plugin can offer to open them.
+---@return ecs.PanelTypeEntry[] types Sorted by plugin, then by title.
+function ecs.panel.types() end
+
 ---@param panel ecs.Panel
 function ecs.panel.redraw(panel) end
 
@@ -438,12 +449,6 @@ function ecs.layout.lock() end
 
 ---Opens the last closed panel again. Keys can run it.
 function ecs.layout.reopen() end
-
----Opens another panel of the focused panel's type on its right. Keys can run it.
-function ecs.layout.splitRight() end
-
----Opens another panel of the focused panel's type below it. Keys can run it.
-function ecs.layout.splitDown() end
 
 ---@class ecs.workspace
 ---@field switch1 fun() Switches to workspace 1. Keys can run it.

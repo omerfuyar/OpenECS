@@ -1,8 +1,52 @@
 # OpenECS
 
-OpenECS (Editor Composition System) is the empty shell of an editor-style application, written in C. It provides panels that can be split, grouped into tabs, docked, maximized and moved into their own windows, and workspaces that hold them. It also provides plugins in C and Lua, keybindings, settings, saving and restoring sessions, and operating-system features such as the clipboard, drag and drop and dialogs. It runs on Linux.
+**Docking panels, workspaces, keys, settings and sessions come for free. You write only the panels, in C or Lua.**
 
-OpenECS does nothing specific to any job. Plugins decide what each panel shows and does, and a preset names the plugins and the arrangement of a tool. So the same executable becomes a text editor, a paint program or the front end of a game engine. OpenECS is an executable, not a library.
+OpenECS (Editor Composition System, not an entity-component system) is the empty shell of an editor-style application, written in C. It provides panels that can be split, grouped into tabs, docked, maximized and moved into their own windows, and workspaces that hold them. It also provides plugins in C and Lua, keybindings, settings, saving and restoring sessions, and operating-system features such as the clipboard, drag and drop and dialogs. It runs on Linux.
+
+OpenECS does nothing specific to any job. Plugins decide what each panel shows and does, and a preset names the plugins and the arrangement of a tool. So the same executable becomes a text editor, a paint program, a log viewer or the front end of a game engine.
+
+## Who it is for
+
+- **Tool builders** who need a level editor, an asset viewer, a debugger or an internal tool, and do not want to write windows, docking and settings again.
+- **Game and engine developers** who want an editor front end for their engine, with SDL3 and Lua they already know.
+- **C and Lua tinkerers** who like small programs they can read and change.
+
+The [standard plugins](https://github.com/omerfuyar/OpenECS-std) give plugins user interfaces, text grids, images, sound, networking, 3D models and files, so a panel starts from more than pixels.
+
+## Quick start
+
+1. Download the archive from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it, and run an example:
+
+   ``` shell
+   ./OpenECS --fresh --preset examples/1_hello/preset.lua
+   ```
+
+2. Make your own tool from [OpenECS-template](https://github.com/omerfuyar/OpenECS-template): press "Use this template" on GitHub. It holds a preset with a plugin, and a guide that goes through each part. A Lua plugin is a folder with a manifest and a script:
+
+   ``` lua
+   -- myplugin/init.lua
+   local ecs = require("ecs")
+   local draw = require("draw")
+
+   ecs.panel.registerType({
+     name = "myplugin.hello",
+     title = "Hello",
+     create = function() return {} end,
+     draw = function(_, surface)
+       surface:fill(0, 0, surface.width, surface.height, draw.color("background"))
+       draw.text(surface, "Hello from my plugin", 16, 16, 20, draw.color("text"))
+     end,
+   })
+   ```
+
+3. Run your tool with its preset, `./OpenECS --fresh --preset path/to/preset.lua`. Press Alt+W then N to see the panel types of the tool and open one, and Alt+W then `,` for the settings.
+
+The [examples](https://github.com/omerfuyar/OpenECS-examples) go on from there, one part at a time.
+
+## Status
+
+OpenECS is young. It works and you can build on it, but until 1.0 a minor release may change the plugin interface; each release says what changed and how to update. Releases are built for Linux on x86_64; Windows and macOS are planned. Questions, ideas and the plugins you build are welcome in [Discussions](https://github.com/omerfuyar/OpenECS/discussions).
 
 ## Documents
 
@@ -33,11 +77,11 @@ Options:
   -h, --help              Print this help and exit
 ```
 
-Without a preset, OpenECS shows the launcher: it lists the presets and saved sessions, and Up, Down and Return or a click open one. Press Alt+W to see the core's keys; Alt+W then `,` opens the settings window.
+Without a preset, OpenECS shows the launcher: it lists the presets and saved sessions, and Up, Down and Return or a click open one. Press Alt+W to see the core's keys; Alt+W then `,` opens the settings window, and Alt+W then N the list of panel types.
 
 ### Examples
 
-The `examples/` folder shows how to write plugins, one part at a time, from `1_hello` to `12_sketch`. Its [README](https://github.com/omerfuyar/OpenECS-examples) says how to read and run them:
+The `examples/` folder shows how to write plugins, one part at a time: from `1_hello` to `12_sketch` the plugin interface, then the standard plugins. Its [README](https://github.com/omerfuyar/OpenECS-examples) says how to read and run them:
 
 ``` shell
 ./OpenECS --fresh --preset examples/1_hello/preset.lua
@@ -61,6 +105,8 @@ OpenECS holds the core. Two more repositories are its submodules, so a clone wit
 
 - [OpenECS-std](https://github.com/omerfuyar/OpenECS-std), in `std/`: the standard plugins, the settings window and the launcher.
 - [OpenECS-examples](https://github.com/omerfuyar/OpenECS-examples), in `examples/`: the examples.
+
+[OpenECS-template](https://github.com/omerfuyar/OpenECS-template) is the starting point for a new tool: a preset with its plugins. It is not a submodule.
 
 ### To clone the repository
 
@@ -128,7 +174,7 @@ Shuild builds the program. Compile the build script once; it compiles itself aga
 
 ``` shell
 cd OpenECS/
-gcc shuild.c -o shuild.ignore -O3
+gcc shuild.c -o shuild.ignore -O3 -Wno-format-truncation
 ./shuild.ignore -b release -e
 ```
 
@@ -140,7 +186,6 @@ Flags:
                      release; relwithdebinfo, a release with debug information; or minsizerel, a small release
   -n, --no-std       Do not build the standard plugins of std/
   -e, --examples     Also build the examples of examples/, into bin/examples/
-  -t, --tests        Also build the tests, into tests/ beside bin/, and std's into std/tests/ beside bin/
   -h, --help         Show this help
 ```
 
@@ -156,16 +201,14 @@ Debug builds run the static analyzer while compiling, and the sanitizers while t
 
 ### Testing
 
-Debug builds built with `-t` run the tests. The build copies `tests/` beside `bin/`, so build again after changing a test. A test needs no display, and prints "The test passed." or the reason it failed. Each repository tests what it holds: these commands run OpenECS's tests, then the standard plugins' tests, then the examples' tests, and name the ones that fail:
+The examples are the tests. Each example has a test, which Debug builds run with `--test`. The build copies the examples into `bin/examples/`, so build again after changing one. A test needs no display, and prints "The test passed." or the reason it failed. These commands build with the examples and run every test, and name the ones that fail:
 
 ``` shell
-./shuild.ignore -b debug -e -t
+./shuild.ignore -b debug -e
 .github/scripts/test.sh build/Debug/bin/OpenECS
-.github/scripts/test.sh build/Debug/bin/OpenECS std
-.github/scripts/test.sh build/Debug/bin/OpenECS examples
 ```
 
-To see why a test fails, run it alone: `./build/Debug/bin/OpenECS --test build/Debug/tests/menus.lua`. DESIGN.md section 17.5 explains how to write one.
+To see why a test fails, run it alone: `./build/Debug/bin/OpenECS --test build/Debug/bin/examples/3_ui/test.lua`. DESIGN.md section 17.5 explains how to write one.
 
 ### Checks
 
