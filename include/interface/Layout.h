@@ -46,7 +46,8 @@ typedef struct ECSIRoot
     u32 id;              // unique while the program runs; the window finds its root by it
     ECSINode *tree;      // NULL when the root has no panels; only a workspace's main root is ever empty
     ECSINode *maximized; // group that fills the OS window, or NULL
-    f32 width;           // size of the OS window, in layout units
+    f32 top;             // where the layout starts in the OS window, below its title bar, in layout units
+    f32 width;           // size of the layout, in layout units
     f32 height;
 } ECSIRoot;
 
@@ -157,6 +158,17 @@ SHUWUR SHUResult ECSILayout_WorkspaceAdd(const char *name, const ECSIRootDesc *r
 /// @param index Position of the workspace, starting at 0. Ignored if there is no such workspace.
 void ECSILayout_WorkspaceSwitch(usz index);
 
+/// @brief Checks whether the last panel of every workspace has been closed, so the program quits.
+/// @return true once no workspace has a panel left after a panel closed.
+bool ECSILayout_WasEmptied(void);
+
+/// @brief Closes every panel of every workspace, and removes the workspaces and the closed panels that ecs.layout.reopen remembers, so the workspaces can be added again. The panels are destroyed after the current pass of the main loop.
+void ECSILayout_Clear(void);
+
+/// @brief Shows a workspace after ECSILayout_Clear and new ECSILayout_WorkspaceAdd calls, and tells its focused panel and the plugins that it has the focus.
+/// @param index Position of the workspace, starting at 0; the first one if there is no such workspace.
+void ECSILayout_ShowFirst(usz index);
+
 /// @brief Describes every workspace for a session: its name, its layout tree with each panel's saved state, the focused panel and the maximized group.
 /// @param retWorkspaces The value to set to a list of workspaces.
 /// @param retCurrent Position of the current workspace, starting at 0.
@@ -183,11 +195,12 @@ ECSIRoot *ECSILayout_FindRoot(u32 id, bool *retShown);
 /// @return The root, or NULL.
 ECSIRoot *ECSILayout_RootOf(ECSPanel panel);
 
-/// @brief Sets the size of a root's OS window, which ECSILayout_Update lays the root out in.
+/// @brief Sets where a root's layout is in its OS window, which ECSILayout_Update lays the root out in: below the title bar, to the window's bottom.
 /// @param root The root.
-/// @param width Width in layout units.
-/// @param height Height in layout units.
-void ECSILayout_SetRootSize(ECSIRoot *root, f32 width, f32 height);
+/// @param top Where the layout starts, in layout units.
+/// @param width Width of the layout, in layout units.
+/// @param height Height of the layout, in layout units.
+void ECSILayout_SetRootArea(ECSIRoot *root, f32 top, f32 width, f32 height);
 
 /// @brief Gets every panel of a root, for closing them.
 /// @param root The root.

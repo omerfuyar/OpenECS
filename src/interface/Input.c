@@ -800,6 +800,10 @@ bool ECSIInput_Handle(const SDL_Event *event)
     case SDL_EVENT_QUIT:
         return !ECSIInput_ConfirmQuit();
 
+    case SDL_EVENT_SYSTEM_THEME_CHANGED:
+        ECSISettings_ApplyTheme();
+        break;
+
     // the panel focused last in an OS window gets the focus when the window gets the system's
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
     {

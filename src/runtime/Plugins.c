@@ -10,6 +10,28 @@
 /// @brief Longest text that names what needs a plugin, in reports.
 #define OPENECS_PLUGINS_REPORT_SIZE 1024
 
+/// @brief The file a native plugin's code is in, in its folder: its name with the platform's prefix and extension, such as "libcanvas.so".
+#if defined(SDL_PLATFORM_WINDOWS)
+#define OPENECS_LIBRARY_FORMAT "%s%s.dll"
+#elif defined(SDL_PLATFORM_APPLE)
+#define OPENECS_LIBRARY_FORMAT "%slib%s.dylib"
+#else
+#define OPENECS_LIBRARY_FORMAT "%slib%s.so"
+#endif
+
+/// @brief The file a Lua plugin's code starts in, in its folder.
+#define OPENECS_LUA_ENTRY "init.lua"
+
+/// @brief What a manifest's fields must be.
+static const ECSIFieldRule OPENECS_MANIFEST_RULES[] = {
+    {"name", ECSIFieldType_String, true},
+    {"version", ECSIFieldType_String, true},
+    {"api", ECSIFieldType_Integer, true},
+    {"type", ECSIFieldType_String, true},
+    {"description", ECSIFieldType_String, false},
+    {"depends", ECSIFieldType_Table, false},
+};
+
 /// @brief A native plugin's ECSPlugin_Init.
 typedef SHUResult (*ECSIPluginInitFunction)(ECSPlugin plugin);
 
@@ -58,6 +80,7 @@ static struct
     usz directoryCount;
     const char *neededBy; // what names the plugins being loaded, for reports
     const char **loading; // stb_ds array of the plugins being loaded, to find dependency cycles
+    bool invalid;         // a manifest is not valid or plugins depend on each other in a cycle, so the start fails
     struct
     {
         char *key; // "plugin: message"
@@ -194,6 +217,77 @@ static void ECSIManifest_ReportMissing(const char *name)
     }
 }
 
+/// @brief Reports a manifest that is not valid.
+static OPENECS_PRINTF(2, 3) void ECSIManifest_Report(const char *path, const char *format, ...)
+{
+    char *problem = NULL;
+    va_list arguments;
+    va_start(arguments, format);
+    int length = SDL_vasprintf(&problem, format, arguments);
+    va_end(arguments);
+    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The manifest '%s' is not valid: %s.", path, length >= 0 ? problem : format);
+    SDL_free(problem);
+}
+
+/// @brief Checks the dependencies of a manifest, each a plugin's name with the lowest version it accepts.
+static void ECSIManifest_CheckDependency(const char *name, const ECSValue *field, void *userData)
+{
+    bool *valid = userData;
+
+    if (*valid && !ECSIValue_IsVersion(ECSValue_GetString(field, NULL)))
+    {
+        *valid = false;
+        SDL_SetError("the version of '%s' in 'depends' must be a version text, such as \"0.1\"", name);
+    }
+}
+
+/// @brief Checks a manifest's structure (DESIGN 9.2), and reports what is wrong.
+/// @param name The name of the plugin's folder.
+/// @return true if it is valid.
+static bool ECSIManifest_Check(const char *name, const char *path, const ECSValue *file)
+{
+    char *problem = NULL;
+
+    if (!ECSIValue_CheckFields(file, OPENECS_MANIFEST_RULES, SDL_arraysize(OPENECS_MANIFEST_RULES), &problem))
+    {
+        ECSIManifest_Report(path, "%s", problem != NULL ? problem : "out of memory");
+        SDL_free(problem);
+        return false;
+    }
+
+    const char *type = ECSValue_GetString(ECSValue_GetTableField(file, "type"), "");
+    const ECSValue *depends = ECSValue_GetTableField(file, "depends");
+    bool valid = true;
+    ECSIValue_TableForEachField(depends, ECSIManifest_CheckDependency, &valid);
+
+    if (SDL_strcmp(ECSValue_GetString(ECSValue_GetTableField(file, "name"), ""), name) != 0)
+    {
+        ECSIManifest_Report(path, "'name' must be the name of its folder, '%s'", name);
+    }
+    else if (!ECSIValue_IsVersion(ECSValue_GetString(ECSValue_GetTableField(file, "version"), NULL)))
+    {
+        ECSIManifest_Report(path, "'version' must be a version text, such as \"1.2.0\"");
+    }
+    else if (SDL_strcmp(type, "native") != 0 && SDL_strcmp(type, "lua") != 0)
+    {
+        ECSIManifest_Report(path, "'type' must be \"native\" or \"lua\"");
+    }
+    else if (ECSValue_GetListCount(depends) > 0)
+    {
+        ECSIManifest_Report(path, "'depends' names each plugin with a version, such as { ui = \"0.1\" }");
+    }
+    else if (!valid)
+    {
+        ECSIManifest_Report(path, "%s", SDL_GetError());
+    }
+    else
+    {
+        return true;
+    }
+
+    return false;
+}
+
 /// @brief Finds a plugin's folder in the plugin directories and reads its manifest.
 static SHUResult ECSIManifest_Find(const char *name, ECSIManifest *retManifest)
 {
@@ -216,15 +310,10 @@ static SHUResult ECSIManifest_Find(const char *name, ECSIManifest *retManifest)
 
         SHUResult result = ECSValue_Create(&retManifest->file);
         result = result ? result : ECSILua_ReadData(path, retManifest->file);
+        result = result == SHUResult_ErrBadData || (!result && !ECSIManifest_Check(name, path, retManifest->file)) ? SHUResult_ErrBadData : result;
+        PLUGINS.invalid = PLUGINS.invalid || result == SHUResult_ErrBadData;
         SDL_free(path);
         SHU_ReturnResult(result, ECSIManifest_Free(retManifest););
-
-        if (SDL_strcmp(ECSValue_GetString(ECSValue_GetTableField(retManifest->file, "name"), ""), name) != 0)
-        {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The manifest of plugin '%s' gives another name.", name);
-            ECSIManifest_Free(retManifest);
-            return SHUResult_ErrBadData;
-        }
 
         if (SDL_asprintf(&retManifest->folder, "%s%s/", PLUGINS.directories[i], name) < 0)
         {
@@ -247,7 +336,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
 {
     const ECSValue *file = manifest->file;
     i64 api = ECSValue_GetInteger(ECSValue_GetTableField(file, "api"), 0);
-    const char *native = ECSValue_GetString(ECSValue_GetTableField(file, "native"), NULL);
+    bool native = SDL_strcmp(ECSValue_GetString(ECSValue_GetTableField(file, "type"), ""), "native") == 0;
 
     if (api != OPENECS_API_VERSION)
     {
@@ -278,11 +367,11 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
         return SHUResult_ErrAllocation;
     }
 
-    if (native != NULL)
+    if (native)
     {
         char *path = NULL;
 
-        if (SDL_asprintf(&path, "%s%s", manifest->folder, native) >= 0)
+        if (SDL_asprintf(&path, OPENECS_LIBRARY_FORMAT, manifest->folder, name) >= 0)
         {
             plugin.library = SDL_LoadObject(path);
             SDL_free(path);
@@ -326,13 +415,10 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
         return result;
     }
 
-    // the native code starts first, then the Lua code
-    const char *lua = ECSValue_GetString(ECSValue_GetTableField(file, "lua"), NULL);
-
-    if (lua != NULL)
+    if (!native)
     {
         char *path = NULL;
-        result = SDL_asprintf(&path, "%s%s", manifest->folder, lua) < 0 ? SHUResult_ErrAllocation : PLUGINS.hooks.StartLua(record, manifest->folder, path);
+        result = SDL_asprintf(&path, "%s" OPENECS_LUA_ENTRY, manifest->folder) < 0 ? SHUResult_ErrAllocation : PLUGINS.hooks.StartLua(record, manifest->folder, path);
         SDL_free(path);
 
         if (result)
@@ -366,7 +452,8 @@ static SHUResult ECSIPlugin_Load(const char *name, const char *minimum)
         {
             if (SDL_strcmp(PLUGINS.loading[i], name) == 0)
             {
-                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' depends on itself through its dependencies.", name);
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' depends on itself through its dependencies.", name);
+                PLUGINS.invalid = true;
                 return SHUResult_ErrBadData;
             }
         }
@@ -457,7 +544,13 @@ SHUResult ECSIPlugins_Load(const char *const *directories, usz directoryCount, c
     PLUGINS.directories = NULL;
     PLUGINS.directoryCount = 0;
     PLUGINS.neededBy = NULL;
-    return result;
+
+    if (PLUGINS.invalid)
+    {
+        return SHUResult_ErrBadData;
+    }
+
+    return result ? SHUResult_Err : SHUResult_Ok;
 }
 
 void ECSIPlugins_Shutdown(void)

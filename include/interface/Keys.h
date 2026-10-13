@@ -32,6 +32,9 @@ SHUWUR SHUResult ECSIKeys_SetTool(const ECSValue *keys);
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIKeys_AddWorkspace(const ECSValue *keys);
 
+/// @brief Removes the keys tables of every workspace, so the workspaces can be added again.
+void ECSIKeys_ClearWorkspaces(void);
+
 /// @brief Gets a workspace's keys table, for saving the session.
 /// @param index Position of the workspace, starting at 0.
 /// @return The table, or NULL if the workspace has none.

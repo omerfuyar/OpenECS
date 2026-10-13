@@ -394,6 +394,17 @@ SHUResult ECSIKeys_AddWorkspace(const ECSValue *keys)
     return SHUResult_Ok;
 }
 
+void ECSIKeys_ClearWorkspaces(void)
+{
+    for (usz i = 0; i < arrlenu(KEYS.workspaceKeys); i++)
+    {
+        ECSValue_Destroy(&KEYS.workspaceKeys[i]);
+    }
+
+    arrfree(KEYS.workspaceKeys);
+    KEYS.prefixKeysDirty = true;
+}
+
 const ECSValue *ECSIKeys_GetWorkspace(usz index)
 {
     return index < arrlenu(KEYS.workspaceKeys) ? KEYS.workspaceKeys[index] : NULL;

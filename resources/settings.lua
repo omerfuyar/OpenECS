@@ -28,6 +28,8 @@ return {
       ["L"] = "ecs.layout.lock",
       ["T"] = "ecs.layout.reopen",
       ["R"] = "ecs.panel.restart",
+      ["Shift+R"] = "ecs.layout.reset",
+      ["Q"] = "ecs.app.quit",
       ["S"] = "ecs.session.save",
       ["O"] = "ecs.session.open",
       [","] = "settings.open",
@@ -61,18 +63,44 @@ return {
   ["ecs.font"] = "resources/Roboto-Regular.ttf",
   ["ecs.fontSize"] = 14,
 
-  -- colours of the core's interface: "#RRGGBB", or "#RRGGBBAA" with opacity
-  ["ecs.colorBackground"] = "#18191C",
-  ["ecs.colorTabRow"] = "#202226",
-  ["ecs.colorTab"] = "#282B30",
-  ["ecs.colorTabShown"] = "#3A3E46",
-  ["ecs.colorText"] = "#DCDEE2",
-  ["ecs.colorTextDim"] = "#969AA0",
-  ["ecs.colorAccent"] = "#4C8BF5",
-  ["ecs.colorPlaceholder"] = "#2C1E22",
-  ["ecs.colorOverlay"] = "#1C1E22F5",
-  ["ecs.colorDrop"] = "#4C8BF546",
-  ["ecs.colorSelected"] = "#3A3E46",
+  -- OpenECS draws the title bar of its OS windows, with buttons to minimize, maximize and close them, and edges to resize them;
+  -- false leaves them to the system, which on some desktops draws none
+  ["ecs.titleBar"] = true,
+  ["ecs.titleBarHeight"] = 30,
+
+  -- the colours of the interface: "system" follows the system's choice of dark or light, and "dark" or "light" choose one
+  ["ecs.theme"] = "system",
+
+  -- each theme gives the colours of the core's interface, "#RRGGBB" or "#RRGGBBAA" with opacity; a theme may set any setting,
+  -- and the user's settings file may add to a theme; a colour set outside the themes wins over every theme
+  themes = {
+    dark = {
+      ["ecs.colorBackground"] = "#18191C",
+      ["ecs.colorTabRow"] = "#202226",
+      ["ecs.colorTab"] = "#282B30",
+      ["ecs.colorTabShown"] = "#3A3E46",
+      ["ecs.colorText"] = "#DCDEE2",
+      ["ecs.colorTextDim"] = "#969AA0",
+      ["ecs.colorAccent"] = "#4C8BF5",
+      ["ecs.colorPlaceholder"] = "#2C1E22",
+      ["ecs.colorOverlay"] = "#1C1E22F5",
+      ["ecs.colorDrop"] = "#4C8BF546",
+      ["ecs.colorSelected"] = "#3A3E46",
+    },
+    light = {
+      ["ecs.colorBackground"] = "#D9DCE1",
+      ["ecs.colorTabRow"] = "#E6E8EC",
+      ["ecs.colorTab"] = "#DADDE2",
+      ["ecs.colorTabShown"] = "#FFFFFF",
+      ["ecs.colorText"] = "#1F2328",
+      ["ecs.colorTextDim"] = "#5C626B",
+      ["ecs.colorAccent"] = "#2F6FE0",
+      ["ecs.colorPlaceholder"] = "#F3DFE2",
+      ["ecs.colorOverlay"] = "#FBFBFCF5",
+      ["ecs.colorDrop"] = "#2F6FE046",
+      ["ecs.colorSelected"] = "#D3DAE6",
+    },
+  },
 
   -- sizes, in layout units
   ["ecs.tabRowHeight"] = 26,

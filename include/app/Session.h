@@ -23,6 +23,7 @@ typedef struct ECSISessionFolders
     const char *presets;  // the user's presets
     const char *sessions; // saved sessions, where the dialogs of sessions start
     const char *state;    // the state folder, which holds each tool's last session
+    const char *origin;   // the preset, or the session the command line named, that ecs.layout.reset builds the layout from
 } ECSISessionFolders;
 
 /// @brief Finds a preset's file.

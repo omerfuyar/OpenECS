@@ -725,6 +725,10 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSession_ListPresets(ECSValue *retList);
 /// @lua ecs.session.sessions
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_ListSessions(ECSValue *retList);
 
+/// @brief Quits OpenECS, as the main window's close button does: the user is asked about unsaved work first and may cancel. It happens after the current callback returns. Main thread only.
+/// @lua ecs.app.quit
+OPENECS_EXPORT void ECSApp_Quit(void);
+
 /// @brief Puts text on the clipboard. Main thread only.
 /// @param text The text. The core copies it.
 /// @return SHUResult_Ok, or SHUResult_ErrInternal if the system refuses it.

@@ -36,6 +36,7 @@ static struct
     usz current;
     ECSIClosedPanel *closed; // stb_ds array of the panels ecs.layout.reopen can open again, the last closed last
     bool frameNeeded;
+    bool emptied; // the user closed the last panel of every workspace
     u32 lastRootId;
     ECSILayoutForgetFunction Forget; // the window's, or NULL
 
@@ -362,6 +363,22 @@ static void ECSILayout_FreeNode(ECSINode *node)
     SDL_free(node);
 }
 
+/// @brief Closes the panels of a tree and frees its nodes; the panels are destroyed after the current pass of the main loop.
+static void ECSILayout_CloseTree(ECSINode *node)
+{
+    for (usz i = 0; i < arrlenu(node->children); i++)
+    {
+        ECSILayout_CloseTree(node->children[i]);
+    }
+
+    for (usz i = 0; i < arrlenu(node->panels); i++)
+    {
+        ECSIPanel_Close(&node->panels[i]);
+    }
+
+    ECSILayout_FreeNode(node);
+}
+
 /// @brief Tidies a subtree after an operation: frees empty groups and splits, merges a split into a parent split of the same direction, and replaces a split that has one child by that child.
 /// @return The node that takes the subtree's place, or NULL if nothing is left.
 static ECSINode *ECSILayout_TidyNode(ECSIRoot *root, ECSINode *node)
@@ -469,15 +486,14 @@ static void ECSILayout_TidyRoot(ECSIRoot *root)
     }
 }
 
-/// @brief Tidies a workspace's trees after an operation, and removes the pop-out windows that have no panels left. Nodes may be freed, so the window forgets the nodes it points to.
-static void ECSILayout_Tidy(ECSIWorkspace *workspace)
+/// @brief Removes the pop-out roots of a workspace that have no panels left. A main root left without panels takes the panels of the first pop-out window, so the main window never shows nothing while another window has panels.
+static void ECSILayout_DropEmptyRoots(ECSIWorkspace *workspace)
 {
-    for (usz i = 0; i < arrlenu(workspace->roots);)
+    for (usz i = 1; i < arrlenu(workspace->roots);)
     {
         ECSIRoot *root = workspace->roots[i];
-        ECSILayout_TidyRoot(root);
 
-        if (i > 0 && root->tree == NULL)
+        if (root->tree == NULL)
         {
             ECSILayout_FreeRoot(root);
             arrdel(workspace->roots, i);
@@ -486,6 +502,29 @@ static void ECSILayout_Tidy(ECSIWorkspace *workspace)
 
         i++;
     }
+
+    ECSIRoot *main = workspace->roots[0];
+
+    if (main->tree == NULL && arrlenu(workspace->roots) > 1)
+    {
+        ECSIRoot *first = workspace->roots[1];
+        main->tree = first->tree;
+        main->maximized = first->maximized;
+        first->tree = NULL;
+        ECSILayout_FreeRoot(first);
+        arrdel(workspace->roots, 1);
+    }
+}
+
+/// @brief Tidies a workspace's trees after an operation, and removes the pop-out windows that have no panels left. Nodes may be freed, so the window forgets the nodes it points to.
+static void ECSILayout_Tidy(ECSIWorkspace *workspace)
+{
+    for (usz i = 0; i < arrlenu(workspace->roots); i++)
+    {
+        ECSILayout_TidyRoot(workspace->roots[i]);
+    }
+
+    ECSILayout_DropEmptyRoots(workspace);
 
     ECSILayout_Forget();
     LAYOUT.frameNeeded = true;
@@ -1291,15 +1330,13 @@ SHUResult ECSILayout_WorkspaceAdd(const char *name, const ECSIRootDesc *roots, u
 
         *root = (ECSIRoot){.id = root->id, .tree = roots[i].tree, .maximized = roots[i].maximized, .width = roots[i].width, .height = roots[i].height};
         ECSILayout_TidyRoot(root);
-
-        // a pop-out window without panels is left out
-        if (i > 0 && root->tree == NULL)
-        {
-            ECSILayout_FreeRoot(root);
-            continue;
-        }
-
         arrput(workspace.roots, root);
+    }
+
+    // a pop-out window without panels is left out
+    if (!failed)
+    {
+        ECSILayout_DropEmptyRoots(&workspace);
     }
 
     if (failed)
@@ -1360,6 +1397,70 @@ void ECSILayout_WorkspaceSwitch(usz index)
     LAYOUT.frameNeeded = true;
 }
 
+void ECSILayout_Clear(void)
+{
+    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSPanel focus = workspace != NULL ? workspace->focus : NULL;
+    ECSPanelEvent event = {.type = ECSPanelEventType_Unfocused};
+
+    if (focus != NULL)
+    {
+        ECSIPanel_PostEvent(focus, &event);
+    }
+
+    for (usz i = 0; i < arrlenu(LAYOUT.workspaces); i++)
+    {
+        for (usz j = 0; j < arrlenu(LAYOUT.workspaces[i].roots); j++)
+        {
+            ECSIRoot *root = LAYOUT.workspaces[i].roots[j];
+
+            if (root->tree != NULL)
+            {
+                ECSILayout_CloseTree(root->tree);
+            }
+
+            SDL_free(root);
+        }
+
+        arrfree(LAYOUT.workspaces[i].roots);
+        SDL_free(LAYOUT.workspaces[i].name);
+    }
+
+    arrfree(LAYOUT.workspaces);
+    LAYOUT.current = 0;
+
+    for (usz i = 0; i < arrlenu(LAYOUT.closed); i++)
+    {
+        ECSValue_Destroy(&LAYOUT.closed[i].saved);
+    }
+
+    arrfree(LAYOUT.closed);
+    ECSILayout_Forget();
+    LAYOUT.frameNeeded = true;
+}
+
+void ECSILayout_ShowFirst(usz index)
+{
+    if (arrlenu(LAYOUT.workspaces) == 0)
+    {
+        return;
+    }
+
+    LAYOUT.current = index < arrlenu(LAYOUT.workspaces) ? index : 0;
+    ECSPanel focus = LAYOUT.workspaces[LAYOUT.current].focus;
+    ECSPanelEvent event = {.type = ECSPanelEventType_Focused};
+
+    if (focus != NULL)
+    {
+        ECSIPanel_PostEvent(focus, &event);
+    }
+
+    ECSILayout_EmitFocus(focus);
+    ECSILayout_Forget();
+    LAYOUT.frameNeeded = true;
+    ECSILayout_EmitLayoutChanged();
+}
+
 usz ECSILayout_GetCurrentWorkspace(void)
 {
     return LAYOUT.current;
@@ -1402,7 +1503,7 @@ void ECSILayout_Update(void)
 
         if (top != NULL)
         {
-            ECSILayout_Place(top, 0.0f, 0.0f, root->width, root->height);
+            ECSILayout_Place(top, 0.0f, root->top, root->width, root->height);
         }
     }
 
@@ -1478,10 +1579,11 @@ ECSIRoot *ECSILayout_RootOf(ECSPanel panel)
     return ECSILayout_Locate(panel, &workspace, &root, &group) ? root : NULL;
 }
 
-void ECSILayout_SetRootSize(ECSIRoot *root, f32 width, f32 height)
+void ECSILayout_SetRootArea(ECSIRoot *root, f32 top, f32 width, f32 height)
 {
     SDL_assert(root != NULL);
 
+    root->top = top;
     root->width = width;
     root->height = height;
 }
@@ -1868,6 +1970,16 @@ void ECSILayout_ClosePanel(ECSPanel panel)
     {
         ECSILayout_ChangeFocus(workspace, ECSILayout_FirstPanelOf(workspace));
     }
+
+    // once the last panel of every workspace is closed, there is nothing left to show
+    ECSPanel *left = ECSILayout_GetPanels();
+    LAYOUT.emptied = arrlenu(left) == 0;
+    arrfree(left);
+}
+
+bool ECSILayout_WasEmptied(void)
+{
+    return LAYOUT.emptied;
 }
 
 void ECSILayout_Reopen(void)

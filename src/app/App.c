@@ -157,7 +157,7 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
     SHUResult result = ECSIPlugins_Load(directories, directoryCount, ECSValue_GetTableField(preset->file, "depends"), neededBy != NULL ? neededBy : "the preset");
     SHUResult extraResult = APP.test ? SHUResult_Ok : ECSIPlugins_Load(directories, directoryCount, ECSISettings_GetPlugins(), "the settings files");
 
-    if (result || extraResult)
+    if (result == SHUResult_Err || extraResult == SHUResult_Err)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Some plugins failed to load; their panels are shown as placeholders.");
     }
@@ -173,6 +173,9 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
     SDL_free(userData);
     SDL_free(userPlugins);
     SDL_free(firstPartyPlugins);
+
+    // a manifest that is not valid, or a cycle of dependencies, is a mistake in the tool's files, so it stops the start; a missing or failed plugin only loses its panels
+    ECSIApp_CheckStart(result == SHUResult_ErrBadData || extraResult == SHUResult_ErrBadData ? SHUResult_ErrBadData : SHUResult_Ok, "loading the plugins", NULL);
 }
 
 /// @brief Passes files to the function that the preset or session names in open, one call for each file.
@@ -198,7 +201,20 @@ static i32 ECSIApp_ShorterWait(i32 a, i32 b)
     return a < 0 || (b >= 0 && b < a) ? b : a;
 }
 
+/// @brief Quits as keys and menus ask, like ECSApp_Quit.
+static void ECSIApp_QuitBound(void)
+{
+    ECSApp_Quit();
+}
+
 #pragma endregion Source Only
+
+void ECSApp_Quit(void)
+{
+    // the main loop asks about unsaved work, as when the system or the main window's close button asks to quit
+    SDL_Event event = {.type = SDL_EVENT_QUIT};
+    SDL_PushEvent(&event);
+}
 
 void ECSIApp_Start(const ECSIArguments *arguments)
 {
@@ -213,6 +229,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_CheckStart(ECSILua_Initialize(), "starting Lua", NULL);
     ECSIApp_CheckStart(ECSIEvents_Initialize(), "preparing worker threads", NULL);
     ECSIApp_CheckStart(ECSIServices_Initialize(), "preparing services", NULL);
+    ECSIApp_CheckStart(ECSIServices_RegisterCore("ecs.app.quit", (ECSFunction)ECSIApp_QuitBound, "void()", "Quit"), "registering the core's functions", NULL);
 
     // a test names its preset and starts from it alone, without the user's files and folders
     char *testPreset = NULL;
@@ -297,6 +314,8 @@ void ECSIApp_Start(const ECSIArguments *arguments)
         ECSIApp_CheckStart(SHUResult_ErrInternal, "starting SDL", NULL);
     }
 
+    // the system's theme is known once SDL has started
+    ECSISettings_ApplyTheme();
     ECSIApp_CheckStart(ECSILayout_Initialize(), "declaring the layout settings", NULL);
     ECSIApp_CheckStart(ECSIWindow_Initialize(APP.preset.appName), "opening the window", NULL);
     ECSIApp_CheckStart(ECSIKeys_Initialize(), "reading the keys", NULL);
@@ -316,7 +335,9 @@ void ECSIApp_Start(const ECSIArguments *arguments)
         sessionsFolder = NULL;
     }
 
-    ECSISessionFolders folders = {.presets = APP.presetsFolder, .sessions = sessionsFolder, .state = APP.stateFolder};
+    // the layout is reset from the preset, or from the session the command line named
+    const char *origin = arguments->session != NULL && !APP.test ? arguments->session : APP.presetPath;
+    ECSISessionFolders folders = {.presets = APP.presetsFolder, .sessions = sessionsFolder, .state = APP.stateFolder, .origin = origin};
     ECSIApp_CheckStart(ECSISession_Initialize(&folders, !APP.test), "registering the session functions", NULL);
     SDL_free(dataFolder);
     SDL_free(sessionsFolder);
@@ -405,6 +426,14 @@ int ECSIApp_Run(void)
         ECSIEvents_Deliver();
         ECSIPanels_DestroyClosed();
         ECSIPopups_DestroyClosed();
+
+        // closing the last panel quits, as nothing is left to show
+        if (ECSILayout_WasEmptied())
+        {
+            SDL_Log("The last panel is closed, so OpenECS quits.");
+            break;
+        }
+
         ECSIInput_UpdateTextInput();
 
         // while a test runs, frames are not paced, so each step of the test sees a drawn window
@@ -429,8 +458,14 @@ char *ECSIApp_Stop(const char **retOption)
     ECSISanitizers_KeepLibraries();
     ECSITest_Terminate();
 
-    // the setting in effect when the tool quits decides
-    if (APP.lastSession != NULL && !APP.definitions && ECSValue_GetBool(ECSSetting_Get(OPENECS_KEEP_SESSION), false) && ECSSession_Save(APP.lastSession) == SHUResult_Ok)
+    // the setting in effect when the tool quits decides; a tool whose panels were all closed starts from its preset the next time
+    bool keep = APP.lastSession != NULL && !APP.definitions && ECSValue_GetBool(ECSSetting_Get(OPENECS_KEEP_SESSION), false);
+
+    if (keep && ECSILayout_WasEmptied())
+    {
+        SDL_RemovePath(APP.lastSession);
+    }
+    else if (keep && ECSSession_Save(APP.lastSession) == SHUResult_Ok)
     {
         SDL_Log("Session saved to '%s'.", APP.lastSession);
     }

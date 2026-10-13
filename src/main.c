@@ -58,15 +58,14 @@ typedef enum ECSIOptionIndex
 } ECSIOptionIndex;
 
 /// @brief Reads the options, and moves the files to the start of argv, over options already read.
-/// @return false if an option is unknown or lacks its value; the reason is printed.
+/// @return false if an option is unknown or lacks its value; the reason and the help are printed.
 static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArguments)
 {
     *retArguments = (ECSIArguments){.preset = OPENECS_DEFAULT_PRESET, .files = argv + 1};
 
     for (int i = 1; i < argc; i++)
     {
-        // todo unknown flag or argument exits with help
-        //  anything that does not start with a dash is a file
+        // anything that does not start with a dash is a file
         if (argv[i][0] != '-')
         {
             retArguments->files[retArguments->fileCount++] = argv[i];
@@ -85,7 +84,7 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
 
         if (option == SDL_arraysize(OPENECS_OPTIONS))
         {
-            fprintf(stderr, "OpenECS: unknown option '%s'; OpenECS --help lists the options.\n", argv[i]);
+            fprintf(stderr, "OpenECS: unknown option '%s'.\n\n%s", argv[i], OPENECS_USAGE);
             return false;
         }
 
@@ -95,7 +94,7 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
         {
             if (i + 1 >= argc)
             {
-                fprintf(stderr, "OpenECS: the option '%s' needs a value; OpenECS --help lists the options.\n", argv[i]);
+                fprintf(stderr, "OpenECS: the option '%s' needs a value.\n\n%s", argv[i], OPENECS_USAGE);
                 return false;
             }
 

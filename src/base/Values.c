@@ -195,6 +195,104 @@ void ECSIValue_TableForEachField(const ECSValue *table, ECSIValueFieldFunction f
     }
 }
 
+bool ECSIValue_CheckFields(const ECSValue *table, const ECSIFieldRule *rules, usz count, char **retProblem)
+{
+    SDL_assert(rules != NULL || count == 0);
+    SDL_assert(retProblem != NULL);
+
+    static const char *const TYPE_NAMES[] = {"any value", "true or false", "a whole number", "a number", "a text", "a table"};
+    *retProblem = NULL;
+
+    if (ECSValue_GetType(table) != ECSValueType_Table)
+    {
+        *retProblem = SDL_strdup("it must be a table");
+        return false;
+    }
+
+    for (usz i = 0; i < shlenu(table->fields); i++)
+    {
+        const char *name = table->fields[i].key;
+        const ECSValue *field = table->fields[i].value;
+        const ECSIFieldRule *rule = NULL;
+
+        for (usz j = 0; j < count && rule == NULL; j++)
+        {
+            rule = SDL_strcmp(rules[j].name, name) == 0 ? &rules[j] : NULL;
+        }
+
+        if (rule == NULL)
+        {
+            SDL_asprintf(retProblem, "'%s' is not a field it can have", name);
+            return false;
+        }
+
+        ECSValueType type = ECSValue_GetType(field);
+        bool matches = true;
+
+        switch (rule->type)
+        {
+        case ECSIFieldType_Any:
+            break;
+        case ECSIFieldType_Bool:
+            matches = type == ECSValueType_Bool;
+            break;
+        case ECSIFieldType_Integer:
+            matches = type == ECSValueType_Integer || (type == ECSValueType_Number && ECSValue_GetInteger(field, 0) == ECSValue_GetNumber(field, 0.5));
+            break;
+        case ECSIFieldType_Number:
+            matches = type == ECSValueType_Integer || type == ECSValueType_Number;
+            break;
+        case ECSIFieldType_String:
+            matches = type == ECSValueType_String;
+            break;
+        case ECSIFieldType_Table:
+            matches = type == ECSValueType_Table;
+            break;
+        }
+
+        if (!matches)
+        {
+            SDL_asprintf(retProblem, "'%s' must be %s", name, TYPE_NAMES[rule->type]);
+            return false;
+        }
+    }
+
+    for (usz i = 0; i < count; i++)
+    {
+        if (rules[i].required && ECSValue_GetTableField(table, rules[i].name) == NULL)
+        {
+            SDL_asprintf(retProblem, "it needs the field '%s'", rules[i].name);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool ECSIValue_IsVersion(const char *text)
+{
+    usz numbers = 0;
+
+    while (text != NULL && numbers < 3 && SDL_isdigit((unsigned char)*text))
+    {
+        while (SDL_isdigit((unsigned char)*text))
+        {
+            text++;
+        }
+
+        numbers++;
+
+        if (*text != '.')
+        {
+            break;
+        }
+
+        text++;
+    }
+
+    return numbers > 0 && text != NULL && *text == '\0';
+}
+
 ECSValueType ECSValue_GetType(const ECSValue *value)
 {
     return value == NULL ? ECSValueType_Nil : value->type;

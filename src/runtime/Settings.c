@@ -39,7 +39,10 @@ typedef struct ECSISetting
 } ECSISetting;
 
 /// @brief Names of the layers, for explanations; the core and plugin layers hold defaults.
-static const char *const OPENECS_SETTINGS_LAYER_NAMES[ECSISettingsLayer_Count] = {"default", "default", "preset", "user"};
+static const char *const OPENECS_SETTINGS_LAYER_NAMES[ECSISettingsLayer_Count] = {"default", "default", "theme", "preset", "user"};
+
+/// @brief The theme whose values core settings take as defaults when the core's settings file gives none, and that "system" means when the system prefers no theme.
+#define OPENECS_SETTINGS_DEFAULT_THEME "dark"
 
 /// @brief Names of the setting types, for explanations, in the order of ECSSettingType.
 static const char *const OPENECS_SETTING_TYPE_NAMES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", "color"};
@@ -65,7 +68,9 @@ static struct
         char *key; // the setting's own copy of its name
         ECSISetting *value;
     } *settings;                                // stb_ds hash map, in declaration order
-    ECSValue *layers[ECSISettingsLayer_Count]; // the core, preset and user layers: tables of setting names and values
+    ECSValue *layers[ECSISettingsLayer_Count]; // the core, theme, preset and user layers: tables of setting names and values
+    ECSValue *themes;                           // the themes of the settings files, by name: tables of setting names and values
+    char *theme;                                // the name of the theme in the theme layer, or NULL before one is chosen
     char *paths[ECSISettingsLayer_Count];      // the file of each of those layers
     ECSValue *plugins;                          // list of extra plugin names
     ECSValue *keys[ECSISettingsLayer_Count];   // the core's and the user's keys tables
@@ -144,7 +149,7 @@ static void ECSISetting_ReportType(const ECSISetting *setting, const char *file)
 /// @brief Finds the value in effect of a setting: the highest layer that sets it with the right type, or the default.
 static void ECSISetting_Resolve(ECSISetting *setting)
 {
-    for (i32 layer = ECSISettingsLayer_User; layer >= ECSISettingsLayer_Preset; layer--)
+    for (i32 layer = ECSISettingsLayer_User; layer >= ECSISettingsLayer_Theme; layer--)
     {
         const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[layer], setting->name);
 
@@ -383,6 +388,22 @@ static void ECSISettings_MergeKey(const char *name, const ECSValue *field, void 
     ECSISettings_CopyField(name, field, copier);
 }
 
+/// @brief Adds the themes a part of a settings file names to the themes: a theme of the same name gets its values, which win.
+static SHUResult ECSISettings_ReadThemes(const ECSValue *part)
+{
+    const ECSValue *themes = ECSValue_GetTableField(part, "themes");
+
+    if (SETTINGS.themes == NULL)
+    {
+        SHU_ReturnResult(ECSValue_Create(&SETTINGS.themes));
+        ECSValue_SetTable(SETTINGS.themes);
+    }
+
+    ECSISettingsFileCopier copier = {.target = SETTINGS.themes, .result = SHUResult_Ok};
+    ECSIValue_TableForEachField(themes, ECSISettings_MergeKey, &copier);
+    return copier.result;
+}
+
 /// @brief Merges the keys table of a part of a settings file into a layer's keys.
 static SHUResult ECSISettings_ReadKeys(ECSISettingsLayer layer, const ECSValue *part)
 {
@@ -428,6 +449,8 @@ static SHUResult ECSISettings_ReadFile(ECSISettingsLayer layer, const char *fold
 
     result = result ? result : ECSISettings_ReadPlugins(file);
     result = result ? result : ECSISettings_ReadPlugins(ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId));
+    result = result ? result : ECSISettings_ReadThemes(file);
+    result = result ? result : ECSISettings_ReadThemes(ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId));
 
     if (retFile != NULL && !result)
     {
@@ -498,6 +521,7 @@ SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSe
     ECSIValue_TableForEachField(reader.result ? NULL : coreFile, ECSISettings_ReadField, &reader);
     reader.result = reader.result ? reader.result : ECSISettings_ReadPlugins(coreFile);
     reader.result = reader.result ? reader.result : ECSISettings_ReadKeys(ECSISettingsLayer_Core, coreFile);
+    reader.result = reader.result ? reader.result : ECSISettings_ReadThemes(coreFile);
     ECSValue_Destroy(&coreFile);
     SHU_ReturnResult(reader.result);
 
@@ -621,6 +645,83 @@ bool ECSISettings_ParseColor(const char *text, u32 *retColor)
     return true;
 }
 
+void ECSISettings_ApplyTheme(void)
+{
+    // ecs.theme comes from the layers above the defaults, as its value in effect does, or else from the core's settings file
+    const char *chosen = NULL;
+
+    for (i32 layer = ECSISettingsLayer_User; layer >= ECSISettingsLayer_Core && chosen == NULL; layer--)
+    {
+        chosen = layer == ECSISettingsLayer_Theme || layer == ECSISettingsLayer_Plugin ? NULL : ECSValue_GetString(ECSValue_GetTableField(SETTINGS.layers[layer], "ecs.theme"), NULL);
+    }
+
+    const char *name = chosen != NULL && (SDL_strcmp(chosen, "dark") == 0 || SDL_strcmp(chosen, "light") == 0) ? chosen : SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT ? "light"
+                                                                                                                                                                         : OPENECS_SETTINGS_DEFAULT_THEME;
+
+    if (SETTINGS.theme != NULL && SDL_strcmp(SETTINGS.theme, name) == 0)
+    {
+        return;
+    }
+
+    char *copy = SDL_strdup(name);
+    ECSValue *layer = NULL;
+
+    if (copy == NULL || ECSValue_Create(&layer) || ECSIValue_Copy(layer, ECSValue_GetTableField(SETTINGS.themes, name)))
+    {
+        SDL_free(copy);
+        ECSValue_Destroy(&layer);
+        return;
+    }
+
+    // the settings whose value came from the old theme, or comes from the new one, may have changed
+    ECSISetting **themed = NULL;
+
+    for (usz i = 0; i < shlenu(SETTINGS.settings); i++)
+    {
+        if (SETTINGS.settings[i].value->layer == ECSISettingsLayer_Theme)
+        {
+            arrput(themed, SETTINGS.settings[i].value);
+        }
+    }
+
+    ECSValue_Destroy(&SETTINGS.layers[ECSISettingsLayer_Theme]);
+    SETTINGS.layers[ECSISettingsLayer_Theme] = layer;
+    SDL_free(SETTINGS.paths[ECSISettingsLayer_Theme]);
+    SETTINGS.paths[ECSISettingsLayer_Theme] = SDL_strdup(SETTINGS.paths[ECSISettingsLayer_Core]);
+    SDL_free(SETTINGS.theme);
+    SETTINGS.theme = copy;
+
+    for (usz i = 0; i < shlenu(SETTINGS.settings); i++)
+    {
+        ECSISetting *setting = SETTINGS.settings[i].value;
+        ECSISetting_Resolve(setting);
+
+        if (setting->layer == ECSISettingsLayer_Theme)
+        {
+            arrput(themed, setting);
+        }
+    }
+
+    // a setting is told once, also when both themes set it
+    for (usz i = 0; i < arrlenu(themed); i++)
+    {
+        bool told = false;
+
+        for (usz j = 0; j < i && !told; j++)
+        {
+            told = themed[j] == themed[i];
+        }
+
+        if (!told)
+        {
+            arrput(SETTINGS.changed, themed[i]);
+        }
+    }
+
+    arrfree(themed);
+    SDL_Log("The theme is '%s'.", name);
+}
+
 bool ECSISettings_PeekBool(const char *name, bool fallback)
 {
     for (i32 layer = ECSISettingsLayer_Count - 1; layer >= 0; layer--)
@@ -653,6 +754,8 @@ void ECSISettings_Terminate(void)
     shfree(SETTINGS.settings);
     arrfree(SETTINGS.changed);
     ECSValue_Destroy(&SETTINGS.plugins);
+    ECSValue_Destroy(&SETTINGS.themes);
+    SDL_free(SETTINGS.theme);
     ECSValue_Destroy(&SETTINGS.userFile);
     SDL_free(SETTINGS.appId);
     SDL_zero(SETTINGS);
@@ -663,7 +766,9 @@ SHUResult ECSISettings_DeclareCore(const ECSSettingDesc *desc)
     SDL_assert(desc != NULL);
     SDL_assert(desc->name != NULL && SDL_strncmp(desc->name, "ecs.", 4) == 0);
 
+    // the colours of the core's interface have their values in the themes
     const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[ECSISettingsLayer_Core], desc->name);
+    value = value != NULL ? value : ECSValue_GetTableField(ECSValue_GetTableField(SETTINGS.themes, OPENECS_SETTINGS_DEFAULT_THEME), desc->name);
 
     if (value == NULL)
     {
@@ -906,7 +1011,7 @@ SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation)
     ECSValue_SetTable(layers);
     SHU_ReturnResult(ECSISettings_ExplainField(layers, "default", setting->defaultValue));
 
-    for (i32 layer = ECSISettingsLayer_Preset; layer < ECSISettingsLayer_Count; layer++)
+    for (i32 layer = ECSISettingsLayer_Theme; layer < ECSISettingsLayer_Count; layer++)
     {
         const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[layer], setting->name);
 

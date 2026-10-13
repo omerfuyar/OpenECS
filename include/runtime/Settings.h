@@ -12,6 +12,7 @@ typedef enum ECSISettingsLayer
 {
     ECSISettingsLayer_Core = 0, // defaults of the core's settings
     ECSISettingsLayer_Plugin,   // defaults of plugins' settings
+    ECSISettingsLayer_Theme,    // the values of the theme that ecs.theme chooses
     ECSISettingsLayer_Preset,
     ECSISettingsLayer_User, // the user's settings file, which ECSSetting_Set writes
     ECSISettingsLayer_Count,
@@ -31,6 +32,9 @@ SHUWUR SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *p
 /// @param presetPath The file they come from.
 /// @return SHUResult_Ok or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISettings_SetPreset(const ECSValue *presetSettings, const char *presetPath);
+
+/// @brief Builds the theme layer from the theme that ecs.theme chooses: "dark", "light", or with "system" the one the system prefers. Settings whose value in effect may have changed are told. Call it after SDL starts, when ecs.theme changes and when the system's theme changes.
+void ECSISettings_ApplyTheme(void);
 
 /// @brief Reads a bool setting from the highest layer that sets it with a bool, before it is declared.
 /// @return The value, or fallback if no layer sets it.
@@ -53,7 +57,7 @@ bool ECSISettings_ParseColor(const char *text, u32 *retColor);
 /// @brief Frees every declaration and layer.
 void ECSISettings_Terminate(void);
 
-/// @brief Declares a setting of the core. Its name starts with "ecs.", and its default is its value in the core's settings file; the description's default fields are not used.
+/// @brief Declares a setting of the core. Its name starts with "ecs.", and its default is its value in the core's settings file, or else in the file's dark theme; the description's default fields are not used.
 /// @param desc Description of the setting.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, the name is taken, or the core's settings file gives no value of the setting's type, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISettings_DeclareCore(const ECSSettingDesc *desc);

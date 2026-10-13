@@ -19,8 +19,14 @@
 /// @brief Padding around a panel menu and inside its entries.
 #define OPENECS_MENU_PADDING 6.0f
 #define OPENECS_MENU_ITEM_PADDING 10.0f
-/// @brief Text that a locked group's grip shows after the title.
-#define OPENECS_LOCKED_MARK "locked"
+/// @brief Size of the marks of a locked and a maximized group, and of the title bar's icons, relative to the font size.
+#define OPENECS_ICON_SCALE 0.9f
+/// @brief Width of a title bar button, relative to the title bar's height.
+#define OPENECS_TITLE_BUTTON_WIDTH 1.5f
+/// @brief How far from an OS window's edge the pointer resizes it, when OpenECS draws the title bar, in layout units.
+#define OPENECS_RESIZE_EDGE 6.0f
+/// @brief How long a panel dropped outside its OS window waits for the pointer to enter another one, where the system does not tell where windows are, in nanoseconds.
+#define OPENECS_PENDING_DROP_NANOSECONDS (400 * SDL_NS_PER_MS)
 /// @brief Most menus open at once: the panel menu and its submenus.
 #define OPENECS_MENU_DEPTH 4
 
@@ -64,7 +70,18 @@ static const ECSSettingDesc OPENECS_WINDOW_SETTINGS[] = {
     {.name = "ecs.dockEdge", .type = ECSSettingType_Number, .description = "Distance from an edge of the OS window within which a dragged panel docks along that edge, in layout units"},
     {.name = "ecs.splitDepth", .type = ECSSettingType_Number, .description = "Deepest edge band of a panel in which a dragged panel splits it, in layout units"},
     {.name = "ecs.tabScrollStep", .type = ECSSettingType_Number, .description = "How far one step of the wheel scrolls a tab row, in layout units"},
+    {.name = "ecs.titleBar", .type = ECSSettingType_Bool, .description = "OpenECS draws the title bar of its OS windows, with buttons that minimize, maximize and close them, and edges that resize them; false leaves them to the system"},
+    {.name = "ecs.titleBarHeight", .type = ECSSettingType_Number, .description = "Height of the title bar that OpenECS draws, in layout units"},
 };
+
+/// @brief A small picture of the core's interface, drawn with rectangles, so the font needs no symbols.
+typedef enum ECSIIcon
+{
+    ECSIIcon_Locked = 0,
+    ECSIIcon_Maximized,
+    ECSIIcon_Minimize,
+    ECSIIcon_Restore,
+} ECSIIcon;
 
 /// @brief A tab drawn in the last frame, so a click can find it.
 typedef struct ECSITabRef
@@ -119,6 +136,7 @@ static struct
     ECSIOSWindow *menuWindow; // the OS window that shows the menus
     u32 focusRoot;            // the root of the focused panel in the last frame, so its OS window comes forward when the focus moves to it
     char *title;              // of every OS window
+    SDL_GPUDevice *device;    // the GPU device of the main window's renderer, which every other window and popup draws with; NULL without a GPU renderer
     TTF_Font *fonts[1];
 
     i64 framePercent;     // frame rate as a percentage of the refresh rate, from ecs.vsync; 0 for no vsync and no limit
@@ -141,6 +159,12 @@ static struct
     ECSIDrop drop;     // where the dragged panel lands now
     SDL_FRect dropRect; // the highlight of the drop place
 
+    // where the system does not tell where windows are, as on Wayland, a panel released outside its OS window lands where the pointer enters next
+    ECSPanel pendingPanel;   // the released panel, or NULL
+    bool pendingGroup;       // its whole group was dragged
+    ECSIOSWindow *pendingFrom; // the OS window it was dragged from
+    u64 pendingUntil;        // when it pops out instead
+
     const char *dataType; // type of the data being dragged, or NULL
     f32 dataX;            // the pointer's position while data is dragged, in dataWindow
     f32 dataY;
@@ -159,6 +183,8 @@ static struct
     f32 dockEdge;
     f32 splitDepth;
     f32 tabScrollStep;
+    bool titleBar;
+    f32 titleBarHeight;
 } WINDOW = {0};
 
 /// @brief Width of the key column in the list of prefix keys.
@@ -254,9 +280,69 @@ static bool ECSIWindow_IsShown(const ECSIOSWindow *os)
     return (SDL_GetWindowFlags(os->window) & SDL_WINDOW_HIDDEN) == 0 && ECSIWindow_Root(os) != NULL;
 }
 
+/// @brief Checks whether the windows are on Wayland, which never tells where a window is on the screen, and gives a hidden window no refreshes.
+static bool ECSIWindow_OnWayland(void)
+{
+    const char *driver = SDL_GetCurrentVideoDriver();
+    return driver != NULL && SDL_strcmp(driver, "wayland") == 0;
+}
+
 static bool ECSIWindow_Contains(f32 x, f32 y, f32 left, f32 top, f32 width, f32 height)
 {
     return x >= left && y >= top && x < left + width && y < top + height;
+}
+
+/// @brief Gets the height of the title bar that OpenECS draws in its OS windows; 0 when the system draws them.
+static f32 ECSIWindow_TitleHeight(void)
+{
+    return WINDOW.titleBar ? WINDOW.titleBarHeight : 0.0f;
+}
+
+/// @brief Gets the width of a title bar button.
+static f32 ECSIWindow_TitleButtonWidth(void)
+{
+    return WINDOW.titleBarHeight * OPENECS_TITLE_BUTTON_WIDTH;
+}
+
+/// @brief Tells SDL which part of an OS window moves or resizes it, when OpenECS draws its title bar: the edges resize it, and the title bar moves it, apart from its buttons.
+static SDL_HitTestResult SDLCALL ECSIWindow_HitTest(SDL_Window *window, const SDL_Point *point, void *data)
+{
+    (void)data;
+
+    int width = 0;
+    int height = 0;
+    SDL_GetWindowSize(window, &width, &height);
+    f32 x = (f32)point->x;
+    f32 y = (f32)point->y;
+
+    if ((SDL_GetWindowFlags(window) & (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_FULLSCREEN)) == 0)
+    {
+        bool left = x < OPENECS_RESIZE_EDGE;
+        bool right = x >= (f32)width - OPENECS_RESIZE_EDGE;
+        bool top = y < OPENECS_RESIZE_EDGE;
+        bool bottom = y >= (f32)height - OPENECS_RESIZE_EDGE;
+
+        if (top || bottom || left || right)
+        {
+            return top && left       ? SDL_HITTEST_RESIZE_TOPLEFT
+                   : top && right    ? SDL_HITTEST_RESIZE_TOPRIGHT
+                   : bottom && left  ? SDL_HITTEST_RESIZE_BOTTOMLEFT
+                   : bottom && right ? SDL_HITTEST_RESIZE_BOTTOMRIGHT
+                   : top             ? SDL_HITTEST_RESIZE_TOP
+                   : bottom          ? SDL_HITTEST_RESIZE_BOTTOM
+                   : left            ? SDL_HITTEST_RESIZE_LEFT
+                                     : SDL_HITTEST_RESIZE_RIGHT;
+        }
+    }
+
+    return y < WINDOW.titleBarHeight && x < (f32)width - 3.0f * ECSIWindow_TitleButtonWidth() ? SDL_HITTEST_DRAGGABLE : SDL_HITTEST_NORMAL;
+}
+
+/// @brief Lets OpenECS draw an OS window's title bar, or leaves it to the system.
+static void ECSIWindow_ApplyTitleBar(ECSIOSWindow *os)
+{
+    SDL_SetWindowBordered(os->window, !WINDOW.titleBar);
+    SDL_SetWindowHitTest(os->window, WINDOW.titleBar ? ECSIWindow_HitTest : NULL, NULL);
 }
 
 /// @brief Finds the shown OS window under a point given in the event window's layout units: the event window itself, or another one that the point falls in on the screen.
@@ -275,6 +361,11 @@ static ECSIOSWindow *ECSIWindow_Under(f32 x, f32 y, f32 *retX, f32 *retY)
     }
 
     // windows know their places on the screen, except on Wayland, where a point outside the event window falls in none
+    if (ECSIWindow_OnWayland())
+    {
+        return NULL;
+    }
+
     int eventX = 0;
     int eventY = 0;
     SDL_GetWindowPosition(event->window, &eventX, &eventY);
@@ -370,27 +461,29 @@ static ECSIDrop ECSIWindow_FindDrop(f32 x, f32 y, ECSIOSWindow **retWindow, SDL_
         return (ECSIDrop){.zone = ECSIZone_PopOut};
     }
 
-    f32 width = os->width;
-    f32 height = os->height;
+    // the layout fills the OS window below the title bar
+    f32 top = root->top;
+    f32 width = root->width;
+    f32 height = root->height;
 
     // an empty window takes the panel whole
     if (root->tree == NULL)
     {
-        *retRect = (SDL_FRect){0.0f, 0.0f, width, height};
+        *retRect = (SDL_FRect){0.0f, top, width, height};
         return (ECSIDrop){.zone = ECSIZone_Center, .root = root};
     }
 
-    if (x < WINDOW.dockEdge || x >= width - WINDOW.dockEdge || y < WINDOW.dockEdge || y >= height - WINDOW.dockEdge)
+    if (x < WINDOW.dockEdge || x >= width - WINDOW.dockEdge || y < top + WINDOW.dockEdge || y >= top + height - WINDOW.dockEdge)
     {
         ECSIZone zone = x < WINDOW.dockEdge            ? ECSIZone_WindowLeft
                         : x >= width - WINDOW.dockEdge ? ECSIZone_WindowRight
-                        : y < WINDOW.dockEdge          ? ECSIZone_WindowTop
+                        : y < top + WINDOW.dockEdge    ? ECSIZone_WindowTop
                                                        : ECSIZone_WindowBottom;
 
-        *retRect = zone == ECSIZone_WindowLeft    ? (SDL_FRect){0.0f, 0.0f, width / 4.0f, height}
-                   : zone == ECSIZone_WindowRight ? (SDL_FRect){width * 0.75f, 0.0f, width / 4.0f, height}
-                   : zone == ECSIZone_WindowTop   ? (SDL_FRect){0.0f, 0.0f, width, height / 4.0f}
-                                                  : (SDL_FRect){0.0f, height * 0.75f, width, height / 4.0f};
+        *retRect = zone == ECSIZone_WindowLeft    ? (SDL_FRect){0.0f, top, width / 4.0f, height}
+                   : zone == ECSIZone_WindowRight ? (SDL_FRect){width * 0.75f, top, width / 4.0f, height}
+                   : zone == ECSIZone_WindowTop   ? (SDL_FRect){0.0f, top, width, height / 4.0f}
+                                                  : (SDL_FRect){0.0f, top + height * 0.75f, width, height / 4.0f};
         return (ECSIDrop){.zone = zone, .root = root};
     }
 
@@ -557,6 +650,99 @@ static bool ECSIWindow_OnElement(const ECSIOSWindow *os, Clay_ElementId id, f32 
     return element.found && ECSIWindow_Contains(x, y, element.boundingBox.x, element.boundingBox.y, element.boundingBox.width, element.boundingBox.height);
 }
 
+/// @brief Declares an icon for Clay, the size of the core's font, inside the open element.
+static void ECSIWindow_DeclareIcon(ECSIIcon icon, Clay_Color color)
+{
+    f32 size = SDL_roundf(WINDOW.fontSize * OPENECS_ICON_SCALE);
+    u16 line = (u16)SDL_max(1.0f, SDL_roundf(size / 8.0f));
+    Clay_Color behind = WINDOW.colors[ECSIColor_Overlay];
+
+    CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size), CLAY_SIZING_FIXED(size)}, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_BOTTOM}}})
+    {
+        switch (icon)
+        {
+        case ECSIIcon_Locked:
+            // a padlock: the shackle's arch, then the body
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.56f), CLAY_SIZING_FIXED(size * 0.45f)}}, .border = {.color = color, .width = {line, line, line, 0, 0}}, .cornerRadius = {size * 0.28f, size * 0.28f, 0, 0}}) {}
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.84f), CLAY_SIZING_FIXED(size * 0.55f)}}, .backgroundColor = color, .cornerRadius = CLAY_CORNER_RADIUS(size * 0.1f)}) {}
+            break;
+        case ECSIIcon_Maximized:
+            // a window that fills the screen: a frame with a thick top
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.9f), CLAY_SIZING_FIXED(size * 0.8f)}}, .border = {.color = color, .width = {line, line, (u16)(line * 2), line, 0}}}) {}
+            break;
+        case ECSIIcon_Minimize:
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.8f), CLAY_SIZING_FIXED(line)}}, .backgroundColor = color}) {}
+            break;
+        case ECSIIcon_Restore:
+            // two windows, one behind the other
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size), CLAY_SIZING_FIXED(size)}}})
+            {
+                CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.7f), CLAY_SIZING_FIXED(size * 0.6f)}}, .border = {.color = color, .width = {line, line, line, line, 0}}, .floating = {.attachTo = CLAY_ATTACH_TO_PARENT, .offset = {size * 0.3f, size * 0.1f}}}) {}
+                CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.7f), CLAY_SIZING_FIXED(size * 0.6f)}}, .backgroundColor = behind, .border = {.color = color, .width = {line, line, line, line, 0}}, .floating = {.attachTo = CLAY_ATTACH_TO_PARENT, .offset = {0.0f, size * 0.35f}}}) {}
+            }
+            break;
+        }
+    }
+}
+
+/// @brief Gets the width of the marks that show a group is locked or maximized, with the gap before each.
+static f32 ECSIWindow_MarksWidth(const ECSINode *group, const ECSIRoot *root)
+{
+    usz marks = (group->locked ? 1u : 0u) + (root != NULL && root->maximized == group ? 1u : 0u);
+    return (f32)marks * (SDL_roundf(WINDOW.fontSize * OPENECS_ICON_SCALE) + OPENECS_MENU_ITEM_PADDING);
+}
+
+/// @brief Declares the marks that show a group is locked or maximized, inside the open element.
+static void ECSIWindow_DeclareMarks(const ECSINode *group, const ECSIRoot *root)
+{
+    if (group->locked)
+    {
+        ECSIWindow_DeclareIcon(ECSIIcon_Locked, WINDOW.colors[ECSIColor_TextDim]);
+    }
+
+    if (root != NULL && root->maximized == group)
+    {
+        ECSIWindow_DeclareIcon(ECSIIcon_Maximized, WINDOW.colors[ECSIColor_TextDim]);
+    }
+}
+
+/// @brief Declares the title bar of an OS window for Clay: the tool's name, and buttons that minimize, maximize or restore, and close the window.
+static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *os)
+{
+    f32 buttonWidth = ECSIWindow_TitleButtonWidth();
+    bool maximized = (SDL_GetWindowFlags(os->window) & SDL_WINDOW_MAXIMIZED) != 0;
+    Clay_Color color = WINDOW.colors[ECSIColor_TextDim];
+
+    CLAY(CLAY_ID("TitleBar"), {
+                                  .layout = {
+                                      .sizing = {CLAY_SIZING_FIXED(os->width), CLAY_SIZING_FIXED(WINDOW.titleBarHeight)},
+                                      .padding = {12, 0, 0, 0},
+                                      .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                                  },
+                                  .backgroundColor = WINDOW.colors[ECSIColor_TabRow],
+                                  .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {0.0f, 0.0f}},
+                              })
+    {
+        CLAY_TEXT(ECSIWindow_ClayText(WINDOW.title), CLAY_TEXT_CONFIG({.textColor = color, .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}}}) {}
+
+        const ECSIIcon icons[] = {ECSIIcon_Minimize, maximized ? ECSIIcon_Restore : ECSIIcon_Maximized};
+
+        for (usz i = 0; i < SDL_arraysize(icons); i++)
+        {
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(buttonWidth), CLAY_SIZING_GROW(0)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}})
+            {
+                ECSIWindow_DeclareIcon(icons[i], color);
+            }
+        }
+
+        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(buttonWidth), CLAY_SIZING_GROW(0)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}})
+        {
+            CLAY_TEXT(CLAY_STRING("\u00D7"), CLAY_TEXT_CONFIG({.textColor = color, .fontSize = (u16)(WINDOW.fontSize * 1.4f), .wrapMode = CLAY_TEXT_WRAP_NONE}));
+        }
+    }
+}
+
 /// @brief Declares a group's tab row, or its placeholder text, for Clay. userData is the OS window.
 static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
 {
@@ -615,6 +801,27 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
                 }
 
                 arrput(os->tabs, ((ECSITabRef){group, i}));
+            }
+        }
+
+        // a locked or maximized group shows its marks at the end of its tab row
+        ECSIRoot *root = ECSIWindow_Root(os);
+        f32 marksWidth = ECSIWindow_MarksWidth(group, root);
+
+        if (marksWidth > 0.0f)
+        {
+            CLAY_AUTO_ID({
+                .layout = {
+                    .sizing = {CLAY_SIZING_FIXED(marksWidth + OPENECS_MENU_ITEM_PADDING), CLAY_SIZING_FIXED(ECSILayout_GetTabRowHeight())},
+                    .padding = {(u16)OPENECS_MENU_ITEM_PADDING, 0, 0, 0},
+                    .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
+                    .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                },
+                .backgroundColor = WINDOW.colors[ECSIColor_TabRow],
+                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + group->width - marksWidth - OPENECS_MENU_ITEM_PADDING, group->y}, .zIndex = 1},
+            })
+            {
+                ECSIWindow_DeclareMarks(group, root);
             }
         }
     }
@@ -732,6 +939,11 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(ECSIOSWindow *os, con
     arrfree(os->tabs);
     CLAY(CLAY_ID("Root"), {.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0)}}})
     {
+        if (WINDOW.titleBar)
+        {
+            ECSIWindow_DeclareTitleBar(os);
+        }
+
         ECSILayout_ForEachGroup(root, ECSIWindow_DeclareGroup, os);
 
         if (focus != NULL && focusWindow)
@@ -745,23 +957,15 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(ECSIOSWindow *os, con
             }
         }
 
-        // the grip shows the panel's title, centred on its top edge, and whether its group is locked
+        // the grip shows the panel's title, centred on its top edge, and whether its group is locked or maximized
         if (WINDOW.gripGroup != NULL && WINDOW.gripWindow == os)
         {
             ECSINode *group = WINDOW.gripGroup;
             const char *title = group->panels[0]->title;
             int titleWidth = 0;
-            int lockedWidth = 0;
             TTF_SetFontSize(WINDOW.fonts[0], WINDOW.fontSize);
             TTF_GetStringSize(WINDOW.fonts[0], title, 0, &titleWidth, NULL);
-
-            if (group->locked)
-            {
-                TTF_GetStringSize(WINDOW.fonts[0], OPENECS_LOCKED_MARK, 0, &lockedWidth, NULL);
-                lockedWidth += (int)OPENECS_MENU_ITEM_PADDING;
-            }
-
-            f32 width = SDL_min((f32)(titleWidth + lockedWidth) + 2.0f * OPENECS_MENU_ITEM_PADDING, group->width);
+            f32 width = SDL_min((f32)titleWidth + ECSIWindow_MarksWidth(group, root) + 2.0f * OPENECS_MENU_ITEM_PADDING, group->width);
 
             CLAY(CLAY_ID("Grip"), {
                                       .layout = {
@@ -779,10 +983,7 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(ECSIOSWindow *os, con
             {
                 CLAY_TEXT(ECSIWindow_ClayText(title), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
 
-                if (group->locked)
-                {
-                    CLAY_TEXT(CLAY_STRING(OPENECS_LOCKED_MARK), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
-                }
+                ECSIWindow_DeclareMarks(group, root);
             }
         }
 
@@ -919,11 +1120,13 @@ static void ECSIWindow_ShowGroup(ECSINode *group, void *userData)
 
 #pragma region OS Windows
 
+static void ECSIWindow_ReleasePopup(ECSPopup popup);
+
 /// @brief Closes an OS window and frees what it holds. The window pointers that named it name the main window instead.
 static void ECSIWindow_CloseOS(ECSIOSWindow *os)
 {
     ECSIOSWindow *main = arrlenu(WINDOW.windows) > 0 && WINDOW.windows[0] != os ? WINDOW.windows[0] : NULL;
-    ECSIOSWindow **pointers[] = {&WINDOW.event, &WINDOW.gripWindow, &WINDOW.dropWindow, &WINDOW.dataWindow, &WINDOW.menuWindow};
+    ECSIOSWindow **pointers[] = {&WINDOW.event, &WINDOW.gripWindow, &WINDOW.dropWindow, &WINDOW.dataWindow, &WINDOW.menuWindow, &WINDOW.pendingFrom};
     WINDOW.gripGroup = WINDOW.gripWindow == os ? NULL : WINDOW.gripGroup;
 
     for (usz i = 0; i < SDL_arraysize(pointers); i++)
@@ -931,6 +1134,13 @@ static void ECSIWindow_CloseOS(ECSIOSWindow *os)
         *pointers[i] = *pointers[i] == os ? main : *pointers[i];
     }
     arrfree(os->tabs);
+
+    // Clay keeps the context it used last; one in freed memory must never be current
+    if (Clay_GetCurrentContext() == os->clay)
+    {
+        Clay_SetCurrentContext(main != NULL ? main->clay : NULL);
+    }
+
     SDL_free(os->clayMemory);
 
     // the renderer frees the textures made with it, so the panels and popups shown in this window must not keep them
@@ -947,18 +1157,19 @@ static void ECSIWindow_CloseOS(ECSIOSWindow *os)
         }
 
         arrfree(panels);
-        usz count = 0;
-        ECSPopup *popups = ECSIPopups_GetOpen(&count);
+    }
 
-        for (usz i = 0; i < count; i++)
+    // SDL destroys a window's popup windows with it, so the popups shown in or over this window let go of their windows, renderers and textures first; a popup that stays open is shown again where its panel is
+    usz count = 0;
+    ECSPopup *popups = ECSIPopups_GetOpen(&count);
+
+    for (usz i = 0; i < count; i++)
+    {
+        ECSIPopupView *view = popups[i]->window;
+
+        if (view != NULL && (view->rootId == os->rootId || (view->texture != NULL && SDL_GetRendererFromTexture(view->texture) == os->renderer)))
         {
-            ECSIPopupView *view = popups[i]->window;
-
-            if (view != NULL && view->texture != NULL && SDL_GetRendererFromTexture(view->texture) == os->renderer)
-            {
-                SDL_DestroyTexture(view->texture);
-                view->texture = NULL;
-            }
+            ECSIWindow_ReleasePopup(popups[i]);
         }
     }
 
@@ -980,6 +1191,24 @@ static void ECSIWindow_CloseOS(ECSIOSWindow *os)
     SDL_free(os);
 }
 
+/// @brief Creates a window's renderer: a GPU renderer on the main window's GPU device, so all windows share one device; else SDL's default renderer.
+static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window, bool main)
+{
+    SDL_Renderer *renderer = main || WINDOW.device != NULL ? SDL_CreateGPURenderer(WINDOW.device, window) : NULL;
+
+    if (renderer != NULL && main)
+    {
+        WINDOW.device = SDL_GetGPURendererDevice(renderer);
+    }
+
+    if (renderer == NULL && main)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "GPU renderer not available (%s); using SDL's default renderer.", SDL_GetError());
+    }
+
+    return renderer != NULL ? renderer : SDL_CreateRenderer(window, NULL);
+}
+
 /// @brief Opens an OS window with its renderer and Clay context, and adds it to the list.
 /// @param rootId The pop-out root it shows, or 0 for the main window.
 /// @param flags SDL's window flags; a pop-out window opens hidden, so it can be placed first.
@@ -994,7 +1223,7 @@ static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootId, i32 width, i32 height, SDL_Wi
     }
 
     os->rootId = rootId;
-    os->window = SDL_CreateWindow(WINDOW.title, width, height, SDL_WINDOW_RESIZABLE | flags);
+    os->window = SDL_CreateWindow(WINDOW.title, width, height, SDL_WINDOW_RESIZABLE | (WINDOW.titleBar ? SDL_WINDOW_BORDERLESS : 0) | flags);
 
     if (os->window == NULL)
     {
@@ -1003,13 +1232,9 @@ static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootId, i32 width, i32 height, SDL_Wi
         return NULL;
     }
 
-    os->renderer = SDL_CreateGPURenderer(NULL, os->window);
+    ECSIWindow_ApplyTitleBar(os);
 
-    if (os->renderer == NULL)
-    {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "GPU renderer not available (%s); using SDL's default renderer.", SDL_GetError());
-        os->renderer = SDL_CreateRenderer(os->window, NULL);
-    }
+    os->renderer = ECSIWindow_CreateRenderer(os->window, rootId == 0);
 
     if (os->renderer == NULL)
     {
@@ -1130,7 +1355,7 @@ static void ECSIWindow_Sync(void)
             continue;
         }
 
-        ECSIOSWindow *os = ECSIWindow_OpenOS(roots[i]->id, (i32)SDL_max(1.0f, roots[i]->width), (i32)SDL_max(1.0f, roots[i]->height), SDL_WINDOW_HIDDEN);
+        ECSIOSWindow *os = ECSIWindow_OpenOS(roots[i]->id, (i32)SDL_max(1.0f, roots[i]->width), (i32)SDL_max(1.0f, roots[i]->height + ECSIWindow_TitleHeight()), SDL_WINDOW_HIDDEN);
 
         if (os != NULL)
         {
@@ -1151,7 +1376,8 @@ static void ECSIWindow_Sync(void)
 
         if (root != NULL)
         {
-            ECSILayout_SetRootSize(root, os->width, os->height);
+            f32 title = SDL_min(ECSIWindow_TitleHeight(), os->height);
+            ECSILayout_SetRootArea(root, title, os->width, os->height - title);
         }
     }
 
@@ -1243,7 +1469,7 @@ static ECSIPopupView *ECSIWindow_MakePopupView(ECSPopup popup, const ECSIOSWindo
 
     SDL_WindowFlags flags = popup->desc.kind == ECSPopupKind_Menu ? SDL_WINDOW_POPUP_MENU : SDL_WINDOW_TOOLTIP;
     view->window = SDL_CreatePopupWindow(os->window, (int)rect.x, (int)rect.y, (int)rect.w, (int)rect.h, flags | SDL_WINDOW_TRANSPARENT);
-    view->renderer = view->window == NULL ? NULL : SDL_CreateRenderer(view->window, NULL);
+    view->renderer = view->window == NULL ? NULL : ECSIWindow_CreateRenderer(view->window, false);
 
     // a driver without popup windows, such as the offscreen driver, gets them drawn inside the OS windows from now on
     if (view->renderer == NULL)
@@ -1413,6 +1639,18 @@ static void ECSIWindow_Read(void)
     WINDOW.dockEdge = ECSIWindow_ReadNumber("ecs.dockEdge");
     WINDOW.splitDepth = ECSIWindow_ReadNumber("ecs.splitDepth");
     WINDOW.tabScrollStep = ECSIWindow_ReadNumber("ecs.tabScrollStep");
+    WINDOW.titleBarHeight = ECSIWindow_ReadNumber("ecs.titleBarHeight");
+    bool titleBar = ECSValue_GetBool(ECSSetting_Get("ecs.titleBar"), true);
+
+    if (titleBar != WINDOW.titleBar)
+    {
+        WINDOW.titleBar = titleBar;
+
+        for (usz i = 0; i < arrlenu(WINDOW.windows); i++)
+        {
+            ECSIWindow_ApplyTitleBar(WINDOW.windows[i]);
+        }
+    }
 }
 
 /// @brief The Changed function of the window's settings.
@@ -1421,6 +1659,13 @@ static void ECSIWindow_ReadSettings(void *data)
     (void)data;
     ECSIWindow_Read();
     ECSILayout_RequestFrame();
+}
+
+/// @brief The Changed function of ecs.theme.
+static void ECSIWindow_ApplyTheme(void *data)
+{
+    (void)data;
+    ECSISettings_ApplyTheme();
 }
 
 /// @brief Reads ecs.vsync and sets the main renderer's vsync. Also the Changed function of ecs.vsync.
@@ -1433,8 +1678,9 @@ static void ECSIWindow_ReadVsync(void *data)
     WINDOW.framePercent = percent;
     ECSILayout_RequestFrame();
 
-    // a whole fraction of the refresh rate, such as 50%, lets the display wait for every second refresh; other rates wait for every refresh and are limited by the core
-    if (percent == 0)
+    // on Wayland, the compositor shows whole frames already, and a window it hides gets no refreshes, so waiting for one would stop the program; the core limits the frame rate
+    // elsewhere, a whole fraction of the refresh rate, such as 50%, lets the display wait for every second refresh; other rates wait for every refresh and are limited by the core
+    if (percent == 0 || ECSIWindow_OnWayland())
     {
         SDL_SetRenderVSync(renderer, SDL_RENDERER_VSYNC_DISABLED);
     }
@@ -1524,6 +1770,18 @@ SHUResult ECSIWindow_Initialize(const char *title)
     ECSIWindow_Read();
 
     SHU_ReturnResult(ECSIWindow_Open(title), ECSIWindow_Terminate(););
+
+    // the theme gives the colours their values; it is applied once SDL has started, which tells the system's theme
+    static const char *const THEMES[] = {"system", "dark", "light", NULL};
+    const ECSSettingDesc theme = {
+        .name = "ecs.theme",
+        .type = ECSSettingType_Choice,
+        .description = "Colours of the interface: the system's choice of dark or light, dark, or light",
+        .choices = THEMES,
+        .Changed = ECSIWindow_ApplyTheme,
+    };
+
+    SHU_ReturnResult(ECSISettings_DeclareCore(&theme), ECSIWindow_Terminate(););
 
     const ECSSettingDesc vsync = {
         .name = "ecs.vsync",
@@ -1716,6 +1974,13 @@ ECSPanel ECSIWindow_PanelAt(f32 x, f32 y, f32 *retX, f32 *retY)
 
 i32 ECSIWindow_GetFrameWait(void)
 {
+    // a panel waiting to land wakes the loop when its wait ends
+    if (WINDOW.pendingPanel != NULL)
+    {
+        u64 now = SDL_GetTicksNS();
+        return now >= WINDOW.pendingUntil ? 0 : (i32)((WINDOW.pendingUntil - now + SDL_NS_PER_MS - 1) / SDL_NS_PER_MS);
+    }
+
     // windows that cannot be seen are not drawn; showing one again asks for a frame
     bool visible = false;
 
@@ -1736,6 +2001,19 @@ i32 ECSIWindow_GetFrameWait(void)
 
 void ECSIWindow_Render(u64 nowTicks)
 {
+    // a panel that no other OS window took pops out
+    if (WINDOW.pendingPanel != NULL && nowTicks >= WINDOW.pendingUntil)
+    {
+        ECSPanel panel = WINDOW.pendingPanel;
+        WINDOW.pendingPanel = NULL;
+        ECSIDrop drop = {.zone = ECSIZone_PopOut};
+
+        if (ECSILayout_HasPanel(panel))
+        {
+            ECSILayout_Drop(panel, WINDOW.pendingGroup, &drop);
+        }
+    }
+
     ECSIWindow_DrawFrames(nowTicks);
     ECSIWindow_Present();
 }
@@ -1765,6 +2043,32 @@ SHUResult ECSIWindow_Screenshot(const char *path, usz number)
 bool ECSIWindow_PointerDown(f32 x, f32 y)
 {
     ECSIOSWindow *os = WINDOW.event;
+
+    // the title bar's buttons, from the right: close, maximize or restore, and minimize; the rest of it moves the window, which the system does
+    if (WINDOW.titleBar && y < WINDOW.titleBarHeight)
+    {
+        f32 button = (os->width - x) / ECSIWindow_TitleButtonWidth();
+
+        if (button < 1.0f)
+        {
+            SDL_Event close = {.window = {.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED, .windowID = SDL_GetWindowID(os->window), .timestamp = SDL_GetTicksNS()}};
+            SDL_PushEvent(&close);
+        }
+        else if (button < 2.0f && (SDL_GetWindowFlags(os->window) & SDL_WINDOW_MAXIMIZED) != 0)
+        {
+            SDL_RestoreWindow(os->window);
+        }
+        else if (button < 2.0f)
+        {
+            SDL_MaximizeWindow(os->window);
+        }
+        else if (button < 3.0f)
+        {
+            SDL_MinimizeWindow(os->window);
+        }
+
+        return true;
+    }
 
     if (ECSILayout_DividerAt(ECSIWindow_Root(os), x, y, &WINDOW.dragSplit, &WINDOW.dragDivider))
     {
@@ -1825,6 +2129,23 @@ bool ECSIWindow_PointerDown(f32 x, f32 y)
 
 bool ECSIWindow_PointerMove(f32 x, f32 y)
 {
+    // a panel released outside its OS window lands where the pointer enters another one
+    if (WINDOW.pendingPanel != NULL && WINDOW.event != WINDOW.pendingFrom)
+    {
+        ECSPanel panel = WINDOW.pendingPanel;
+        WINDOW.pendingPanel = NULL;
+        SDL_FRect rect = {0};
+        ECSIOSWindow *os = NULL;
+        ECSIDrop drop = ECSIWindow_FindDrop(x, y, &os, &rect);
+
+        if (ECSILayout_HasPanel(panel))
+        {
+            ECSILayout_Drop(panel, WINDOW.pendingGroup, &drop);
+        }
+
+        return true;
+    }
+
     // the pointer shows a divider can be dragged, and while a panel is dragged
     ECSINode *split = WINDOW.dragSplit;
     usz divider = 0;
@@ -1891,7 +2212,15 @@ ECSPanel ECSIWindow_PointerUp(void)
 {
     ECSPanel clicked = WINDOW.dragFromGrip && !WINDOW.dragging ? WINDOW.dragPanel : NULL;
 
-    if (WINDOW.dragging)
+    // released outside every OS window it knows the place of, the panel waits briefly for the pointer to enter another one
+    if (WINDOW.dragging && WINDOW.drop.zone == ECSIZone_PopOut && ECSIWindow_OnWayland())
+    {
+        WINDOW.pendingPanel = WINDOW.dragPanel;
+        WINDOW.pendingGroup = WINDOW.dragGroup;
+        WINDOW.pendingFrom = WINDOW.event;
+        WINDOW.pendingUntil = SDL_GetTicksNS() + OPENECS_PENDING_DROP_NANOSECONDS;
+    }
+    else if (WINDOW.dragging)
     {
         ECSILayout_Drop(WINDOW.dragPanel, WINDOW.dragGroup, &WINDOW.drop);
     }

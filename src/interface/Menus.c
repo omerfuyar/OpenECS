@@ -150,7 +150,14 @@ static void ECSIMenus_AddTypeEntries(ECSIMenuEntry **entries, ECSPanel panel)
     }
 }
 
-/// @brief Builds a panel's menu: what acts on the panel and its group, the submenu that moves it, then its type's entries.
+/// @brief Adds the entries that act on the whole tool: resetting the layout, and quitting.
+static void ECSIMenus_AddToolEntries(ECSIMenuEntry **entries, ECSPanel panel)
+{
+    ECSIMenus_AddFunction(entries, "ecs.layout.reset", NULL, panel);
+    ECSIMenus_AddFunction(entries, "ecs.app.quit", NULL, panel);
+}
+
+/// @brief Builds a panel's menu: what acts on the panel and its group, the submenus that move it, its type's entries, then what acts on the tool.
 static void ECSIMenus_BuildPanelMenu(ECSIMenuEntry **entries, ECSPanel panel)
 {
     ECSIMenuEntry *move = NULL;
@@ -183,8 +190,9 @@ static void ECSIMenus_BuildPanelMenu(ECSIMenuEntry **entries, ECSPanel panel)
         }
     }
 
-    ECSIMenus_AddSubmenu(entries, "Move to workspace", workspaces);
+    ECSIMenus_AddSubmenu(entries, "To workspace", workspaces);
     ECSIMenus_AddTypeEntries(entries, panel);
+    ECSIMenus_AddToolEntries(entries, panel);
 }
 
 /// @brief Builds the menu of workspaces: each one by number and name, with the current one marked; an entry switches to it.
@@ -200,7 +208,7 @@ static void ECSIMenus_BuildWorkspaceMenu(ECSIMenuEntry **entries)
     }
 }
 
-/// @brief Builds a group's menu: its tabs, then what acts on the whole group.
+/// @brief Builds a group's menu: its tabs, what acts on the whole group, then what acts on the tool.
 static void ECSIMenus_BuildGroupMenu(ECSIMenuEntry **entries, ECSPanel shownPanel)
 {
     ECSIMenuEntry *tabs = NULL;
@@ -221,6 +229,7 @@ static void ECSIMenus_BuildGroupMenu(ECSIMenuEntry **entries, ECSPanel shownPane
     ECSIMenus_AddFunction(entries, "ecs.layout.lock", NULL, shownPanel);
     ECSIMenus_AddFunction(entries, "ecs.layout.closeGroup", NULL, shownPanel);
     ECSIMenus_AddFunction(entries, "ecs.layout.reopen", NULL, shownPanel);
+    ECSIMenus_AddToolEntries(entries, shownPanel);
 }
 
 /// @brief Highlights an entry, and closes the submenus of the other entries.
@@ -418,9 +427,9 @@ ECSIMenus_WorkspaceFunctions(1)
 
 /// @brief The entries of the core function table for a workspace number.
 #define ECSIMenus_WorkspaceEntries(number)                                                                               \
-    {"ecs.workspace.switch" #number, ECSIMenus_Workspace##number, "Switch to workspace " #number},                        \
+    {"ecs.workspace.switch" #number, ECSIMenus_Workspace##number, "Workspace " #number},                        \
     {                                                                                                               \
-        "ecs.layout.moveToWorkspace" #number, ECSIMenus_MoveToWorkspace##number, "Move the panel to workspace " #number \
+        "ecs.layout.moveToWorkspace" #number, ECSIMenus_MoveToWorkspace##number, "To workspace " #number \
     }
 
 /// @brief The core's bindable functions: name, function and description.
@@ -430,22 +439,22 @@ static const struct
     ECSFunction Function;
     const char *description;
 } OPENECS_CORE_FUNCTIONS[] = {
-    {"ecs.layout.focusLeft", ECSIMenus_FocusLeft, "Focus the panel on the left"},
-    {"ecs.layout.focusRight", ECSIMenus_FocusRight, "Focus the panel on the right"},
-    {"ecs.layout.focusUp", ECSIMenus_FocusUp, "Focus the panel above"},
-    {"ecs.layout.focusDown", ECSIMenus_FocusDown, "Focus the panel below"},
-    {"ecs.layout.moveLeft", ECSIMenus_MoveLeft, "Move the panel to the left"},
-    {"ecs.layout.moveRight", ECSIMenus_MoveRight, "Move the panel to the right"},
-    {"ecs.layout.moveUp", ECSIMenus_MoveUp, "Move the panel up"},
-    {"ecs.layout.moveDown", ECSIMenus_MoveDown, "Move the panel down"},
-    {"ecs.layout.nextTab", ECSIMenus_NextTab, "Show the next tab"},
-    {"ecs.layout.maximize", ECSIMenus_Maximize, "Maximize or restore the group"},
-    {"ecs.layout.popOut", ECSIMenus_PopOut, "Pop the panel out into a new window"},
-    {"ecs.layout.close", ECSIMenus_Close, "Close the panel"},
-    {"ecs.layout.closeGroup", ECSIMenus_CloseGroup, "Close the group's panels"},
-    {"ecs.layout.lock", ECSIMenus_Lock, "Lock or unlock the group"},
-    {"ecs.layout.reopen", ECSIMenus_Reopen, "Reopen the last closed panel"},
-    {"ecs.panel.restart", ECSIMenus_Restart, "Restart the failed panel"},
+    {"ecs.layout.focusLeft", ECSIMenus_FocusLeft, "Focus left"},
+    {"ecs.layout.focusRight", ECSIMenus_FocusRight, "Focus right"},
+    {"ecs.layout.focusUp", ECSIMenus_FocusUp, "Focus up"},
+    {"ecs.layout.focusDown", ECSIMenus_FocusDown, "Focus down"},
+    {"ecs.layout.moveLeft", ECSIMenus_MoveLeft, "Move left"},
+    {"ecs.layout.moveRight", ECSIMenus_MoveRight, "Move right"},
+    {"ecs.layout.moveUp", ECSIMenus_MoveUp, "Move up"},
+    {"ecs.layout.moveDown", ECSIMenus_MoveDown, "Move down"},
+    {"ecs.layout.nextTab", ECSIMenus_NextTab, "Next tab"},
+    {"ecs.layout.maximize", ECSIMenus_Maximize, "Maximize"},
+    {"ecs.layout.popOut", ECSIMenus_PopOut, "Pop out"},
+    {"ecs.layout.close", ECSIMenus_Close, "Close"},
+    {"ecs.layout.closeGroup", ECSIMenus_CloseGroup, "Close group"},
+    {"ecs.layout.lock", ECSIMenus_Lock, "Lock"},
+    {"ecs.layout.reopen", ECSIMenus_Reopen, "Reopen closed"},
+    {"ecs.panel.restart", ECSIMenus_Restart, "Restart"},
     ECSIMenus_WorkspaceEntries(1),
     ECSIMenus_WorkspaceEntries(2),
     ECSIMenus_WorkspaceEntries(3),
@@ -456,7 +465,7 @@ static const struct
     ECSIMenus_WorkspaceEntries(8),
     ECSIMenus_WorkspaceEntries(9),
     ECSIMenus_WorkspaceEntries(10),
-    {"ecs.workspace.menu", ECSIMenus_ShowWorkspaces, "Show the workspaces"},
+    {"ecs.workspace.menu", ECSIMenus_ShowWorkspaces, "Workspaces"},
 };
 
 #pragma endregion Core Functions
@@ -510,12 +519,12 @@ const char *ECSIMenus_LabelOf(const char *function, ECSPanel panel)
 {
     if (SDL_strcmp(function, "ecs.layout.maximize") == 0)
     {
-        return ECSILayout_IsMaximized(panel) ? "Restore the group" : "Maximize the group";
+        return ECSILayout_IsMaximized(panel) ? "Restore" : "Maximize";
     }
 
     if (SDL_strcmp(function, "ecs.layout.lock") == 0)
     {
-        return ECSILayout_IsLocked(panel) ? "Unlock the group" : "Lock the group";
+        return ECSILayout_IsLocked(panel) ? "Unlock" : "Lock";
     }
 
     const char *description = ECSIServices_GetDescription(function);
