@@ -1,12 +1,12 @@
 # OpenECS Overview
 
-This document explains what OpenECS is, what it covers, what it leaves to plugins, and how it behaves for the user.
+This document explains what OpenECS is, what it covers, what it leaves to plugins, and how it behaves to the user.
 
-**How to read it:**
+**See also:**
 
-- Everything here is decided. Open questions and pending work are in [TODO.md](TODO.md).
-- How OpenECS is built (interfaces, file formats, rules for code) is in [DESIGN.md](DESIGN.md).
-- Terms used in this document are explained in the glossary at the end.
+- How OpenECS is built technically is in [DESIGN.md](DESIGN.md).
+- Open questions and pending work are in [TODO.md](TODO.md).
+- Terms used in this document context are explained in the glossary at the end.
 
 ---
 
@@ -24,21 +24,22 @@ This document explains what OpenECS is, what it covers, what it leaves to plugin
 10. Presets, sessions and settings
 11. Operating-system integration
 12. Principles
+
 - Glossary
 
 ---
 
 ## 1. Summary
 
-OpenECS is a program, written in C, that provides the empty shell of an editor-style application. Think of a modern editor or creative tool: areas that can be split side by side, grouped into tabs, maximized, moved into their own windows and arranged into workspaces. OpenECS provides that machinery, plus keybindings, settings, plugin loading, saving and restoring of sessions.
+OpenECS is a program, written in C, that provides the domain agnostic features of an editor style application. Essentially the frontend. You can think of Blender, Unity, Davinci Resolve, VS Code or any application that has an editor which include tabs, panels, pop out windows, workspaces etc. All these features are provided by OpenECS.
 
-OpenECS does not know what any area is for. It has no idea what a text editor or a paint program is. What each area shows and does comes from **plugins**: add-on modules written in C or in Lua.
+In OpenECS, what each area shows and does comes from **plugins**: add-on modules written in C or in Lua.
 
-So the same program becomes a text editor, a paint program or the front end of a game engine, depending on which plugins and **preset** it loads.
+So the same program becomes a text editor, a paint program, the front end of a game engine, or even a game itself, depending on which plugins and **preset** it loads.
 
-OpenECS is an executable, not a library.
+From that perspective, OpenECS can be considered as a cross platform application development platform if you want to use it as that.
 
-## 2. The user's view
+## 2. Using OpenECS applications
 
 1. The user starts a tool, for example "Paint" from the desktop's application menu. This runs OpenECS with the paint preset. Started without a preset, OpenECS shows a launcher that lists presets and saved sessions.
 2. OpenECS loads the preset's plugins and the plugins they depend on.
@@ -46,17 +47,17 @@ OpenECS is an executable, not a library.
 4. The window is divided into **panels**, such as a canvas, a colour palette or a layer list. Panels grouped in the same place show a **tab row**; a panel on its own shows none.
 5. The user drags panels to split the window differently, groups them as tabs, maximizes one, or moves one into its own window, popping out from main window.
 6. The user switches between **workspaces**, for example "drawing" and "organizing". Switching is instant.
-7. The user presses keys. The focused panel's keys work, the core's own actions are always reachable, and the user's own keybindings win over everything else.
+7. The user presses keys. Core forwards input to currently focused panel. The core's own actions are always reachable, and the user's own keybindings win over everything else.
 8. The user opens the settings window, sees every setting with its value and what it does, and changes it.
 9. When the user quits, OpenECS asks what to do with unsaved work, then remembers the arrangement for next time. The user can also save sessions to files and open them later.
 
 ## 3. Scope: core and plugins
 
-The most important rule of OpenECS is the line between the **core** (OpenECS itself) and **plugins** (everything else). The core is small. It provides the machinery of an editor-style application and nothing specific to any job.
+The most important rule of OpenECS is the line between the **core** (OpenECS itself) and **plugins** (everything else). The core is small. As said, its domain agnostic and it provides the machinery of applications.
 
 ### 3.1 What the core provides
 
-- Layout: panels, splits, groups, maximizing, pop-out windows and workspaces.
+- Layout: panels, splits, groups, maximizing, pop out windows and workspaces.
 - A drawing surface for every panel, and putting it on screen. The core offers **no drawing commands**: nothing like "draw a rectangle" or "draw text".
 - Its own small interface: tab rows, dividers, drag highlights and menus.
 - Input: focus, keybindings, the mouse pointer and text input.
@@ -108,7 +109,7 @@ OpenECS targets Linux only for now.
 
 ## 4. Architecture
 
-```
+``` text
 +--------------------------------------------------------------+
 |  Plugins: native (C) and Lua                                 |
 +--------------------------------------------------------------+
@@ -208,11 +209,11 @@ On Wayland, the display system decides where a new OS window appears.
 
 When a plugin opens a panel, for example when a file browser asks the text plugin to open a file, the panel goes to a predictable place. The caller can name a different place. By default, the panel joins the group of the most recently focused panel of the same type; if there is none, it joins the focused group.
 
-### 6.6 Maximize, pop-out and workspaces
+### 6.6 Maximize, pop out and workspaces
 
 - **Maximize** makes one group fill its OS window. The other panels stay alive but hidden.
-- **Pop-out** moves a panel into a new OS window. That window holds a full layout of its own. Floating panels that overlap others inside one OS window are not part of the design.
-- Switching **workspaces** is instant, because nothing is rebuilt. Pop-out windows belong to their workspace and are hidden while the user is in another one.
+- **pop out** moves a panel into a new OS window. That window holds a full layout of its own. Floating panels that overlap others inside one OS window are not part of the design.
+- Switching **workspaces** is instant, because nothing is rebuilt. pop out windows belong to their workspace and are hidden while the user is in another one.
 
 ### 6.7 Locked panels
 
@@ -437,7 +438,7 @@ The settings window changes the user's settings file, and the user can also edit
 
 **Standard plugin.** A first-party plugin whose services other plugins build on, such as draw and ui.
 
-**Pop-out.** Moving a panel into a new OS window.
+**pop out.** Moving a panel into a new OS window.
 
 **Popup.** A small, temporary window, such as a menu or a tooltip, that belongs to a panel.
 

@@ -3,6 +3,7 @@
 #define SHUC_NO_RUN_LOG
 #include "dependencies/shuild/shuild.h"
 
+// todo update shuild to not use os or std libraries directly
 #include <dirent.h>
 
 #pragma region Setup
@@ -645,6 +646,7 @@ static void Shuild_Repository(const char *folder)
 
     SHUI_SAppendC(&output, CONFIG.outputDir.data);
 
+    // todo use SHUILD_BUILD macro to build shuild.c files !!!
     SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", folder);
     RunCheck("gcc -O2 -Idependencies %s -o %sshuild.ignore", source.data, folder);
     RunCheck("cd %s && ./shuild.ignore -b %s -o %s", folder, BuildType_String(CONFIG.type), output.data);
