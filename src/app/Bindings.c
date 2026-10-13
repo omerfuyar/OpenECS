@@ -1867,7 +1867,25 @@ static int ECSIBindings_PanelAddMenuEntry(lua_State *state)
     return 1;
 }
 
+static int ECSIBindings_PanelTypes(lua_State *state)
+{
+    ECSValue *list = NULL;
+    SHUResult result = ECSValue_Create(&list);
+    result = result ? result : ECSPanelType_List(list);
+
+    if (result)
+    {
+        ECSValue_Destroy(&list);
+        return luaL_error(state, "cannot list the panel types (%s)", SHUResult_String(result));
+    }
+
+    ECSILua_PushValue(list);
+    ECSValue_Destroy(&list);
+    return 1;
+}
+
 static const luaL_Reg OPENECS_BINDINGS_PANEL[] = {
+    {"types", ECSIBindings_PanelTypes},
     {"registerType", ECSIBindings_PanelRegisterType},
     {"addMenuEntry", ECSIBindings_PanelAddMenuEntry},
     {"openPopup", ECSIBindings_PanelOpenPopup},

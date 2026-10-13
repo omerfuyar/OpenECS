@@ -97,7 +97,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 - Headers start with `#pragma once` and group their contents with `#pragma region`. A source file keeps its internal elements in a `Source Only` region.
 - Functions used by only one source file are `static`.
 - First-party plugins and presets are in OpenECS-std, in `std/` (17.7).
-- Examples are in OpenECS-examples, in `examples/` (17.6), and tests in `tests/` (17.5).
+- Examples are in OpenECS-examples, in `examples/` (17.6). They are the tests too (17.5).
 
 ### 1.6 Style
 
@@ -245,6 +245,7 @@ typedef struct ECSPanelTypeDesc
 - `Draw` receives the time in seconds since the panel was last drawn, for animation.
 - `Event` returns nothing, because events never ask for permission (8.1).
 - Registration: `ECSPanelType_Register(plugin, &desc)`, and in Lua `ecs.panel.registerType(desc)`.
+- `ECSPanelType_List`, and in Lua `ecs.panel.types()`, list the registered panel types, by plugin and then by title, with the plugin's description, so a plugin can offer to open them (12.5).
 
 ### 4.2 Panels
 
@@ -370,7 +371,7 @@ After every operation:
 - Besides the operations in OVERVIEW 6.3, there are cycling tabs, reopening the last closed panel, and moving a panel to another workspace.
 - The core remembers the last `ecs.reopenLimit` closed panels with their type and saved state. `ecs.layout.reopen` opens the last one again next to a panel that stayed in its group, wherever that panel is now, or else in the focused group, and shows its workspace.
 - `ecs.layout.moveToWorkspace1` to `ecs.layout.moveToWorkspace10` move the focused panel into that workspace's focused group; the current workspace stays shown.
-- `ecs.layout.splitRight` and `ecs.layout.splitDown` open another panel of the focused panel's type beside it.
+- The core never makes a panel of a type on its own initiative, other than to restore a session or reopen a closed panel: a panel's contents belong to its plugin, so a plugin that wants several panels of its type opens them itself (6.6), from its own functions, keys or menu entries.
 - Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)` (also from another workspace), `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles.
 - Workspaces are numbered from 1, in C and in Lua: `ECSWorkspace_Switch(10)` switches to workspace 10.
 - Closing a panel from code still asks about unsaved work. Focusing a panel shows its workspace and its tab.
@@ -805,8 +806,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 - The documentation of each public function in `OpenECS.h` ends with a line that names its Lua counterparts in `include/ecs.lua`, such as `/// @lua ecs.panel.getTitle, panel:getTitle`, or says `none:` and why.
 - The functions of values (10.3) have no `@lua` line, because Lua passes its own values.
 - A function of `ecs.lua` that C does not have says `Lua only:` and why in its documentation, or `Keys can run it.` when it is a core function that C runs by name (7.8).
-- A change that renames or changes anything plugins use changes both files, and every reference to it in code, presets, tests, settings files and documents, in the same commit.
-- The test `tests/parity.lua` checks both files: every public function has its line, every name it gives is in `ecs.lua`, and every function of `ecs.lua` is named or says why not. It also checks that every core function the core's settings file binds to a key is in `ecs.lua` and says keys can run it; a function of a plugin that the file loads is checked when the plugin runs (7.8).
+- A change that renames or changes anything plugins use changes both files, and every reference to it in code, presets, examples, settings files and documents, in the same commit.
 
 ### 11.6 Keeping Lua values
 
@@ -845,11 +845,15 @@ return {
 }
 ```
 
-- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.4).
+- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.4), and `panels`, the list of panel types (12.5).
 
 ### 12.4 The settings window
 
 The settings window is the first-party Lua plugin `settings`, in OpenECS-std (17.7). Its design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The settings window.
+
+### 12.5 The panel list
+
+The panel list is the first-party Lua plugin `panels`, in OpenECS-std (17.7). It lists the panel types of the tool by plugin, from `ECSPanelType_List` (`ecs.panel.types` in Lua), and opens the one the user chooses. Its design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The panel list.
 
 ## 13. Presets and sessions
 
@@ -1045,7 +1049,7 @@ OpenECS follows the XDG Base Directory specification:
 - Native plugins are shared libraries, built against the plugin header only. They do not link against the core; their calls to it are resolved when they are loaded.
 - First-party native plugins may call SDL3 and SDL3_ttf. Like their calls to the core, these calls are resolved when the plugin is loaded, against the libraries the executable loaded, so every plugin uses the executable's copy of SDL.
 - A first-party plugin is built from every C file in its folder, so the build needs no settings for each plugin. Its Lua files and its folders, which hold its Lua modules (9.6), are copied.
-- The plugins of the tests (17.5) are built the same way, into the build's copies of their folders. OpenECS-std and OpenECS-examples build theirs with their own builds (17.7).
+- OpenECS-std and OpenECS-examples build their plugins this way, with their own builds (17.7).
 
 ### 17.3 Compiler
 
@@ -1063,11 +1067,10 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.5 Tests
 
-- A test is a Lua file in `tests/`. Debug builds run it with `openecs --test FILE`; other builds refuse the option.
+- The examples are the tests (17.6). A test is a Lua file of an example whose name starts with `test`. Debug builds run it with `openecs --test FILE`; other builds refuse the option.
 - The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `launcher` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.6), `presets` and `sessions`, folders relative to the test file that stand for the user's presets and the saved sessions (16), and `run`, a function that gets the `test` table.
-- OpenECS's tests check the core's own features, and need no standard plugin. Each repository tests what it holds: OpenECS-std its plugins, and OpenECS-examples its examples (17.7).
-- Tests keep their presets and test plugins in `tests/presets/` and `tests/plugins/`, so a change to a first-party preset or an example does not change a test. The test plugins `boxes`, in Lua, and `cboxes`, in C, give tests panels to arrange.
-- With the flag `--tests`, the build copies `tests/` to `build/<TYPE>/tests/`, beside `bin/`, and builds the native test plugins there. Tests run from that copy, so a test reads the build's copies of the plugin header, `ecs.lua` and the core's settings file.
+- The examples teach plugin authors and check that the core and the standard plugins work, with one set of files. A feature of the core or of a standard plugin is checked by the test of the example that shows it.
+- Tests run from the build's copy of the examples, `bin/examples/`, so a test reads the build's copies of the plugin header, `ecs.lua` and the core's settings file.
 - A test starts from its preset alone. It loads only the plugins its preset names, not those that the settings files name for every tool (12.3). It reads none of the user's settings, plugins or sessions, and writes no session and no log file. SDL's offscreen video driver, software renderer and dummy audio driver are the defaults, so a test needs no display and makes no sound; the variables `SDL_VIDEO_DRIVER`, `SDL_RENDER_DRIVER` and `SDL_AUDIO_DRIVER` choose others, for example to watch a test.
 - `run` is a coroutine in the main loop. A function that sends input or waits pauses it. Each input event gets its own pass of the loop, and `run` goes on when the last one is handled, its events are delivered and the window is drawn. While a test runs, frames are not paced (3.1).
 - The `test` table:
@@ -1095,7 +1098,7 @@ OpenECS follows the XDG Base Directory specification:
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
 - A Lua error fails the test and logs it with its stack trace. When `run` returns, the program quits without asking about unsaved work.
 - The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
-- `.github/scripts/test.sh` runs every test of one repository with a Debug build: OpenECS's own in `tests/` beside `bin/`, with `std` OpenECS-std's in `std/tests/` beside `bin/`, and with `examples` the examples' in `bin/examples/`.
+- `.github/scripts/test.sh` runs every test in `bin/examples/` with a Debug build.
 
 ### 17.6 Examples
 
@@ -1103,7 +1106,7 @@ OpenECS follows the XDG Base Directory specification:
 - An example holds a preset, `preset.lua`, the folders of its plugins, and its tests, the files whose names start with `test`. The preset names the folder in `pluginsDir`, so the example needs nothing else but the standard plugins.
 - Its comments explain how the core behaves: what a statement makes the core do, when it may be called, and a concept the first time it appears. They do not explain the example's own logic or repeat the functions' documentation.
 - With the flag `--examples`, the examples' build copies the numbered folders of `examples/`, sources too, to `bin/examples/`, and builds each example's native plugins there.
-- A change between releases may break an example. Before a release, the examples are brought up to date, so their tests pass (19.4).
+- A change that breaks an example changes the example in the same piece of work, so every test passes.
 
 ### 17.7 Repositories
 
@@ -1111,21 +1114,21 @@ OpenECS follows the XDG Base Directory specification:
 
   | Repository         | Holds                                                                                                                      | Folder in OpenECS |
   | ------------------ | -------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-  | `OpenECS-std`      | The standard plugins, the first-party plugins `settings` and `launcher`, the preset `launcher`, and their tests and design | `std/`            |
+  | `OpenECS-std`      | The standard plugins, the first-party plugins `settings`, `launcher` and `panels`, the preset `launcher`, and their design | `std/`            |
   | `OpenECS-examples` | The examples (17.6)                                                                                                        | `examples/`       |
 
 - Both are git submodules of OpenECS, so one build and one release hold all three (19.4). A submodule names one commit of its repository's `dev`; OpenECS moves it forward in a pull request.
-- Each repository has a build of its own, `shuild.c`, which OpenECS's build runs. OpenECS's build compiles it with shu and shuild from OpenECS's `dependencies/` into `shuild.ignore` in the repository's folder, because shuild finds every path from the folder of the program it runs in. It runs it there with the build type, OpenECS's build folder as seen from that folder, and, for OpenECS-std, `--tests` when OpenECS's build has it.
+- Each repository has a build of its own, `shuild.c`, which OpenECS's build runs. OpenECS's build compiles it with shu and shuild from OpenECS's `dependencies/` into `shuild.ignore` in the repository's folder, because shuild finds every path from the folder of the program it runs in. It runs it there with the build type and OpenECS's build folder as seen from that folder.
 - OpenECS's build builds the standard plugins unless it is given `--no-std`, and the examples when it is given `--examples`:
 
   | Flag of OpenECS's build | Runs                                                                                                                                                        |
   | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | (none)                  | `std/shuild.c`: the standard plugins into `bin/plugins/`, their presets into `bin/presets/`, and with `--tests` their tests into `std/tests/` beside `bin/` |
+  | (none)                  | `std/shuild.c`: the standard plugins into `bin/plugins/`, and their presets into `bin/presets/` |
   | `-n`, `--no-std`        | not `std/shuild.c`, so the build holds the core alone                                                                                                       |
   | `-e`, `--examples`      | `examples/shuild.c`: the examples into `bin/examples/`                                                                                                      |
 
 - A repository that is not checked out is skipped with a warning.
-- Each repository has its own checks (19.3). They check out OpenECS's `dev` with its submodules, put the repository's own commit in its folder, build OpenECS with it, and run the repository's own tests.
+- Each repository has its own checks (19.3). They check out OpenECS's `dev` with its submodules, put the repository's own commit in its folder, build OpenECS with it and the examples, and run the examples' tests.
 - Each repository follows OpenECS's conventions and rules for contributors; its `AGENTS.md` and `DESIGN.md` name what is its own.
 
 ## 18. Platform notes
@@ -1160,7 +1163,7 @@ OpenECS follows the XDG Base Directory specification:
 
   | Check             | Does                                                                                                                                                                                                                                                                                               |
   | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `Debug (Linux)`   | Builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs OpenECS's tests (17.5) under the sanitizers; a failed test or a report fails it. Then writes the definition files of the tests' plugins (10.10) and compiles each C header. |
+  | `Debug (Linux)`   | Builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs the examples' tests (17.5) under the sanitizers; a failed test or a report fails it. Then writes the definition files of the plugins of the example `5_services` (10.10) and compiles each C header. |
   | `Release (Linux)` | Builds in Release, so code that only Release builds compile or link fails before a release.                                                                                                                                                                                                        |
   | `Lua (LuaLS)`     | Checks every Lua file with LuaLS, so code that misuses the `ecs` module, and mistakes in `ecs.lua`, fail it (9.6).                                                                                                                                                                                 |
 
@@ -1178,7 +1181,7 @@ OpenECS follows the XDG Base Directory specification:
 - Releases are made for Linux on x86_64. The workflow also lists the other platforms, commented out.
 - Linux builds are made on Ubuntu 24.04, so they need glibc 2.38 or later.
 - The steps of a release:
-  1. In OpenECS-std and OpenECS-examples, bring the examples up to date (17.6), write each release's description, and merge `dev` into `main` with a pull request.
+  1. In OpenECS-std and OpenECS-examples, write each release's description, and merge `dev` into `main` with a pull request.
   2. On OpenECS's `dev`, move `std/` and `examples/` to those `main` commits, set `OPENECS_VERSION` to the release, and write its description.
   3. Merge OpenECS's `dev` into `main` with a pull request.
   4. Tag the three merge commits `vVERSION` and push the tags.

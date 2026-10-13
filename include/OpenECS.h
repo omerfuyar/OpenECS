@@ -461,6 +461,12 @@ OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_Register(ECSPlugin plugin, const EC
 /// @lua ecs.panel.addMenuEntry
 OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, const char *function);
 
+/// @brief Lists the registered panel types, so a plugin can offer to open them. Main thread only.
+/// @param retList The value to set to a list sorted by plugin, then by title. Each entry is a table: name, title, plugin (the name of the plugin that registered it), and description (that plugin's description, from its manifest).
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.panel.types
+OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_List(ECSValue *retList);
+
 /// @brief Creates a nil value, for a plugin that passes a value to the core or to a service. Main thread only.
 /// @param retValue The new value. Destroy it with ECSValue_Destroy.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.

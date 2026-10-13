@@ -3,9 +3,6 @@
 #define SHUC_NO_RUN_LOG
 #include "dependencies/shuild/shuild.h"
 
-// todo update shuild to not use os or std libraries directly
-#include <dirent.h>
-
 #pragma region Setup
 
 typedef enum BuildType
@@ -27,7 +24,7 @@ static struct
     bool examples; // also build the examples, from examples/
     SHUI_String buildDir;
     SHUI_String outputDir;
-} CONFIG = {BuildType_Debug, true, false, false, {0}, {0}};
+} CONFIG = {.type = BuildType_Debug, .std = true};
 
 #pragma endregion Setup
 
@@ -90,14 +87,15 @@ int main(int argc, char **argv)
     return 0;
 }
 
-#define RunCheck(cmd, ...) SHU_Assert(!SHU_UtilRun(cmd, ##__VA_ARGS__), "Runing " SHUM_COLOR_RED("'%s'") "failed", cmd)
+#define RunCheck(cmd, ...) SHU_Assert(!SHU_UtilRun(cmd, ##__VA_ARGS__), "Running " SHUM_COLOR_RED("'%s'") " failed", cmd)
 
+/// @brief Copies a file or folder with its times, so an unchanged header does not make the files that include it compile again.
 static void CopyFile(const char *file, const char *directory)
 {
-    RunCheck("cp -r %s %s", file, directory);
+    RunCheck("cp -rp %s %s", file, directory);
 }
 
-static void PrintUsageAndExit(void)
+static void PrintUsageAndExit(int status)
 {
     printf("Usage: ./shuild.ignore [FLAG...]\n\n"
            "Flags:\n"
@@ -106,13 +104,13 @@ static void PrintUsageAndExit(void)
            "  -n, --no-std       Do not build the standard plugins of std/\n"
            "  -e, --examples     Also build the examples of examples/, into bin/examples/\n"
            "  -h, --help         Show this help\n");
-    exit(1);
+    exit(status);
 }
 
 static void Refuse(const char *reason, const char *argument)
 {
     SHU_LogError(0, "%s: " SHUM_COLOR_RED("'%s'"), reason, argument);
-    PrintUsageAndExit();
+    PrintUsageAndExit(1);
 }
 
 static void SetupConfiguration(int argc, char **argv)
@@ -148,7 +146,7 @@ static void SetupConfiguration(int argc, char **argv)
         }
         else if (!strcmp(flag, "-h") || !strcmp(flag, "--help"))
         {
-            PrintUsageAndExit();
+            PrintUsageAndExit(0);
         }
         else
         {
@@ -539,93 +537,9 @@ static void Shuild_OpenECS(void)
     CopyFile("include/ecs.lua", tempStr.data);
 }
 
-/// @brief Checks whether a file name ends with a suffix.
-static bool EndsWith(const char *name, const char *suffix)
-{
-    size_t nameLength = strlen(name);
-    size_t suffixLength = strlen(suffix);
-    return nameLength >= suffixLength && strcmp(name + nameLength - suffixLength, suffix) == 0;
-}
-
-/// @brief Calls a function for each folder in a folder, in no order; names starting with a dot are left out.
-static void ForEachFolder(const char *path, void (*function)(const char *path, const char *name))
-{
-    DIR *folder = opendir(path);
-    struct dirent *entry = NULL;
-
-    while (folder != NULL && (entry = readdir(folder)) != NULL)
-    {
-        if (entry->d_type == DT_DIR && entry->d_name[0] != '.')
-        {
-            function(path, entry->d_name);
-        }
-    }
-
-    if (folder != NULL)
-    {
-        closedir(folder);
-    }
-}
-
-/// @brief Compiles the C files of a plugin's folder, root, into the plugin's native library in output. Does nothing if the folder has no C file.
-static void Shuild_NativePlugin(const char *name, const char *root, const char *output)
-{
-    bool native = false;
-    DIR *folder = opendir(root);
-    struct dirent *entry = NULL;
-
-    while (folder != NULL && (entry = readdir(folder)) != NULL)
-    {
-        native = native || EndsWith(entry->d_name, ".c");
-    }
-
-    if (folder != NULL)
-    {
-        closedir(folder);
-    }
-
-    if (!native)
-    {
-        return;
-    }
-
-    // the include path is relative to the plugin's folder, so it climbs one level for each folder in root
-    SHUI_String include = {0};
-
-    for (const char *c = root; *c != '\0'; c++)
-    {
-        if (*c == '/')
-        {
-            SHUI_SAppendC(&include, "../");
-        }
-    }
-
-    SHUI_SAppendC(&include, CONFIG.outputDir.data);
-    SHUI_SAppendC(&include, "include/");
-
-    SHU_ModuleBegin(name, root);
-    SetBuildFlags(true);
-    SHU_CompilerAddFlags(" -fvisibility=hidden");
-
-    // plugins see only the copied plugin header and the dependencies' headers, never the core's headers
-    SHU_ModuleAddSourceFile("./");
-    SHU_ModuleAddIncludeDirectory(include.data);
-    SHU_ModuleCompile(output, SHUModuleType_LibraryDynamic);
-}
-
-// a plugin folder of the tests is built in place, in the copy of its folder
-static void Shuild_TestPlugin(const char *path, const char *name)
-{
-    SHUI_String root;
-    SHUI_String output;
-    SHUI_SFormat(&root, "%s%s/", path, name);
-    SHUI_SFormat(&output, "%s%s", CONFIG.outputDir.data, root.data);
-    Shuild_NativePlugin(name, root.data, output.data);
-}
-
 /// @brief Builds a repository checked out in a folder of OpenECS, std/ or examples/, with the shuild.c of its own (DESIGN 17.7).
 /// Its shuild.c is compiled with shu and shuild from dependencies/ into shuild.ignore in its folder, because shuild finds every path from the folder of the program it runs in.
-/// It runs with the build type, this build's output folder as seen from its folder, and --tests if asked.
+/// It runs with the build type and this build's output folder as seen from its folder.
 static void Shuild_Repository(const char *folder)
 {
     SHUI_String source;
@@ -646,17 +560,20 @@ static void Shuild_Repository(const char *folder)
 
     SHUI_SAppendC(&output, CONFIG.outputDir.data);
 
-    // todo use SHUILD_BUILD macro to build shuild.c files !!!
+    // it is compiled with the flags shuild compiles a build program with, SHUILD_BUILD
     SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", folder);
-    RunCheck("gcc -O2 -Idependencies %s -o %sshuild.ignore", source.data, folder);
+    RunCheck("gcc -Idependencies %s -o %sshuild.ignore" SHUILD_BUILD, source.data, folder);
     RunCheck("cd %s && ./shuild.ignore -b %s -o %s", folder, BuildType_String(CONFIG.type), output.data);
     SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'%s'") "\n", folder);
 }
 
 static void Shuild_Plugins(void)
 {
-    // examples and tests are built when the flags ask for them; a copy from an earlier build is removed otherwise
-    RunCheck("rm -rf %sbin/examples %sstd", CONFIG.outputDir.data, CONFIG.outputDir.data);
+    // the examples are built when the flags ask for them; a copy from an earlier build is removed otherwise
+    if (!CONFIG.examples)
+    {
+        RunCheck("rm -rf %sbin/examples", CONFIG.outputDir.data);
+    }
 
     // OpenECS-std builds the standard plugins into bin/plugins/ and their presets into bin/presets/; OpenECS-examples builds the examples into bin/examples/
     if (CONFIG.std)

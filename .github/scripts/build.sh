@@ -1,11 +1,11 @@
 #!/bin/sh
-# Builds OpenECS with shuild: D for Debug with the examples and the tests, R for Release with the examples.
+# Builds OpenECS with shuild and the examples: D for Debug, R for Release.
 # Shuild's exit status does not tell whether the build worked, so this fails on a compiler error or warning in OpenECS's own files, or a missing executable.
 set -eu
 
 type="$1"
 case "$type" in
-D) folder=Debug flags="-b debug -e -t" ;;
+D) folder=Debug flags="-b debug -e" ;;
 R) folder=Release flags="-b release -e" ;;
 *) echo "Usage: build.sh D|R" && exit 2 ;;
 esac
@@ -14,7 +14,8 @@ executable="build/$folder/bin/OpenECS"
 rm -f "$executable"
 
 mkdir -p build
-gcc shuild.c -o shuild.ignore -O3
+# the flags are shuild's SHUILD_BUILD, which shuild uses when it builds itself again
+gcc shuild.c -o shuild.ignore -O3 -Wno-format-truncation
 # shellcheck disable=SC2086
 ./shuild.ignore $flags > build/shuild.log 2>&1 || true
 

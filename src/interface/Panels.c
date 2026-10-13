@@ -747,6 +747,64 @@ const char *const *ECSIPanel_GetMenuEntries(ECSPanel panel, usz *retCount)
     return *retCount == 0 ? NULL : (const char *const *)panel->type->menuEntries;
 }
 
+/// @brief Orders panel types by the name of their plugin, then by title.
+static int SDLCALL ECSIPanel_CompareTypes(const void *a, const void *b)
+{
+    const ECSIPanelType *first = *(const ECSIPanelType *const *)a;
+    const ECSIPanelType *second = *(const ECSIPanelType *const *)b;
+    int plugins = SDL_strcmp(ECSIPlugin_GetName(first->plugin), ECSIPlugin_GetName(second->plugin));
+    return plugins != 0 ? plugins : SDL_strcmp(first->title, second->title);
+}
+
+/// @brief Sets a field of a table to a string.
+static SHUResult ECSIPanel_SetStringField(ECSValue *table, const char *name, const char *string)
+{
+    ECSValue *field = NULL;
+    SHU_ReturnResult(ECSValue_TableSetField(table, name, &field));
+    return ECSValue_SetString(field, string);
+}
+
+SHUResult ECSPanelType_List(ECSValue *retList)
+{
+    SDL_assert(retList != NULL);
+
+    usz count = shlenu(PANELS.types);
+    ECSIPanelType **types = count == 0 ? NULL : SDL_malloc(count * sizeof(ECSIPanelType *));
+
+    if (count > 0 && types == NULL)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    for (usz i = 0; i < count; i++)
+    {
+        types[i] = PANELS.types[i].value;
+    }
+
+    SDL_qsort(types, count, sizeof(ECSIPanelType *), ECSIPanel_CompareTypes);
+    ECSValue_SetTable(retList);
+    SHUResult result = SHUResult_Ok;
+
+    for (usz i = 0; i < count && !result; i++)
+    {
+        ECSValue *entry = NULL;
+        result = ECSValue_ListAddItem(retList, &entry);
+
+        if (!result)
+        {
+            ECSValue_SetTable(entry);
+            result = ECSIPanel_SetStringField(entry, "name", types[i]->name);
+        }
+
+        result = result ? result : ECSIPanel_SetStringField(entry, "title", types[i]->title);
+        result = result ? result : ECSIPanel_SetStringField(entry, "plugin", ECSIPlugin_GetName(types[i]->plugin));
+        result = result ? result : ECSIPanel_SetStringField(entry, "description", ECSIPlugin_GetDescription(types[i]->plugin));
+    }
+
+    SDL_free(types);
+    return result;
+}
+
 SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, const char *function)
 {
     SDL_assert(plugin != NULL);

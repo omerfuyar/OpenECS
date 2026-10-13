@@ -66,6 +66,11 @@ SHUWUR SHUResult ECSIPlugins_SaveStates(ECSValue *states);
 /// @return The name its manifest gives.
 const char *ECSIPlugin_GetName(ECSPlugin plugin);
 
+/// @brief Gets a plugin's description, from its manifest.
+/// @param plugin The plugin.
+/// @return The description, or an empty string. Valid while the plugin is loaded.
+const char *ECSIPlugin_GetDescription(ECSPlugin plugin);
+
 /// @brief Gets a plugin's version.
 /// @param plugin The plugin.
 /// @return The version its manifest gives.

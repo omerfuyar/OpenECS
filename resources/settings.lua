@@ -2,8 +2,8 @@
 -- The preset and the user's settings file override them.
 ---@type ecs.SettingsFile
 return {
-  -- plugins that every tool loads: the settings window
-  plugins = { "settings" },
+  -- plugins that every tool loads: the settings window, and the list of panel types to open
+  plugins = { "settings", "panels" },
 
   -- the key combination before a core action
   ["ecs.prefix"] = "Alt+W",
@@ -31,6 +31,7 @@ return {
       ["S"] = "ecs.session.save",
       ["O"] = "ecs.session.open",
       [","] = "settings.open",
+      ["N"] = "panels.open",
       ["1"] = "ecs.workspace.switch1",
       ["2"] = "ecs.workspace.switch2",
       ["3"] = "ecs.workspace.switch3",

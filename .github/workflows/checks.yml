@@ -1,5 +1,5 @@
-# Checks every change to dev and main: a Debug build with the static analyzer, OpenECS's own tests under the sanitizers, a Release build, and the Lua annotations.
-# OpenECS-std and OpenECS-examples run their own tests in their own checks.
+# Checks every change to dev and main: a Debug build with the static analyzer, the examples' tests under the sanitizers, a Release build, and the Lua annotations.
+# The examples are the tests: each one's test runs its preset, so they check the core and the standard plugins together.
 name: Checks
 
 on:
@@ -41,7 +41,7 @@ jobs:
       - name: Build with the static analyzer
         run: .github/scripts/build.sh D
 
-      - name: Run the tests with the sanitizers
+      - name: Run the examples' tests with the sanitizers
         run: .github/scripts/test.sh build/Debug/bin/OpenECS
 
       - name: Write and compile the definition files

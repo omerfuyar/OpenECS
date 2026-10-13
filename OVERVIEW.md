@@ -48,7 +48,7 @@ From that perspective, OpenECS can be considered as a cross platform application
 5. The user drags panels to split the window differently, groups them as tabs, maximizes one, or moves one into its own window, popping out from main window.
 6. The user switches between **workspaces**, for example "drawing" and "organizing". Switching is instant.
 7. The user presses keys. Core forwards input to currently focused panel. The core's own actions are always reachable, and the user's own keybindings win over everything else.
-8. The user opens the settings window, sees every setting with its value and what it does, and changes it.
+8. The user opens the settings window, sees every setting with its value and what it does, and changes it. The panel list shows every kind of panel the tool's plugins offer, and opens the one the user chooses.
 9. When the user quits, OpenECS asks what to do with unsaved work, then remembers the arrangement for next time. The user can also save sessions to files and open them later.
 
 ## 3. Scope: core and plugins
@@ -91,6 +91,7 @@ Some plugins are made and shipped together with OpenECS because the product need
 - **gltf:** a standard plugin: reading glTF models, for plugins that draw 3D scenes.
 - **fs:** a standard plugin: listing, making, copying, moving and removing files and folders, which Lua's own libraries cannot.
 - **settings:** the settings window, built on ui.
+- **panels:** the list of the tool's panel types, by plugin, which opens the one the user chooses, built on ui.
 - **launcher:** picks a preset or session when OpenECS starts without one, built on ui.
 
 Apart from sdl, they are plugins like any other. They use only the plugin API, the core neither knows nor favours them, and a user can replace any of them with a plugin of the same name.
@@ -221,7 +222,7 @@ A preset or a user can lock parts of the layout, for example a toolbar or a 3D v
 
 ### 6.8 Menus
 
-A panel's menu, opened from its tab or grip, has the core's entries (close, maximize, pop out, split, move to workspace) plus entries that the panel's type adds for its own panels. A group's menu, opened from the rest of its tab row, lists its tabs and acts on the whole group. Menus offer only what can be done now, and group entries of one kind into submenus. Inside its own area, a panel shows its own menus with popups.
+A panel's menu, opened from its tab or grip, has the core's entries (close, maximize, pop out, move to workspace) plus entries that the panel's type adds for its own panels. A group's menu, opened from the rest of its tab row, lists its tabs and acts on the whole group. Menus offer only what can be done now, and group entries of one kind into submenus. Inside its own area, a panel shows its own menus with popups.
 
 ## 7. Keys and focus
 
