@@ -6,7 +6,7 @@ What is not decided yet, and work that is waiting, for OpenECS and the repositor
 
 - **Implement the rest of DESIGN.md.** Not done yet: GPU surfaces, and values that hold buffers and handles (DESIGN 10.3); values hold nil, booleans, numbers, strings and tables now.
 - **Releases for other platforms.** Shuild builds on Linux only. The release workflow has entries for Linux on aarch64, Windows and macOS, commented out until the build supports them (DESIGN 19.4). README.md's list of packages is for Linux only; Windows needs its own: the compiler (LLVM or MinGW), cmake and ninja from winget, and what libffi's build needs in place of autoreconf.
-- **Portable builds of std and examples.** Their `shuild.c` lists folders with `dirent.h`, which Windows does not have. Shuild has no function that lists a folder; one in shuild would let the builds use shuild and the standard library only.
+- **Portable builds of std and examples.** Their `shuild.c` lists folders with `dirent.h`, which Windows does not have. Shuild has no function that lists a folder; one in shuild would let the builds use shuild and the standard library only. Left for later.
 - **Rendering prototype.** Every OS window draws with a 2D renderer on one shared GPU device. Still to confirm: a panel's GPU texture shown in any window, and an offscreen renderer drawing into that texture (DESIGN 5.3, 5.4).
 - **Wayland test on Hyprland.** Dragging a panel out of its window and into another one, popups, moving focus between OS windows, and the title bar's moving and resizing (DESIGN 6.10, 6.11, 7.1, 7.2, 18). The tests run on SDL's offscreen driver, where windows have places on the screen.
 - **Pauses of a few seconds.** Reported on Hyprland and on openSUSE Tumbleweed. Vsync is off on Wayland now (DESIGN 3.1), which should end them; to confirm there.
@@ -22,14 +22,14 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 - **image.** GIF animation, and writing images to files.
 - **mixer.** Streaming long sounds instead of keeping them whole, and effects such as panning.
 - **net.** TLS for secure connections.
-- **web.** Giving each answer to a callback, instead of being asked for it, which needs a C plugin to keep a Lua function (DESIGN 10.4). HTTP/2, compressed answers and WebSockets, which need more libraries or more of libcurl.
+- **web.** HTTP/2, compressed answers and WebSockets, which need more libraries or more of libcurl.
 - **gltf.** Images inside a `.glb` file, skins and animations.
 - **textgrid.** Bold and underlined cells, and wide characters that take two cells.
 - **fs.** Watching a folder for changes.
 
 ## Questions
 
-- **Desktop entries.** A preset gives the tool's identity (DESIGN 13.2). It could also describe the tool's entry in the system's application launcher: its categories, and the file types its `open` function takes, so installing a tool adds it to the launcher and to "Open with". To decide: whether presets describe it, and whether OpenECS or an installer writes the `.desktop` file.
+- **Desktop entries.** A preset gives the tool's identity (DESIGN 13.2). It could also describe the tool's entry in the system's application launcher: its categories, and the file types its `open` function takes, so installing a tool adds it to the launcher and to "Open with". To decide: whether presets describe it, and whether OpenECS or an installer writes the `.desktop` file. The owner decides it later.
 
 ## Reaching users
 
