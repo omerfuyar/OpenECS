@@ -20,7 +20,7 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 - **ui elements.** Trees, tables, tabs, tooltips, a number field, and selecting text in a field.
 - **draw.** Images rotated or with a colour multiplied in.
 - **image.** GIF animation, and writing images to files.
-- **mixer.** Streaming long sounds instead of keeping them whole, and effects such as panning.
+- **mixer.** Effects such as reverb. **audio.** Reading long files as streams of mixer (DESIGN 3), instead of whole; audio would keep the stream's sound alive while it feeds it, which needs a function of mixer to keep and release a sound.
 - **net.** TLS servers, beside its TLS clients.
 - **web.** HTTP/2, compressed answers and WebSockets, which need more libraries or more of libcurl.
 - **gltf.** Images inside a `.glb` file, skins and animations.
