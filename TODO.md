@@ -18,8 +18,7 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 - **ui for plugins in C.** ui's callbacks are Lua functions. A C plugin cannot give one, and ui cannot call a C plugin's functions by name, because a plugin uses only the functions of the plugins it depends on (DESIGN 10.5).
 - **ui elements.** Trees, tables, tabs, tooltips, a number field, and selecting text in a field.
-- **image.** GIF animation.
-- **mixer.** Effects such as reverb. **audio.** Reading long files as streams of mixer (DESIGN 3), instead of whole; audio would keep the stream's sound alive while it feeds it, which needs a function of mixer to keep and release a sound.
+- **mixer.** Effects such as reverb.
 - **net.** TLS servers, beside its TLS clients.
 - **web.** HTTP/2, compressed answers and WebSockets, which need more libraries or more of libcurl.
 - **gltf.** Images inside a `.glb` file, skins and animations.
