@@ -4,7 +4,7 @@ What is not decided yet, and work that is waiting, for OpenECS and the repositor
 
 ## Tasks
 
-- **Implement the rest of DESIGN.md.** Not done yet: GPU surfaces, and values that hold buffers and handles (DESIGN 10.3); values hold nil, booleans, numbers, strings and tables now.
+- **Implement the rest of DESIGN.md.** Not done yet: GPU surfaces.
 - **Releases for other platforms.** Shuild builds on Linux only. The release workflow has entries for Linux on aarch64, Windows and macOS, commented out until the build supports them (DESIGN 19.4). README.md's list of packages is for Linux only; Windows needs its own: the compiler (LLVM or MinGW), cmake and ninja from winget, and what libffi's build needs in place of autoreconf.
 - **Portable builds of std and examples.** Their `shuild.c` lists folders with `dirent.h`, which Windows does not have. Shuild has no function that lists a folder; one in shuild would let the builds use shuild and the standard library only. Left for later.
 - **Rendering prototype.** Every OS window draws with a 2D renderer on one shared GPU device. Still to confirm: a panel's GPU texture shown in any window, and an offscreen renderer drawing into that texture (DESIGN 5.3, 5.4).

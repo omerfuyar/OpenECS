@@ -75,6 +75,8 @@ typedef enum ECSValueType
     ECSValueType_Number,
     ECSValueType_String,
     ECSValueType_Table,
+    ECSValueType_Buffer, // bytes that may hold zeros; Lua gives a string with a zero byte as a buffer
+    ECSValueType_Handle, // an object of a handle type, which the value does not own
 } ECSValueType;
 
 /// @brief Type of picture a panel draws into.
@@ -517,6 +519,18 @@ OPENECS_EXPORT f64 ECSValue_GetNumber(const ECSValue *value, f64 fallback);
 /// @return The string. Valid as long as the value does not change.
 OPENECS_EXPORT const char *ECSValue_GetString(const ECSValue *value, const char *fallback);
 
+/// @brief Reads a buffer. A string counts as a buffer of its bytes, without the zero at its end.
+/// @param value The value, or nullptr.
+/// @param fallback Returned if the value is neither a buffer nor a string.
+/// @return The bytes, which the caller must not change. Valid as long as the value does not change.
+OPENECS_EXPORT SHUSlice ECSValue_GetBuffer(const ECSValue *value, SHUSlice fallback);
+
+/// @brief Reads a handle of a type.
+/// @param value The value, or nullptr.
+/// @param type Full name of the handle type, such as "web.request".
+/// @return The object, or nullptr if the value is not a handle of that type.
+OPENECS_EXPORT void *ECSValue_GetHandle(const ECSValue *value, const char *type);
+
 /// @brief Counts the list items of a table.
 /// @param table The table, or nullptr.
 /// @return Number of items; 0 if the value is not a table.
@@ -558,6 +572,19 @@ OPENECS_EXPORT void ECSValue_SetNumber(ECSValue *value, f64 number);
 /// @param string The string.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation; the value is unchanged then.
 OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetString(ECSValue *value, const char *string);
+
+/// @brief Makes a value a buffer. The core copies the bytes.
+/// @param value The value.
+/// @param buffer The bytes.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation; the value is unchanged then.
+OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetBuffer(ECSValue *value, SHUSliceView buffer);
+
+/// @brief Makes a value a handle: an object of a registered handle type, such as a panel. In Lua it is the object's handle. The value does not own the object, which must live as long as the value is used.
+/// @param value The value.
+/// @param type Full name of the handle type, such as "ecs.panel". The core copies it.
+/// @param object The object.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation; the value is unchanged then.
+OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetHandle(ECSValue *value, const char *type, void *object);
 
 /// @brief Makes a value an empty table.
 /// @param value The value.

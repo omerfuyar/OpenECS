@@ -1227,6 +1227,8 @@ static SHUResult ECSIServices_Create(ECSPlugin plugin, const char *name, const c
 
 #pragma endregion Source Only
 
+static bool ECSIServices_ReadHandle(int index, const char **retType, void **retObject);
+
 SHUResult ECSIServices_Initialize(void)
 {
     lua_State *state = ECSILua_GetState();
@@ -1238,11 +1240,40 @@ SHUResult ECSIServices_Initialize(void)
     lua_setfield(state, -2, "__mode");
     lua_setmetatable(state, -2);
     SERVICES.handles = luaL_ref(state, LUA_REGISTRYINDEX);
+    ECSILua_SetHandleFunctions(ECSIServices_ReadHandle, ECSIServices_PushHandle);
 
     // the core's handle types: panels, popups, and the surface a panel or popup draws into, valid during Draw
     SHU_ReturnResult(ECSIServices_RegisterHandleType(nullptr, "ecs.panel", nullptr));
     SHU_ReturnResult(ECSIServices_RegisterHandleType(nullptr, "ecs.popup", nullptr));
     return ECSIServices_RegisterHandleType(nullptr, "ecs.surface", nullptr);
+}
+
+/// @brief Reads a Lua handle for a value: its type's name and its object.
+static bool ECSIServices_ReadHandle(int index, const char **retType, void **retObject)
+{
+    lua_State *state = ECSILua_GetState();
+
+    // every handle's metatable is named after its type, with a prefix of its own
+    if (!lua_getmetatable(state, index))
+    {
+        return false;
+    }
+
+    lua_getfield(state, -1, "__name");
+    const char *name = lua_tostring(state, -1);
+    bool handle = name != nullptr && SDL_strncmp(name, OPENECS_HANDLE_METATABLE, SDL_strlen(OPENECS_HANDLE_METATABLE)) == 0;
+    lua_pop(state, 2);
+
+    ECSIHandle *found = handle ? lua_touserdata(state, index) : nullptr;
+
+    if (found == nullptr || found->object == nullptr)
+    {
+        return false;
+    }
+
+    *retType = found->type->name;
+    *retObject = found->object;
+    return true;
 }
 
 void ECSIServices_PushHandle(const char *type, void *object)
@@ -1368,6 +1399,7 @@ void ECSIServices_Terminate(void)
     }
 
     hmfree(SERVICES.kept);
+    ECSILua_SetHandleFunctions(nullptr, nullptr);
     SDL_zero(SERVICES);
 }
 

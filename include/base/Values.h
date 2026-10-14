@@ -54,6 +54,11 @@ void ECSIValue_TableForEachField(const ECSValue *table, ECSIValueFieldFunction f
 /// @return true if the value is a table that follows the rules.
 bool ECSIValue_CheckFields(const ECSValue *table, const ECSIFieldRule *rules, usz count, char **retProblem);
 
+/// @brief Gets the name of a handle's type.
+/// @param value The value, or nullptr.
+/// @return The type's full name, or nullptr if the value is not a handle. Valid as long as the value does not change.
+const char *ECSIValue_GetHandleType(const ECSValue *value);
+
 /// @brief Checks a version text: one to three numbers separated by dots, such as "1.2.0" or "0.1".
 /// @param text The text, or nullptr.
 /// @return true if it is a version.
