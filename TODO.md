@@ -18,7 +18,7 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 - **ui for plugins in C.** ui's callbacks are Lua functions. A C plugin cannot give one, and ui cannot call a C plugin's functions by name, because a plugin uses only the functions of the plugins it depends on (DESIGN 10.5).
 - **ui elements.** Trees, tables, tabs, tooltips, a number field, and selecting text in a field.
-- **draw.** Antialiased edges, rounded rectangles, and images rotated or with a colour multiplied in.
+- **draw.** Images rotated or with a colour multiplied in.
 - **image.** GIF animation, and writing images to files.
 - **mixer.** Streaming long sounds instead of keeping them whole, and effects such as panning.
 - **net.** TLS for secure connections.
