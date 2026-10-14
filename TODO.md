@@ -21,7 +21,7 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 - **draw.** Images rotated or with a colour multiplied in.
 - **image.** GIF animation, and writing images to files.
 - **mixer.** Streaming long sounds instead of keeping them whole, and effects such as panning.
-- **net.** TLS for secure connections.
+- **net.** TLS servers, beside its TLS clients.
 - **web.** HTTP/2, compressed answers and WebSockets, which need more libraries or more of libcurl.
 - **gltf.** Images inside a `.glb` file, skins and animations.
 - **textgrid.** Bold and underlined cells, and wide characters that take two cells.
