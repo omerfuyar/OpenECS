@@ -17,6 +17,20 @@ struct ECSIValue
         f64 number;
         char *string;
 
+        // buffer
+        struct
+        {
+            u8 *bytes;
+            usz size;
+        };
+
+        // handle
+        struct
+        {
+            char *handleType;
+            void *object;
+        };
+
         // table
         struct
         {
@@ -36,6 +50,14 @@ static void ECSIValue_Clear(ECSValue *value)
     if (value->type == ECSValueType_String)
     {
         SDL_free(value->string);
+    }
+    else if (value->type == ECSValueType_Buffer)
+    {
+        SDL_free(value->bytes);
+    }
+    else if (value->type == ECSValueType_Handle)
+    {
+        SDL_free(value->handleType);
     }
     else if (value->type == ECSValueType_Table)
     {
@@ -108,6 +130,10 @@ SHUResult ECSIValue_Copy(ECSValue *value, const ECSValue *source)
         return SHUResult_Ok;
     case ECSValueType_String:
         return ECSValue_SetString(value, source->string);
+    case ECSValueType_Buffer:
+        return ECSValue_SetBuffer(value, (SHUSliceView){.data = source->bytes, .size = source->size});
+    case ECSValueType_Handle:
+        return ECSValue_SetHandle(value, source->handleType, source->object);
     case ECSValueType_Table:
         break;
     }
@@ -152,6 +178,10 @@ bool ECSIValue_Equal(const ECSValue *first, const ECSValue *second)
         return first->number == second->number;
     case ECSValueType_String:
         return SDL_strcmp(first->string, second->string) == 0;
+    case ECSValueType_Buffer:
+        return first->size == second->size && (first->size == 0 || SDL_memcmp(first->bytes, second->bytes, first->size) == 0);
+    case ECSValueType_Handle:
+        return first->object == second->object && SDL_strcmp(first->handleType, second->handleType) == 0;
     case ECSValueType_Table:
         break;
     }
@@ -340,6 +370,31 @@ const char *ECSValue_GetString(const ECSValue *value, const char *fallback)
     return ECSValue_GetType(value) == ECSValueType_String ? value->string : fallback;
 }
 
+SHUSlice ECSValue_GetBuffer(const ECSValue *value, SHUSlice fallback)
+{
+    switch (ECSValue_GetType(value))
+    {
+    case ECSValueType_Buffer:
+        return (SHUSlice){.data = value->bytes, .size = value->size};
+    case ECSValueType_String:
+        return (SHUSlice){.data = value->string, .size = SDL_strlen(value->string)};
+    default:
+        return fallback;
+    }
+}
+
+const char *ECSIValue_GetHandleType(const ECSValue *value)
+{
+    return ECSValue_GetType(value) == ECSValueType_Handle ? value->handleType : nullptr;
+}
+
+void *ECSValue_GetHandle(const ECSValue *value, const char *type)
+{
+    SDL_assert(type != nullptr);
+
+    return ECSValue_GetType(value) == ECSValueType_Handle && SDL_strcmp(value->handleType, type) == 0 ? value->object : nullptr;
+}
+
 usz ECSValue_GetListCount(const ECSValue *table)
 {
     return ECSValue_GetType(table) == ECSValueType_Table ? arrlenu(table->items) : 0;
@@ -413,6 +468,51 @@ SHUResult ECSValue_SetString(ECSValue *value, const char *string)
     ECSIValue_Clear(value);
     value->type = ECSValueType_String;
     value->string = copy;
+    return SHUResult_Ok;
+}
+
+SHUResult ECSValue_SetBuffer(ECSValue *value, SHUSliceView buffer)
+{
+    SDL_assert(value != nullptr);
+    SDL_assert(buffer.data != nullptr || buffer.size == 0);
+
+    // a copy of one byte at least, so an empty buffer has bytes to point to
+    u8 *bytes = SDL_malloc(SDL_max(buffer.size, 1));
+
+    if (bytes == nullptr)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    if (buffer.size > 0)
+    {
+        SDL_memcpy(bytes, buffer.data, buffer.size);
+    }
+
+    ECSIValue_Clear(value);
+    value->type = ECSValueType_Buffer;
+    value->bytes = bytes;
+    value->size = buffer.size;
+    return SHUResult_Ok;
+}
+
+SHUResult ECSValue_SetHandle(ECSValue *value, const char *type, void *object)
+{
+    SDL_assert(value != nullptr);
+    SDL_assert(type != nullptr);
+    SDL_assert(object != nullptr);
+
+    char *copy = SDL_strdup(type);
+
+    if (copy == nullptr)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    ECSIValue_Clear(value);
+    value->type = ECSValueType_Handle;
+    value->handleType = copy;
+    value->object = object;
     return SHUResult_Ok;
 }
 

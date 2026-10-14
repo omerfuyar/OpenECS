@@ -20,7 +20,18 @@ void ECSILua_Terminate(void);
 /// @return The state.
 lua_State *ECSILua_GetState(void);
 
-/// @brief Copies the Lua value at an index of the stack into a value, by the rules of ECSILua_ReadData.
+/// @brief Reads the handle at an index of the stack, for values: the name of its type and its object. Gives false for a value that is not a handle, or whose object is gone.
+typedef bool (*ECSILuaReadHandleFunction)(int index, const char **retType, void **retObject);
+
+/// @brief Pushes the handle of an object of a type, for values.
+typedef void (*ECSILuaPushHandleFunction)(const char *type, void *object);
+
+/// @brief Sets the functions that turn handles into values and back. The Services module, which owns handles, sets them; without them, handles are skipped.
+/// @param Read Reads a handle.
+/// @param Push Pushes a handle.
+void ECSILua_SetHandleFunctions(ECSILuaReadHandleFunction Read, ECSILuaPushHandleFunction Push);
+
+/// @brief Copies the Lua value at an index of the stack into a value, by the rules of ECSILua_ReadData. A string with a zero byte becomes a buffer, and a handle stays a handle.
 /// @param index Index of the Lua value.
 /// @param value The value to set.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if tables are nested too deeply, or SHUResult_ErrAllocation.

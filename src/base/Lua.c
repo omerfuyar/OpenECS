@@ -13,6 +13,8 @@ static struct
 {
     lua_State *state;
     int writer; // registry reference of the writer function
+    ECSILuaReadHandleFunction ReadHandle; // set by the Services module
+    ECSILuaPushHandleFunction PushHandle;
 } LUA = {0};
 
 /// @brief The writer of data files. It takes a value as ECSILua_PushOrderedValue pushes it, and returns Lua source that returns the value.
@@ -115,7 +117,26 @@ static SHUResult ECSILua_ToValue(int index, ECSValue *value, u32 depth)
 
         return SHUResult_Ok;
     case LUA_TSTRING:
-        return ECSValue_SetString(value, lua_tostring(state, index));
+    {
+        // a string with a zero byte is bytes, which a C string cannot hold
+        usz length = 0;
+        const char *text = lua_tolstring(state, index, &length);
+        return SDL_strlen(text) == length ? ECSValue_SetString(value, text) : ECSValue_SetBuffer(value, (SHUSliceView){.data = text, .size = length});
+    }
+    case LUA_TUSERDATA:
+    {
+        const char *type = nullptr;
+        void *object = nullptr;
+
+        if (LUA.ReadHandle != nullptr && LUA.ReadHandle(index, &type, &object))
+        {
+            return ECSValue_SetHandle(value, type, object);
+        }
+
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A userdata that is not a handle, or whose object is gone, is not data; it is skipped.");
+        ECSValue_SetNil(value);
+        return SHUResult_Ok;
+    }
     case LUA_TTABLE:
         break;
     default:
@@ -208,6 +229,17 @@ static void ECSILua_PushOrderedValue(const ECSValue *value)
         return;
     case ECSValueType_String:
         lua_pushstring(state, ECSValue_GetString(value, ""));
+        return;
+    case ECSValueType_Buffer:
+    {
+        SHUSlice bytes = ECSValue_GetBuffer(value, (SHUSlice){0});
+        lua_pushlstring(state, bytes.data, bytes.size);
+        return;
+    }
+    case ECSValueType_Handle:
+        // a file holds only data, so a handle is left out
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A handle is not data that a file can hold; it is left out.");
+        lua_pushnil(state);
         return;
     case ECSValueType_Table:
         break;
@@ -358,6 +390,12 @@ lua_State *ECSILua_GetState(void)
     return LUA.state;
 }
 
+void ECSILua_SetHandleFunctions(ECSILuaReadHandleFunction Read, ECSILuaPushHandleFunction Push)
+{
+    LUA.ReadHandle = Read;
+    LUA.PushHandle = Push;
+}
+
 SHUResult ECSILua_GetValue(int index, ECSValue *value)
 {
     SDL_assert(LUA.state != nullptr);
@@ -395,6 +433,22 @@ void ECSILua_PushValue(const ECSValue *value)
             return;
         case ECSValueType_String:
             lua_pushstring(state, ECSValue_GetString(value, ""));
+            return;
+        case ECSValueType_Buffer:
+        {
+            SHUSlice bytes = ECSValue_GetBuffer(value, (SHUSlice){0});
+            lua_pushlstring(state, bytes.data, bytes.size);
+            return;
+        }
+        case ECSValueType_Handle:
+            if (LUA.PushHandle != nullptr)
+            {
+                const char *type = ECSIValue_GetHandleType(value);
+                LUA.PushHandle(type, ECSValue_GetHandle(value, type));
+                return;
+            }
+
+            lua_pushnil(state);
             return;
         default:
             lua_pushnil(state);
