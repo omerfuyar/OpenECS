@@ -25,7 +25,7 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 - **web.** HTTP/2, compressed answers and WebSockets, which need more libraries or more of libcurl.
 - **gltf.** Images inside a `.glb` file, skins and animations.
 - **textgrid.** Bold and underlined cells, and wide characters that take two cells.
-- **fs.** Watching a folder for changes.
+- **fs.** Watching folders on Windows and macOS; it uses inotify, so it works on Linux only.
 
 ## Questions
 
