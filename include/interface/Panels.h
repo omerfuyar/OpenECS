@@ -56,6 +56,13 @@ struct ECSIPanel
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIPanel_TypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc, void *typeData);
 
+/// @brief Asks the user with a message dialog and waits for a button, as ECSIInput_Ask does.
+/// @return The index of the pressed button, or -1 if no dialog can be shown.
+typedef i32 (*ECSIAskFunction)(const char *title, const char *message, const char *const *buttons, usz count);
+
+/// @brief Sets the function that asks about unsaved work. Panels is above Input, so Input gives it as it starts; until then nothing can be asked.
+void ECSIPanels_SetAsk(ECSIAskFunction Ask);
+
 /// @brief Asks the user about the unsaved work of panels that are about to close: Save, Discard or Cancel. One dialog lists them all.
 /// @param panels The panels that close. Those without unsaved work are skipped.
 /// @param count Number of panels.

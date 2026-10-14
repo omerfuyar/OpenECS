@@ -267,7 +267,7 @@ typedef struct ECSPanelTypeDesc
 ### 4.5 Unsaved work
 
 - A panel sets its flag with `ECSPanel_SetUnsaved`, and a Lua panel with `panel.unsaved = true`. Its tab shows a mark. Save calls the type's `Save`; if that fails, the close is cancelled.
-- The question is a message dialog (`SDL_ShowMessageBox`) with Save, Discard and Cancel. When several panels have unsaved work, one dialog lists them all.
+- The question is a message dialog (7.7) with Save, Discard and Cancel. When several panels have unsaved work, one dialog lists them all.
 - When the dialog cannot be shown, quitting discards the work, so quitting always finishes. Closing panels is cancelled and keeps the work.
 
 ### 4.6 Popups, pointer and text input
@@ -509,7 +509,10 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 7.7 Dialogs
 
 - `ECSDialog_Show(plugin, &desc)` shows an open file, save file or open folder dialog, with filters such as `{ "Images", "png;jpg" }`. It does not wait: the description's `Done` function gets the paths on the main thread, or `NULL` when the user cancels or the dialog fails. Lua: `ecs.dialog.show(desc, function(files) end)`.
-- `ECSDialog_ShowMessage(title, message, buttons, count, &button)` waits for the user. Enter presses the first button and Escape the last. Lua: `ecs.dialog.message(title, text, buttons)`.
+- `ECSDialog_ShowMessage(title, message, buttons, count, &button)` waits for the user. Lua: `ecs.dialog.message(title, text, buttons)`.
+- The core draws a message dialog itself, over the OS window of the event that asks, or over the main window: a shade over the window, and a box in its middle with the title, the message and the buttons. It needs no other program. SDL's system message boxes need zenity on Wayland, and a compositor may never show its window, so OpenECS would wait for an answer that cannot come.
+- Return and Space press the chosen button, at first the first; Left, Right and Tab choose another, and Escape presses the last. A click is a press and a release of the left button on the same button. Closing the window, or the system's request to quit, presses the last button too.
+- While a dialog waits, no plugin code runs, as with a system dialog: no timers, no events and no drawing of panels. The panels show the pixels of their last frame. The OS windows' events, such as resizes, reach the main loop after the answer, and other input is the dialog's. One dialog shows at a time; a second one cannot be shown.
 
 ### 7.8 Binding keys
 
@@ -1125,10 +1128,12 @@ OpenECS follows the XDG Base Directory specification:
   | `panel(id)`                                                          | The panel with that id: its `title`, `type`, `unsaved` mark, and `fault`, the error that stopped it or a missing type.                                                                                                                             |
   | `setting(name)`                                                      | A setting's value in effect (12), such as a colour of the theme.                                                                                                                                                                                   |
   | `screenshot(path)`                                                   | Draws a frame and saves the chosen OS window's picture as a PNG file.                                                                                                                                                                              |
+  | `dialog()`                                                           | The message dialog that waits for an answer (7.7), or nil: its `title`, `message` and `buttons`, the number of the `selected` button, and `rects`, each button's rectangle in its OS window. A test answers it with `key` or `click`.            |
   | `match(actual, expected, message)`                                   | Checks that `actual` has the same number of list items as `expected`, and each item and field it names.                                                                                                                                            |
 
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
 - A Lua error fails the test and logs it with its stack trace. When `run` returns, the program quits without asking about unsaved work.
+- While a message dialog waits (7.7), the test goes on, so it can read and answer the dialog. A dialog that the test's own step opens, as `call` can, cannot wait for the test, so it is answered with its last button, and so is one that waits when the test ends.
 - The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
 - `.github/scripts/test.sh` runs every test in `bin/examples/` with a Debug build.
 

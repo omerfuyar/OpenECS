@@ -52,6 +52,9 @@ static struct
     ECSPanel textPanel;
     SDL_Window *textWindow; // the OS window text input is on in
     SDL_Rect textArea;      // where the input method shows its window, in the OS window
+    const ECSIDialogView *dialog; // the message dialog that waits for an answer, or nullptr
+    ECSIDialogStepFunction TestStep; // a running test's step while a dialog waits, or nullptr
+    ECSIDialogWaitFunction TestWait;
 } INPUT = {0};
 
 /// @brief A file dialog waiting for its answer, with copies of everything SDL reads until it answers.
@@ -733,11 +736,14 @@ SHUResult ECSIInput_Initialize(void)
         .choices = OPENECS_FOCUS_CHOICES,
     };
 
+    // the questions about unsaved work are dialogs of Input, which Panels cannot call itself
+    ECSIPanels_SetAsk(ECSIInput_Ask);
     return ECSISettings_DeclareCore(&focus);
 }
 
 void ECSIInput_Terminate(void)
 {
+    ECSIPanels_SetAsk(nullptr);
     ECSIInput_ForgetClipboard();
     arrfree(INPUT.prefixLines);
 
@@ -1290,46 +1296,161 @@ SHUResult ECSIInput_ShowDialog(ECSPlugin plugin, const ECSDialogDesc *desc)
     return SHUResult_Ok;
 }
 
+/// @brief Handles a key press in a message dialog: Left, Right and Tab choose a button, Return and Space press the chosen one, and Escape presses the last.
+/// @return The pressed button, or -1 while the dialog waits.
+static i32 ECSIInput_DialogKey(ECSIDialogView *dialog, const SDL_KeyboardEvent *key)
+{
+    bool back = key->key == SDLK_LEFT || (key->key == SDLK_TAB && (key->mod & SDL_KMOD_SHIFT) != 0);
+    bool forward = key->key == SDLK_RIGHT || (key->key == SDLK_TAB && !back);
+
+    if (key->key == SDLK_RETURN || key->key == SDLK_KP_ENTER || key->key == SDLK_SPACE)
+    {
+        return (i32)dialog->selected;
+    }
+
+    if (key->key == SDLK_ESCAPE)
+    {
+        return (i32)dialog->count - 1;
+    }
+
+    if (back || forward)
+    {
+        dialog->selected = (dialog->selected + (back ? dialog->count - 1 : 1)) % dialog->count;
+    }
+
+    return -1;
+}
+
+/// @brief Handles an event while a message dialog waits.
+/// @param window The SDL id of the dialog's OS window.
+/// @param pressed The button the left button was pressed on, or -1; a click is a press and a release on the same button.
+/// @param kept stb_ds array of the OS windows' events, such as resizes, which the main loop gets after the answer; the rest of the input is for the dialog only, so it is dropped.
+/// @return The pressed button, or -1 while the dialog waits.
+static i32 ECSIInput_DialogEvent(ECSIDialogView *dialog, const SDL_Event *event, SDL_WindowID window, i32 *pressed, SDL_Event **kept)
+{
+    i32 last = (i32)dialog->count - 1;
+
+    switch (event->type)
+    {
+    case SDL_EVENT_KEY_DOWN:
+        return ECSIInput_DialogKey(dialog, &event->key);
+
+    case SDL_EVENT_MOUSE_MOTION:
+        dialog->hover = event->motion.windowID == window ? ECSIWindow_DialogButtonAt(event->motion.x, event->motion.y) : -1;
+        return -1;
+
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        *pressed = event->button.windowID == window && event->button.button == SDL_BUTTON_LEFT ? ECSIWindow_DialogButtonAt(event->button.x, event->button.y) : -1;
+        return -1;
+
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+    {
+        bool click = event->button.windowID == window && event->button.button == SDL_BUTTON_LEFT && *pressed >= 0 && ECSIWindow_DialogButtonAt(event->button.x, event->button.y) == *pressed;
+        i32 button = click ? *pressed : -1;
+        *pressed = -1;
+        return button;
+    }
+
+    // the system's request to quit, and closing the dialog's OS window, answer as Escape does
+    case SDL_EVENT_QUIT:
+        return last;
+
+    case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+        return event->window.windowID == window ? last : -1;
+
+    default:
+        if (event->type >= SDL_EVENT_WINDOW_FIRST && event->type <= SDL_EVENT_WINDOW_LAST)
+        {
+            arrput(*kept, *event);
+        }
+
+        return -1;
+    }
+}
+
+void ECSIInput_SetDialogTest(ECSIDialogStepFunction Step, ECSIDialogWaitFunction Wait)
+{
+    INPUT.TestStep = Step;
+    INPUT.TestWait = Wait;
+}
+
+const ECSIDialogView *ECSIInput_GetDialog(void)
+{
+    return INPUT.dialog;
+}
+
+i32 ECSIInput_Ask(const char *title, const char *message, const char *const *buttons, usz count)
+{
+    SDL_assert(title != nullptr && message != nullptr && buttons != nullptr);
+
+    // one dialog shows at a time
+    if (count == 0 || INPUT.dialog != nullptr)
+    {
+        return -1;
+    }
+
+    ECSIDialogView dialog = {.title = title, .message = message, .buttons = buttons, .count = count, .hover = -1};
+    SDL_WindowID window = ECSIWindow_ShowDialog(&dialog);
+
+    if (window == 0)
+    {
+        return -1;
+    }
+
+    // the core draws the dialog and waits here, as a system dialog would, but needs no other program: on Wayland, SDL's system dialogs need zenity, whose window a compositor may never show
+    INPUT.dialog = &dialog;
+    SDL_Event *kept = nullptr; // stb_ds array of the OS windows' events, which the main loop gets after the answer
+    i32 answer = -1;
+    i32 pressed = -1;
+
+    while (answer < 0)
+    {
+        ECSIWindow_RenderDialog();
+
+        // a running test goes on, so it can read the dialog with test.dialog and answer it with keys or clicks
+        if (INPUT.TestStep != nullptr && !INPUT.TestStep())
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The test cannot answer the dialog '%s', so it is answered with '%s'.", title, buttons[count - 1]);
+            answer = (i32)count - 1;
+            break;
+        }
+
+        // every waiting event is handled before the next step, as in the main loop: a wait without time stops at the end of SDL's poll cycle
+        SDL_Event event;
+
+        for (bool waiting = SDL_WaitEventTimeout(&event, INPUT.TestWait != nullptr ? INPUT.TestWait() : -1); waiting && answer < 0; waiting = SDL_PollEvent(&event))
+        {
+            answer = ECSIInput_DialogEvent(&dialog, &event, window, &pressed, &kept);
+        }
+    }
+
+    ECSIWindow_ShowDialog(nullptr);
+    INPUT.dialog = nullptr;
+
+    for (usz i = 0; i < arrlenu(kept); i++)
+    {
+        SDL_PushEvent(&kept[i]);
+    }
+
+    arrfree(kept);
+    return answer;
+}
+
 SHUResult ECSDialog_ShowMessage(const char *title, const char *message, const char *const *buttons, usz buttonCount, usz *retButton)
 {
     SDL_assert(title != nullptr && message != nullptr && retButton != nullptr);
     SDL_assert(buttons != nullptr && buttonCount > 0);
 
-    SDL_MessageBoxButtonData *data = SDL_calloc(buttonCount, sizeof(SDL_MessageBoxButtonData));
+    i32 button = ECSIInput_Ask(title, message, buttons, buttonCount);
 
-    if (data == nullptr)
+    if (button < 0)
     {
-        return SHUResult_ErrAllocation;
-    }
-
-    for (usz i = 0; i < buttonCount; i++)
-    {
-        data[i] = (SDL_MessageBoxButtonData){.buttonID = (int)i, .text = buttons[i]};
-        data[i].flags |= i == 0 ? SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT : 0;
-        data[i].flags |= i + 1 == buttonCount ? SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT : 0;
-    }
-
-    const SDL_MessageBoxData box = {
-        .flags = SDL_MESSAGEBOX_INFORMATION,
-        .window = ECSIWindow_GetMain(),
-        .title = title,
-        .message = message,
-        .numbuttons = (int)buttonCount,
-        .buttons = data,
-    };
-
-    int button = -1;
-    bool shown = SDL_ShowMessageBox(&box, &button);
-    SDL_free(data);
-
-    if (!shown)
-    {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot show a message dialog: %s", SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot show the message dialog '%s'.", title);
         return SHUResult_ErrInternal;
     }
 
-    *retButton = (usz)SDL_max(button, 0);
-    return button < 0 ? SHUResult_ErrNotFound : SHUResult_Ok;
+    *retButton = (usz)button;
+    return SHUResult_Ok;
 }
 
 #pragma endregion Dialogs

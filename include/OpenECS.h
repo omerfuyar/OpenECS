@@ -810,13 +810,13 @@ OPENECS_EXPORT SHUWUR SHUResult ECSClipboard_GetData(const char *mimeType, SHUSl
 /// @lua ecs.dialog.show
 OPENECS_EXPORT SHUWUR SHUResult ECSDialog_Show(ECSPlugin plugin, const ECSDialogDesc *desc);
 
-/// @brief Shows a message dialog and waits for the user to press a button. Main thread only.
+/// @brief Shows a message dialog, which the core draws over an OS window, and waits for the user to press a button. No plugin code runs while it waits. Main thread only.
 /// @param title Title of the dialog.
 /// @param message The message.
-/// @param buttons Texts of the buttons, from left to right. The first is the default for Enter, and the last for Escape.
+/// @param buttons Texts of the buttons, from left to right. Return presses the first unless the user chooses another, and Escape or closing the window presses the last.
 /// @param buttonCount Number of buttons, at least 1.
 /// @param retButton Position of the button the user pressed, starting at 0.
-/// @return SHUResult_Ok, SHUResult_ErrNotFound if the user closed the dialog without a button, or SHUResult_ErrInternal if it cannot be shown.
+/// @return SHUResult_Ok, or SHUResult_ErrInternal if it cannot be shown, such as while another dialog waits.
 /// @lua ecs.dialog.message
 OPENECS_EXPORT SHUWUR SHUResult ECSDialog_ShowMessage(const char *title, const char *message, const char *const *buttons, usz buttonCount, usz *retButton);
 
