@@ -1236,7 +1236,7 @@ OpenECS follows the XDG Base Directory specification:
 - A standard plugin is a first-party plugin whose services other plugins build on (OVERVIEW 3.3). It is built and loaded like a third-party plugin: from its folder in OpenECS-std (17.7), against the plugin interface only (2.2), with a manifest and a version of its own.
 - The core never refers to a standard plugin, and a user's plugin of the same name replaces it (9.3, 9.9).
 - Plugins that use a standard plugin name it in their manifest's `depends`, and look up its functions with the signatures it documents (10.5).
-- Each standard plugin has one job, and no two share one. A plugin that runs something, such as draw, which draws, or mixer, which plays sound, is an executor: it knows its primitives. A plugin that reads a file format is a loader: it turns the file into the objects of an executor, as image gives draw's images and audio gives mixer's sounds. So a format is read once, and what it gives works wherever the executor does.
+- Each standard plugin has one job, and no two share one. A plugin that runs something, such as draw, which draws, or mixer, which plays sound, is an executor: it knows its primitives. A plugin that reads a file format is a loader: it turns the file into the objects of an executor, as image gives draw's images and audio gives mixer's sounds. A loader may also write those objects back to the format, as image writes draw's images. So a format is handled in one place, and what it gives works wherever the executor does.
 - Standard plugins are generic building blocks. Views of one domain, such as a scene's hierarchy or an inspector, belong to the plugins of tools, which build them from the blocks.
 - Platform-specific code stays inside the plugins that need it, behind their functions, so porting OpenECS to another system changes those plugins and not the plugins built on them.
 - A standard plugin needs nothing but OpenECS: it links no library. Its calls to SDL and SDL_ttf are resolved against the executable's copies (17.2), and any other library it uses is compiled into it. So copying its folder into a `plugins/` folder installs it.
@@ -1291,7 +1291,7 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 
 **Input method.** Software that composes characters a keyboard cannot type directly, for languages such as Chinese or Japanese.
 
-**Loader.** A plugin that reads a file format into the objects of an executor.
+**Loader.** A plugin that reads a file format into the objects of an executor, and may write them back.
 
 **Local name.** The part of a name after the plugin's name and a dot, such as `view` in `canvas.view`.
 
