@@ -2,6 +2,7 @@
 #include "app/Bindings.h"
 #include "app/Session.h"
 #include "app/Test.h"
+#include "app/Workers.h"
 #include "base/Log.h"
 #include "base/Lua.h"
 #include "base/Sanitizers.h"
@@ -382,6 +383,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     SDL_free(sessionsFolder);
 
     ECSIBindings_Initialize();
+    ECSIWorkers_Initialize();
     ECSIPluginHooks hooks = {.StartLua = ECSIBindings_StartPlugin, .RemoveRegistrations = ECSIApp_RemoveRegistrations};
     ECSIPlugins_SetHooks(&hooks);
     ECSIApp_LoadPlugins(&APP.preset);
@@ -521,6 +523,7 @@ char *ECSIApp_Stop(const char **retOption)
 
     // plugins shut down while timers, events and the functions of other plugins still work, and their code is unloaded once no worker runs it
     ECSIPlugins_Destroy();
+    ECSIWorkers_Terminate();
     ECSIServices_Terminate();
     ECSIEvents_Terminate();
     ECSIPlugins_Unload();

@@ -138,6 +138,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Menus      | The core's bindable functions, and the panel and group menus that offer them (6.8).                                                                            |
 |           | Input      | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input, the clipboard, dialogs.                                         |
 | app       | Session    | Reading presets and sessions, applying them, writing them.                                                                                                     |
+|           | Workers    | Lua scripts on threads of their own, and the messages between them and the main thread (3.4).                                                                  |
 |           | Bindings   | The `ecs` module: the plugin interface for Lua plugins (11.3).                                                                                                 |
 |           | Test       | Runs a test in Debug builds (17.5).                                                                                                                            |
 |           | App        | Start-up, the main loop and shutdown (2.3, 3.1, 2.4).                                                                                                          |
@@ -169,7 +170,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 2. Save the session for the next start (13.4).
 3. Destroy the panels, then the objects of handles (10.6).
 4. Destroy the plugins in reverse load order: each plugin's `Destroy` function runs (9.4). Timers, events and the functions of other plugins still work then.
-5. Forget the handles that plugins made while they shut down, and free the services.
+5. Stop the Lua workers (3.4) and wait for their threads. Forget the handles that plugins made while they shut down, and free the services.
 6. Stop the worker threads and free the timers, then unload the plugins' libraries.
 7. Stop SDL and Lua.
 
@@ -206,14 +207,34 @@ The wait uses `SDL_WaitEventTimeout` with the time until the next timer or the n
 
 ### 3.3 Threads
 
-- OS windows, input, layout, event delivery, timers, every call into Lua and every callback that a plugin registers run on the main thread. SDL expects window and event calls there, and a Lua state must not be used by two threads at once.
+- OS windows, input, layout, event delivery, timers, every call into the plugins' Lua state and every callback that a plugin registers run on the main thread. SDL expects window and event calls there, and a Lua state must not be used by two threads at once.
 - Background work posts its result to the main thread, which delivers it.
-- `ECS_RunInBackground(plugin, work, done, data)`: `work` runs on a worker thread from a small pool, then `done` runs on the main thread. Lua code never runs on worker threads; Lua plugins use services that do their work in the background.
+- `ECS_RunInBackground(plugin, work, done, data)`: `work` runs on a worker thread from a small pool, then `done` runs on the main thread. A plugin's Lua code never runs on these threads. A Lua plugin uses services that work in the background, or starts a worker (3.4), which runs a script of its own.
 - The pool has one thread for each processor core but one, at most 4. It starts when background work first comes.
 - A function that reaches the main thread runs between passes of the main loop, and the loop makes a pass after it. A function that the main thread sends to itself runs after the current callback returns, with the queued events (8.2).
 - On exit, running work finishes and waiting work does not run, nor does its `done`.
 - The thread-safe functions are: running a function on the main thread (`ECS_RunOnMainThread`, built on `SDL_RunOnMainThread`), `ECS_RunInBackground`, and logging. Every other function is for the main thread only. Each function documents its thread rule.
 - Native plugins may create their own threads, under the same rule.
+
+### 3.4 Workers
+
+A worker is a Lua script that runs on a thread of its own, in a Lua state of its own. Lua plugins use workers for long work, such as counting or parsing, while the main thread stays free.
+
+- `ecs.worker.start(desc)` starts a worker and gives its handle, or nil and a message. The description holds:
+  - `file`, the script, a path in the plugin's folder;
+  - `input`, a value that the script gets as its `...`;
+  - `message`, a function that gets each value that the script sends;
+  - `done`, a function that gets the end of the script: `true` and the value it returned, or `false` and its error.
+- `worker:send(value)` sends a value to the worker. `worker:stop()` stops it. `worker.running` is whether its script still runs.
+- Inside the script, `require("ecs")` gives a small table: `ecs.log`, `ecs.plugin` (`name`, `version` and `folder`), and the worker's own functions:
+  - `ecs.worker.receive(seconds)` gives the oldest value that the plugin sent. It waits for one at most `seconds`, or without end if `seconds` is missing. It gives nil when the time runs out.
+  - `ecs.worker.send(value)` sends a value to the plugin.
+- The script has every Lua library, as plugins do (9.6). Its `require` finds modules in the plugin's folder first. It cannot call the core or other plugins, because they run on the main thread only.
+- Values go between the threads as copies: nil, booleans, numbers, texts, and tables of them. Functions, handles and other userdata are skipped, with a warning.
+- `message` and `done` run on the main thread, between passes of the loop, like a background task's `done` (3.3). An error in them is reported (14). So is an error in the script, which ends it.
+- `stop` ends the script at its next `receive`, or within a few thousand of its Lua instructions. After `stop`, its `message` and `done` are not called again. A script that waits in a C function, such as `io.read`, ends when that function returns.
+- A worker runs until its script ends or it is stopped, even when its handle is dropped. On exit, the core stops every worker and waits for it (2.4).
+- Lua only: a native plugin runs work with `ECS_RunInBackground`, or on threads of its own (3.3).
 
 ## 4. Panel types and panels
 
@@ -816,6 +837,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 | `ecs.event`                   | declare, emit and subscribe                      |
 | `ecs.handle`                  | handle types of Lua plugins (10.6)               |
 | `ecs.timer`                   | timers                                           |
+| `ecs.worker`                  | Lua scripts on threads of their own (3.4)        |
 | `ecs.service`                 | register and look up functions                   |
 | `ecs.settings`                | declare, get, set, list and explain              |
 | `ecs.session`                 | saving, opening and listing sessions and presets |
@@ -1308,7 +1330,7 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 
 **LuaLS (Lua language server).** The program behind Lua support in editors such as VS Code. It reads annotations in comments, such as `---@param`, to give completion, documentation and warnings.
 
-**Main thread.** The thread on which the program starts. OS windows, input and all Lua code run there.
+**Main thread.** The thread on which the program starts. OS windows, input and the Lua code of plugins run there.
 
 **Merge commit.** A commit that joins two branches and keeps the commits of both.
 
@@ -1367,6 +1389,8 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 **Userdata (Lua).** A block of memory managed by Lua's garbage collector that holds data from C. Handles are userdata.
 
 **Vsync.** Waiting for the display's refresh before showing a new frame, so drawing matches the screen's rate.
+
+**Worker (Lua).** A Lua script that runs on a thread of its own, in a Lua state of its own, and sends values to the plugin that started it (3.4).
 
 **Workflow (GitHub Actions).** A file in `.github/workflows/` that tells GitHub which jobs to run, and when.
 

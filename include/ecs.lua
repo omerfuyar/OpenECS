@@ -105,6 +105,44 @@ ecs.timer = {}
 ---@return ecs.Timer
 function ecs.timer.start(seconds, repeat_, fn) end
 
+-- Workers: Lua scripts on threads of their own (DESIGN 3.4)
+
+---A worker that ecs.worker.start started.
+---@class ecs.Worker
+---@field running boolean Whether its script still runs: it has not ended, and was not stopped.
+local Worker = {}
+
+---Sends a copy of a value to the worker, which its ecs.worker.receive gives. A worker that ended or was stopped gets nothing.
+---@param value any Nil, a boolean, a number, a text, or a table of them; functions and handles are skipped.
+function Worker:send(value) end
+
+---Stops the worker: its script ends at its next receive, or within a few thousand instructions. Its message and done functions are not called again.
+function Worker:stop() end
+
+---@class ecs.WorkerDesc
+---@field file string The script, a path in the plugin's folder.
+---@field input? any A value that the script gets as its `...`, copied as messages are.
+---@field message? fun(value: any) Gets each value that the script sends, on the main thread.
+---@field done? fun(ok: boolean, result: any) Gets the end of the script: true and what it returned, or false and its error.
+
+---@class ecs.worker
+ecs.worker = {}
+
+---Starts a worker: a Lua script that runs on a thread of its own, in a Lua state of its own. Lua only: a native plugin runs work with ECS_RunInBackground, or on threads of its own.
+---@param desc ecs.WorkerDesc
+---@return ecs.Worker? worker
+---@return string? message Why it did not start.
+function ecs.worker.start(desc) end
+
+---In a worker's script only: gives the oldest value that the plugin sent, waiting for one at most seconds, or without end. Gives nil when the time runs out.
+---@param seconds? number
+---@return any
+function ecs.worker.receive(seconds) end
+
+---In a worker's script only: sends a copy of a value to the plugin, whose message function gets it.
+---@param value any Nil, a boolean, a number, a text, or a table of them; functions and handles are skipped.
+function ecs.worker.send(value) end
+
 -- Panels
 
 ---A panel: a handle of type ecs.panel. Its data are fields, and what it does are methods.
