@@ -95,7 +95,7 @@ typedef struct ECSSurface
     f32 scale;       // physical pixels per layout unit
     SHUSlice pixels; // pixels type: ARGB8888 in native byte order, premultiplied alpha
     i32 pitch;       // pixels type: bytes per row
-    void *texture;   // GPU type: the SDL_GPUTexture to draw into, B8G8R8A8_UNORM, on the device that sdl.device gives
+    void *texture;   // GPU type: the SDL_GPUTexture to draw into, B8G8R8A8_UNORM, on the device that ECSGpu_GetDevice gives
 } ECSSurface;
 
 /// @brief Where a panel goes, next to a target panel.
@@ -915,6 +915,11 @@ OPENECS_EXPORT void ECSPanel_Redraw(ECSPanel panel);
 /// @param color The colour; it replaces the pixels.
 /// @lua surface:fill
 OPENECS_EXPORT void ECSSurface_Fill(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height, ECSColor color);
+
+/// @brief Gets the GPU device that OpenECS draws with: every OS window's renderer and every GPU surface's texture are on it. A plugin draws into a GPU surface with it, through SDL's GPU API or its own renderer on the device. Main thread only.
+/// @return The SDL_GPUDevice, or nullptr without a GPU renderer. OpenECS owns it, and destroys it after every plugin's Destroy, so a plugin releases what it made on it there or earlier.
+/// @lua none: the gpu standard plugin draws into GPU surfaces from Lua
+OPENECS_EXPORT void *ECSGpu_GetDevice(void);
 
 /// @brief Reads a colour as Lua and settings write it: "#RRGGBB", "#RRGGBBAA" with opacity, or the name of a colour of the theme, such as "text" for ecs.colorText. Main thread only.
 /// @param text The text.

@@ -36,14 +36,6 @@ void ECSIPlugins_SetHooks(const ECSIPluginHooks *hooks);
 /// @return SHUResult_Ok if every plugin loaded; SHUResult_ErrBadData if a manifest is not valid or plugins depend on each other in a cycle, which stops the start; or SHUResult_Err if a plugin is missing, too old or failed, which is reported and skipped.
 SHUWUR SHUResult ECSIPlugins_Load(const char *const *directories, usz directoryCount, const ECSValue *plugins, const char *neededBy);
 
-/// @brief Adds a plugin that the executable contains, such as sdl, and runs its Init. Plugins depend on it in their manifests like on any plugin. Call it before ECSIPlugins_Load; it does nothing if the plugin is there already.
-/// @param name The plugin's name.
-/// @param version Its version, which manifests ask for.
-/// @param description What it gives.
-/// @param Init Registers what it gives, as a native plugin's ECSPlugin_Init does.
-/// @return SHUResult_Ok, the error of Init, which marks the plugin failed and is reported, or SHUResult_ErrAllocation.
-SHUResult ECSIPlugins_AddBuiltin(const char *name, const char *version, const char *description, SHUResult (*Init)(ECSPlugin plugin));
-
 /// @brief Destroys every plugin, in reverse load order: the Destroy function of its description runs. Timers and events still work then.
 void ECSIPlugins_Destroy(void);
 

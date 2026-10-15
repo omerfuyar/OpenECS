@@ -538,50 +538,6 @@ SHUResult ECSIPlugins_Load(const char *const *directories, usz directoryCount, c
     return result ? SHUResult_Err : SHUResult_Ok;
 }
 
-SHUResult ECSIPlugins_AddBuiltin(const char *name, const char *version, const char *description, SHUResult (*Init)(ECSPlugin plugin))
-{
-    SDL_assert(name != nullptr);
-    SDL_assert(version != nullptr);
-    SDL_assert(description != nullptr);
-    SDL_assert(Init != nullptr);
-
-    if (ECSIPlugin_Find(name) != nullptr)
-    {
-        return SHUResult_Ok;
-    }
-
-    // a built-in plugin has no folder of its own, so it has the executable's, and no library: its code is the executable's
-    ECSIPlugin plugin = {
-        .name = SDL_strdup(name),
-        .version = SDL_strdup(version),
-        .description = SDL_strdup(description),
-        .folder = SDL_strdup(SDL_GetBasePath() != nullptr ? SDL_GetBasePath() : ""),
-    };
-    ECSIPlugin *record = SDL_malloc(sizeof(ECSIPlugin));
-
-    if (plugin.name == nullptr || plugin.version == nullptr || plugin.description == nullptr || plugin.folder == nullptr || record == nullptr)
-    {
-        SDL_free(record);
-        ECSIPlugin_Free(&plugin);
-        return SHUResult_ErrAllocation;
-    }
-
-    *record = plugin;
-    shput(PLUGINS.plugins, record->name, record);
-    SHUResult result = Init(record);
-
-    // plugins that depend on a failed built-in plugin are skipped, as for any plugin
-    if (result)
-    {
-        record->failed = true;
-        PLUGINS.hooks.RemoveRegistrations(record);
-        ECSIPlugin_Forget(record);
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Built-in plugin '%s' failed to start (%s).", name, SHUResult_String(result));
-    }
-
-    return result;
-}
-
 void ECSIPlugins_Destroy(void)
 {
     for (usz i = shlenu(PLUGINS.plugins); i > 0; i--)

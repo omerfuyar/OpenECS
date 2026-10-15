@@ -1191,6 +1191,12 @@ bool ECSIInput_Handle(const SDL_Event *event)
     {
         ECSPanel focus = ECSILayout_GetFocus();
 
+        // a key with Ctrl, Alt or Super types no text, so text after it is not its own, such as an input method's, which comes without a key press
+        if ((ECSIInput_Modifiers(event->key.mod) & (ECSModifier_Ctrl | ECSModifier_Alt | ECSModifier_Super)) != 0)
+        {
+            INPUT.swallowText = false;
+        }
+
         if (focus != nullptr && !INPUT.prefixActive)
         {
             ECSIInput_SendKey(focus, ECSPanelEventType_KeyUp, &event->key);
