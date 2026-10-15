@@ -673,6 +673,19 @@ static int ECSIServices_CallC(lua_State *state)
         return luaL_error(state, "a callback given to '%s' is valid only during the call that gave it", function->name);
     }
 
+    // a missing argument is nil; the stack holds one for each, so the storage below never stands where an argument is read
+    int inputs = 0;
+
+    for (usz i = 0; i < count; i++)
+    {
+        inputs += signature->parameters[i].out ? 0 : 1;
+    }
+
+    if (lua_gettop(state) < inputs)
+    {
+        lua_settop(state, inputs);
+    }
+
     // the storage is a userdata, so it is freed even when an argument raises an error
     ECSISlot *slots = lua_newuserdatauv(state, count * (2 * sizeof(ECSISlot) + 2 * sizeof(void *) + sizeof(int)) + 1, 0);
     ECSISlot *outputs = slots + count;
