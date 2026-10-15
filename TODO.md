@@ -17,7 +17,7 @@ What is not decided yet, and work that is waiting, for OpenECS and the repositor
 The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md) describes them.
 
 - **ui for plugins in C.** ui's callbacks are Lua functions. A C plugin cannot give one, and ui cannot call a C plugin's functions by name, because a plugin uses only the functions of the plugins it depends on (DESIGN 10.5).
-- **ui elements.** Trees, tables, and selecting text in a field.
+- **ui elements.** Trees and tables.
 - **mixer.** Effects such as reverb.
 - **web.** HTTP/2, compressed answers and WebSockets, which need more libraries or more of libcurl.
 - **gltf.** Images inside a `.glb` file, skins and animations.
