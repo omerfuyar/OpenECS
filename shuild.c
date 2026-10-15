@@ -603,7 +603,8 @@ static void Shuild_other(void)
 }
 
 /// @brief Writes a .luarc.json file that points LuaLS at OpenECS's ecs.lua and the definition files, so editors complete what Lua code uses.
-static void WriteLuaConfig(const char *folder, const char *include, const char *definitions)
+/// @param ignore Files LuaLS leaves out of the workspace, in .gitignore's grammar, or "": the plugins' types.lua, whose classes the definition files hold already.
+static void WriteLuaConfig(const char *folder, const char *include, const char *definitions, const char *ignore)
 {
     SHUI_String path;
     SHUI_SFormat(&path, "%s.luarc.json", folder);
@@ -611,7 +612,7 @@ static void WriteLuaConfig(const char *folder, const char *include, const char *
 
     if (file != NULL)
     {
-        fprintf(file, "{\n  \"workspace.library\": [\"%s\", \"%s\"]\n}\n", include, definitions);
+        fprintf(file, "{\n  \"workspace.library\": [\"%s\", \"%s\"]%s%s%s\n}\n", include, definitions, ignore[0] == '\0' ? "" : ",\n  \"workspace.ignoreDir\": [\"", ignore, ignore[0] == '\0' ? "" : "\"]");
         fclose(file);
     }
 }
@@ -634,7 +635,7 @@ static void Shuild_Definitions(void)
 
     SHUI_String up;
     SHUI_SFormat(&up, "../%s", definitions.data);
-    WriteLuaConfig("", "include", definitions.data);
-    WriteLuaConfig("std/", "../include", up.data);
-    WriteLuaConfig("examples/", "../include", up.data);
+    WriteLuaConfig("", "include", definitions.data, "std/plugins/*/types.lua");
+    WriteLuaConfig("std/", "../include", up.data, "plugins/*/types.lua");
+    WriteLuaConfig("examples/", "../include", up.data, "");
 }
