@@ -1912,11 +1912,56 @@ SHUResult ECSIServices_PushPlugin(ECSPlugin plugin, ECSPlugin provider)
     {
         ECSIFunction *function = SERVICES.functions[i].value;
 
-        if (function->plugin == provider)
+        if (function->plugin != provider)
         {
-            SHU_ReturnResult(ECSIServices_PushFunction(plugin, function->name, nullptr), lua_pop(state, 1););
-            lua_setfield(state, -2, SDL_strchr(function->name, '.') + 1);
+            continue;
         }
+
+        // a dot in the local name makes a table: "socket.close" is socket.close; the tables on the way are made when they are missing
+        int top = lua_gettop(state);
+        const char *part = SDL_strchr(function->name, '.') + 1;
+        const char *dot = nullptr;
+        bool clash = false;
+
+        while (!clash && (dot = SDL_strchr(part, '.')) != nullptr)
+        {
+            lua_pushlstring(state, part, (usz)(dot - part));
+            int type = lua_rawget(state, -2);
+
+            if (type == LUA_TNIL)
+            {
+                lua_pop(state, 1);
+                lua_newtable(state);
+                lua_pushlstring(state, part, (usz)(dot - part));
+                lua_pushvalue(state, -2);
+                lua_rawset(state, -4);
+            }
+
+            clash = type != LUA_TNIL && type != LUA_TTABLE;
+            part = dot + 1;
+        }
+
+        clash = clash || lua_getfield(state, -1, part) != LUA_TNIL;
+        lua_pop(state, 1);
+
+        // a name that is a function and the start of another is reported, and the function that came first stays
+        if (clash)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Function '%s' clashes with another function's name, so Lua does not get it.", function->name);
+            lua_settop(state, top);
+            continue;
+        }
+
+        SHUResult result = ECSIServices_PushFunction(plugin, function->name, nullptr);
+
+        if (result)
+        {
+            lua_settop(state, top - 1);
+            return result;
+        }
+
+        lua_setfield(state, -2, part);
+        lua_settop(state, top);
     }
 
     return SHUResult_Ok;
@@ -2159,6 +2204,7 @@ SHUResult ECSIServices_WriteDefinitions(ECSPlugin provider, const char *folder)
     char member[256];
     ECSIDefinitionText lua = {0};
     ECSIDefinitionText c = {0};
+    char **tables = nullptr; // stb_ds array of the tables that dotted local names make, declared already
     ECSIDefinition_Pascal(plugin, pascal, sizeof(pascal));
 
     ECSIDefinitionText_Add(&lua, "---@meta %s\n-- The functions of the plugin %s, for editors. OpenECS --definitions wrote this file.\n-- A Lua plugin whose manifest depends on %s gets them with require(\"%s\").\n\n---@class %s\nlocal %s = {}\n", plugin, plugin, plugin, plugin, plugin, pascal);
@@ -2173,6 +2219,27 @@ SHUResult ECSIServices_WriteDefinitions(ECSPlugin provider, const char *folder)
         if (function->plugin != provider)
         {
             continue;
+        }
+
+        // a dot in the local name makes a table, as require gives it: each table on the way is declared once, before the function's documentation
+        for (const char *dot = SDL_strchr(local, '.'); dot != nullptr; dot = SDL_strchr(dot + 1, '.'))
+        {
+            char *table = SDL_strndup(local, (usz)(dot - local));
+            bool declared = table == nullptr;
+
+            for (usz j = 0; !declared && j < arrlenu(tables); j++)
+            {
+                declared = SDL_strcmp(tables[j], table) == 0;
+            }
+
+            if (declared)
+            {
+                SDL_free(table);
+                continue;
+            }
+
+            ECSIDefinitionText_Add(&lua, "\n---@class %s.%s\n%s.%s = {}\n", plugin, table, pascal, table);
+            arrput(tables, table);
         }
 
         // Lua: the description, the parameters, the result and the outputs, then the function
@@ -2200,15 +2267,7 @@ SHUResult ECSIServices_WriteDefinitions(ECSPlugin provider, const char *folder)
             }
         }
 
-        // a local name with a dot is not a Lua name, so it is written as a key
-        if (SDL_strchr(local, '.') == nullptr)
-        {
-            ECSIDefinitionText_Add(&lua, "function %s.%s(", pascal, local);
-        }
-        else
-        {
-            ECSIDefinitionText_Add(&lua, "%s[\"%s\"] = function(", pascal, local);
-        }
+        ECSIDefinitionText_Add(&lua, "function %s.%s(", pascal, local);
 
         for (usz j = 0, written = 0; j < arrlenu(signature->parameters); j++)
         {
@@ -2251,6 +2310,12 @@ SHUResult ECSIServices_WriteDefinitions(ECSPlugin provider, const char *folder)
     // what the plugin gives C plugins beside its functions, such as macros, from its header.h
     ECSIDefinition_AddFile(&c, provider, "header.h", "//");
 
+    for (usz i = 0; i < arrlenu(tables); i++)
+    {
+        SDL_free(tables[i]);
+    }
+
+    arrfree(tables);
     SHUResult result = ECSIDefinition_Save(folder, plugin, ".lua", &lua);
     result = result ? result : ECSIDefinition_Save(folder, plugin, ".h", &c);
     SDL_free(lua.data);
