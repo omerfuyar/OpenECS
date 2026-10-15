@@ -318,11 +318,11 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 
     char *coreSettingsPath = nullptr;
     ECSIApp_CheckStart(SDL_asprintf(&coreSettingsPath, "%s%s", SDL_GetBasePath(), OPENECS_CORE_SETTINGS_FILE) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok, "finding the core's settings", nullptr);
-    ECSIApp_CheckStart(ECSISettings_Initialize(coreSettingsPath, ECSValue_GetTableField(APP.preset.file, "settings"), APP.sessionPath != nullptr ? APP.sessionPath : APP.presetPath, APP.preset.appId, APP.configFolder), "reading the settings", nullptr);
+    ECSIApp_CheckStart(ECSISettings_Initialize(coreSettingsPath, ECSValue_GetTableField(APP.preset.file, "settings"), APP.sessionPath != nullptr ? APP.sessionPath : APP.presetPath, APP.preset.appID, APP.configFolder), "reading the settings", nullptr);
     SDL_free(coreSettingsPath);
 
     // with ecs.keepSession, the tool's last session replaces the preset, unless the command line asks for a fresh start
-    APP.lastSession = ECSISession_GetLastPath(APP.stateFolder, APP.preset.appId);
+    APP.lastSession = ECSISession_GetLastPath(APP.stateFolder, APP.preset.appID);
 
     if (APP.sessionPath == nullptr && !arguments->fresh && ECSISettings_PeekBool(OPENECS_KEEP_SESSION, false) && APP.lastSession != nullptr && SDL_GetPathInfo(APP.lastSession, nullptr))
     {
@@ -336,7 +336,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_CheckStart(ECSISettings_DeclareCore(&keepSession), "declaring the session settings", nullptr);
     const char *sourcePath = APP.sessionPath != nullptr ? APP.sessionPath : APP.presetPath;
 
-    SDL_SetAppMetadata(APP.preset.appName, nullptr, APP.preset.appId);
+    SDL_SetAppMetadata(APP.preset.appName, nullptr, APP.preset.appID);
 
     // a test, and writing definitions, need no display and make no sound; the environment variables still choose other drivers
     if (APP.test || APP.definitions)
@@ -356,6 +356,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSISettings_ApplyTheme();
     ECSIApp_CheckStart(ECSILayout_Initialize(), "declaring the layout settings", nullptr);
     ECSIApp_CheckStart(ECSIWindow_Initialize(APP.preset.appName), "opening the window", nullptr);
+    ECSIWindow_SetHint(ECSValue_GetString(ECSValue_GetTableField(APP.preset.file, "hint"), nullptr));
     ECSIApp_CheckStart(ECSIKeys_Initialize(), "reading the keys", nullptr);
     ECSIApp_CheckStart(ECSIMenus_Initialize(), "registering the core's functions", nullptr);
     ECSIApp_CheckStart(ECSIInput_Initialize(), "declaring the input settings", nullptr);

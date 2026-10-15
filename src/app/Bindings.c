@@ -1559,7 +1559,7 @@ static int ECSIBindings_PanelIndex(lua_State *state)
     }
     else if (SDL_strcmp(key, "id") == 0)
     {
-        lua_pushinteger(state, ECSPanel_GetId(panel));
+        lua_pushinteger(state, ECSPanel_GetID(panel));
     }
     else if (SDL_strcmp(key, "type") == 0)
     {

@@ -75,7 +75,7 @@ static struct
     ECSValue *plugins;                          // list of extra plugin names
     ECSValue *keys[ECSISettingsLayer_Count];   // the core's and the user's keys tables
     ECSValue *userFile;                         // the whole user's settings file, which ECSSetting_Set changes and writes
-    char *appId;                                // chooses the tool's own part of the user's files
+    char *appID;                                // chooses the tool's own part of the user's files
     ECSISetting **changed;                     // stb_ds array of settings whose owners are not told yet
 } SETTINGS = {0};
 
@@ -359,7 +359,7 @@ static SHUResult ECSISettings_BuildLayer(ECSISettingsLayer layer, const ECSValue
     SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[layer]));
     ECSValue_SetTable(SETTINGS.layers[layer]);
 
-    const ECSValue *tool = ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId);
+    const ECSValue *tool = ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appID);
     ECSISettingsFileReader reader = {.layer = SETTINGS.layers[layer], .result = SHUResult_Ok};
     ECSIValue_TableForEachField(file, ECSISettings_ReadField, &reader);
     ECSIValue_TableForEachField(tool, ECSISettings_ReadField, &reader);
@@ -445,12 +445,12 @@ static SHUResult ECSISettings_ReadFile(ECSISettingsLayer layer, const char *fold
 
     result = result ? result : ECSISettings_BuildLayer(layer, file);
     result = result ? result : ECSISettings_ReadKeys(layer, file);
-    result = result ? result : ECSISettings_ReadKeys(layer, ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId));
+    result = result ? result : ECSISettings_ReadKeys(layer, ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appID));
 
     result = result ? result : ECSISettings_ReadPlugins(file);
-    result = result ? result : ECSISettings_ReadPlugins(ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId));
+    result = result ? result : ECSISettings_ReadPlugins(ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appID));
     result = result ? result : ECSISettings_ReadThemes(file);
-    result = result ? result : ECSISettings_ReadThemes(ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appId));
+    result = result ? result : ECSISettings_ReadThemes(ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appID));
 
     if (retFile != nullptr && !result)
     {
@@ -499,11 +499,11 @@ static void ECSISettings_ReportField(const char *name, const ECSValue *field, vo
 
 #pragma endregion Source Only
 
-SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder)
+SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSettings, const char *presetPath, const char *appID, const char *configFolder)
 {
     SDL_assert(corePath != nullptr);
     SDL_assert(presetPath != nullptr);
-    SDL_assert(appId != nullptr);
+    SDL_assert(appID != nullptr);
 
     // the core's settings file is required: the core's settings have no other values
     ECSValue *coreFile = nullptr;
@@ -526,9 +526,9 @@ SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSe
     SHU_ReturnResult(reader.result);
 
     SHU_ReturnResult(ECSISettings_SetPreset(presetSettings, presetPath));
-    SETTINGS.appId = SDL_strdup(appId);
+    SETTINGS.appID = SDL_strdup(appID);
 
-    if (SETTINGS.appId == nullptr)
+    if (SETTINGS.appID == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -560,48 +560,38 @@ SHUResult ECSISettings_ParseKey(const char *text, bool report, u32 *retKey, u32 
     SDL_assert(retKey != nullptr);
     SDL_assert(retModifiers != nullptr);
 
-    char *copy = SDL_strdup(text);
-
-    if (copy == nullptr)
-    {
-        return SHUResult_ErrAllocation;
-    }
-
     *retKey = SDLK_UNKNOWN;
     *retModifiers = ECSModifier_None;
 
-    // the parts before the key are modifiers, so a word that is neither makes the text invalid
-    usz keyParts = 0;
-    char *save = nullptr;
-
-    for (char *part = SDL_strtok_r(copy, "+", &save); part != nullptr; part = SDL_strtok_r(nullptr, "+", &save))
+    // the modifiers come first, each followed by +, and the rest is the key's name, which may hold a + itself, as "Ctrl++" and "Ctrl+Keypad +" do
+    const struct
     {
-        if (SDL_strcasecmp(part, "Ctrl") == 0)
+        const char *name;
+        u32 modifier;
+    } modifiers[] = {{"Ctrl", ECSModifier_Ctrl}, {"Shift", ECSModifier_Shift}, {"Alt", ECSModifier_Alt}, {"Super", ECSModifier_Super}};
+    const char *key = text;
+
+    for (bool found = true; found;)
+    {
+        found = false;
+
+        for (usz i = 0; i < SDL_arraysize(modifiers); i++)
         {
-            *retModifiers |= ECSModifier_Ctrl;
-        }
-        else if (SDL_strcasecmp(part, "Shift") == 0)
-        {
-            *retModifiers |= ECSModifier_Shift;
-        }
-        else if (SDL_strcasecmp(part, "Alt") == 0)
-        {
-            *retModifiers |= ECSModifier_Alt;
-        }
-        else if (SDL_strcasecmp(part, "Super") == 0)
-        {
-            *retModifiers |= ECSModifier_Super;
-        }
-        else
-        {
-            *retKey = SDL_GetKeyFromName(part);
-            keyParts++;
+            usz length = SDL_strlen(modifiers[i].name);
+
+            if (SDL_strncasecmp(key, modifiers[i].name, length) == 0 && key[length] == '+' && key[length + 1] != '\0')
+            {
+                *retModifiers |= modifiers[i].modifier;
+                key += length + 1;
+                found = true;
+            }
         }
     }
 
-    SDL_free(copy);
+    // a word before a + that is not a modifier, as in "Ctlr+A", names no key, so the text is not valid
+    *retKey = SDL_GetKeyFromName(key);
 
-    if (*retKey == SDLK_UNKNOWN || keyParts != 1)
+    if (*retKey == SDLK_UNKNOWN)
     {
         if (report)
         {
@@ -808,7 +798,7 @@ void ECSISettings_Terminate(void)
     ECSValue_Destroy(&SETTINGS.themes);
     SDL_free(SETTINGS.theme);
     ECSValue_Destroy(&SETTINGS.userFile);
-    SDL_free(SETTINGS.appId);
+    SDL_free(SETTINGS.appID);
     SDL_zero(SETTINGS);
 }
 
@@ -984,7 +974,7 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
     SHUResult result = ECSIValue_Copy(old, setting->value);
 
     // the tool's own part wins over the part for every tool, so a setting it already has is changed there
-    ECSValue *tool = (ECSValue *)ECSValue_GetTableField(ECSValue_GetTableField(SETTINGS.userFile, "tools"), SETTINGS.appId);
+    ECSValue *tool = (ECSValue *)ECSValue_GetTableField(ECSValue_GetTableField(SETTINGS.userFile, "tools"), SETTINGS.appID);
     ECSValue *part = ECSValue_GetTableField(tool, name) != nullptr ? tool : SETTINGS.userFile;
     ECSValue *field = nullptr;
     result = result ? result : ECSValue_TableSetField(part, name, &field);
