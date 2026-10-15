@@ -18,6 +18,8 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 - **web.** HTTP/2 and compressed answers, which need more libraries or more of libcurl.
 - **fs.** Watching folders on Windows and macOS; it uses inotify, so it works on Linux only.
+- **gpu: shaders.** A plugin's own vertex and fragment shaders for gpu's frames, with SDL's GPU render states (`SDL_CreateGPURenderState`, SDL 3.4). A shader has to reach the GPU as SPIR-V, DXIL or MSL, one for each kind of driver, so a plugin would write one source and compile it with SDL_shadercross, a new dependency to decide on, or ship the three. To decide: the Lua interface for a shader and its uniforms, and whether gpu compiles at run time or the build does.
+- **gpu: text.** Text in GPU surfaces: draw's glyphs uploaded as gpu textures, or SDL3_ttf's GPU text engine (`TTF_CreateGPUTextEngine`).
 
 ## Questions
 

@@ -147,7 +147,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 
 - No header that plugins include, and no function that plugins call, exposes a type from SDL, Lua, Clay or libffi.
 - `shu.h` is the exception; it is part of the plugin interface (1.3).
-- Native plugins get the core's SDL objects only through the built-in **sdl** plugin (9.8), and a GPU surface's texture (5.4). A native plugin may call SDL itself, using the executable's copy (17.2), as the standard plugins do (20). Inside the core, every module calls SDL directly (1.7).
+- Native plugins get the core's SDL objects only through `ECSGpu_GetDevice` and a GPU surface's texture (9.8). A native plugin may call SDL itself, using the executable's copy (17.2), as the standard plugins do (20). Inside the core, every module calls SDL directly (1.7).
 - Plugins can call only the core functions marked `OPENECS_EXPORT`. Every other function of the core is hidden from them (17.2).
 
 ### 2.3 Start-up
@@ -307,7 +307,7 @@ typedef struct ECSPanelTypeDesc
 - **Pointer.** The pointer's shape is a system shape or an image. The pointer lock uses `SDL_SetWindowRelativeMouseMode`; pressing the core prefix also ends it.
 - **Text input.** A panel says whether it accepts text and where its text cursor is, in its surface pixels: `ECSPanel_SetTextInput(panel, accept, x, y, width, height)`, and in Lua `panel:setTextInput(accept, x, y, width, height)`. The core turns text input on while the focused panel accepts text, and tells the input method where to show its window (`SDL_StartTextInput`, `SDL_SetTextInputArea`).
   - The focused panel gets the typed text as `Text` events, in UTF-8; the text is valid during the event.
-  - A key press that runs the core's keys or a binding types no text (OVERVIEW 7.3): the core drops the text that follows it.
+  - A key press that runs the core's keys or a binding types no text (OVERVIEW 7.3): the core drops the text that follows it. A key with Ctrl, Alt or Super types none anyway, so its release ends the dropping, and text without a key press, such as an input method's, still arrives.
   - An input method, such as fcitx5 on Wayland, may repeat a held key itself: it sends a release and a press with the first press's own time. SDL's Wayland backend keeps that stale time, and when the key is released it sends at once every repeat it thinks it missed, so the key would be typed twice. A press with the same key and time as the release before it marks the key as repeated by the input method, and the core drops SDL's repeats of it, with their text, until the next release.
 
 ## 5. Surfaces and rendering
@@ -329,7 +329,7 @@ typedef struct ECSSurface
     SHUSlice pixels;         // pixels type: the whole picture
     i32 pitch;               // pixels type: bytes per row
 
-    void *texture;           // GPU type: the SDL_GPUTexture to draw into, on the device that sdl.device gives
+    void *texture;           // GPU type: the SDL_GPUTexture to draw into, on the device that ECSGpu_GetDevice gives
 } ECSSurface;
 ```
 
@@ -347,12 +347,13 @@ typedef struct ECSSurface
 - Without a GPU renderer for the main window, every window uses SDL's default renderer, and there is no device.
 - The core draws its own interface with that 2D renderer: Clay for layout, SDL3_ttf for text.
 - A GPU surface is a texture on the shared device, `B8G8R8A8_UNORM`, which is `ARGB8888` on the GPU, of the panel's size in pixels. Any OS window's renderer shows it by wrapping it (`SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER`), so a GPU panel moves between OS windows without recreating its texture. The texture is made again only when the panel's size changes, and then the panel draws before it shows.
-- A pixels surface is uploaded to a texture when it changed. Plugins with pixels surfaces never notice how the core shows them; GPU plugins depend on the **sdl** plugin's contract instead (9.8).
+- A pixels surface is uploaded to a texture when it changed. Plugins with pixels surfaces never notice how the core shows them; GPU panels draw into the texture themselves (5.4).
 
 ### 5.4 How plugins draw
 
-- A GPU panel type sets `surface` to `ECSSurfaceType_Gpu`, and in Lua `surface = "gpu"`. Its `Draw` gets a surface whose `texture` is its `SDL_GPUTexture`. It gets the device from the **sdl** plugin (9.8), draws with SDL's GPU API in a command buffer of its own, and submits it before `Draw` returns. The core's renderer shows the texture after, in the same frame.
-- A GPU surface has no pixels. `ECSSurface_Fill` does nothing on it, the Lua surface's pixel methods raise an error, and draw refuses it. A Lua panel type can still be a GPU panel, and pass its surface to a service in C that draws.
+- A GPU panel type sets `surface` to `ECSSurfaceType_Gpu`, and in Lua `surface = "gpu"`. Its `Draw` gets a surface whose `texture` is its `SDL_GPUTexture`, on the device that `ECSGpu_GetDevice` gives (9.8). What draws into it submits its commands before `Draw` returns, and the core's renderer shows the texture after, in the same frame.
+- The standard plugin **gpu** draws into a GPU surface from Lua or C: shapes, lines and textures, with no SDL in sight (20). A native plugin may instead use SDL's GPU API itself, in a command buffer of its own.
+- A GPU surface has no pixels. `ECSSurface_Fill` does nothing on it, the Lua surface's pixel methods raise an error, and draw refuses it. A Lua panel type draws into its GPU surface with the gpu plugin.
 - Plugins that compute their own pixels use pixels surfaces. C writes the pixels directly; Lua uses the surface's methods (11.4).
 - `ECSSurface_Fill(surface, x, y, width, height, color)` fills a rectangle of a pixels surface with one colour, in pixels and clipped, such as to clear it. Lua: `surface:fill(x, y, width, height, color)`.
 - The **draw** plugin draws shapes, images and text into pixels surfaces on the CPU, and the **ui** plugin builds user interfaces on it (20).
@@ -692,12 +693,11 @@ OPENECS_EXPORT SHUResult ECSPlugin_Init(ECSPlugin plugin);
 - Native plugins are never unloaded before exit, because their function pointers, threads and static data may still be in use.
 - The core records everything each plugin registers. If `ECSPlugin_Init` fails, the plugin's registrations are removed and it is marked failed.
 
-### 9.8 Built-in sdl plugin
+### 9.8 The GPU device
 
-- The executable contains a binding plugin named `sdl`, registered like any plugin before the preset's plugins load. Its version is the SDL that OpenECS runs with, such as `3.4.0`, so a manifest asks for the SDL it was built with: `depends = { sdl = "3.4" }`.
-- `sdl.device()` gives the GPU device, a handle of type `sdl.device`, which is an `SDL_GPUDevice *` in C, or nothing without a GPU renderer. The core owns it, so its handles destroy nothing.
-- Its definitions are written like any plugin's (10.10), so a plugin in C includes `sdl.h` and calls `SdlFunctions_Get`.
-- A GPU panel's texture comes with its surface (5.4). A plugin calls the rest of SDL itself, with the executable's copy (17.2).
+- Every plugin is a plugin on disk; the executable contains none. The core gives native plugins its SDL objects through two parts of its interface only: `ECSGpu_GetDevice()`, the GPU device, an `SDL_GPUDevice *` or nullptr without a GPU renderer, and a GPU surface's `texture` (5.4).
+- The core owns the device and destroys it after every plugin's `Destroy` (5.3). A plugin calls the rest of SDL itself, with the executable's copy (17.2).
+- Lua has neither. The standard plugin **gpu** draws into GPU surfaces from Lua and C, with an interface of its own (20).
 
 ### 9.9 Names
 
@@ -1115,7 +1115,7 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.2 Linking
 
-- SDL3 and SDL3_ttf are shared libraries shipped next to the executable and found through an `$ORIGIN` run path. So the core, the sdl plugin and every plugin share one copy of SDL.
+- SDL3 and SDL3_ttf are shared libraries shipped next to the executable and found through an `$ORIGIN` run path. So the core and every plugin share one copy of SDL.
 - Lua, Clay, libffi and stb are linked statically into the executable.
 - libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.

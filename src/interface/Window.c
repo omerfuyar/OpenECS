@@ -1919,19 +1919,9 @@ void ECSIWindow_Terminate(void)
     SDL_zero(WINDOW);
 }
 
-/// @brief sdl.device: the GPU device, which a GPU panel draws into its surface's texture with.
-static SDL_GPUDevice *ECSIWindow_SdlDevice(void)
+void *ECSGpu_GetDevice(void)
 {
     return GPU.device;
-}
-
-SHUResult ECSIWindow_StartSdlPlugin(ECSPlugin plugin)
-{
-    SDL_assert(plugin != nullptr);
-
-    // the core owns the device, so its handles destroy nothing
-    SHU_ReturnResult(ECSHandle_RegisterType(plugin, "device", nullptr));
-    return ECSService_RegisterFunction(plugin, "device", (ECSFunction)ECSIWindow_SdlDevice, "handle<sdl.device>()", "Gives the GPU device that OpenECS draws with, which GPU panels draw with too, or nothing without a GPU renderer");
 }
 
 void ECSIWindow_DestroyDevice(void)

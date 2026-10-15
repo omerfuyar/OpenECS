@@ -1949,7 +1949,7 @@ static ECSSurface *ECSIBindings_CheckPixels(lua_State *state, int index)
 
     if (surface->type != ECSSurfaceType_Pixels)
     {
-        luaL_error(state, "a GPU surface has no pixels; a service in C draws into its texture");
+        luaL_error(state, "a GPU surface has no pixels; the gpu plugin draws into it");
     }
 
     return surface;

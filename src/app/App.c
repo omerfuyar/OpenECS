@@ -388,11 +388,6 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIPluginHooks hooks = {.StartLua = ECSIBindings_StartPlugin, .RemoveRegistrations = ECSIApp_RemoveRegistrations};
     ECSIPlugins_SetHooks(&hooks);
 
-    // the sdl plugin's version is SDL's, so a manifest can ask for the SDL it was built with
-    char sdlVersion[32];
-    int linked = SDL_GetVersion();
-    SDL_snprintf(sdlVersion, sizeof(sdlVersion), "%d.%d.%d", SDL_VERSIONNUM_MAJOR(linked), SDL_VERSIONNUM_MINOR(linked), SDL_VERSIONNUM_MICRO(linked));
-    ECSIPlugins_AddBuiltin("sdl", sdlVersion, "SDL's objects for native plugins: the GPU device that OpenECS and GPU panels draw with", ECSIWindow_StartSdlPlugin);
     ECSIApp_LoadPlugins(&APP.preset);
     ECSIApp_CheckStart(ECSISession_Apply(sourcePath, &APP.preset), "building the layout", nullptr);
 

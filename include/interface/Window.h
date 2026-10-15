@@ -17,11 +17,6 @@ void ECSIWindow_SetHint(const char *hint);
 /// @brief Closes the OS windows and frees what the window holds. Also releases what a failed ECSIWindow_Initialize made.
 void ECSIWindow_Terminate(void);
 
-/// @brief Starts the built-in sdl plugin, which gives native plugins the GPU device as sdl.device.
-/// @param plugin The plugin, which ECSIPlugins_AddBuiltin made.
-/// @return SHUResult_Ok, or the error of registering its function.
-SHUWUR SHUResult ECSIWindow_StartSdlPlugin(ECSPlugin plugin);
-
 /// @brief Destroys the GPU device, after the plugins that may hold its objects. ECSIWindow_Terminate leaves it, so it outlives the OS windows.
 void ECSIWindow_DestroyDevice(void);
 
