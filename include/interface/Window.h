@@ -11,6 +11,9 @@
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the core's settings file gives a setting no valid value, SHUResult_ErrFile if the font cannot be loaded, SHUResult_ErrInternal if SDL fails, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIWindow_Initialize(const char *title);
 
+/// @brief Sets what the preset tells a new user, which the title bar that OpenECS draws shows after the title; nullptr or "" shows none.
+void ECSIWindow_SetHint(const char *hint);
+
 /// @brief Closes the OS windows and frees what the window holds. Also releases what a failed ECSIWindow_Initialize made.
 void ECSIWindow_Terminate(void);
 

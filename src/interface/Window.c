@@ -107,7 +107,7 @@ typedef struct ECSIMenuView
 /// @brief An OS window: the main window, or a pop-out window, with what the core draws in it.
 typedef struct ECSIOSWindow
 {
-    u32 rootId; // the pop-out root it shows; 0 for the main window, which shows the current workspace's main root
+    u32 rootID; // the pop-out root it shows; 0 for the main window, which shows the current workspace's main root
     SDL_Window *window;
     SDL_Renderer *renderer;
     Clay_SDL3RendererData clayRenderer;
@@ -121,7 +121,7 @@ typedef struct ECSIOSWindow
 /// @brief How a popup is shown: in an SDL popup window, or inside its panel's OS window when the video driver has no popup windows.
 typedef struct ECSIPopupView
 {
-    u32 rootId;             // the root of the OS window it belongs to; it is made again if its panel moves to another one
+    u32 rootID;             // the root of the OS window it belongs to; it is made again if its panel moves to another one
     SDL_Window *window;     // SDL's popup window, or nullptr when it is drawn inside the OS window
     SDL_Renderer *renderer; // the popup window's
     SDL_Texture *texture;   // its pixels, made by the renderer that shows them
@@ -140,6 +140,7 @@ static struct
     ECSIOSWindow *menuWindow; // the OS window that shows the menus
     u32 focusRoot;            // the root of the focused panel in the last frame, so its OS window comes forward when the focus moves to it
     char *title;              // of every OS window
+    char *hint;               // what the preset tells a new user, shown after the title in the title bar OpenECS draws, or nullptr
     SDL_GPUDevice *device;    // the GPU device of the main window's renderer, which every other window and popup draws with; nullptr without a GPU renderer
     TTF_Font *fonts[1];
 
@@ -242,7 +243,7 @@ static ECSIRoot *ECSIWindow_Root(const ECSIOSWindow *os)
         return nullptr;
     }
 
-    if (os->rootId == 0)
+    if (os->rootID == 0)
     {
         usz count = 0;
         ECSIRoot *const *roots = ECSILayout_GetRoots(&count);
@@ -250,7 +251,7 @@ static ECSIRoot *ECSIWindow_Root(const ECSIOSWindow *os)
     }
 
     bool shown = false;
-    ECSIRoot *root = ECSILayout_FindRoot(os->rootId, &shown);
+    ECSIRoot *root = ECSILayout_FindRoot(os->rootID, &shown);
     return shown ? root : nullptr;
 }
 
@@ -731,8 +732,16 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *os)
                                   .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {0.0f, 0.0f}},
                               })
     {
-        CLAY_TEXT(ECSIWindow_ClayText(WINDOW.title), CLAY_TEXT_CONFIG({.textColor = color, .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
-        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}}}) {}
+        CLAY_TEXT(ECSIWindow_ClayText(WINDOW.title), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+
+        // the preset's hint follows the title, cut at the buttons when the window is narrow
+        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}, .padding = {16, 8, 0, 0}}, .clip = {.horizontal = true}})
+        {
+            if (WINDOW.hint != nullptr)
+            {
+                CLAY_TEXT(ECSIWindow_ClayText(WINDOW.hint), CLAY_TEXT_CONFIG({.textColor = color, .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+            }
+        }
 
         const ECSIIcon icons[] = {ECSIIcon_Minimize, maximized ? ECSIIcon_Restore : ECSIIcon_Maximized};
 
@@ -993,7 +1002,7 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(ECSIOSWindow *os, con
     // the focus border, the list of prefix keys and the menus show in one OS window each
     ECSPanel focus = ECSILayout_GetFocus();
     ECSIRoot *focusRoot = ECSILayout_RootOf(focus);
-    bool focusWindow = focusRoot == root || (focusRoot == nullptr && os->rootId == 0);
+    bool focusWindow = focusRoot == root || (focusRoot == nullptr && os->rootID == 0);
 
     arrfree(os->tabs);
     CLAY(CLAY_ID("Root"), {.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0)}}})
@@ -1231,7 +1240,7 @@ static void ECSIWindow_CloseOS(ECSIOSWindow *os)
     {
         ECSIPopupView *view = popups[i]->window;
 
-        if (view != nullptr && (view->rootId == os->rootId || (view->texture != nullptr && SDL_GetRendererFromTexture(view->texture) == os->renderer)))
+        if (view != nullptr && (view->rootID == os->rootID || (view->texture != nullptr && SDL_GetRendererFromTexture(view->texture) == os->renderer)))
         {
             ECSIWindow_ReleasePopup(popups[i]);
         }
@@ -1274,10 +1283,10 @@ static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window, bool main)
 }
 
 /// @brief Opens an OS window with its renderer and Clay context, and adds it to the list.
-/// @param rootId The pop-out root it shows, or 0 for the main window.
+/// @param rootID The pop-out root it shows, or 0 for the main window.
 /// @param flags SDL's window flags; a pop-out window opens hidden, so it can be placed first.
 /// @return The window, or nullptr if it cannot be opened.
-static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootId, i32 width, i32 height, SDL_WindowFlags flags)
+static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootID, i32 width, i32 height, SDL_WindowFlags flags)
 {
     ECSIOSWindow *os = SDL_calloc(1, sizeof(ECSIOSWindow));
 
@@ -1286,7 +1295,7 @@ static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootId, i32 width, i32 height, SDL_Wi
         return nullptr;
     }
 
-    os->rootId = rootId;
+    os->rootID = rootID;
     os->window = SDL_CreateWindow(WINDOW.title, width, height, SDL_WINDOW_RESIZABLE | (WINDOW.titleBar ? SDL_WINDOW_BORDERLESS : 0) | flags);
 
     if (os->window == nullptr)
@@ -1298,7 +1307,7 @@ static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootId, i32 width, i32 height, SDL_Wi
 
     ECSIWindow_ApplyTitleBar(os);
 
-    os->renderer = ECSIWindow_CreateRenderer(os->window, rootId == 0);
+    os->renderer = ECSIWindow_CreateRenderer(os->window, rootID == 0);
 
     if (os->renderer == nullptr)
     {
@@ -1329,7 +1338,7 @@ static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootId, i32 width, i32 height, SDL_Wi
     Clay_SetMeasureTextFunction(ECSIWindow_MeasureText, nullptr);
 
     // only the main window waits for the display, so presenting several windows does not wait once for each
-    if (rootId != 0)
+    if (rootID != 0)
     {
         SDL_SetRenderVSync(os->renderer, SDL_RENDERER_VSYNC_DISABLED);
     }
@@ -1388,7 +1397,7 @@ static void ECSIWindow_Sync(void)
         ECSIOSWindow *os = WINDOW.windows[i];
         bool shown = false;
 
-        if (ECSILayout_FindRoot(os->rootId, &shown) == nullptr)
+        if (ECSILayout_FindRoot(os->rootID, &shown) == nullptr)
         {
             arrdel(WINDOW.windows, i);
             ECSIWindow_CloseOS(os);
@@ -1447,15 +1456,15 @@ static void ECSIWindow_Sync(void)
 
     // the OS window of the focused panel comes forward when the focus moves into it
     ECSIRoot *focusRoot = ECSILayout_RootOf(ECSILayout_GetFocus());
-    u32 focusId = focusRoot == nullptr ? 0 : focusRoot->id;
+    u32 focusID = focusRoot == nullptr ? 0 : focusRoot->id;
     ECSIOSWindow *focusWindow = ECSIWindow_OfRoot(focusRoot);
 
-    if (focusId != WINDOW.focusRoot && focusWindow != nullptr && (SDL_GetWindowFlags(focusWindow->window) & SDL_WINDOW_INPUT_FOCUS) == 0)
+    if (focusID != WINDOW.focusRoot && focusWindow != nullptr && (SDL_GetWindowFlags(focusWindow->window) & SDL_WINDOW_INPUT_FOCUS) == 0)
     {
         SDL_RaiseWindow(focusWindow->window);
     }
 
-    WINDOW.focusRoot = focusId;
+    WINDOW.focusRoot = focusID;
 }
 
 #pragma region Popups
@@ -1523,7 +1532,7 @@ static ECSIPopupView *ECSIWindow_MakePopupView(ECSPopup popup, const ECSIOSWindo
         return nullptr;
     }
 
-    view->rootId = os->rootId;
+    view->rootID = os->rootID;
     popup->window = view;
 
     if (WINDOW.noPopupWindows)
@@ -1579,7 +1588,7 @@ static void ECSIWindow_UpdatePopups(void)
         }
 
         // a popup whose panel moved to another OS window is shown there anew
-        if (view != nullptr && view->rootId != os->rootId)
+        if (view != nullptr && view->rootID != os->rootID)
         {
             ECSIWindow_ReleasePopup(popup);
             view = nullptr;
@@ -1640,7 +1649,7 @@ static void ECSIWindow_ShowPopupsIn(const ECSIOSWindow *os)
     {
         ECSIPopupView *view = popups[i]->window;
 
-        if (view != nullptr && view->window == nullptr && view->texture != nullptr && view->rootId == os->rootId && ECSIWindow_OfRoot(ECSILayout_RootOf(popups[i]->panel)) == os)
+        if (view != nullptr && view->window == nullptr && view->texture != nullptr && view->rootID == os->rootID && ECSIWindow_OfRoot(ECSILayout_RootOf(popups[i]->panel)) == os)
         {
             SDL_RenderTexture(os->renderer, view->texture, nullptr, &view->rect);
         }
@@ -1820,6 +1829,12 @@ static void ECSIWindow_Present(void)
 
 #pragma endregion Source Only
 
+void ECSIWindow_SetHint(const char *hint)
+{
+    SDL_free(WINDOW.hint);
+    WINDOW.hint = hint == nullptr || hint[0] == '\0' ? nullptr : SDL_strdup(hint);
+}
+
 SHUResult ECSIWindow_Initialize(const char *title)
 {
     SDL_assert(title != nullptr);
@@ -1890,6 +1905,7 @@ void ECSIWindow_Terminate(void)
     }
 
     SDL_free(WINDOW.title);
+    SDL_free(WINDOW.hint);
     SDL_zero(WINDOW);
 }
 
@@ -1937,7 +1953,7 @@ ECSIRoot *ECSIWindow_GetRoot(SDL_WindowID id, bool *retMain)
 
     if (retMain != nullptr)
     {
-        *retMain = os == nullptr || os->rootId == 0;
+        *retMain = os == nullptr || os->rootID == 0;
     }
 
     return ECSIWindow_Root(os);
@@ -1984,7 +2000,7 @@ ECSPopup ECSIWindow_PopupAt(f32 x, f32 y, f32 *retX, f32 *retY)
     {
         ECSIPopupView *view = popups[i - 1]->window;
 
-        if (view != nullptr && view->window == nullptr && WINDOW.event != nullptr && view->rootId == WINDOW.event->rootId &&
+        if (view != nullptr && view->window == nullptr && WINDOW.event != nullptr && view->rootID == WINDOW.event->rootID &&
             ECSIWindow_Contains(x, y, view->rect.x, view->rect.y, view->rect.w, view->rect.h))
         {
             *retX = x - view->rect.x;

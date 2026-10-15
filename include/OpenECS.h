@@ -718,7 +718,7 @@ OPENECS_EXPORT void ECSLayout_Focus(ECSPanel panel);
 OPENECS_EXPORT ECSPanel ECSLayout_GetFocus(void);
 
 /// @brief Finds a panel in any workspace by its id. Main thread only.
-/// @param id The panel's id, as ECSPanel_GetId gives it and the core's events carry it.
+/// @param id The panel's id, as ECSPanel_GetID gives it and the core's events carry it.
 /// @return The panel, or nullptr if no open panel has the id.
 /// @lua ecs.layout.find
 OPENECS_EXPORT ECSPanel ECSLayout_FindPanel(u32 id);
@@ -763,13 +763,13 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSession_Open(const char *path);
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_OpenPreset(const char *nameOrPath);
 
 /// @brief Lists the presets that a name finds: the user's presets, then the first-party presets. A name in both is listed once, from the user's presets. A file that cannot be read is reported and left out, and so is a preset with listed = false. Main thread only.
-/// @param retList The value to set to a list sorted by name. Each entry is a table: name (the file's name without .lua), path, appId, appName, and lastUsed, when the tool's last session was written, in seconds since 1970, if it has one.
+/// @param retList The value to set to a list sorted by name. Each entry is a table: name (the file's name without .lua), path, appID, appName, and lastUsed, when the tool's last session was written, in seconds since 1970, if it has one.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 /// @lua ecs.session.presets
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_ListPresets(ECSValue *retList);
 
 /// @brief Lists the .lua files in the folder of saved sessions. A file that cannot be read is reported and left out. Main thread only.
-/// @param retList The value to set to a list sorted by name. Each entry is a table: name (the file's name without .lua), path, appId, appName, and saved, when the file was written, in seconds since 1970.
+/// @param retList The value to set to a list sorted by name. Each entry is a table: name (the file's name without .lua), path, appID, appName, and saved, when the file was written, in seconds since 1970.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 /// @lua ecs.session.sessions
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_ListSessions(ECSValue *retList);
@@ -928,7 +928,7 @@ OPENECS_EXPORT void ECSPanel_SetTitle(ECSPanel panel, const char *title);
 /// @param panel The panel.
 /// @return The id.
 /// @lua panel.id
-OPENECS_EXPORT u32 ECSPanel_GetId(ECSPanel panel);
+OPENECS_EXPORT u32 ECSPanel_GetID(ECSPanel panel);
 
 /// @brief Gets the name of a panel's type, such as "canvas.view". Main thread only.
 /// @param panel The panel.

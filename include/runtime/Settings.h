@@ -22,10 +22,10 @@ typedef enum ECSISettingsLayer
 /// @param corePath Path of the core's settings file, which holds the value of every core setting.
 /// @param presetSettings The preset's settings table, or nullptr.
 /// @param presetPath Path of the preset, named where its settings are explained.
-/// @param appId The tool's app id, which chooses the tool's own part of the user's files.
+/// @param appID The tool's app id, which chooses the tool's own part of the user's files.
 /// @param configFolder The user's configuration folder, ending with a separator, or nullptr if there is none.
 /// @return SHUResult_Ok, SHUResult_ErrFile or SHUResult_ErrBadData if the core's settings file cannot be read, or SHUResult_ErrAllocation. A user file that cannot be read is reported and skipped.
-SHUWUR SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSettings, const char *presetPath, const char *appId, const char *configFolder);
+SHUWUR SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSettings, const char *presetPath, const char *appID, const char *configFolder);
 
 /// @brief Replaces the preset layer, such as with the settings of the session that replaces the preset. Call it before settings are declared.
 /// @param presetSettings The new layer's settings table, or nullptr for none.

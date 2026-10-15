@@ -37,6 +37,7 @@ static const ECSIFieldRule OPENECS_PRESET_RULES[] = {
     {"settings", ECSIFieldType_Table, false},
     {"keys", ECSIFieldType_Table, false},
     {"listed", ECSIFieldType_Bool, false},
+    {"hint", ECSIFieldType_String, false},
     {"workspaces", ECSIFieldType_Table, true},
     {"currentWorkspace", ECSIFieldType_Integer, false},
     {"pluginState", ECSIFieldType_Table, false},
@@ -102,7 +103,7 @@ typedef struct ECSISessionReader
 {
     const char *file;
     char path[OPENECS_SESSION_PATH_SIZE]; // the part being read, such as "workspaces[1].windows[1]"
-    i64 focusId;                          // of the workspace being read
+    i64 focusID;                          // of the workspace being read
     ECSPanel focus;
     ECSINode *maximized;
     bool valid; // while the file is checked: no problem is found yet
@@ -338,10 +339,10 @@ static SHUResult ECSISession_ReadPanel(ECSISessionReader *reader, const ECSValue
     ECSPanel panel = nullptr;
 
     SHU_ReturnResult(ECSIPanel_Create(&panel, type, state, version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0));
-    ECSIPanel_SetId(panel, id > 0 && id <= SDL_MAX_UINT32 ? (u32)id : 0);
+    ECSIPanel_SetID(panel, id > 0 && id <= SDL_MAX_UINT32 ? (u32)id : 0);
     ECSILayout_GroupAdd(group, panel);
 
-    if (id != 0 && id == reader->focusId)
+    if (id != 0 && id == reader->focusID)
     {
         reader->focus = panel;
     }
@@ -410,7 +411,7 @@ static SHUResult ECSISession_ReadWorkspace(ECSISessionReader *reader, const ECSV
     ECSIRootDesc *roots = SDL_calloc(count, sizeof(ECSIRootDesc));
     SHUResult result = roots == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
 
-    reader->focusId = ECSValue_GetInteger(ECSValue_GetTableField(saved, "focus"), 0);
+    reader->focusID = ECSValue_GetInteger(ECSValue_GetTableField(saved, "focus"), 0);
     reader->focus = nullptr;
 
     for (usz i = 0; !result && i < ECSValue_GetListCount(windows); i++)
@@ -683,12 +684,12 @@ static SHUResult ECSISession_FillList(ECSValue *retList, ECSISessionFile *files,
 
             result = result ? result : ECSISession_SetText(entry, "name", files[i].name);
             result = result ? result : ECSISession_SetText(entry, "path", files[i].path);
-            result = result ? result : ECSISession_SetText(entry, "appId", info.appId);
+            result = result ? result : ECSISession_SetText(entry, "appID", info.appID);
             result = result ? result : ECSISession_SetText(entry, "appName", info.appName);
 
             if (presets)
             {
-                char *lastSession = ECSISession_GetLastPath(SESSION.state, info.appId);
+                char *lastSession = ECSISession_GetLastPath(SESSION.state, info.appID);
                 result = result ? result : ECSISession_SetTime(entry, "lastUsed", lastSession);
                 SDL_free(lastSession);
             }
@@ -794,13 +795,13 @@ SHUResult ECSISession_FindPreset(char **retPath, const char *nameOrPath, const c
     return SDL_asprintf(retPath, "%spresets/%s.lua", SDL_GetBasePath(), nameOrPath) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok;
 }
 
-char *ECSISession_GetLastPath(const char *stateFolder, const char *appId)
+char *ECSISession_GetLastPath(const char *stateFolder, const char *appID)
 {
-    SDL_assert(appId != nullptr);
+    SDL_assert(appID != nullptr);
 
     char *path = nullptr;
 
-    if (stateFolder != nullptr && SDL_asprintf(&path, "%s%s/%s", stateFolder, appId, OPENECS_LAST_SESSION_FILE) < 0)
+    if (stateFolder != nullptr && SDL_asprintf(&path, "%s%s/%s", stateFolder, appID, OPENECS_LAST_SESSION_FILE) < 0)
     {
         path = nullptr;
     }
@@ -825,12 +826,12 @@ SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
 
     const ECSValue *file = retInfo->file;
     const ECSValue *app = ECSValue_GetTableField(file, "app");
-    const char *appId = ECSValue_GetString(ECSValue_GetTableField(app, "id"), nullptr);
+    const char *appID = ECSValue_GetString(ECSValue_GetTableField(app, "id"), nullptr);
     const char *pluginsDirectory = ECSValue_GetString(ECSValue_GetTableField(file, "pluginsDir"), nullptr);
 
     retInfo->name = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "name"), ""));
     retInfo->appName = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(app, "name"), ""));
-    retInfo->appId = SDL_strdup(appId);
+    retInfo->appID = SDL_strdup(appID);
 
     if (pluginsDirectory != nullptr)
     {
@@ -844,7 +845,7 @@ SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
         }
     }
 
-    if (retInfo->name == nullptr || retInfo->appName == nullptr || retInfo->appId == nullptr)
+    if (retInfo->name == nullptr || retInfo->appName == nullptr || retInfo->appID == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -857,7 +858,7 @@ void ECSISession_FreeInfo(ECSIPresetInfo *info)
     SDL_assert(info != nullptr);
 
     SDL_free(info->name);
-    SDL_free(info->appId);
+    SDL_free(info->appID);
     SDL_free(info->appName);
     SDL_free(info->pluginsDirectory);
     ECSValue_Destroy(&info->file);
