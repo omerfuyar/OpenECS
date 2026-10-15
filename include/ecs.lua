@@ -192,11 +192,13 @@ function Panel:startDrag(type, value) end
 ---@return string? message Why the popup is not opened.
 function Panel:openPopup(desc) end
 
----The pixels a panel draws into: a handle of type ecs.surface, which a panel can pass to a service that draws. It is valid only while draw runs.
+---The picture a panel draws into: a handle of type ecs.surface, which a panel can pass to a service that draws. It is valid only while draw runs.
+---A GPU surface is a texture that a service in C draws into with SDL's GPU API; it has no pixels, so its methods raise an error.
 ---@class ecs.Surface
 ---@field width integer
 ---@field height integer
 ---@field scale number Pixels per layout unit.
+---@field type "pixels"|"gpu" The panel type's surface.
 local Surface = {}
 
 ---Fills a rectangle with one colour, such as to clear the surface. The rectangle is in pixels, and clipped to the surface.
@@ -272,7 +274,7 @@ function Popup:setSize(width, height) end
 ---@class ecs.PanelTypeDesc
 ---@field name string The local name, such as "view"; the type is "canvas.view".
 ---@field title? string The default title of tabs and menus.
----@field surface? "pixels"|"gpu" "pixels" if missing.
+---@field surface? "pixels"|"gpu" "pixels" if missing; "gpu" gives draw a GPU texture, which a service in C draws into.
 ---@field stateVersion? integer The version of the saved state.
 ---@field continuous? boolean true: draw runs every frame while the panel is shown, for animation. false, or missing: draw runs only when the panel is shown, resized or asks with panel:redraw().
 ---@field minWidth? number In layout units.

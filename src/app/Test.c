@@ -658,6 +658,24 @@ static int ECSITest_Screenshot(lua_State *state)
     return 0;
 }
 
+/// @brief test.pixel(x, y): the colour that the test's OS window shows at a position, as "#RRGGBB".
+static int ECSITest_Pixel(lua_State *state)
+{
+    f32 x = (f32)luaL_checknumber(state, 1);
+    f32 y = (f32)luaL_checknumber(state, 2);
+    ECSColor color = 0;
+
+    if (ECSIWindow_ReadPixel(TEST.window > 0 ? TEST.window : 1, x, y, &color))
+    {
+        return luaL_error(state, "cannot read the pixel at %f, %f", (double)x, (double)y);
+    }
+
+    char text[8];
+    SDL_snprintf(text, sizeof(text), "#%06X", (unsigned int)(color & 0xFFFFFF));
+    lua_pushstring(state, text);
+    return 1;
+}
+
 static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"key", ECSITest_Key},
     {"keyEvent", ECSITest_KeyEvent},
@@ -681,6 +699,7 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"window", ECSITest_Window},
     {"close", ECSITest_Close},
     {"screenshot", ECSITest_Screenshot},
+    {"pixel", ECSITest_Pixel},
     {nullptr, nullptr},
 };
 

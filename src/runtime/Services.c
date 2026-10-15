@@ -468,16 +468,18 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
         result = i == count ? ECSISignature_Append(&retSignature->text, ")", (ECSIParameter){0}) : ECSISignature_Append(&retSignature->text, i == 0 ? "(" : ", ", retSignature->parameters[i]);
     }
 
-    // the closing parenthesis was written before a "void"; that word is cut off again
-    if (!result && count == 0)
-    {
-        SDL_free(retSignature->text);
-        retSignature->text = nullptr;
-        result = SDL_asprintf(&retSignature->text, "%s()", OPENECS_PARAMETER_TYPE_NAMES[retSignature->result.type]) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok;
-    }
-    else if (!result)
+    // the closing parenthesis was written before a "void"; that word is cut off again, and without parameters the parenthesis opens too, after the result with its type
+    if (!result)
     {
         retSignature->text[SDL_strlen(retSignature->text) - SDL_strlen("void")] = '\0';
+    }
+
+    if (!result && count == 0)
+    {
+        char *written = retSignature->text;
+        retSignature->text = nullptr;
+        result = SDL_asprintf(&retSignature->text, "%.*s()", (int)(SDL_strlen(written) - 1), written) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok;
+        SDL_free(written);
     }
 
     SHU_ReturnResult(result, ECSISignature_Free(retSignature););

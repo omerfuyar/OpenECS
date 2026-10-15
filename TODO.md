@@ -5,10 +5,9 @@ What is not decided yet, and work that is waiting, for OpenECS and the repositor
 ## Tasks
 
 - **Docs for every function's parameters before the first major release.** Each function of the core and of the standard plugins says what each parameter is and what it gives back: in OpenECS.h, ecs.lua and the signatures' docs. Functions are likely to change until then, so this waits for the release.
-- **Implement the rest of DESIGN.md.** Not done yet: GPU surfaces.
 - **Releases for other platforms.** Shuild builds on Linux only. The release workflow has entries for Linux on aarch64, Windows and macOS, commented out until the build supports them (DESIGN 19.4). README.md's list of packages is for Linux only; Windows needs its own: the compiler (LLVM or MinGW), cmake and ninja from winget, and what libffi's build needs in place of autoreconf.
 - **Portable builds of std and examples.** Their `shuild.c` lists folders with `dirent.h`, which Windows does not have. Shuild has no function that lists a folder; one in shuild would let the builds use shuild and the standard library only. Left for later.
-- **Rendering prototype.** Every OS window draws with a 2D renderer on one shared GPU device. Still to confirm: a panel's GPU texture shown in any window, and an offscreen renderer drawing into that texture (DESIGN 5.3, 5.4).
+- **GPU panels on real drivers.** 21_gpu's test runs on Mesa's software Vulkan driver. To confirm with a graphics card's driver, on X11 and Wayland, and with the panel moving between OS windows (DESIGN 5.3, 5.4).
 - **Wayland test on Hyprland.** Dragging a panel out of its window and into another one, popups, moving focus between OS windows, and the title bar's moving and resizing (DESIGN 6.10, 6.11, 7.1, 7.2, 18). The tests run on SDL's offscreen driver, where windows have places on the screen. On CachyOS with Hyprland, message dialogs, such as the question about unsaved work, showed nothing and froze OpenECS; the core now draws them itself (DESIGN 7.7), which is to confirm there.
 - **Pauses of a few seconds.** Reported on Hyprland and on openSUSE Tumbleweed. Vsync is off on Wayland now (DESIGN 3.1), which should end them; to confirm there.
 - **A crash when pop-out windows close or are tiled.** Reported on the same systems: a jump to a null address. It does not happen on X11 or on weston. Pop-out windows now share one GPU device and release their popups first; to confirm there, with the steps that cause it.
@@ -17,8 +16,7 @@ What is not decided yet, and work that is waiting, for OpenECS and the repositor
 
 The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md) describes them.
 
-- **ui for plugins in C.** ui's callbacks are Lua functions. A C plugin cannot give one, and ui cannot call a C plugin's functions by name, because a plugin uses only the functions of the plugins it depends on (DESIGN 10.5).
-- **web.** HTTP/2, compressed answers and WebSockets, which need more libraries or more of libcurl.
+- **web.** HTTP/2 and compressed answers, which need more libraries or more of libcurl.
 - **fs.** Watching folders on Windows and macOS; it uses inotify, so it works on Linux only.
 
 ## Questions

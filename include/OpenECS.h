@@ -95,6 +95,7 @@ typedef struct ECSSurface
     f32 scale;       // physical pixels per layout unit
     SHUSlice pixels; // pixels type: ARGB8888 in native byte order, premultiplied alpha
     i32 pitch;       // pixels type: bytes per row
+    void *texture;   // GPU type: the SDL_GPUTexture to draw into, B8G8R8A8_UNORM, on the device that sdl.device gives
 } ECSSurface;
 
 /// @brief Where a panel goes, next to a target panel.
@@ -278,7 +279,7 @@ typedef struct ECSPanelTypeDesc
     const char *name;       // the local name, such as "view"; the core names the type with the plugin's name, "canvas.view"
     const char *title;      // default title for tabs and menus
     u32 stateVersion;       // version of the saved state
-    ECSSurfaceType surface; // only ECSSurfaceType_Pixels is implemented
+    ECSSurfaceType surface; // ECSSurfaceType_Pixels, or ECSSurfaceType_Gpu to draw with SDL's GPU API
     bool continuous;        // true: Draw runs every frame while the panel is shown, for animation; false: only when it is shown, resized or asks with ECSPanel_Redraw
     f32 minWidth;           // in layout units, 0 for none
     f32 minHeight;          // in layout units, 0 for none

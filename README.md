@@ -224,6 +224,8 @@ The examples are the tests. Each example has a test, which Debug builds run with
 .github/scripts/test.sh build/Debug/bin/OpenECS
 ```
 
+A test needs a Vulkan driver too, for the GPU panels of 21_gpu: one for your graphics card, or Mesa's software one, which Debian and Ubuntu install with `sudo apt-get install mesa-vulkan-drivers`.
+
 To see why a test fails, run it alone: `./build/Debug/bin/OpenECS --test build/Debug/bin/examples/3_ui/test.lua`. DESIGN.md section 17.5 explains how to write one.
 
 ### Checks
