@@ -84,7 +84,6 @@ int main(int argc, char **argv)
     Shuild_other();
     Shuild_OpenECS();
     Shuild_Plugins();
-    Shuild_Definitions();
 
     return 0;
 }
@@ -582,6 +581,9 @@ static void Shuild_Plugins(void)
     {
         Shuild_Repository("std/");
     }
+
+    // the definitions come before the examples, so an example's C plugin includes the headers of the standard plugins, such as ui.h
+    Shuild_Definitions();
 
     if (CONFIG.examples)
     {

@@ -169,7 +169,8 @@ typedef struct ECSPanelEvent
         // KeyDown and KeyUp
         struct
         {
-            u32 code; // SDL key code
+            u32 code;         // SDL key code
+            const char *name; // the key's name, as Lua's events give it, such as "Return" or "A"; valid until the program exits
         } key;
 
         // Shown and Resized

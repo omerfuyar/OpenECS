@@ -56,7 +56,32 @@ static struct
     const ECSIDialogView *dialog; // the message dialog that waits for an answer, or nullptr
     ECSIDialogStepFunction TestStep; // a running test's step while a dialog waits, or nullptr
     ECSIDialogWaitFunction TestWait;
+    struct
+    {
+        SDL_Keycode key;
+        char *value;
+    } *keyNames; // stb_ds hash map: the names of the keys that events gave, kept until exit, since SDL's own are temporary
 } INPUT = {0};
+
+/// @brief Gives a key's name, as Lua's events give it, such as "Return", in a copy kept until exit; "" if memory runs out.
+static const char *ECSIInput_KeyName(SDL_Keycode key)
+{
+    char *name = hmget(INPUT.keyNames, key);
+
+    if (name == nullptr)
+    {
+        name = SDL_strdup(SDL_GetKeyName(key));
+
+        if (name == nullptr)
+        {
+            return "";
+        }
+
+        hmput(INPUT.keyNames, key, name);
+    }
+
+    return name;
+}
 
 /// @brief A file dialog waiting for its answer, with copies of everything SDL reads until it answers.
 typedef struct ECSIDialog
@@ -141,7 +166,7 @@ static void ECSIInput_SendKey(ECSPanel panel, ECSPanelEventType type, const SDL_
     ECSPanelEvent event = {
         .type = type,
         .modifiers = ECSIInput_Modifiers(key->mod),
-        .key = {.code = key->key},
+        .key = {.code = key->key, .name = ECSIInput_KeyName(key->key)},
     };
 
     ECSIPanel_PostEvent(panel, &event);
@@ -294,7 +319,7 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
         ECSPanelEvent key = {
             .type = event->type == SDL_EVENT_KEY_DOWN ? ECSPanelEventType_KeyDown : ECSPanelEventType_KeyUp,
             .modifiers = ECSIInput_Modifiers(event->key.mod),
-            .key = {.code = event->key.key},
+            .key = {.code = event->key.key, .name = ECSIInput_KeyName(event->key.key)},
         };
 
         if (menu != nullptr && event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_ESCAPE)
@@ -756,6 +781,13 @@ void ECSIInput_Terminate(void)
     arrfree(INPUT.prefixTexts);
     ECSIInput_EndDataDrag();
     ECSIInput_ForgetDropped();
+
+    for (usz i = 0; i < hmlenu(INPUT.keyNames); i++)
+    {
+        SDL_free(INPUT.keyNames[i].value);
+    }
+
+    hmfree(INPUT.keyNames);
     SDL_zero(INPUT);
 }
 

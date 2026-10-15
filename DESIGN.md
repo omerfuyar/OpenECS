@@ -808,11 +808,12 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 ### 10.10 Definition files
 
 - `openecs --definitions FOLDER` loads every plugin it finds, without a display, writes two definition files for each, and exits. Nothing is opened or saved. With `--preset`, it loads that preset's plugins only.
-- The build writes the definitions of the plugins it built into `build/<type>/definitions/`, and a `.luarc.json` in OpenECS, `std/` and `examples/` that names them and `include/`, so editors complete `require("ui")` there with no setup. A release's archive holds the standard plugins' definition files in its `include/`, beside `ecs.lua`, so plugin authors get them with `include/` alone.
+- The build writes the definitions of the plugins it built into `build/<type>/definitions/`, after the standard plugins and before the examples, so an example's C plugin includes their headers, such as `ui.h`. It also writes a `.luarc.json` in OpenECS, `std/` and `examples/` that names them and `include/`, so editors complete `require("ui")` there with no setup. A release's archive holds the standard plugins' definition files in its `include/`, beside `ecs.lua`, so plugin authors get them with `include/` alone.
 - `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`.
 - `NAME.h` is a C header. Its structure is named after the plugin in PascalCase, such as `SketchCFunctions` for `sketch_c`, and has one typed function pointer for each function. `SketchCFunctions_Get(plugin, &functions)` looks them all up with their signatures.
 - A parameter without a name is called `arg1`, `arg2` and so on.
 - A plugin's folder may hold `types.lua`, a LuaLS meta file of annotations only, which the plugin never runs. `NAME.lua` ends with it, so the classes that `value<Type>` names are there, such as ui's `ui.ButtonProps` with its fields.
+- A plugin's folder may also hold `header.h`, which `NAME.h` ends with. It gives C plugins what the functions alone do not, such as types, inline functions and macros that call the functions, like ui's `UI_COLUMN`. It may use the structure and the functions above it.
 - Types: `int` and `int64` are `integer` in Lua and `i32` and `i64` in C, `float` and `double` are `number` and `f32` and `f64`, `color` is `ecs.Color` and `ECSColor`, `buffer` is `string` and `SHUSlice`, and `value` is `any` and `const ECSValue *`, or the type that `value<Type>` names in Lua. The core's handles are `ecs.Panel`, `ecs.Popup` and `ecs.Surface` in Lua and `ECSPanel`, `ECSPopup` and `ECSSurface *` in C; other handles are `userdata` and `void *`.
 
 ## 11. Lua
@@ -1171,7 +1172,7 @@ OpenECS follows the XDG Base Directory specification:
 - The examples are in OpenECS-examples (17.7). An example is a folder that shows plugin authors one part of the plugin interface, or one standard plugin. Its number orders the examples from the first steps to the complex ones, so they are read in order: `1_hello`, `2_native`, and so on. The examples of the plugin interface come first, then those of the standard plugins.
 - An example holds a preset, `preset.lua`, the folders of its plugins, and its tests, the files whose names start with `test`. The preset names the folder in `pluginsDir`, so the example needs nothing else but the standard plugins.
 - Its comments explain how the core behaves: what a statement makes the core do, when it may be called, and a concept the first time it appears. They do not explain the example's own logic or repeat the functions' documentation.
-- With the flag `--examples`, the examples' build copies the numbered folders of `examples/`, sources too, to `bin/examples/`, and builds each example's native plugins there.
+- With the flag `--examples`, the examples' build copies the numbered folders of `examples/`, sources too, to `bin/examples/`, and builds each example's native plugins there. A native plugin includes `OpenECS.h`, SDL and the standard plugins' definition headers (10.10).
 - A change that breaks an example changes the example in the same piece of work, so every test passes.
 
 ### 17.7 Repositories

@@ -2076,6 +2076,23 @@ static void ECSIDefinition_AddCDeclaration(ECSIDefinitionText *text, ECSIParamet
     ECSIDefinitionText_Add(text, "%s%s%s%s", type, pointer || spaced ? "" : " ", parameter.out ? "*" : "", name);
 }
 
+/// @brief Adds a file of a plugin's folder to the end of a definition, if the plugin has it.
+/// @param comment How a line comment starts in the definition's language.
+static void ECSIDefinition_AddFile(ECSIDefinitionText *text, ECSPlugin provider, const char *name, const char *comment)
+{
+    char *path = nullptr;
+    usz size = 0;
+    char *contents = SDL_asprintf(&path, "%s%s", ECSPlugin_GetFolder(provider), name) < 0 ? nullptr : SDL_LoadFile(path, &size);
+
+    if (contents != nullptr)
+    {
+        ECSIDefinitionText_Add(text, "\n%s the plugin's own, from its %s\n%s%s", comment, name, contents, size > 0 && contents[size - 1] == '\n' ? "" : "\n");
+    }
+
+    SDL_free(contents);
+    SDL_free(path);
+}
+
 /// @brief Writes a text file.
 static SHUResult ECSIDefinition_Save(const char *folder, const char *name, const char *extension, const ECSIDefinitionText *text)
 {
@@ -2214,17 +2231,7 @@ SHUResult ECSIServices_WriteDefinitions(ECSPlugin provider, const char *folder)
     }
 
     // the classes that the plugin's value<...> types name, from its types.lua, which holds only annotations
-    char *typesPath = nullptr;
-    usz typesSize = 0;
-    char *types = SDL_asprintf(&typesPath, "%stypes.lua", ECSPlugin_GetFolder(provider)) < 0 ? nullptr : SDL_LoadFile(typesPath, &typesSize);
-
-    if (types != nullptr)
-    {
-        ECSIDefinitionText_Add(&lua, "\n-- the plugin's own types, from its types.lua\n%s%s", types, typesSize > 0 && types[typesSize - 1] == '\n' ? "" : "\n");
-    }
-
-    SDL_free(types);
-    SDL_free(typesPath);
+    ECSIDefinition_AddFile(&lua, provider, "types.lua", "--");
     ECSIDefinitionText_Add(&lua, "\nreturn %s\n", pascal);
     ECSIDefinitionText_Add(&c, "} %sFunctions;\n\n/// @brief Looks up every function of the plugin %s. Call it from ECSPlugin_Init; the plugin's manifest must depend on %s.\n/// @return SHUResult_Ok, or the error of the first function that cannot be looked up.\nstatic inline SHUResult %sFunctions_Get(ECSPlugin plugin, %sFunctions *retFunctions)\n{\n    ECSFunction function = nullptr;\n", pascal, plugin, plugin, pascal, pascal);
 
@@ -2240,6 +2247,9 @@ SHUResult ECSIServices_WriteDefinitions(ECSPlugin provider, const char *folder)
     }
 
     ECSIDefinitionText_Add(&c, "\n    return SHUResult_Ok;\n}\n");
+
+    // what the plugin gives C plugins beside its functions, such as macros, from its header.h
+    ECSIDefinition_AddFile(&c, provider, "header.h", "//");
 
     SHUResult result = ECSIDefinition_Save(folder, plugin, ".lua", &lua);
     result = result ? result : ECSIDefinition_Save(folder, plugin, ".h", &c);
