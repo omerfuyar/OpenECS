@@ -10,7 +10,10 @@
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIServices_Initialize(void);
 
-/// @brief Destroys the objects of every handle Lua still holds, while their plugins are loaded, and frees every registered function and handle type.
+/// @brief Destroys the objects of every handle Lua still holds, before the plugins shut down (DESIGN 2.4).
+void ECSIServices_DestroyHandles(void);
+
+/// @brief Frees every registered function, handle type and kept callback, once the plugins have shut down, since their Destroy may still call functions.
 void ECSIServices_Terminate(void);
 
 /// @brief Pushes the Lua handle of an object: the one Lua already has, or a new one.

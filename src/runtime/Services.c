@@ -59,6 +59,14 @@ typedef struct ECSIHandle
     ECSIHandleType *type;
 } ECSIHandle;
 
+/// @brief An object that Lua has handles of, with every one of them that is not collected yet.
+/// A handle the garbage collector is about to finalize has left the weak table already, so the object can get a new handle meanwhile; the object is destroyed when its last handle is collected (10.6).
+typedef struct ECSIHandleObject
+{
+    ECSIHandleType *type;
+    ECSIHandle **handles; // stb_ds array; a userdata's memory does not move
+} ECSIHandleObject;
+
 /// @brief The object of a handle whose type a Lua plugin provides: the Lua value it stands for.
 typedef struct ECSILuaObject
 {
@@ -95,7 +103,13 @@ typedef struct ECSIFunction
     ECSPlugin plugin;
     ECSISignature signature;
     ECSFunction pointer;
-    int caller;           // registry reference of the Lua function that calls it, made when Lua first asks for it
+    struct
+    {
+        ECSPlugin key;
+        int value;
+    } *callers;           // stb_ds hash map: for each plugin, the registry reference of the Lua function that calls it for that plugin, made when the plugin first asks for it
+    ECSPlugin giver;      // a callback: the plugin that gave the Lua function it calls, or nullptr
+    bool inert;           // a callback whose giver was removed: C may still call it, and nothing runs
     int lua;              // registry reference of the Lua function, or LUA_NOREF for a C function
     int anchors;          // registry reference of a table that keeps the strings and buffers a Lua function last gave C
     ECSValue *result;     // the value a Lua function last returned to C, or nullptr
@@ -136,6 +150,11 @@ static struct
         ECSIHandleType *value;
     } *handleTypes; // stb_ds hash map; handles point to their type
     int handles;    // registry reference of the weak table that maps each object to its Lua handle
+    struct
+    {
+        void *key; // the object
+        ECSIHandleObject *value;
+    } *objects; // stb_ds hash map of the objects that Lua has handles of
     struct
     {
         void *key; // the code that C calls
@@ -445,6 +464,13 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
 
 static void ECSIFunction_Free(ECSIFunction *function)
 {
+    for (usz i = 0; i < hmlenu(function->callers); i++)
+    {
+        luaL_unref(ECSILua_GetState(), LUA_REGISTRYINDEX, function->callers[i].value);
+    }
+
+    hmfree(function->callers);
+
     if (function->closure != nullptr)
     {
         ffi_closure_free(function->closure);
@@ -494,7 +520,7 @@ static SHUResult ECSIServices_Find(ECSPlugin plugin, const char *name, const cha
     return SHUResult_Ok;
 }
 
-static SHUResult ECSIServices_MakeCallback(lua_State *state, int index, const ECSIFunction *service, const ECSISignature *signature, ECSIFunction **retCallback);
+static SHUResult ECSIServices_MakeCallback(lua_State *state, int index, const ECSIFunction *service, ECSPlugin giver, const ECSISignature *signature, ECSIFunction **retCallback);
 
 static void ECSIServices_FreeCallback(ECSIFunction **callback);
 
@@ -607,10 +633,11 @@ static void ECSIServices_PushOutput(lua_State *state, ECSIParameter parameter, c
     }
 }
 
-/// @brief Calls a C function from Lua through libffi. The function is the upvalue: a registered function, or a callback that C gave Lua. Output parameters become extra results.
+/// @brief Calls a C function from Lua through libffi. The function is the first upvalue: a registered function, or a callback that C gave Lua. The second, for a registered function, is the plugin that calls it. Output parameters become extra results.
 static int ECSIServices_CallC(lua_State *state)
 {
     const ECSIFunction *function = lua_touserdata(state, lua_upvalueindex(1));
+    ECSPlugin caller = lua_touserdata(state, lua_upvalueindex(2));
     const ECSISignature *signature = &function->signature;
     usz count = arrlenu(signature->parameters);
 
@@ -673,12 +700,18 @@ static int ECSIServices_CallC(lua_State *state)
     {
         if (signature->parameters[i].type == ECSIParameterType_Fn && !lua_isnoneornil(state, indices[i]))
         {
-            result = ECSIServices_MakeCallback(state, indices[i], function, signature->parameters[i].callback, &callbacks[i]);
+            result = ECSIServices_MakeCallback(state, indices[i], function, caller, signature->parameters[i].callback, &callbacks[i]);
 
             // C gets the closure's code; POSIX lets a data pointer hold code
             if (!result)
             {
                 SDL_memcpy(&slots[i].pointer, &callbacks[i]->pointer, sizeof(slots[i].pointer));
+            }
+
+            // a kept closure is the map's from now on, so C may release it during the call
+            if (!result && signature->parameters[i].keep)
+            {
+                hmput(SERVICES.kept, slots[i].pointer, callbacks[i]);
             }
         }
     }
@@ -714,11 +747,14 @@ static int ECSIServices_CallC(lua_State *state)
             ECSValue_Destroy((ECSValue **)&slots[i].pointer);
         }
 
-        if (callbacks[i] != nullptr && signature->parameters[i].keep && !result)
+        // a kept closure that the call got is C's now, released or not; when the call did not run, nothing can release it
+        if (callbacks[i] != nullptr && signature->parameters[i].keep)
         {
-            void *code = nullptr;
-            SDL_memcpy(&code, &callbacks[i]->pointer, sizeof(code));
-            hmput(SERVICES.kept, code, callbacks[i]);
+            if (result)
+            {
+                (void)hmdel(SERVICES.kept, slots[i].pointer);
+                ECSIServices_FreeCallback(&callbacks[i]);
+            }
         }
         else if (callbacks[i] != nullptr)
         {
@@ -738,17 +774,71 @@ static int ECSIServices_CallC(lua_State *state)
 
 #pragma region Handles
 
-/// @brief Destroys the object of a Lua handle that the garbage collector frees.
+/// @brief Makes every handle of an object invalid and forgets the object; the handles' userdata stay until they are collected.
+/// @return The object's type, or nullptr if Lua had no handle of it.
+static ECSIHandleType *ECSIServices_DropObject(void *object)
+{
+    ECSIHandleObject *record = SERVICES.objects == nullptr ? nullptr : hmget(SERVICES.objects, object);
+
+    if (record == nullptr)
+    {
+        return nullptr;
+    }
+
+    for (usz i = 0; i < arrlenu(record->handles); i++)
+    {
+        record->handles[i]->object = nullptr;
+    }
+
+    ECSIHandleType *type = record->type;
+    (void)hmdel(SERVICES.objects, object);
+    arrfree(record->handles);
+    SDL_free(record);
+
+    // the weak table may still map the object to a handle that is not collected yet
+    lua_State *state = ECSILua_GetState();
+    lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.handles);
+    lua_pushnil(state);
+    lua_rawsetp(state, -2, object);
+    lua_pop(state, 1);
+    return type;
+}
+
+/// @brief Lets go of a Lua handle that the garbage collector frees; the object is destroyed with its last handle.
 static int ECSIServices_HandleCollect(lua_State *state)
 {
     ECSIHandle *handle = lua_touserdata(state, 1);
+    void *object = handle->object;
+    ECSIHandleObject *record = object == nullptr || SERVICES.objects == nullptr ? nullptr : hmget(SERVICES.objects, object);
+    handle->object = nullptr;
 
-    if (handle->object != nullptr && handle->type->Destroy != nullptr)
+    if (record == nullptr)
     {
-        handle->type->Destroy(handle->object);
+        return 0;
     }
 
-    handle->object = nullptr;
+    for (usz i = 0; i < arrlenu(record->handles); i++)
+    {
+        if (record->handles[i] == handle)
+        {
+            arrdelswap(record->handles, i);
+            break;
+        }
+    }
+
+    // another handle of the object, made while this one waited for its finalizer, still stands for it
+    if (arrlenu(record->handles) > 0)
+    {
+        return 0;
+    }
+
+    ECSIHandleType *type = ECSIServices_DropObject(object);
+
+    if (type != nullptr && type->Destroy != nullptr)
+    {
+        type->Destroy(object);
+    }
+
     return 0;
 }
 
@@ -803,31 +893,31 @@ static SHUResult ECSIServices_RegisterHandleType(ECSPlugin plugin, const char *n
     return SHUResult_Ok;
 }
 
-/// @brief Makes every Lua handle of a type invalid; with destroy, their objects are destroyed first. nullptr is every type.
+/// @brief Makes every Lua handle of a type invalid; with destroy, their objects are destroyed first, each once. nullptr is every type.
 static void ECSIServices_ForgetHandles(const ECSIHandleType *type, bool destroy)
 {
-    lua_State *state = ECSILua_GetState();
-    lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.handles);
-    lua_pushnil(state);
+    // a destructor may forget other objects, so the objects are listed first
+    void **objects = nullptr;
 
-    while (lua_next(state, -2) != 0)
+    for (usz i = 0; i < hmlenu(SERVICES.objects); i++)
     {
-        ECSIHandle *handle = lua_touserdata(state, -1);
-
-        if (type == nullptr || handle->type == type)
+        if (type == nullptr || SERVICES.objects[i].value->type == type)
         {
-            if (destroy && handle->object != nullptr && handle->type->Destroy != nullptr)
-            {
-                handle->type->Destroy(handle->object);
-            }
-
-            handle->object = nullptr;
+            arrput(objects, SERVICES.objects[i].key);
         }
-
-        lua_pop(state, 1);
     }
 
-    lua_pop(state, 1);
+    for (usz i = 0; i < arrlenu(objects); i++)
+    {
+        ECSIHandleType *objectType = ECSIServices_DropObject(objects[i]);
+
+        if (destroy && objectType != nullptr && objectType->Destroy != nullptr)
+        {
+            objectType->Destroy(objects[i]);
+        }
+    }
+
+    arrfree(objects);
 }
 
 #pragma endregion Handles
@@ -1023,7 +1113,7 @@ static void ECSIServices_PushCallback(lua_State *state, const ECSIFunction *serv
 
     // the record borrows the service's name and the callback's signature, which live as long as the service; one that is not kept is never used after the call
     ECSIFunction *callback = lua_newuserdatauv(state, sizeof(ECSIFunction), 0);
-    *callback = (ECSIFunction){.name = service->name, .plugin = service->plugin, .signature = *parameter.callback, .pointer = pointer, .caller = LUA_NOREF, .lua = LUA_NOREF, .anchors = LUA_NOREF};
+    *callback = (ECSIFunction){.name = service->name, .plugin = service->plugin, .signature = *parameter.callback, .pointer = pointer, .lua = LUA_NOREF, .anchors = LUA_NOREF};
 
     if (!parameter.keep)
     {
@@ -1069,6 +1159,12 @@ static void ECSIServices_CallLua(ffi_cif *cif, void *result, void **arguments, v
         }
 
         *(const ECSValue **)result = function->result;
+    }
+
+    // the plugin that gave the Lua function was removed, so its code never runs again
+    if (function->inert)
+    {
+        return;
     }
 
     // a new anchor table replaces the last call's, so what C got from the last call stays valid until now
@@ -1128,8 +1224,9 @@ static void ECSIServices_CallLua(ffi_cif *cif, void *result, void **arguments, v
 
 /// @brief Makes a closure that C calls, which calls the Lua function at an index of the stack. Free it with ECSIServices_FreeCallback.
 /// @param service The function that the callback is given to, for reports.
+/// @param giver The plugin whose Lua code gives the function, or nullptr.
 /// @param signature The callback's signature. The record borrows it.
-static SHUResult ECSIServices_MakeCallback(lua_State *state, int index, const ECSIFunction *service, const ECSISignature *signature, ECSIFunction **retCallback)
+static SHUResult ECSIServices_MakeCallback(lua_State *state, int index, const ECSIFunction *service, ECSPlugin giver, const ECSISignature *signature, ECSIFunction **retCallback)
 {
     ECSIFunction *callback = SDL_calloc(1, sizeof(ECSIFunction));
 
@@ -1140,8 +1237,8 @@ static SHUResult ECSIServices_MakeCallback(lua_State *state, int index, const EC
     }
 
     callback->plugin = service->plugin;
+    callback->giver = giver;
     callback->signature = *signature;
-    callback->caller = LUA_NOREF;
 
     void *code = nullptr;
     callback->closure = ffi_closure_alloc(sizeof(ffi_closure), &code);
@@ -1207,7 +1304,6 @@ static SHUResult ECSIServices_Create(ECSPlugin plugin, const char *name, const c
     function->name = SDL_strdup(name);
     function->description = SDL_strdup(description == nullptr ? "" : description);
     function->plugin = plugin;
-    function->caller = LUA_NOREF;
     function->lua = LUA_NOREF;
     function->anchors = LUA_NOREF;
 
@@ -1306,8 +1402,34 @@ void ECSIServices_PushHandle(const char *type, void *object)
     }
 
     lua_pop(state, 1);
+
+    // an object at the address of a gone object of another type is another object
+    ECSIHandleObject *record = SERVICES.objects == nullptr ? nullptr : hmget(SERVICES.objects, object);
+
+    if (record != nullptr && record->type != handleType)
+    {
+        ECSIServices_DropObject(object);
+        record = nullptr;
+    }
+
+    if (record == nullptr)
+    {
+        record = SDL_calloc(1, sizeof(ECSIHandleObject));
+
+        if (record == nullptr)
+        {
+            lua_pop(state, 1);
+            lua_pushnil(state);
+            return;
+        }
+
+        record->type = handleType;
+        hmput(SERVICES.objects, object, record);
+    }
+
     ECSIHandle *handle = lua_newuserdatauv(state, sizeof(ECSIHandle), 0);
     *handle = (ECSIHandle){.object = object, .type = handleType};
+    arrput(record->handles, handle);
     luaL_setmetatable(state, handleType->metatable);
     lua_pushvalue(state, -1);
     lua_rawsetp(state, -3, object);
@@ -1341,18 +1463,7 @@ void ECSIServices_ForgetHandle(void *object)
 {
     SDL_assert(object != nullptr);
 
-    lua_State *state = ECSILua_GetState();
-    lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.handles);
-
-    if (lua_rawgetp(state, -1, object) == LUA_TUSERDATA)
-    {
-        ((ECSIHandle *)lua_touserdata(state, -1))->object = nullptr;
-    }
-
-    lua_pop(state, 1);
-    lua_pushnil(state);
-    lua_rawsetp(state, -2, object);
-    lua_pop(state, 1);
+    ECSIServices_DropObject(object);
 }
 
 void ECSIServices_PushHandleMetatable(const char *type)
@@ -1368,13 +1479,19 @@ void ECSIServices_PushHandleMetatable(const char *type)
     luaL_getmetatable(ECSILua_GetState(), handleType->metatable);
 }
 
-void ECSIServices_Terminate(void)
+void ECSIServices_DestroyHandles(void)
 {
     // handles that wait for their finalizer are no longer in the weak table, so a full collection runs those finalizers now, while the types and their plugins' code exist
     lua_gc(ECSILua_GetState(), LUA_GCCOLLECT);
 
     // objects are destroyed while their plugins' code is still loaded
     ECSIServices_ForgetHandles(nullptr, true);
+}
+
+void ECSIServices_Terminate(void)
+{
+    // handles that plugins made while they shut down are only forgotten, as their plugins' state is gone
+    ECSIServices_ForgetHandles(nullptr, false);
 
     for (usz i = 0; i < shlenu(SERVICES.handleTypes); i++)
     {
@@ -1384,6 +1501,7 @@ void ECSIServices_Terminate(void)
     }
 
     shfree(SERVICES.handleTypes);
+    hmfree(SERVICES.objects);
 
     for (usz i = 0; i < shlenu(SERVICES.functions); i++)
     {
@@ -1420,7 +1538,7 @@ void ECSIServices_RemovePlugin(ECSPlugin plugin)
         }
     }
 
-    // the callbacks that a failed plugin kept are never called again
+    // the callbacks that a failed plugin kept are never called again, so they are freed; those it gave another plugin stay, since that plugin may still call them, but they run nothing
     for (usz i = hmlenu(SERVICES.kept); i > 0; i--)
     {
         ECSIFunction *callback = SERVICES.kept[i - 1].value;
@@ -1429,6 +1547,24 @@ void ECSIServices_RemovePlugin(ECSPlugin plugin)
         {
             (void)hmdel(SERVICES.kept, SERVICES.kept[i - 1].key);
             ECSIServices_FreeCallback(&callback);
+        }
+        else if (callback->giver == plugin && !callback->inert)
+        {
+            callback->inert = true;
+            luaL_unref(ECSILua_GetState(), LUA_REGISTRYINDEX, callback->lua);
+            callback->lua = LUA_NOREF;
+        }
+    }
+
+    // the functions that called others for the plugin go with it
+    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
+    {
+        ECSIFunction *function = SERVICES.functions[i].value;
+
+        if (hmgeti(function->callers, plugin) >= 0)
+        {
+            luaL_unref(ECSILua_GetState(), LUA_REGISTRYINDEX, hmget(function->callers, plugin));
+            (void)hmdel(function->callers, plugin);
         }
     }
 
@@ -1462,15 +1598,16 @@ SHUResult ECSIServices_PushFunction(ECSPlugin plugin, const char *name, const ch
         return SHUResult_Ok;
     }
 
-    // one Lua function per C function, made when Lua first asks for it
-    if (function->caller == LUA_NOREF)
+    // one Lua function per C function and plugin, made when the plugin first asks for it, so a callback knows which plugin gave it
+    if (hmgeti(function->callers, plugin) < 0)
     {
         lua_pushlightuserdata(state, function);
-        lua_pushcclosure(state, ECSIServices_CallC, 1);
-        function->caller = luaL_ref(state, LUA_REGISTRYINDEX);
+        lua_pushlightuserdata(state, plugin);
+        lua_pushcclosure(state, ECSIServices_CallC, 2);
+        hmput(function->callers, plugin, luaL_ref(state, LUA_REGISTRYINDEX));
     }
 
-    lua_rawgeti(state, LUA_REGISTRYINDEX, function->caller);
+    lua_rawgeti(state, LUA_REGISTRYINDEX, hmget(function->callers, plugin));
     return SHUResult_Ok;
 }
 

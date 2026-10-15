@@ -516,10 +516,11 @@ char *ECSIApp_Stop(const char **retOption)
     ECSILayout_Terminate();
     ECSIWindow_Terminate();
     ECSIPanels_Terminate();
-    ECSIServices_Terminate();
+    ECSIServices_DestroyHandles();
 
-    // plugins shut down while timers and events still work, and their code is unloaded once no worker runs it
+    // plugins shut down while timers, events and the functions of other plugins still work, and their code is unloaded once no worker runs it
     ECSIPlugins_Destroy();
+    ECSIServices_Terminate();
     ECSIEvents_Terminate();
     ECSIPlugins_Unload();
     ECSISettings_Terminate();
