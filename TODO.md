@@ -7,10 +7,21 @@ What is not decided yet, and work that is waiting, for OpenECS and the repositor
 - **Docs for every function's parameters before the first major release.** Each function of the core and of the standard plugins says what each parameter is and what it gives back: in OpenECS.h, ecs.lua and the signatures' docs. Functions are likely to change until then, so this waits for the release.
 - **Releases for other platforms.** Shuild builds on Linux only. The release workflow has entries for Linux on aarch64, Windows and macOS, commented out until the build supports them (DESIGN 19.4). README.md's list of packages is for Linux only; Windows needs its own: the compiler (LLVM or MinGW), cmake and ninja from winget, and what libffi's build needs in place of autoreconf.
 - **Portable builds of std and examples.** Their `shuild.c` lists folders with `dirent.h`, which Windows does not have. Shuild has no function that lists a folder; one in shuild would let the builds use shuild and the standard library only. Left for later.
-- **GPU panels on real drivers.** 21_gpu's test runs on Mesa's software Vulkan driver. To confirm with a graphics card's driver, on X11 and Wayland, and with the panel moving between OS windows (DESIGN 5.3, 5.4).
+- **GPU panels on real drivers.** 21_gpu's test runs on Mesa's software Vulkan driver. The owner ran 21_gpu on an RTX 5070 with Hyprland, and it used the card. To confirm on X11, and with the panel moving between OS windows (DESIGN 5.3, 5.4).
 - **Wayland test on Hyprland.** Dragging a panel out of its window and into another one, popups, moving focus between OS windows, and the title bar's moving and resizing (DESIGN 6.10, 6.11, 7.1, 7.2, 18). The tests run on SDL's offscreen driver, where windows have places on the screen. On CachyOS with Hyprland, message dialogs, such as the question about unsaved work, showed nothing and froze OpenECS; the core now draws them itself (DESIGN 7.7), which is to confirm there.
 - **Pauses of a few seconds.** Reported on Hyprland and on openSUSE Tumbleweed. Vsync is off on Wayland now (DESIGN 3.1), which should end them; to confirm there.
 - **A crash when pop-out windows close or are tiled.** Reported on the same systems: a jump to a null address. It does not happen on X11 or on weston. Pop-out windows now share one GPU device and release their popups first; to confirm there, with the steps that cause it.
+
+## Shuild
+
+[Shuild](https://github.com/omerfuyar/shuild) is the build tool, a single header at `dependencies/shuild`. The owner allows changes to it through pull requests into its main branch. Work found in it:
+
+- **A function that lists a folder.** The portable builds of std and examples above need it.
+- **Windows and macOS.** Its Windows paths, such as the quoting for `_spawnvp` and the `-Wl,<folder>` it gives the linker for each library folder, are not tested.
+- **Spaces in paths.** The dependency files that the compiler writes escape a space with a backslash, and shuild's reader splits there. Paths are also limited to `SHUC_MAX_STRING_SIZE`, 256 characters.
+- **Parallel compiling.** Files compile one after another. With exec, several could run at once and be waited for.
+- **Archives that keep removed files.** `ar rcs` adds to an archive that exists, so the object of a source file that is gone stays in the library.
+- **Its own todos.** The header lists a module macro, like Clay's, and renaming the macros to `SHUILD_`.
 
 ## Standard plugins
 
