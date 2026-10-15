@@ -82,6 +82,7 @@ typedef struct ECSIParameter
     bool keep;                         // a callback that stays valid after the call, until the function that took it releases it
     ECSIHandleType *handle;           // handles: their type
     struct ECSISignature *callback;   // callbacks: their signature, owned by the parameter
+    char *luaType;                     // values: the Lua type that value<...> names for editors, or nullptr; only for documentation, as names are
 } ECSIParameter;
 
 /// @brief A parsed signature with its libffi call description.
@@ -207,6 +208,8 @@ static void ECSIParameter_Free(ECSIParameter *parameter)
 {
     SDL_free(parameter->name);
     parameter->name = nullptr;
+    SDL_free(parameter->luaType);
+    parameter->luaType = nullptr;
 
     if (parameter->callback != nullptr)
     {
@@ -318,6 +321,28 @@ static bool ECSISignature_ReadCallback(const char **text, ECSIParameter *retPara
     return valid;
 }
 
+/// @brief Reads what a value<...> names: the Lua type of the value, such as ui.Props, for the definitions only.
+static bool ECSISignature_ReadLuaType(const char **text, ECSIParameter *retParameter)
+{
+    if (**text != '<')
+    {
+        return true;
+    }
+
+    const char *start = *text + 1;
+    const char *end = SDL_strchr(start, '>');
+
+    if (end == nullptr || end == start)
+    {
+        return false;
+    }
+
+    retParameter->luaType = SDL_strndup(start, (usz)(end - start));
+    *text = end + 1;
+    ECSISignature_SkipSpaces(text);
+    return retParameter->luaType != nullptr;
+}
+
 /// @brief Reads a parameter or result of a signature: a type name, after "out" for an output parameter.
 static bool ECSISignature_ReadParameter(const char **text, ECSIParameter *retParameter)
 {
@@ -351,6 +376,8 @@ static bool ECSISignature_ReadParameter(const char **text, ECSIParameter *retPar
                 return ECSISignature_ReadHandle(text, retParameter);
             case ECSIParameterType_Fn:
                 return ECSISignature_ReadCallback(text, retParameter);
+            case ECSIParameterType_Value:
+                return ECSISignature_ReadLuaType(text, retParameter);
             default:
                 return true;
             }
@@ -1976,6 +2003,10 @@ static void ECSIDefinition_AddLuaType(ECSIDefinitionText *text, ECSIParameter pa
     {
         ECSIDefinitionText_Add(text, "ecs.Surface");
     }
+    else if (parameter.type == ECSIParameterType_Value && parameter.luaType != nullptr)
+    {
+        ECSIDefinitionText_Add(text, "%s", parameter.luaType);
+    }
     else
     {
         ECSIDefinitionText_Add(text, "%s", types[parameter.type]);
@@ -2169,6 +2200,18 @@ SHUResult ECSIServices_WriteDefinitions(ECSPlugin provider, const char *folder)
         ECSIDefinitionText_Add(&c, ";\n");
     }
 
+    // the classes that the plugin's value<...> types name, from its types.lua, which holds only annotations
+    char *typesPath = nullptr;
+    usz typesSize = 0;
+    char *types = SDL_asprintf(&typesPath, "%stypes.lua", ECSPlugin_GetFolder(provider)) < 0 ? nullptr : SDL_LoadFile(typesPath, &typesSize);
+
+    if (types != nullptr)
+    {
+        ECSIDefinitionText_Add(&lua, "\n-- the plugin's own types, from its types.lua\n%s%s", types, typesSize > 0 && types[typesSize - 1] == '\n' ? "" : "\n");
+    }
+
+    SDL_free(types);
+    SDL_free(typesPath);
     ECSIDefinitionText_Add(&lua, "\nreturn %s\n", pascal);
     ECSIDefinitionText_Add(&c, "} %sFunctions;\n\n/// @brief Looks up every function of the plugin %s. Call it from ECSPlugin_Init; the plugin's manifest must depend on %s.\n/// @return SHUResult_Ok, or the error of the first function that cannot be looked up.\nstatic inline SHUResult %sFunctions_Get(ECSPlugin plugin, %sFunctions *retFunctions)\n{\n    ECSFunction function = nullptr;\n", pascal, plugin, plugin, pascal, pascal);
 

@@ -713,11 +713,13 @@ ecs.service.register({
 | `buffer`          | a `SHUSlice`, passed by value                      |
 | `handle<name>`    | a typed handle (10.6)                              |
 | `value`           | a generic value (10.3): a `const ECSValue *` in C  |
+| `value<Type>`     | a generic value whose Lua type is `Type`, such as `value<ui.Props>`; for definition files only (10.10) |
 | `fn<signature>`   | a function to call back (10.4)                     |
 | `out <type>`      | an output parameter; in Lua, an extra return value |
 | `keep fn<signature>` | a callback that the function keeps after it returns (10.4) |
 
 - A parameter may have a name after its type: `void(string path, float volume)`. Names only document; they never change how signatures compare. Definition files use them (10.10).
+- A value may name its Lua type: `value<ui.Element>(value<ui.ButtonProps> props)`. Like a name, the type only documents, so `value<ui.Props>` and `value` compare the same, and C still gets an `ECSValue`. The type is a LuaLS type, such as a class, `string[]` or `ui.Rect?`, without `<` or `>` in it; an alias names a type that needs them.
 - Structures are passed as handles or buffers, never by value.
 - In C, an `out` parameter is a pointer to its type. An `out value` is a value that the caller gives and the function fills.
 - There is no fixed limit on the number of parameters.
@@ -789,7 +791,8 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`.
 - `NAME.h` is a C header. Its structure is named after the plugin in PascalCase, such as `SketchCFunctions` for `sketch_c`, and has one typed function pointer for each function. `SketchCFunctions_Get(plugin, &functions)` looks them all up with their signatures.
 - A parameter without a name is called `arg1`, `arg2` and so on.
-- Types: `int` and `int64` are `integer` in Lua and `i32` and `i64` in C, `float` and `double` are `number` and `f32` and `f64`, `color` is `ecs.Color` and `ECSColor`, `buffer` is `string` and `SHUSlice`, and `value` is `any` and `const ECSValue *`. The core's handles are `ecs.Panel`, `ecs.Popup` and `ecs.Surface` in Lua and `ECSPanel`, `ECSPopup` and `ECSSurface *` in C; other handles are `userdata` and `void *`.
+- A plugin's folder may hold `types.lua`, a LuaLS meta file of annotations only, which the plugin never runs. `NAME.lua` ends with it, so the classes that `value<Type>` names are there, such as ui's `ui.ButtonProps` with its fields.
+- Types: `int` and `int64` are `integer` in Lua and `i32` and `i64` in C, `float` and `double` are `number` and `f32` and `f64`, `color` is `ecs.Color` and `ECSColor`, `buffer` is `string` and `SHUSlice`, and `value` is `any` and `const ECSValue *`, or the type that `value<Type>` names in Lua. The core's handles are `ecs.Panel`, `ecs.Popup` and `ecs.Surface` in Lua and `ECSPanel`, `ECSPopup` and `ECSSurface *` in C; other handles are `userdata` and `void *`.
 
 ## 11. Lua
 
