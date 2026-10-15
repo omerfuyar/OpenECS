@@ -17,7 +17,6 @@ What is not decided yet, and work that is waiting, for OpenECS and the repositor
 The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md) describes them.
 
 - **ui for plugins in C.** ui's callbacks are Lua functions. A C plugin cannot give one, and ui cannot call a C plugin's functions by name, because a plugin uses only the functions of the plugins it depends on (DESIGN 10.5).
-- **mixer.** An echo on single voices; the reverb is on the whole output, and filters are on single voices.
 - **web.** HTTP/2, compressed answers and WebSockets, which need more libraries or more of libcurl.
 - **fs.** Watching folders on Windows and macOS; it uses inotify, so it works on Linux only.
 
