@@ -542,18 +542,7 @@ usz ECSIMenus_GetOrder(const char *function)
         position++;
     }
 
-    // the core's functions that other modules register come after the table's, in this order
-    static const char *const OTHERS[] = {"ecs.layout.reset", "ecs.session.save", "ecs.session.open", "ecs.app.quit"};
-
-    for (usz i = 0; position == SDL_arraysize(OPENECS_CORE_FUNCTIONS) && i < SDL_arraysize(OTHERS); i++)
-    {
-        if (SDL_strcmp(OTHERS[i], function) == 0)
-        {
-            return position + i;
-        }
-    }
-
-    return position + (position == SDL_arraysize(OPENECS_CORE_FUNCTIONS) ? SDL_arraysize(OTHERS) : 0);
+    return position;
 }
 
 void ECSIMenus_Open(ECSPanel panel, f32 x, f32 y, bool group)

@@ -29,7 +29,7 @@ const char *ECSIMenus_LabelOf(const char *function, ECSPanel panel);
 
 /// @brief Gets a function's position among the core's functions, so lists of them keep one order.
 /// @param function Name of the function.
-/// @return Its position, starting at 0; the core's functions come first, then the reset, saving, opening and quitting, then every other function.
+/// @return Its position, starting at 0, or the number of the core's functions if it is not one of them.
 usz ECSIMenus_GetOrder(const char *function);
 
 /// @brief Opens a panel's menu, or the menu of the panel's group, at a point. The panel gets the focus.

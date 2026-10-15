@@ -35,6 +35,14 @@ void ECSIServices_ForgetHandle(void *object);
 /// @param type Name of the handle type. Nil is pushed if the type is gone.
 void ECSIServices_PushHandleMetatable(const char *type);
 
+/// @brief Makes a function of a plugin a method of one of its handle types, as ECSHandle_AddMethod does; Lua plugins call it through ecs.handle.addMethod.
+/// @param plugin The plugin.
+/// @param type The handle type's local name.
+/// @param method The method's name in Lua.
+/// @param function The local name of the function.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the method cannot be added, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSIServices_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function);
+
 /// @brief Registers a handle type that a Lua plugin provides. Its objects are Lua values, which the core keeps until the handle is collected.
 /// @param plugin The plugin.
 /// @param name Name of the type; it starts with the plugin's name.

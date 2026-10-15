@@ -669,6 +669,15 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Explain(const char *name, ECSValue *r
 /// @lua ecs.handle.registerType
 OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, ECSHandleDestroyFunction Destroy);
 
+/// @brief Makes a function of the plugin a method of one of its handle types, so Lua calls it on a handle: socket:send(data, true) calls the function with the handle first. C calls the function itself. Main thread only.
+/// @param plugin The plugin that provides the handle type and the function.
+/// @param type The handle type's local name, such as "socket".
+/// @param method The method's name in Lua, such as "send".
+/// @param function The local name of a function of the plugin whose first parameter is a handle of the type, such as "socketSend".
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the type or the function is not the plugin's, the function's first parameter is not such a handle, or the method exists, or SHUResult_ErrAllocation.
+/// @lua ecs.handle.addMethod
+OPENECS_EXPORT SHUWUR SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function);
+
 /// @brief Tells the core that a plugin frees an object of one of its handle types now, such as from a free function of its service, so Lua's handle of it is invalid from now on and its Destroy is not called for it. Main thread only.
 /// @param object The object.
 /// @lua none: Lua frees an object with its provider's free function, or lets go of its handle
