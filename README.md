@@ -62,7 +62,7 @@ The [standard plugins](https://github.com/omerfuyar/OpenECS-std) give plugins us
    }
    ```
 
-3. Run your tool with its preset, `./OpenECS --fresh --preset path/to/preset.lua`. Press Alt+W to see all core key binds. `N` to see the panel types of the tool and open one. `,` for the settings.
+3. Run your tool with its preset, `./OpenECS --fresh --preset path/to/preset.lua`. Press Alt+W to see all core key binds. `N` to see the panel types of the tool and open one. `,` for the settings. `Shift+O` for the launcher, to go to another tool.
 
 See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples from simple to more complex structures.
 

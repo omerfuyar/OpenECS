@@ -19,7 +19,7 @@ static struct
         ECSIPanelType *value;
     } *types;         // stb_ds hash map; panels point to the types, so each type is allocated on its own
     ECSPanel *closed; // stb_ds array
-    u32 nextPanelId;
+    u32 nextPanelID;
     ECSIAskFunction Ask; // asks about unsaved work; Input gives it
 } PANELS = {0};
 
@@ -154,7 +154,7 @@ SHUResult ECSIPanel_Create(ECSPanel *retPanel, const char *typeName, const ECSVa
         SHU_ReturnResult(ECSIValue_Copy(panel->savedState, savedState), ECSIPanel_Destroy(&panel););
     }
 
-    panel->id = ++PANELS.nextPanelId;
+    panel->id = ++PANELS.nextPanelID;
     panel->stateVersion = stateVersion;
     panel->needsDraw = true;
 
@@ -245,14 +245,14 @@ void ECSIPanels_DestroyClosed(void)
     arrfree(PANELS.closed);
 }
 
-void ECSIPanel_SetId(ECSPanel panel, u32 id)
+void ECSIPanel_SetID(ECSPanel panel, u32 id)
 {
     SDL_assert(panel != nullptr);
 
     if (id != 0)
     {
         panel->id = id;
-        PANELS.nextPanelId = SDL_max(PANELS.nextPanelId, id);
+        PANELS.nextPanelID = SDL_max(PANELS.nextPanelID, id);
     }
 }
 
@@ -966,7 +966,7 @@ const char *ECSPanel_GetTitle(ECSPanel panel)
     return panel->title;
 }
 
-u32 ECSPanel_GetId(ECSPanel panel)
+u32 ECSPanel_GetID(ECSPanel panel)
 {
     SDL_assert(panel != nullptr);
 

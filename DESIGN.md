@@ -464,7 +464,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 7.3 Key combinations
 
-- A key combination is modifiers plus one key, written as text: `Ctrl+Shift+P`. The modifiers are Ctrl, Shift, Alt and Super. The text is case-insensitive, and key names are SDL's.
+- A key combination is modifiers plus one key, written as text: `Ctrl+Shift+P`. The modifiers are Ctrl, Shift, Alt and Super. The text is case-insensitive, and key names are SDL's. The modifiers come first, each followed by `+`, and the rest is the key's name, which may hold a `+` itself: `Ctrl++` is Ctrl with the + key, and `Ctrl+Keypad +` Ctrl with the keypad's.
 - Bindings match SDL key codes, which follow the user's keyboard layout. SDL's default `latin_letters` option makes the letter keys of non-Latin layouts report English letters.
 - AltGr (`SDL_KMOD_MODE`) is never part of a binding. A key pressed with AltGr held is text.
 
@@ -577,7 +577,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 8.4 The core's named events
 
-Panels are named by their id (`ECSPanel_GetId`, `panel:getId()`); `ECSLayout_FindPanel(id)` and `ecs.layout.find(id)` find them.
+Panels are named by their id (`ECSPanel_GetID`, `panel:getId()`); `ECSLayout_FindPanel(id)` and `ecs.layout.find(id)` find them.
 
 | Event                   | Value                              | When                                                    |
 | ----------------------- | ---------------------------------- | ------------------------------------------------------- |
@@ -873,7 +873,7 @@ return {
 }
 ```
 
-- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.5), and `panels`, the list of panel types (12.6).
+- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.5), `panels`, the list of panel types (12.6), and `launcher`, the list of presets and sessions (13.8), so every tool can go to another one.
 
 ### 12.4 Themes
 
@@ -931,6 +931,7 @@ return {
 - A plugin saves state of its own, apart from its panels', with the `SaveState` and `RestoreState` functions of its description (9.4). The state of a plugin that is not loaded stays in the session.
 - The app id matches the name of the tool's `.desktop` file.
 - A preset with `listed = false` is left out of the list of presets (13.7), as the launcher's own preset is.
+- A preset's `hint` tells a new user what to try first, such as the keys to press. The title bar that OpenECS draws (6.10) shows it after the tool's name, in dim text, cut at the buttons when the window is narrow. With the system's title bar, it does not show. A session keeps it, as it keeps the preset's other fields.
 
 ### 13.3 Applying a session
 
@@ -990,7 +991,7 @@ openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-l|--log-input
   | ------------------ | ------------------------------------------------------------------------------------------------------ |
   | `name`             | The file's name without `.lua`. For a preset, it is the name that `--preset` takes.                    |
   | `path`             | The file's path.                                                                                       |
-  | `appId`, `appName` | The tool's identity (13.2).                                                                            |
+  | `appID`, `appName` | The tool's identity (13.2).                                                                            |
   | `lastUsed`         | Presets only: when the tool's last session was written, in seconds since 1970. Missing if it has none. |
   | `saved`            | Sessions only: when the file was written, in seconds since 1970.                                       |
 
@@ -999,7 +1000,7 @@ openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-l|--log-input
 
 ### 13.8 The launcher
 
-When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. The preset and its plugin `launcher` are in OpenECS-std (17.7); their design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The launcher.
+When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. Every tool loads the plugin `launcher` too (12.3), and `launcher.open`, the core prefix and Shift+O by default, opens its list in any tool. The preset and its plugin `launcher` are in OpenECS-std (17.7); their design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The launcher.
 
 ## 14. Errors and logging
 

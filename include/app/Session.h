@@ -11,7 +11,7 @@
 typedef struct ECSIPresetInfo
 {
     char *name;
-    char *appId;
+    char *appID;
     char *appName;
     char *pluginsDirectory; // nullptr if the preset names none; ends with a separator
     ECSValue *file;         // the whole file; its depends field names the plugins it needs
@@ -35,9 +35,9 @@ SHUWUR SHUResult ECSISession_FindPreset(char **retPath, const char *nameOrPath, 
 
 /// @brief Finds a tool's last session file.
 /// @param stateFolder The state folder, ending with a separator, or nullptr.
-/// @param appId The tool's app id.
+/// @param appID The tool's app id.
 /// @return The path, or nullptr if there is no state folder. Free it with SDL_free.
-char *ECSISession_GetLastPath(const char *stateFolder, const char *appId);
+char *ECSISession_GetLastPath(const char *stateFolder, const char *appID);
 
 /// @brief Reads a preset's identity and the plugins it needs.
 /// @param path Path of the preset.
