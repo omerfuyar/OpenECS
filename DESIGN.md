@@ -964,13 +964,14 @@ The core converts only layout data.
 ### 13.6 Command line
 
 ```
-openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE] [-d|--definitions FOLDER] [-v|--version] [-h|--help] [FILE...]
+openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-l|--log-input] [-t|--test FILE] [-d|--definitions FOLDER] [-v|--version] [-h|--help] [FILE...]
 ```
 
 - `--version` prints the version of OpenECS (19.1) and of the plugin API, and exits.
 - `--help` prints the options, and exits.
 - Each option has a short form of one letter. An argument that starts with `-` and is not an option, or an option without its value, is reported with the help, and OpenECS exits with status 2.
 - `--fresh` starts from the preset even when `ecs.keepSession` is on (13.4).
+- `--log-input` logs each key and text event as SDL gives it: the key, whether it repeats, its time, and the text. It helps find keys or text that a system gives twice.
 - `--test` runs a test (17.5).
 - `--definitions` writes the definition files of the functions of every plugin it finds, and exits (10.10).
 - Without `--preset` and `--session`, OpenECS starts with the preset `launcher` (13.8).

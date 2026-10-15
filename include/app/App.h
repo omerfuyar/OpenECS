@@ -12,6 +12,7 @@ typedef struct ECSIArguments
     const char *preset;  // name or path of the preset
     const char *session; // path of a session, or nullptr if the command line names none
     bool fresh;          // true to start from the preset, not from the tool's last session
+    bool logInput;       // log each key and text event that SDL gives
     const char *test;    // path of a test to run, or nullptr
     const char *definitions; // folder to write the definition files of the plugins' functions into, or nullptr
     bool version;        // print the version and exit
