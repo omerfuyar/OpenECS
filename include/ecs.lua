@@ -601,11 +601,12 @@ ecs.dialog = {}
 ---@return string? message Why the dialog is not shown.
 function ecs.dialog.show(desc, done) end
 
----Shows a message and waits for a button.
+---Shows a message in a dialog that the core draws, and waits for a button; no plugin code runs while it waits.
+---Return presses the first button unless the user chooses another, and Escape or closing the window presses the last.
 ---@param title string
 ---@param text string
 ---@param buttons? string[] { "OK" } if missing.
----@return integer? button The pressed button's position, from 1.
+---@return integer? button The pressed button's position, from 1; nil if the dialog cannot be shown.
 function ecs.dialog.message(title, text, buttons) end
 
 -- Files: the shapes of manifests, presets, sessions and settings files, for editors. Write ---@type ecs.Manifest, for example, above the file's return.

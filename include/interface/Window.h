@@ -157,4 +157,30 @@ bool ECSIWindow_MenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex);
 /// @brief Checks whether a point of the event window is on any shown menu.
 bool ECSIWindow_MenuContains(f32 x, f32 y);
 
+/// @brief A message dialog that the core draws over an OS window while Input waits for its answer (DESIGN 4.5, 7.7).
+typedef struct ECSIDialogView
+{
+    const char *title;
+    const char *message;
+    const char *const *buttons;
+    usz count;
+    usz selected; // the button that Return presses
+    i32 hover;    // the button under the pointer, or -1
+} ECSIDialogView;
+
+/// @brief Shows a message dialog over the OS window of the event being handled, or over the main window; nullptr hides it. The view lives until it is hidden.
+/// @return The SDL id of the OS window that shows it, or 0 when there is none.
+SDL_WindowID ECSIWindow_ShowDialog(const ECSIDialogView *dialog);
+
+/// @brief Draws and presents the OS window that shows the dialog, from the panels' last pixels: no panel draws while a dialog waits.
+void ECSIWindow_RenderDialog(void);
+
+/// @brief Finds the dialog's button at a point of its OS window, in the last frame.
+/// @return The button's index, or -1 if no button is there.
+i32 ECSIWindow_DialogButtonAt(f32 x, f32 y);
+
+/// @brief Gives the rectangle of a button of the shown dialog in the last frame, in its OS window's layout units.
+/// @return false if no dialog is shown or the button is not laid out.
+bool ECSIWindow_DialogButtonRect(usz index, SDL_FRect *retRect);
+
 #pragma endregion Declarations

@@ -30,6 +30,10 @@
 /// @brief Most menus open at once: the panel menu and its submenus.
 #define OPENECS_MENU_DEPTH 4
 
+/// @brief Widest a message dialog is, and the room it keeps from the OS window's edges, in layout units.
+#define OPENECS_DIALOG_WIDTH 440.0f
+#define OPENECS_DIALOG_MARGIN 24.0f
+
 /// @brief A colour of the core's interface. Each is a setting, in OPENECS_WINDOW_SETTINGS.
 typedef enum ECSIColor
 {
@@ -174,6 +178,9 @@ static struct
 
     ECSIMenuView menus[OPENECS_MENU_DEPTH]; // the panel menu, then its open submenus
 
+    const ECSIDialogView *dialog; // the message dialog that Input waits on, or nullptr
+    ECSIOSWindow *dialogWindow;   // the OS window that shows it
+
     // from the settings
     Clay_Color colors[ECSIColor_Count];
     f32 fontSize;
@@ -189,6 +196,7 @@ static struct
 
 /// @brief Width of the key column in the list of prefix keys.
 #define OPENECS_PREFIX_KEY_COLUMN 104.0f
+
 
 static Clay_String ECSIWindow_ClayText(const char *text)
 {
@@ -925,6 +933,57 @@ static void ECSIWindow_DeclareDataTarget(ECSINode *group, void *userData)
 }
 
 /// @brief Declares the core's own interface in an OS window for Clay and returns what to draw.
+/// @brief Declares the message dialog: a shade over the whole OS window, and in its middle a box with the title, the message and a row of buttons.
+static void ECSIWindow_DeclareDialog(const ECSIOSWindow *os)
+{
+    const ECSIDialogView *dialog = WINDOW.dialog;
+    f32 width = SDL_max(1.0f, SDL_min(OPENECS_DIALOG_WIDTH, os->width - 2.0f * OPENECS_DIALOG_MARGIN));
+    Clay_Color shade = WINDOW.colors[ECSIColor_Background];
+    shade.a = 176.0f;
+
+    CLAY(CLAY_ID("DialogShade"), {
+                                     .layout = {.sizing = {CLAY_SIZING_FIXED(os->width), CLAY_SIZING_FIXED(os->height)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
+                                     .backgroundColor = shade,
+                                     .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .zIndex = 20},
+                                 })
+    {
+        CLAY(CLAY_ID("Dialog"), {
+                                    .layout = {
+                                        .sizing = {CLAY_SIZING_FIXED(width), CLAY_SIZING_FIT(0)},
+                                        .padding = CLAY_PADDING_ALL(16),
+                                        .childGap = 12,
+                                        .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                                    },
+                                    .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
+                                    .cornerRadius = CLAY_CORNER_RADIUS(6),
+                                    .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {1, 1, 1, 1, 0}},
+                                })
+        {
+            CLAY_TEXT(ECSIWindow_ClayText(dialog->title), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Accent], .fontSize = (u16)WINDOW.fontSize}));
+            CLAY_TEXT(ECSIWindow_ClayText(dialog->message), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_WORDS}));
+
+            // the buttons line up at the right; the one that Return presses has the accent's border, and the one under the pointer is lighter
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}, .childGap = 8, .childAlignment = {.x = CLAY_ALIGN_X_RIGHT}}})
+            {
+                for (usz i = 0; i < dialog->count; i++)
+                {
+                    bool selected = i == dialog->selected;
+
+                    CLAY(CLAY_IDI("DialogButton", (u32)i), {
+                                                               .layout = {.padding = {12, 12, 6, 6}},
+                                                               .backgroundColor = (i32)i == dialog->hover ? WINDOW.colors[ECSIColor_Selected] : WINDOW.colors[ECSIColor_Tab],
+                                                               .cornerRadius = CLAY_CORNER_RADIUS(4),
+                                                               .border = {.color = WINDOW.colors[selected ? ECSIColor_Accent : ECSIColor_TextDim], .width = selected ? (Clay_BorderWidth){2, 2, 2, 2, 0} : (Clay_BorderWidth){1, 1, 1, 1, 0}},
+                                                           })
+                    {
+                        CLAY_TEXT(ECSIWindow_ClayText(dialog->buttons[i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                    }
+                }
+            }
+        }
+    }
+}
+
 static Clay_RenderCommandArray ECSIWindow_DeclareInterface(ECSIOSWindow *os, const ECSIRoot *root)
 {
     Clay_SetCurrentContext(os->clay);
@@ -1045,6 +1104,11 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(ECSIOSWindow *os, con
             }
         }
 
+        if (WINDOW.dialog != nullptr && WINDOW.dialogWindow == os)
+        {
+            ECSIWindow_DeclareDialog(os);
+        }
+
         if (WINDOW.prefixLines != nullptr && focusWindow)
         {
             CLAY_AUTO_ID({
@@ -1126,7 +1190,7 @@ static void ECSIWindow_ReleasePopup(ECSPopup popup);
 static void ECSIWindow_CloseOS(ECSIOSWindow *os)
 {
     ECSIOSWindow *main = arrlenu(WINDOW.windows) > 0 && WINDOW.windows[0] != os ? WINDOW.windows[0] : nullptr;
-    ECSIOSWindow **pointers[] = {&WINDOW.event, &WINDOW.gripWindow, &WINDOW.dropWindow, &WINDOW.dataWindow, &WINDOW.menuWindow, &WINDOW.pendingFrom};
+    ECSIOSWindow **pointers[] = {&WINDOW.event, &WINDOW.gripWindow, &WINDOW.dropWindow, &WINDOW.dataWindow, &WINDOW.menuWindow, &WINDOW.pendingFrom, &WINDOW.dialogWindow};
     WINDOW.gripGroup = WINDOW.gripWindow == os ? nullptr : WINDOW.gripGroup;
 
     for (usz i = 0; i < SDL_arraysize(pointers); i++)
@@ -2431,4 +2495,86 @@ void ECSIWindow_ShowPrefixKeys(const char *const *lines, usz count)
     WINDOW.prefixLines = count == 0 ? nullptr : lines;
     WINDOW.prefixLineCount = count;
     ECSILayout_RequestFrame();
+}
+
+SDL_WindowID ECSIWindow_ShowDialog(const ECSIDialogView *dialog)
+{
+    ECSILayout_RequestFrame();
+    WINDOW.dialog = dialog;
+    WINDOW.dialogWindow = nullptr;
+
+    if (dialog == nullptr)
+    {
+        return 0;
+    }
+
+    // the dialog shows over the OS window of the event that asks, such as a pop-out window's close button, and comes forward
+    ECSIOSWindow *os = WINDOW.event != nullptr && ECSIWindow_IsShown(WINDOW.event) ? WINDOW.event : arrlenu(WINDOW.windows) > 0 ? WINDOW.windows[0] : nullptr;
+
+    if (os == nullptr)
+    {
+        WINDOW.dialog = nullptr;
+        return 0;
+    }
+
+    WINDOW.dialogWindow = os;
+    SDL_RaiseWindow(os->window);
+    return SDL_GetWindowID(os->window);
+}
+
+void ECSIWindow_RenderDialog(void)
+{
+    ECSIOSWindow *os = WINDOW.dialogWindow;
+
+    if (WINDOW.dialog == nullptr || os == nullptr)
+    {
+        return;
+    }
+
+    // the panels show the pixels of their last frame, and the core's interface is laid out again with the dialog over it
+    ECSIWindow_ReadSize(os);
+    ECSIRoot *root = ECSIWindow_Root(os);
+    ECSIDrawContext context = {os->renderer, SDL_GetTicksNS()};
+    Clay_RenderCommandArray commands = ECSIWindow_DeclareInterface(os, root);
+
+    Clay_Color background = WINDOW.colors[ECSIColor_Background];
+    SDL_SetRenderDrawColor(os->renderer, (u8)background.r, (u8)background.g, (u8)background.b, (u8)background.a);
+    SDL_RenderClear(os->renderer);
+
+    if (root != nullptr)
+    {
+        ECSILayout_ForEachGroup(root, ECSIWindow_ShowGroup, &context);
+    }
+
+    SDL_Clay_RenderClayCommands(&os->clayRenderer, &commands);
+    ECSIWindow_ShowPopupsIn(os);
+    SDL_RenderPresent(os->renderer);
+}
+
+i32 ECSIWindow_DialogButtonAt(f32 x, f32 y)
+{
+    for (usz i = 0; WINDOW.dialog != nullptr && WINDOW.dialogWindow != nullptr && i < WINDOW.dialog->count; i++)
+    {
+        if (ECSIWindow_OnElement(WINDOW.dialogWindow, CLAY_IDI("DialogButton", (u32)i), x, y))
+        {
+            return (i32)i;
+        }
+    }
+
+    return -1;
+}
+
+bool ECSIWindow_DialogButtonRect(usz index, SDL_FRect *retRect)
+{
+    SDL_assert(retRect != nullptr);
+
+    if (WINDOW.dialog == nullptr || WINDOW.dialogWindow == nullptr || index >= WINDOW.dialog->count)
+    {
+        return false;
+    }
+
+    Clay_SetCurrentContext(WINDOW.dialogWindow->clay);
+    Clay_ElementData element = Clay_GetElementData(CLAY_IDI("DialogButton", (u32)index));
+    *retRect = (SDL_FRect){element.boundingBox.x, element.boundingBox.y, element.boundingBox.width, element.boundingBox.height};
+    return element.found;
 }

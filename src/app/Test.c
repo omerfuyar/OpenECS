@@ -1,5 +1,6 @@
 #include "app/Test.h"
 #include "base/Lua.h"
+#include "interface/Input.h"
 #include "interface/Layout.h"
 #include "interface/Panels.h"
 #include "interface/Window.h"
@@ -27,6 +28,8 @@ static struct
     int threadReference;          // registry reference that keeps the coroutine alive
     bool started;                 // false until the run function is first resumed
     bool failed;                  // true when the test failed
+    bool resuming;                // the test's own code runs, so a dialog it opens cannot wait for it
+    bool ended;                   // the test has ended, so the program stops, even when it ended while a dialog waited
     const ECSIPresetInfo *info;  // what the preset said, for test.session
     SDL_Event *events;            // input events the test sent; one goes to the loop in each pass
     SDL_Keymod *eventModifiers;   // stb_ds array of the modifiers held during each event, set before it goes to the loop
@@ -553,6 +556,50 @@ static int ECSITest_Popup(lua_State *state)
     return 1;
 }
 
+/// @brief test.dialog(): the message dialog that waits for an answer, or nil: its title, message and buttons, the chosen button, and each button's rectangle in its OS window.
+static int ECSITest_Dialog(lua_State *state)
+{
+    const ECSIDialogView *dialog = ECSIInput_GetDialog();
+
+    if (dialog == nullptr)
+    {
+        lua_pushnil(state);
+        return 1;
+    }
+
+    lua_createtable(state, 0, 5);
+    lua_pushstring(state, dialog->title);
+    lua_setfield(state, -2, "title");
+    lua_pushstring(state, dialog->message);
+    lua_setfield(state, -2, "message");
+    lua_pushinteger(state, (lua_Integer)dialog->selected + 1);
+    lua_setfield(state, -2, "selected");
+    lua_createtable(state, (int)dialog->count, 0);
+    lua_createtable(state, (int)dialog->count, 0);
+
+    for (usz i = 0; i < dialog->count; i++)
+    {
+        SDL_FRect rect = {0};
+        ECSIWindow_DialogButtonRect(i, &rect);
+        lua_pushstring(state, dialog->buttons[i]);
+        lua_rawseti(state, -3, (lua_Integer)i + 1);
+        lua_createtable(state, 0, 4);
+        lua_pushnumber(state, (lua_Number)rect.x);
+        lua_setfield(state, -2, "x");
+        lua_pushnumber(state, (lua_Number)rect.y);
+        lua_setfield(state, -2, "y");
+        lua_pushnumber(state, (lua_Number)rect.w);
+        lua_setfield(state, -2, "width");
+        lua_pushnumber(state, (lua_Number)rect.h);
+        lua_setfield(state, -2, "height");
+        lua_rawseti(state, -2, (lua_Integer)i + 1);
+    }
+
+    lua_setfield(state, -3, "rects");
+    lua_setfield(state, -2, "buttons");
+    return 1;
+}
+
 /// @brief test.window(number): chooses the OS window that later input events go to, and that test.screenshot saves: 1 for the main window, then the pop-out windows. Gives the window's position on the screen.
 static int ECSITest_Window(lua_State *state)
 {
@@ -604,6 +651,7 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"panel", ECSITest_Panel},
     {"setting", ECSITest_Setting},
     {"popup", ECSITest_Popup},
+    {"dialog", ECSITest_Dialog},
     {"window", ECSITest_Window},
     {"close", ECSITest_Close},
     {"screenshot", ECSITest_Screenshot},
@@ -631,6 +679,7 @@ static void ECSITest_Finish(void)
 {
     if (TEST.thread != nullptr)
     {
+        TEST.ended = true;
         luaL_unref(ECSILua_GetState(), LUA_REGISTRYINDEX, TEST.threadReference);
         TEST.thread = nullptr;
     }
@@ -659,6 +708,13 @@ static void ECSITest_ReadFolder(lua_State *state, const char *field, const char 
 }
 
 #pragma endregion Source Only
+
+/// @brief Moves the test on while a message dialog waits, so the test can read the dialog and answer it with keys or clicks.
+/// @return false when the test cannot answer: it has ended, or the dialog opened inside the test's own step, as test.call can open one.
+static bool ECSITest_StepDialog(void)
+{
+    return !TEST.resuming && TEST.thread != nullptr && ECSITest_Step();
+}
 
 SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **retPreset)
 {
@@ -759,6 +815,8 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     TEST.info = info;
     TEST.started = false;
     TEST.failed = false;
+    TEST.ended = false;
+    ECSIInput_SetDialogTest(ECSITest_StepDialog, ECSITest_GetWait);
     return SHUResult_Ok;
 }
 
@@ -783,6 +841,7 @@ const char *ECSITest_GetSessions(void)
 void ECSITest_Terminate(void)
 {
     ECSITest_Finish();
+    ECSIInput_SetDialogTest(nullptr, nullptr);
 
     for (usz i = 0; i < arrlenu(TEST.files); i++)
     {
@@ -820,6 +879,11 @@ i32 ECSITest_GetWait(void)
 
 bool ECSITest_Step(void)
 {
+    if (TEST.ended)
+    {
+        return false;
+    }
+
     if (TEST.thread == nullptr || SDL_GetTicksNS() < TEST.resumeTicks)
     {
         return true;
@@ -839,7 +903,9 @@ bool ECSITest_Step(void)
 
     lua_State *state = ECSILua_GetState();
     int results = 0;
+    TEST.resuming = true;
     int status = lua_resume(TEST.thread, state, TEST.started ? 0 : 1, &results);
+    TEST.resuming = false;
     TEST.started = true;
 
     if (status == LUA_YIELD)

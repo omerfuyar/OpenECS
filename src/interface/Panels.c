@@ -20,6 +20,7 @@ static struct
     } *types;         // stb_ds hash map; panels point to the types, so each type is allocated on its own
     ECSPanel *closed; // stb_ds array
     u32 nextPanelId;
+    ECSIAskFunction Ask; // asks about unsaved work; Input gives it
 } PANELS = {0};
 
 static void ECSIPanel_TypeFree(ECSIPanelType *type)
@@ -596,6 +597,11 @@ void ECSIPanels_RemovePlugin(ECSPlugin plugin)
     }
 }
 
+void ECSIPanels_SetAsk(ECSIAskFunction Ask)
+{
+    PANELS.Ask = Ask;
+}
+
 bool ECSIPanels_ConfirmClose(const ECSPanel *panels, usz count, bool quitting)
 {
     SDL_assert(panels != nullptr || count == 0);
@@ -628,31 +634,19 @@ bool ECSIPanels_ConfirmClose(const ECSPanel *panels, usz count, bool quitting)
         OPENECS_ANSWER_CANCEL,
     };
 
-    const SDL_MessageBoxButtonData buttons[] = {
-        {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, OPENECS_ANSWER_SAVE, "Save"},
-        {0, OPENECS_ANSWER_DISCARD, "Discard"},
-        {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, OPENECS_ANSWER_CANCEL, "Cancel"},
-    };
-
+    const char *const buttons[] = {"Save", "Discard", "Cancel"};
     char *message = nullptr;
     SDL_asprintf(&message, "%s unsaved work:%s", unsaved == 1 ? "This panel has" : "These panels have", list == nullptr ? "" : list);
     SDL_free(list);
 
-    const SDL_MessageBoxData data = {
-        .flags = SDL_MESSAGEBOX_WARNING,
-        .title = "Unsaved work",
-        .message = message == nullptr ? "Some panels have unsaved work." : message,
-        .numbuttons = SDL_arraysize(buttons),
-        .buttons = buttons,
-    };
-
-    int answer = OPENECS_ANSWER_CANCEL;
+    const char *text = message == nullptr ? "Some panels have unsaved work." : message;
+    i32 answer = PANELS.Ask == nullptr ? -1 : PANELS.Ask("Unsaved work", text, buttons, SDL_arraysize(buttons));
 
     // without a dialog the user cannot answer; quitting discards the work so it always finishes, closing panels keeps it
-    if (!SDL_ShowMessageBox(&data, &answer))
+    if (answer < 0)
     {
         answer = quitting ? OPENECS_ANSWER_DISCARD : OPENECS_ANSWER_CANCEL;
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask about unsaved work (%s); it is %s. %s", SDL_GetError(), quitting ? "discarded" : "kept", data.message);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask about unsaved work; it is %s. %s", quitting ? "discarded" : "kept", text);
     }
 
     SDL_free(message);
