@@ -437,7 +437,7 @@ function ecs.session.openPreset(nameOrPath) end
 ---@class ecs.SessionEntry
 ---@field name string The file's name without .lua. For a preset, the name that ecs.session.openPreset takes.
 ---@field path string The file's path.
----@field appId string The tool's app id.
+---@field appID string The tool's app id.
 ---@field appName string The tool's name.
 ---@field lastUsed? integer Presets only: when the tool's last session was written, in seconds since 1970. Missing if it has none.
 ---@field saved? integer Sessions only: when the file was written, in seconds since 1970.

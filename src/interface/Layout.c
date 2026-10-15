@@ -37,7 +37,7 @@ static struct
     ECSIClosedPanel *closed; // stb_ds array of the panels ecs.layout.reopen can open again, the last closed last
     bool frameNeeded;
     bool emptied; // the user closed the last panel of every workspace
-    u32 lastRootId;
+    u32 lastRootID;
     ECSILayoutForgetFunction Forget; // the window's, or nullptr
 
     // from the settings
@@ -241,7 +241,7 @@ static void ECSILayout_EmitFocus(ECSPanel panel)
         // with no focused panel, the table stays empty
         if (panel != nullptr && ECSValue_TableSetField(value, "panel", &field) == SHUResult_Ok)
         {
-            ECSValue_SetInteger(field, ECSPanel_GetId(panel));
+            ECSValue_SetInteger(field, ECSPanel_GetID(panel));
         }
 
         ECSIEvents_EmitCore("ecs.focusChanged", value);
@@ -338,7 +338,7 @@ static ECSIRoot *ECSILayout_NewRoot(void)
 
     if (root != nullptr)
     {
-        root->id = ++LAYOUT.lastRootId;
+        root->id = ++LAYOUT.lastRootID;
     }
 
     return root;
@@ -1922,7 +1922,7 @@ void ECSILayout_ClosePanel(ECSPanel panel)
     }
 
     // ecs.layout.reopen opens it again next to a panel that stays in its group
-    ECSIClosedPanel closed = {.neighbour = arrlenu(group->panels) > 1 ? ECSPanel_GetId(group->panels[index == 0 ? 1 : 0]) : 0};
+    ECSIClosedPanel closed = {.neighbour = arrlenu(group->panels) > 1 ? ECSPanel_GetID(group->panels[index == 0 ? 1 : 0]) : 0};
 
     if (ECSValue_Create(&closed.saved) == SHUResult_Ok && ECSIPanel_Save(panel, closed.saved) == SHUResult_Ok)
     {
@@ -2276,7 +2276,7 @@ ECSPanel ECSLayout_FindPanel(u32 id)
 
     for (usz i = 0; found == nullptr && i < arrlenu(panels); i++)
     {
-        found = ECSPanel_GetId(panels[i]) == id ? panels[i] : nullptr;
+        found = ECSPanel_GetID(panels[i]) == id ? panels[i] : nullptr;
     }
 
     arrfree(panels);

@@ -127,7 +127,7 @@ void ECSIPanels_DestroyClosed(void);
 /// @brief Gives a panel the id it had in a saved session. Later panels get higher ids.
 /// @param panel The panel.
 /// @param id The saved id. 0 keeps the panel's new id.
-void ECSIPanel_SetId(ECSPanel panel, u32 id);
+void ECSIPanel_SetID(ECSPanel panel, u32 id);
 
 /// @brief Describes a panel for a session: its id, type, saved state and the state's version. A working panel saves its state through its type; a placeholder writes back the state it kept.
 /// @param panel The panel.

@@ -577,7 +577,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 8.4 The core's named events
 
-Panels are named by their id (`ECSPanel_GetId`, `panel:getId()`); `ECSLayout_FindPanel(id)` and `ecs.layout.find(id)` find them.
+Panels are named by their id (`ECSPanel_GetID`, `panel:getId()`); `ECSLayout_FindPanel(id)` and `ecs.layout.find(id)` find them.
 
 | Event                   | Value                              | When                                                    |
 | ----------------------- | ---------------------------------- | ------------------------------------------------------- |
@@ -989,7 +989,7 @@ openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE
   | ------------------ | ------------------------------------------------------------------------------------------------------ |
   | `name`             | The file's name without `.lua`. For a preset, it is the name that `--preset` takes.                    |
   | `path`             | The file's path.                                                                                       |
-  | `appId`, `appName` | The tool's identity (13.2).                                                                            |
+  | `appID`, `appName` | The tool's identity (13.2).                                                                            |
   | `lastUsed`         | Presets only: when the tool's last session was written, in seconds since 1970. Missing if it has none. |
   | `saved`            | Sessions only: when the file was written, in seconds since 1970.                                       |
 
