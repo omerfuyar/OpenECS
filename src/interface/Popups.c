@@ -193,8 +193,8 @@ bool ECSIPopup_Draw(ECSPopup popup)
     popup->needsDraw = false;
     popup->desc.Draw(popup->desc.data, &surface);
 
-    // the surface is valid only during Draw, so a Lua handle of it is too
-    ECSIServices_ForgetHandle(&surface);
+    // the services that drew into the surface finish, and its Lua handle goes
+    ECSIServices_EndSurface(&surface);
     return true;
 }
 

@@ -906,6 +906,20 @@ OPENECS_EXPORT bool ECSPanel_IsUnsaved(ECSPanel panel);
 /// @lua panel:redraw
 OPENECS_EXPORT void ECSPanel_Redraw(ECSPanel panel);
 
+/// @brief A function that runs once the Draw that gave a surface returns. Passed to ECSSurface_OnDrawn.
+/// @param surface The surface, still valid during the call.
+/// @param data What ECSSurface_OnDrawn was given.
+typedef void (*ECSSurfaceDrawnFunction)(ECSSurface *surface, void *data);
+
+/// @brief Runs a function once the Draw that gave a surface returns, before the core shows what was drawn. A service that draws into surfaces
+/// finishes its work with it so, such as gpu sending what it drew to the GPU, and the plugin that draws needs no call of its own. Main thread only.
+/// @param surface Surface from a Draw function, which is still running.
+/// @param Drawn The function. Functions given for one surface run in the order they were given.
+/// @param data Given to the function.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua none: a Lua plugin's draw finishes its own work before it returns
+OPENECS_EXPORT SHUWUR SHUResult ECSSurface_OnDrawn(ECSSurface *surface, ECSSurfaceDrawnFunction Drawn, void *data);
+
 /// @brief Fills a rectangle of a pixels surface with one colour, such as to clear it. Main thread only.
 /// @param surface Surface to fill, from a Draw function.
 /// @param x Left edge, in pixels. The rectangle is clipped to the surface.

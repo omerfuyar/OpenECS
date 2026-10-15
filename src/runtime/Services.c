@@ -163,6 +163,12 @@ static struct
         void *key; // the code that C calls
         ECSIFunction *value;
     } *kept; // stb_ds hash map of the closures made for Lua functions that C keeps, until ECSService_ReleaseCallback
+    struct
+    {
+        ECSSurface *surface;
+        ECSSurfaceDrawnFunction Drawn;
+        void *data;
+    } *drawn; // stb_ds array of the functions that run once the Draw of their surface returns, in the order they were given
 } SERVICES = {0};
 
 static ECSIHandleType *ECSIServices_FindHandleType(const char *name)
@@ -1510,6 +1516,39 @@ void ECSIServices_ForgetHandle(void *object)
     ECSIServices_DropObject(object);
 }
 
+void ECSIServices_EndSurface(ECSSurface *surface)
+{
+    SDL_assert(surface != nullptr);
+
+    // the functions run in order, and one may give another, which runs too
+    for (usz i = 0; i < arrlenu(SERVICES.drawn);)
+    {
+        if (SERVICES.drawn[i].surface != surface)
+        {
+            i++;
+            continue;
+        }
+
+        ECSSurfaceDrawnFunction Drawn = SERVICES.drawn[i].Drawn;
+        void *data = SERVICES.drawn[i].data;
+        arrdel(SERVICES.drawn, i);
+        Drawn(surface, data);
+    }
+
+    // the surface is valid only during Draw, so a Lua handle of it is too
+    ECSIServices_ForgetHandle(surface);
+}
+
+SHUResult ECSSurface_OnDrawn(ECSSurface *surface, ECSSurfaceDrawnFunction Drawn, void *data)
+{
+    SDL_assert(surface != nullptr);
+    SDL_assert(Drawn != nullptr);
+
+    usz count = arrlenu(SERVICES.drawn);
+    arrput(SERVICES.drawn, ((typeof(*SERVICES.drawn)){.surface = surface, .Drawn = Drawn, .data = data}));
+    return arrlenu(SERVICES.drawn) > count ? SHUResult_Ok : SHUResult_ErrAllocation;
+}
+
 void ECSIServices_PushHandleMetatable(const char *type)
 {
     ECSIHandleType *handleType = ECSIServices_FindHandleType(type);
@@ -1569,6 +1608,7 @@ void ECSIServices_Terminate(void)
     }
 
     hmfree(SERVICES.kept);
+    arrfree(SERVICES.drawn);
     ECSILua_SetHandleFunctions(nullptr, nullptr);
     SDL_zero(SERVICES);
 }

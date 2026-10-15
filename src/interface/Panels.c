@@ -455,7 +455,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         panel->lastDrawTicks = nowTicks;
         panel->needsDraw = false;
         panel->type->desc.Draw(panel->state, &surface, seconds);
-        ECSIServices_ForgetHandle(&surface);
+        ECSIServices_EndSurface(&surface);
         return;
     }
 
@@ -503,8 +503,8 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
 
         panel->type->desc.Draw(panel->state, &surface, seconds);
 
-        // the surface is valid only during Draw, so a Lua handle of it is too
-        ECSIServices_ForgetHandle(&surface);
+        // the services that drew into the surface finish, and its Lua handle goes
+        ECSIServices_EndSurface(&surface);
         SDL_UpdateTexture(panel->texture, nullptr, pixels->pixels, pixels->pitch);
     }
 }

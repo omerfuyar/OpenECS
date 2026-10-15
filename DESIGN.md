@@ -351,7 +351,8 @@ typedef struct ECSSurface
 
 ### 5.4 How plugins draw
 
-- A GPU panel type sets `surface` to `ECSSurfaceType_Gpu`, and in Lua `surface = "gpu"`. Its `Draw` gets a surface whose `texture` is its `SDL_GPUTexture`, on the device that `ECSGpu_GetDevice` gives (9.8). What draws into it submits its commands before `Draw` returns, and the core's renderer shows the texture after, in the same frame.
+- A GPU panel type sets `surface` to `ECSSurfaceType_Gpu`, and in Lua `surface = "gpu"`. Its `Draw` gets a surface whose `texture` is its `SDL_GPUTexture`, on the device that `ECSGpu_GetDevice` gives (9.8). What draws into it submits its commands before `Draw` returns, or in a function given to `ECSSurface_OnDrawn`, and the core's renderer shows the texture after, in the same frame.
+- `ECSSurface_OnDrawn(surface, Drawn, data)` runs a function once the Draw that gave a surface returns, before the core shows what was drawn, for pixels and GPU surfaces and popups alike. A service that draws into surfaces finishes its work with it so, such as gpu sending what it drew to the GPU, and the plugin that called it makes no call of its own. Functions given for one surface run in order. It is C only; Lua's draw finishes its own work before it returns.
 - The standard plugin **gpu** draws into a GPU surface from Lua or C: shapes, lines and textures, and vertex buffers with a plugin's own shaders, with no SDL in sight (20). A native plugin may instead use SDL's GPU API itself, in a command buffer of its own.
 - A GPU surface has no pixels. `ECSSurface_Fill` does nothing on it, the Lua surface's pixel methods raise an error, and draw refuses it. A Lua panel type draws into its GPU surface with the gpu plugin.
 - Plugins that compute their own pixels use pixels surfaces. C writes the pixels directly; Lua uses the surface's methods (11.4).

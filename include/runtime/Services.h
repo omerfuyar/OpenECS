@@ -31,6 +31,10 @@ void *ECSIServices_CheckHandle(int index, const char *type);
 /// @param object The object.
 void ECSIServices_ForgetHandle(void *object);
 
+/// @brief Ends a surface once its Draw returns: runs the functions given with ECSSurface_OnDrawn for it, then makes its Lua handle invalid.
+/// @param surface The surface.
+void ECSIServices_EndSurface(ECSSurface *surface);
+
 /// @brief Pushes the metatable of a handle type, so the Bindings module can give its handles methods.
 /// @param type Name of the handle type. Nil is pushed if the type is gone.
 void ECSIServices_PushHandleMetatable(const char *type);
