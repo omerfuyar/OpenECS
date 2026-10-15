@@ -947,9 +947,9 @@ SHUResult ECSISession_Initialize(const ECSISessionFolders *folders, bool canOpen
     }
 
     // keys run the same names as the Lua functions, which ask for the file when they get no path
-    SHU_ReturnResult(ECSIServices_RegisterCore("ecs.session.save", (ECSFunction)ECSISession_SaveBound, "void()", "Save the session"));
-    SHU_ReturnResult(ECSIServices_RegisterCore("ecs.session.open", (ECSFunction)ECSISession_OpenBound, "void()", "Open a session"));
-    return ECSIServices_RegisterCore("ecs.layout.reset", (ECSFunction)ECSISession_ResetBound, "void()", "Reset the layout");
+    SHU_ReturnResult(ECSIServices_RegisterCore("ecs.session.save", (ECSFunction)ECSISession_SaveBound, "void()", "Save session"));
+    SHU_ReturnResult(ECSIServices_RegisterCore("ecs.session.open", (ECSFunction)ECSISession_OpenBound, "void()", "Open session"));
+    return ECSIServices_RegisterCore("ecs.layout.reset", (ECSFunction)ECSISession_ResetBound, "void()", "Reset layout");
 }
 
 const char *ECSISession_GetNext(const char **retOption)

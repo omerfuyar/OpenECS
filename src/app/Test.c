@@ -232,6 +232,31 @@ static int ECSITest_Key(lua_State *state)
     return lua_yield(state, 0);
 }
 
+/// @brief test.keyEvent(combination, down, ms, repeat): sends one press or release of a key as SDL gives it, with its time in milliseconds and whether it is SDL's repeat, as an input method's own repeat gives them.
+static int ECSITest_KeyEvent(lua_State *state)
+{
+    const char *text = luaL_checkstring(state, 1);
+    bool down = lua_toboolean(state, 2);
+    lua_Number ms = luaL_checknumber(state, 3);
+    bool repeat = lua_toboolean(state, 4);
+    u32 key = 0;
+    u32 modifiers = 0;
+
+    if (ECSISettings_ParseKey(text, false, &key, &modifiers) || modifiers != 0)
+    {
+        return luaL_error(state, "'%s' is not a key without modifiers", text);
+    }
+
+    SDL_Event event = {.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP};
+    event.key.timestamp = (Uint64)(SDL_max(ms, 0.0) * (lua_Number)SDL_NS_PER_MS);
+    event.key.key = key;
+    event.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
+    event.key.down = down;
+    event.key.repeat = repeat;
+    ECSITest_Send(event);
+    return lua_yield(state, 0);
+}
+
 /// @brief test.move(x, y): moves the pointer.
 static int ECSITest_Move(lua_State *state)
 {
@@ -635,6 +660,7 @@ static int ECSITest_Screenshot(lua_State *state)
 
 static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"key", ECSITest_Key},
+    {"keyEvent", ECSITest_KeyEvent},
     {"move", ECSITest_Move},
     {"press", ECSITest_Press},
     {"release", ECSITest_Release},

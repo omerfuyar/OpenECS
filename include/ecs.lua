@@ -541,6 +541,12 @@ ecs.handle = {}
 ---@param name string The local name, such as "brush"; signatures name it "handle<canvas.brush>".
 function ecs.handle.registerType(name) end
 
+---Makes a function of the plugin a method of one of its handle types, so a handle's user calls it on the handle: `socket:send(data, true)`.
+---@param type string The handle type's local name, such as "brush".
+---@param method string The method's name, such as "paint".
+---@param function_ string The local name of one of the plugin's functions, registered with ecs.service.register, whose first parameter is a handle of the type.
+function ecs.handle.addMethod(type, method, function_) end
+
 ---Makes a handle that stands for a Lua value. Lua only: in C, a handle is the object's pointer.
 ---@param name string A handle type of the plugin, by its full name.
 ---@param value any

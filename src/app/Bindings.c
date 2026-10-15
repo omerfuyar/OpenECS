@@ -453,8 +453,23 @@ static int ECSIBindings_HandleValue(lua_State *state)
     return 1;
 }
 
+static int ECSIBindings_HandleAddMethod(lua_State *state)
+{
+    const char *type = luaL_checkstring(state, 1);
+    const char *method = luaL_checkstring(state, 2);
+    const char *function = luaL_checkstring(state, 3);
+
+    if (ECSIServices_AddMethod(ECSIBindings_Plugin(state), type, method, function))
+    {
+        return luaL_error(state, "'%s' cannot be the method '%s' of '%s'", function, method, type);
+    }
+
+    return 0;
+}
+
 static const luaL_Reg OPENECS_BINDINGS_HANDLE[] = {
     {"registerType", ECSIBindings_HandleRegisterType},
+    {"addMethod", ECSIBindings_HandleAddMethod},
     {"new", ECSIBindings_HandleNew},
     {"value", ECSIBindings_HandleValue},
     {nullptr, nullptr},

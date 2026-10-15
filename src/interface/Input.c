@@ -21,7 +21,7 @@
 static const char *const OPENECS_FOCUS_CHOICES[] = {"click", "hover", nullptr};
 
 /// @brief Headings of the sections of the list of prefix keys, in the order ECSIInput_SectionOf numbers them.
-static const char *const OPENECS_PREFIX_SECTIONS[] = {"Navigation", "Panel", "More"};
+static const char *const OPENECS_PREFIX_SECTIONS[] = {"Navigation", "Panel", "Layout", "Session", "More"};
 
 /// @brief Functions that the list of prefix keys shows on one line when they run on the four arrows: left, right, up and down.
 static const struct
@@ -29,8 +29,8 @@ static const struct
     const char *functions[4];
     const char *description;
 } OPENECS_ARROW_FAMILIES[] = {
-    {{"ecs.layout.focusLeft", "ecs.layout.focusRight", "ecs.layout.focusUp", "ecs.layout.focusDown"}, "Focus the panel in that direction"},
-    {{"ecs.layout.moveLeft", "ecs.layout.moveRight", "ecs.layout.moveUp", "ecs.layout.moveDown"}, "Move the panel in that direction"},
+    {{"ecs.layout.focusLeft", "ecs.layout.focusRight", "ecs.layout.focusUp", "ecs.layout.focusDown"}, "Focus to panel"},
+    {{"ecs.layout.moveLeft", "ecs.layout.moveRight", "ecs.layout.moveUp", "ecs.layout.moveDown"}, "Move panel to"},
 };
 
 static struct
@@ -56,6 +56,10 @@ static struct
     const ECSIDialogView *dialog; // the message dialog that waits for an answer, or nullptr
     ECSIDialogStepFunction TestStep; // a running test's step while a dialog waits, or nullptr
     ECSIDialogWaitFunction TestWait;
+    // an input method, such as fcitx5, may repeat a held key itself: it sends a release and a press with the first press's time, again and again
+    SDL_Keycode releasedKey;  // the key of the last release, and its time
+    Uint64 releasedAt;        //
+    SDL_Keycode imeRepeatKey; // the key that the input method repeats now, or SDLK_UNKNOWN
     struct
     {
         SDL_Keycode key;
@@ -419,17 +423,32 @@ static void ECSIInput_CompleteDrop(f32 x, f32 y)
 /// @brief Finds the section of the list of prefix keys that a function is listed in.
 static usz ECSIInput_SectionOf(const char *function)
 {
-    const char *navigation[] = {"ecs.layout.focus", "ecs.layout.move", "ecs.layout.nextTab", OPENECS_WORKSPACE_FUNCTION};
-
-    for (usz i = 0; i < SDL_arraysize(navigation); i++)
+    // by the start of their names: Navigation, Layout and Session; the core's other functions act on the panel, and the plugins' are More
+    static const struct
     {
-        if (SDL_strncmp(function, navigation[i], SDL_strlen(navigation[i])) == 0)
+        const char *start;
+        usz section;
+    } SECTIONS[] = {
+        {"ecs.layout.focus", 0},
+        {"ecs.layout.move", 0},
+        {"ecs.layout.nextTab", 0},
+        {"ecs.workspace.", 0},
+        {"ecs.layout.closeGroup", 2},
+        {"ecs.layout.lock", 2},
+        {"ecs.layout.reset", 2},
+        {"ecs.session.", 3},
+        {"ecs.app.", 3},
+    };
+
+    for (usz i = 0; i < SDL_arraysize(SECTIONS); i++)
+    {
+        if (SDL_strncmp(function, SECTIONS[i].start, SDL_strlen(SECTIONS[i].start)) == 0)
         {
-            return 0;
+            return SECTIONS[i].section;
         }
     }
 
-    return SDL_strncmp(function, "ecs.", 4) == 0 ? 1 : 2;
+    return SDL_strncmp(function, "ecs.", 4) == 0 ? 1 : 4;
 }
 
 /// @brief Finds the prefix key that runs a function with a key and modifiers, and is not listed yet.
@@ -814,6 +833,33 @@ static void ECSIInput_LogEvent(const SDL_Event *event)
     }
 }
 
+/// @brief Tells whether a key event is SDL's own repeat of a key that an input method repeats too, which would type the key twice.
+/// SDL keeps the stale time of the input method's presses, so when the key is released it sends at once every repeat it thinks it missed.
+static bool ECSIInput_IsDoubledRepeat(const SDL_Event *event)
+{
+    if (event->type == SDL_EVENT_KEY_UP)
+    {
+        INPUT.releasedKey = event->key.key;
+        INPUT.releasedAt = event->key.timestamp;
+        INPUT.imeRepeatKey = SDLK_UNKNOWN;
+        return false;
+    }
+
+    if (event->type != SDL_EVENT_KEY_DOWN)
+    {
+        return false;
+    }
+
+    // a press of the key just released, with the release's own time, is the input method's repeat; a person's new press comes later
+    if (!event->key.repeat)
+    {
+        INPUT.imeRepeatKey = event->key.key == INPUT.releasedKey && event->key.timestamp == INPUT.releasedAt ? event->key.key : SDLK_UNKNOWN;
+        return false;
+    }
+
+    return INPUT.imeRepeatKey != SDLK_UNKNOWN && event->key.key == INPUT.imeRepeatKey;
+}
+
 bool ECSIInput_Handle(const SDL_Event *event)
 {
     SDL_assert(event != nullptr);
@@ -821,6 +867,13 @@ bool ECSIInput_Handle(const SDL_Event *event)
     if (INPUT.logInput)
     {
         ECSIInput_LogEvent(event);
+    }
+
+    // the doubled repeat goes nowhere, and neither does the text that SDL sends with it
+    if (ECSIInput_IsDoubledRepeat(event))
+    {
+        INPUT.swallowText = true;
+        return true;
     }
 
     // pointer positions are in the layout units of the event's OS window

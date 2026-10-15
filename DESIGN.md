@@ -308,6 +308,7 @@ typedef struct ECSPanelTypeDesc
 - **Text input.** A panel says whether it accepts text and where its text cursor is, in its surface pixels: `ECSPanel_SetTextInput(panel, accept, x, y, width, height)`, and in Lua `panel:setTextInput(accept, x, y, width, height)`. The core turns text input on while the focused panel accepts text, and tells the input method where to show its window (`SDL_StartTextInput`, `SDL_SetTextInputArea`).
   - The focused panel gets the typed text as `Text` events, in UTF-8; the text is valid during the event.
   - A key press that runs the core's keys or a binding types no text (OVERVIEW 7.3): the core drops the text that follows it.
+  - An input method, such as fcitx5 on Wayland, may repeat a held key itself: it sends a release and a press with the first press's own time. SDL's Wayland backend keeps that stale time, and when the key is released it sends at once every repeat it thinks it missed, so the key would be typed twice. A press with the same key and time as the release before it marks the key as repeated by the input method, and the core drops SDL's repeats of it, with their text, until the next release.
 
 ## 5. Surfaces and rendering
 
@@ -499,7 +500,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - The prefix is the setting `ecs.prefix`. It is one key combination, never a whole modifier.
 - The keys after the prefix are the `prefix` tables of the keys tables (7.8). Each layer adds to the keys of the layers below, and `false` removes a key. So presets and the user can add keys that run service functions.
-- While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's other functions) and More (service functions). Within a section, the keys follow the order of the core's functions below. Like the menus (6.8), the list leaves out what cannot be done now.
+- While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's functions on the focused panel), Layout (closing a group, locking it and resetting the layout), Session (saving and opening sessions, and quitting) and More (service functions, such as the settings, the panel list and the launcher). Within a section, the keys follow the order of the core's functions below. Like the menus (6.8), the list leaves out what cannot be done now.
 - Keys of one kind share a line. The keys that switch workspaces show the first workspace's key to the last one's: `1...0`. Focus and move show `Arrows` and `Shift+Arrows` when their four functions are on the four arrows with the same modifiers.
 - The prefix and the key after it are the only key sequence the core handles.
 - The core's functions after the prefix, in the order the list shows them. Their keys are in the `prefix` table of the core's settings file (12.1).
@@ -790,6 +791,8 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - Handles that wait for their finalizer at exit are collected before the handle types are freed.
 - A failed plugin's handles become invalid without their destructor. On exit, the objects of handles that Lua still holds are destroyed before plugins are destroyed.
 - A provider may free an object before its handles are collected, such as with a plugin's `free` function: `ECSHandle_Forget(object)` makes the object's handles invalid without calling the destructor, so using one raises an error.
+- A handle has methods in Lua, so a plugin writes `connection:send(data)` for `net.send(connection, data)`. A provider names them: `ECSHandle_AddMethod(plugin, "connection", "send", "send")` makes its function `send` the method `send` of its type `connection`, and a Lua plugin calls `ecs.handle.addMethod`. The function must be the provider's, and its first parameter a handle of the type. A method is the function with the handle as its first argument, so it is checked and called as the function is (10.4). C calls the functions.
+- The core cannot find methods by itself: a function's first parameter does not tell whether the function is about the handle, as `send` is, or only takes it, and the method's name often leaves out the type, as `size` does for `draw.imageSize`.
 
 ### 10.7 Buffers
 
@@ -809,12 +812,12 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 
 - `openecs --definitions FOLDER` loads every plugin it finds, without a display, writes two definition files for each, and exits. Nothing is opened or saved. With `--preset`, it loads that preset's plugins only.
 - The build writes the definitions of the plugins it built into `build/<type>/definitions/`, after the standard plugins and before the examples, so an example's C plugin includes their headers, such as `ui.h`. It also writes a `.luarc.json` in OpenECS, `std/` and `examples/` that names them and `include/`, so editors complete `require("ui")` there with no setup. A release's archive holds the standard plugins' definition files in its `include/`, beside `ecs.lua`, so plugin authors get them with `include/` alone.
-- `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`.
+- `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`. Each handle type of the plugin is a class there, with its methods, so an editor completes `connection:send` too.
 - `NAME.h` is a C header. Its structure is named after the plugin in PascalCase, such as `SketchCFunctions` for `sketch_c`, and has one typed function pointer for each function. `SketchCFunctions_Get(plugin, &functions)` looks them all up with their signatures.
 - A parameter without a name is called `arg1`, `arg2` and so on.
 - A plugin's folder may hold `types.lua`, a LuaLS meta file of annotations only, which the plugin never runs. `NAME.lua` ends with it, so the classes that `value<Type>` names are there, such as ui's `ui.ButtonProps` with its fields.
 - A plugin's folder may also hold `header.h`, which `NAME.h` ends with. It gives C plugins what the functions alone do not, such as types, inline functions and macros that call the functions, like ui's `UI_COLUMN`. It may use the structure and the functions above it.
-- Types: `int` and `int64` are `integer` in Lua and `i32` and `i64` in C, `float` and `double` are `number` and `f32` and `f64`, `color` is `ecs.Color` and `ECSColor`, `buffer` is `string` and `SHUSlice`, and `value` is `any` and `const ECSValue *`, or the type that `value<Type>` names in Lua. The core's handles are `ecs.Panel`, `ecs.Popup` and `ecs.Surface` in Lua and `ECSPanel`, `ECSPopup` and `ECSSurface *` in C; other handles are `userdata` and `void *`.
+- Types: `int` and `int64` are `integer` in Lua and `i32` and `i64` in C, `float` and `double` are `number` and `f32` and `f64`, `color` is `ecs.Color` and `ECSColor`, `buffer` is `string` and `SHUSlice`, and `value` is `any` and `const ECSValue *`, or the type that `value<Type>` names in Lua. The core's handles are `ecs.Panel`, `ecs.Popup` and `ecs.Surface` in Lua and `ECSPanel`, `ECSPopup` and `ECSSurface *` in C; other handles are their type in Lua, such as `net.connection`, and `void *` in C.
 
 ## 11. Lua
 
@@ -1026,7 +1029,7 @@ openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-l|--log-input
 
 ### 13.8 The launcher
 
-When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. Every tool loads the plugin `launcher` too (12.3), and `launcher.open`, the core prefix and Shift+O by default, opens its list in any tool. The preset and its plugin `launcher` are in OpenECS-std (17.7); their design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The launcher.
+When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. Every tool loads the plugin `launcher` too (12.3), and `launcher.open`, the core prefix and `/` by default, opens its list in any tool. The preset and its plugin `launcher` are in OpenECS-std (17.7); their design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The launcher.
 
 ## 14. Errors and logging
 
@@ -1152,6 +1155,7 @@ OpenECS follows the XDG Base Directory specification:
   | `window(number)`                                                     | Chooses the OS window that later input goes to, and that `screenshot` saves: 1 for the main window, then the current workspace's pop-out windows in the order they were made. It is 1 at start. Gives the window's position on the screen, `x, y`. |
   | `close()`                                                            | Asks the chosen OS window to close, as its close button does.                                                                                                                                                                                      |
   | `call(name)`                                                         | Runs a bound function (7.8), such as `"ecs.layout.maximize"`, as a key would.                                                                                                                                                                      |
+  | `keyEvent(combination, down, ms, repeat)`                            | Sends one press or release of a key without modifiers as SDL gives it, with its time in milliseconds and whether it is SDL's repeat, such as an input method's own repeat (4.6). |
   | `wait(seconds)`                                                      | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                                                                                                                                                                  |
   | `session()`                                                          | The session that quitting would save now, as a Lua table (13.2).                                                                                                                                                                                   |
   | `rect(id)`                                                           | The rectangle of the shown panel with that id: `x`, `y`, `width` and `height`, and `window`, the number of its OS window.                                                                                                                          |
