@@ -17,6 +17,14 @@ void ECSIWindow_SetHint(const char *hint);
 /// @brief Closes the OS windows and frees what the window holds. Also releases what a failed ECSIWindow_Initialize made.
 void ECSIWindow_Terminate(void);
 
+/// @brief Starts the built-in sdl plugin, which gives native plugins the GPU device as sdl.device.
+/// @param plugin The plugin, which ECSIPlugins_AddBuiltin made.
+/// @return SHUResult_Ok, or the error of registering its function.
+SHUWUR SHUResult ECSIWindow_StartSdlPlugin(ECSPlugin plugin);
+
+/// @brief Destroys the GPU device, after the plugins that may hold its objects. ECSIWindow_Terminate leaves it, so it outlives the OS windows.
+void ECSIWindow_DestroyDevice(void);
+
 /// @brief Gets the main OS window, for dialogs that belong to it.
 /// @return The window.
 SDL_Window *ECSIWindow_GetMain(void);
@@ -88,6 +96,14 @@ void ECSIWindow_Render(u64 nowTicks);
 /// @param number The OS window, as ECSIWindow_Get counts them.
 /// @return SHUResult_Ok, or SHUResult_ErrFile if there is no such window, or the picture cannot be read or saved.
 SHUWUR SHUResult ECSIWindow_Screenshot(const char *path, usz number);
+
+/// @brief Draws a frame and reads one pixel of what an OS window shows, for tests.
+/// @param number The OS window, as ECSIWindow_Get counts them.
+/// @param x Position in the window's layout units.
+/// @param y Position in the window's layout units.
+/// @param retColor Gets the pixel, 0xAARRGGBB.
+/// @return SHUResult_Ok, or SHUResult_ErrBadData if there is no such window or the position is outside it.
+SHUWUR SHUResult ECSIWindow_ReadPixel(usz number, f32 x, f32 y, ECSColor *retColor);
 
 /// @brief Handles a press of the main pointer button on the core's interface: dividers, tabs, close buttons, tab rows and grips. A press on a tab or grip can start dragging its panel, and a press on a tab row's empty part its whole group.
 /// @param x Horizontal position in layout units.

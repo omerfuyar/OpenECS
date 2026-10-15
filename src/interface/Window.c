@@ -128,6 +128,13 @@ typedef struct ECSIPopupView
     SDL_FRect rect;         // where it shows, in the layout units of its panel's OS window
 } ECSIPopupView;
 
+/// @brief The GPU device that every OS window's renderer and every GPU panel shares. An offscreen renderer owns it, so it outlives the OS windows and the plugins, which release their GPU objects first.
+static struct
+{
+    SDL_Renderer *owner;   // the offscreen GPU renderer that made the device
+    SDL_GPUDevice *device; // nullptr without a GPU renderer
+} GPU;
+
 static struct
 {
     ECSIOSWindow **windows; // stb_ds array: the main window, then the pop-out windows
@@ -141,7 +148,6 @@ static struct
     u32 focusRoot;            // the root of the focused panel in the last frame, so its OS window comes forward when the focus moves to it
     char *title;              // of every OS window
     char *hint;               // what the preset tells a new user, shown after the title in the title bar OpenECS draws, or nullptr
-    SDL_GPUDevice *device;    // the GPU device of the main window's renderer, which every other window and popup draws with; nullptr without a GPU renderer
     TTF_Font *fonts[1];
 
     i64 framePercent;     // frame rate as a percentage of the refresh rate, from ecs.vsync; 0 for no vsync and no limit
@@ -1264,18 +1270,22 @@ static void ECSIWindow_CloseOS(ECSIOSWindow *os)
     SDL_free(os);
 }
 
-/// @brief Creates a window's renderer: a GPU renderer on the main window's GPU device, so all windows share one device; else SDL's default renderer.
+/// @brief Creates a window's renderer: a GPU renderer on the shared GPU device, so all windows share one device; else SDL's default renderer.
 static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window, bool main)
 {
-    SDL_Renderer *renderer = main || WINDOW.device != nullptr ? SDL_CreateGPURenderer(WINDOW.device, window) : nullptr;
-
-    if (renderer != nullptr && main)
+    // the device comes from an offscreen renderer, which sets it up as SDL's GPU renderer needs it
+    if (main && GPU.owner == nullptr)
     {
-        WINDOW.device = SDL_GetGPURendererDevice(renderer);
+        GPU.owner = SDL_CreateGPURenderer(nullptr, nullptr);
+        GPU.device = GPU.owner == nullptr ? nullptr : SDL_GetGPURendererDevice(GPU.owner);
     }
 
+    SDL_Renderer *renderer = GPU.device != nullptr ? SDL_CreateGPURenderer(GPU.device, window) : nullptr;
+
+    // GPU panels need every OS window to show the device's textures, so without the main window's GPU renderer there is no device
     if (renderer == nullptr && main)
     {
+        ECSIWindow_DestroyDevice();
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "GPU renderer not available (%s); using SDL's default renderer.", SDL_GetError());
     }
 
@@ -1909,6 +1919,31 @@ void ECSIWindow_Terminate(void)
     SDL_zero(WINDOW);
 }
 
+/// @brief sdl.device: the GPU device, which a GPU panel draws into its surface's texture with.
+static SDL_GPUDevice *ECSIWindow_SdlDevice(void)
+{
+    return GPU.device;
+}
+
+SHUResult ECSIWindow_StartSdlPlugin(ECSPlugin plugin)
+{
+    SDL_assert(plugin != nullptr);
+
+    // the core owns the device, so its handles destroy nothing
+    SHU_ReturnResult(ECSHandle_RegisterType(plugin, "device", nullptr));
+    return ECSService_RegisterFunction(plugin, "device", (ECSFunction)ECSIWindow_SdlDevice, "handle<sdl.device>()", "Gives the GPU device that OpenECS draws with, which GPU panels draw with too, or nothing without a GPU renderer");
+}
+
+void ECSIWindow_DestroyDevice(void)
+{
+    if (GPU.owner != nullptr)
+    {
+        SDL_DestroyRenderer(GPU.owner);
+    }
+
+    SDL_zero(GPU);
+}
+
 SDL_Window *ECSIWindow_GetMain(void)
 {
     return arrlenu(WINDOW.windows) > 0 ? WINDOW.windows[0]->window : nullptr;
@@ -2098,26 +2133,61 @@ void ECSIWindow_Render(u64 nowTicks)
     ECSIWindow_Present();
 }
 
-SHUResult ECSIWindow_Screenshot(const char *path, usz number)
+/// @brief Draws a frame and reads what an OS window shows, before it is presented, because presenting may discard it. Present it after.
+/// @return The picture, to destroy with SDL_DestroySurface, or nullptr if there is no such window or it cannot be read.
+static SDL_Surface *ECSIWindow_ReadFrame(usz number, f32 *retScale)
 {
-    SDL_assert(path != nullptr);
-
-    // the picture is read before it is presented, because presenting may discard it
     ECSIWindow_DrawFrames(SDL_GetTicksNS());
     usz count = 0;
     ECSIRoot *const *roots = ECSILayout_GetRoots(&count);
     ECSIOSWindow *os = number >= 1 && number <= count ? ECSIWindow_OfRoot(roots[number - 1]) : nullptr;
-    SDL_Surface *picture = os == nullptr ? nullptr : SDL_RenderReadPixels(os->renderer, nullptr);
+
+    if (retScale != nullptr)
+    {
+        *retScale = os == nullptr ? 1.0f : SDL_GetWindowPixelDensity(os->window);
+    }
+
+    return os == nullptr ? nullptr : SDL_RenderReadPixels(os->renderer, nullptr);
+}
+
+SHUResult ECSIWindow_Screenshot(const char *path, usz number)
+{
+    SDL_assert(path != nullptr);
+
+    SDL_Surface *picture = ECSIWindow_ReadFrame(number, nullptr);
     bool saved = picture != nullptr && SDL_SavePNG(picture, path);
 
     if (!saved)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot save a screenshot of window %zu to '%s': %s", number, path, os == nullptr ? "there is no such window" : SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot save a screenshot of window %zu to '%s': %s", number, path, SDL_GetError());
     }
 
     SDL_DestroySurface(picture);
     ECSIWindow_Present();
     return saved ? SHUResult_Ok : SHUResult_ErrFile;
+}
+
+SHUResult ECSIWindow_ReadPixel(usz number, f32 x, f32 y, ECSColor *retColor)
+{
+    SDL_assert(retColor != nullptr);
+
+    f32 scale = 1.0f;
+    SDL_Surface *picture = ECSIWindow_ReadFrame(number, &scale);
+    Uint8 red = 0;
+    Uint8 green = 0;
+    Uint8 blue = 0;
+    Uint8 alpha = 0;
+    bool read = picture != nullptr && SDL_ReadSurfacePixel(picture, (int)(x * scale), (int)(y * scale), &red, &green, &blue, &alpha);
+    *retColor = ((ECSColor)alpha << 24) | ((ECSColor)red << 16) | ((ECSColor)green << 8) | blue;
+
+    if (!read)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot read the pixel at %g, %g of window %zu: %s", (double)x, (double)y, number, SDL_GetError());
+    }
+
+    SDL_DestroySurface(picture);
+    ECSIWindow_Present();
+    return read ? SHUResult_Ok : SHUResult_ErrBadData;
 }
 
 bool ECSIWindow_PointerDown(f32 x, f32 y)

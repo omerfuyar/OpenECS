@@ -4,6 +4,7 @@
 
 #include "OpenECS.h"
 
+#include "SDL3/SDL_gpu.h"
 #include "SDL3/SDL_render.h"
 
 #pragma region Declarations
@@ -36,7 +37,11 @@ struct ECSIPanel
     f32 width;
     f32 height;
     SDL_Surface *pixels;  // what the panel drew, kept between draws
-    SDL_Texture *texture; // the pixels on the GPU, made by the renderer of the OS window that shows the panel
+    SDL_Texture *texture; // the pixels on the GPU, made by the renderer of the OS window that shows the panel; for a GPU panel, that renderer's view of gpuTexture
+    SDL_GPUTexture *gpuTexture; // a GPU panel's texture on the shared device, kept when the panel moves to another OS window; nullptr for a pixels panel
+    SDL_GPUDevice *gpuDevice;   // the device of gpuTexture
+    i32 gpuWidth;               // the size of gpuTexture
+    i32 gpuHeight;
     u64 lastDrawTicks;
     u64 focusTicks; // when the panel last got focus, for placing new panels of its type; 0 if never
     bool closed;    // out of the layout, waiting for ECSIPanels_DestroyClosed; it gets no more events
