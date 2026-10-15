@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds OpenECS with shuild and the examples: D for Debug, R for Release.
-# Shuild's exit status does not tell whether the build worked, so this fails on a compiler error or warning in OpenECS's own files, or a missing executable.
+# This fails when shuild fails, on a compiler warning in OpenECS's own files, or when there is no executable.
 set -eu
 
 type="$1"
@@ -16,8 +16,13 @@ rm -f "$executable"
 mkdir -p build
 # the flags are shuild's SHUILD_BUILD, which shuild uses when it builds itself again
 gcc shuild.c -o shuild.ignore -O3 -Wno-format-truncation
+# shuild stops with the exit code of a command that failed
 # shellcheck disable=SC2086
-./shuild.ignore $flags > build/shuild.log 2>&1 || true
+if ! ./shuild.ignore $flags > build/shuild.log 2>&1; then
+    tail -n 40 build/shuild.log
+    echo "The build failed; build/shuild.log has the details."
+    exit 1
+fi
 
 # dependencies are compiled without OpenECS's warnings, so only the problems in the files of OpenECS, OpenECS-std and OpenECS-examples count;
 # std and examples are built in their own folders, so a file may be named from there or by its full path;
