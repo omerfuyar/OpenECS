@@ -6,7 +6,7 @@
 
 #pragma region Declarations
 
-/// @brief The Lua state, as lua.h declares it. Only the Bindings and Test modules use it.
+/// @brief The Lua state, as lua.h declares it. Only the Bindings, Workers and Test modules use it.
 typedef struct lua_State lua_State;
 
 /// @brief Starts the Lua state.
@@ -41,11 +41,34 @@ SHUWUR SHUResult ECSILua_GetValue(int index, ECSValue *value);
 /// @param value The value, or nullptr for nil.
 void ECSILua_PushValue(const ECSValue *value);
 
+/// @brief Starts a Lua state of its own, with every library open, for a worker's thread (DESIGN 3.4). Every function may use it on the thread that made it.
+/// @return The state, to close with lua_close, or nullptr if out of memory.
+lua_State *ECSILua_NewState(void);
+
+/// @brief Copies the Lua value at an index of a state's stack into a value, as ECSILua_GetValue does, but skips handles, so the value can go to another thread.
+/// @param state The state, the core's or one of ECSILua_NewState.
+/// @param index Index of the Lua value.
+/// @param value The value to set.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if tables are nested too deeply, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSILua_GetData(lua_State *state, int index, ECSValue *value);
+
+/// @brief Pushes a value onto a state's stack, as ECSILua_PushValue does. On a state other than the core's, a handle becomes nil.
+/// @param state The state.
+/// @param value The value, or nullptr for nil.
+void ECSILua_PushData(lua_State *state, const ECSValue *value);
+
 /// @brief Calls the Lua function below its arguments on the stack, in a protected call.
 /// @param argumentCount Number of arguments on top of the function.
 /// @param resultCount Number of results to leave on the stack.
 /// @return SHUResult_Ok with the results pushed, or SHUResult_Err with the error message and a stack trace pushed instead.
 SHUWUR SHUResult ECSILua_Call(int argumentCount, int resultCount);
+
+/// @brief Calls a Lua function on a state's stack in a protected call, as ECSILua_Call does on the core's state.
+/// @param state The state.
+/// @param argumentCount Number of arguments on top of the function.
+/// @param resultCount Number of results to leave on the stack.
+/// @return SHUResult_Ok with the results pushed, or SHUResult_Err with the error message and a stack trace pushed instead.
+SHUWUR SHUResult ECSILua_CallIn(lua_State *state, int argumentCount, int resultCount);
 
 /// @brief Runs a data file and copies the table it returns into a value. The file runs without access to the core. Integer keys from 1 up to the first missing one become list items, and text keys named fields, in the order of their names. Other keys, and functions and other values that are not data, are skipped and reported.
 /// @param path Path of the file.

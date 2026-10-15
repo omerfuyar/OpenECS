@@ -1,5 +1,6 @@
 #include "app/Bindings.h"
 
+#include "app/Workers.h"
 #include "base/Lua.h"
 #include "interface/Input.h"
 #include "interface/Panels.h"
@@ -2108,6 +2109,8 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIBindings_AddTable(state, plugin, "dialog", OPENECS_BINDINGS_DIALOG);
     ECSIBindings_AddTable(state, plugin, "event", OPENECS_BINDINGS_EVENT);
     ECSIBindings_AddTable(state, plugin, "handle", OPENECS_BINDINGS_HANDLE);
+    ECSIWorkers_PushTable(state, plugin);
+    lua_setfield(state, -2, "worker");
 
     lua_newtable(state);
     lua_pushstring(state, ECSIPlugin_GetName(plugin));
