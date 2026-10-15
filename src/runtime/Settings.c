@@ -560,48 +560,38 @@ SHUResult ECSISettings_ParseKey(const char *text, bool report, u32 *retKey, u32 
     SDL_assert(retKey != nullptr);
     SDL_assert(retModifiers != nullptr);
 
-    char *copy = SDL_strdup(text);
-
-    if (copy == nullptr)
-    {
-        return SHUResult_ErrAllocation;
-    }
-
     *retKey = SDLK_UNKNOWN;
     *retModifiers = ECSModifier_None;
 
-    // the parts before the key are modifiers, so a word that is neither makes the text invalid
-    usz keyParts = 0;
-    char *save = nullptr;
-
-    for (char *part = SDL_strtok_r(copy, "+", &save); part != nullptr; part = SDL_strtok_r(nullptr, "+", &save))
+    // the modifiers come first, each followed by +, and the rest is the key's name, which may hold a + itself, as "Ctrl++" and "Ctrl+Keypad +" do
+    const struct
     {
-        if (SDL_strcasecmp(part, "Ctrl") == 0)
+        const char *name;
+        u32 modifier;
+    } modifiers[] = {{"Ctrl", ECSModifier_Ctrl}, {"Shift", ECSModifier_Shift}, {"Alt", ECSModifier_Alt}, {"Super", ECSModifier_Super}};
+    const char *key = text;
+
+    for (bool found = true; found;)
+    {
+        found = false;
+
+        for (usz i = 0; i < SDL_arraysize(modifiers); i++)
         {
-            *retModifiers |= ECSModifier_Ctrl;
-        }
-        else if (SDL_strcasecmp(part, "Shift") == 0)
-        {
-            *retModifiers |= ECSModifier_Shift;
-        }
-        else if (SDL_strcasecmp(part, "Alt") == 0)
-        {
-            *retModifiers |= ECSModifier_Alt;
-        }
-        else if (SDL_strcasecmp(part, "Super") == 0)
-        {
-            *retModifiers |= ECSModifier_Super;
-        }
-        else
-        {
-            *retKey = SDL_GetKeyFromName(part);
-            keyParts++;
+            usz length = SDL_strlen(modifiers[i].name);
+
+            if (SDL_strncasecmp(key, modifiers[i].name, length) == 0 && key[length] == '+' && key[length + 1] != '\0')
+            {
+                *retModifiers |= modifiers[i].modifier;
+                key += length + 1;
+                found = true;
+            }
         }
     }
 
-    SDL_free(copy);
+    // a word before a + that is not a modifier, as in "Ctlr+A", names no key, so the text is not valid
+    *retKey = SDL_GetKeyFromName(key);
 
-    if (*retKey == SDLK_UNKNOWN || keyParts != 1)
+    if (*retKey == SDLK_UNKNOWN)
     {
         if (report)
         {
