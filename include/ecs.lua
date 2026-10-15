@@ -671,6 +671,7 @@ function ecs.dialog.message(title, text, buttons) end
 ---@field settings? table<string, any> Values of settings, over the plugins' defaults.
 ---@field keys? ecs.Keys Keys for the whole tool.
 ---@field listed? boolean false leaves the preset out of the list of presets.
+---@field hint? string What to try first, such as keys to press; the title bar that OpenECS draws shows it after the tool's name.
 ---@field workspaces ecs.WorkspaceDesc[]
 
 ---A session, which OpenECS writes: a preset with the state it was saved in.

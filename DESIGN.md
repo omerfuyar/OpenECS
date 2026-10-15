@@ -931,6 +931,7 @@ return {
 - A plugin saves state of its own, apart from its panels', with the `SaveState` and `RestoreState` functions of its description (9.4). The state of a plugin that is not loaded stays in the session.
 - The app id matches the name of the tool's `.desktop` file.
 - A preset with `listed = false` is left out of the list of presets (13.7), as the launcher's own preset is.
+- A preset's `hint` tells a new user what to try first, such as the keys to press. The title bar that OpenECS draws (6.10) shows it after the tool's name, in dim text, cut at the buttons when the window is narrow. With the system's title bar, it does not show. A session keeps it, as it keeps the preset's other fields.
 
 ### 13.3 Applying a session
 

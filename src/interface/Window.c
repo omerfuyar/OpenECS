@@ -140,6 +140,7 @@ static struct
     ECSIOSWindow *menuWindow; // the OS window that shows the menus
     u32 focusRoot;            // the root of the focused panel in the last frame, so its OS window comes forward when the focus moves to it
     char *title;              // of every OS window
+    char *hint;               // what the preset tells a new user, shown after the title in the title bar OpenECS draws, or nullptr
     SDL_GPUDevice *device;    // the GPU device of the main window's renderer, which every other window and popup draws with; nullptr without a GPU renderer
     TTF_Font *fonts[1];
 
@@ -731,8 +732,16 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *os)
                                   .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {0.0f, 0.0f}},
                               })
     {
-        CLAY_TEXT(ECSIWindow_ClayText(WINDOW.title), CLAY_TEXT_CONFIG({.textColor = color, .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
-        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}}}) {}
+        CLAY_TEXT(ECSIWindow_ClayText(WINDOW.title), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+
+        // the preset's hint follows the title, cut at the buttons when the window is narrow
+        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}, .padding = {16, 8, 0, 0}}, .clip = {.horizontal = true}})
+        {
+            if (WINDOW.hint != nullptr)
+            {
+                CLAY_TEXT(ECSIWindow_ClayText(WINDOW.hint), CLAY_TEXT_CONFIG({.textColor = color, .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+            }
+        }
 
         const ECSIIcon icons[] = {ECSIIcon_Minimize, maximized ? ECSIIcon_Restore : ECSIIcon_Maximized};
 
@@ -1820,6 +1829,12 @@ static void ECSIWindow_Present(void)
 
 #pragma endregion Source Only
 
+void ECSIWindow_SetHint(const char *hint)
+{
+    SDL_free(WINDOW.hint);
+    WINDOW.hint = hint == nullptr || hint[0] == '\0' ? nullptr : SDL_strdup(hint);
+}
+
 SHUResult ECSIWindow_Initialize(const char *title)
 {
     SDL_assert(title != nullptr);
@@ -1890,6 +1905,7 @@ void ECSIWindow_Terminate(void)
     }
 
     SDL_free(WINDOW.title);
+    SDL_free(WINDOW.hint);
     SDL_zero(WINDOW);
 }
 

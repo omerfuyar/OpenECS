@@ -37,6 +37,7 @@ static const ECSIFieldRule OPENECS_PRESET_RULES[] = {
     {"settings", ECSIFieldType_Table, false},
     {"keys", ECSIFieldType_Table, false},
     {"listed", ECSIFieldType_Bool, false},
+    {"hint", ECSIFieldType_String, false},
     {"workspaces", ECSIFieldType_Table, true},
     {"currentWorkspace", ECSIFieldType_Integer, false},
     {"pluginState", ECSIFieldType_Table, false},
