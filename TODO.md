@@ -18,7 +18,6 @@ What is not decided yet, and work that is waiting, for OpenECS and the repositor
 
 - **Windows and macOS.** Its Windows paths, such as the quoting for `_spawnvp` and the `-Wl,<folder>` it gives the linker for each library folder, are not tested.
 - **Long paths.** Paths are limited to `SHUC_MAX_STRING_SIZE`, 256 characters.
-- **Archives that keep removed files.** `ar rcs` adds to an archive that exists, so the object of a source file that is gone stays in the library.
 - **Its own todos.** The header lists a module macro, like Clay's, and renaming the macros to `SHUILD_`.
 - **Its issues that need the owner's design.** Libraries that link other libraries (omerfuyar/shuild#18, omerfuyar/shuild#27), one way to name libraries on every compiler (omerfuyar/shuild#23), dynamic libraries beside the executable on Windows (omerfuyar/shuild#24), finding the compilers on the system (omerfuyar/shuild#22), the logs (omerfuyar/shuild#20), more variadic functions (omerfuyar/shuild#15), an argument parser (omerfuyar/shuild#14), memory (omerfuyar/shuild#13) and finding other build scripts (omerfuyar/shuild#7).
 
