@@ -168,9 +168,10 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 1. Ask about unsaved work (4.5). The user may cancel.
 2. Save the session for the next start (13.4).
 3. Destroy the panels, then the objects of handles (10.6).
-4. Destroy the plugins in reverse load order: each plugin's `Destroy` function runs (9.4). Timers and events still work then.
-5. Stop the worker threads and free the timers, then unload the plugins' libraries.
-6. Stop SDL and Lua.
+4. Destroy the plugins in reverse load order: each plugin's `Destroy` function runs (9.4). Timers, events and the functions of other plugins still work then.
+5. Forget the handles that plugins made while they shut down, and free the services.
+6. Stop the worker threads and free the timers, then unload the plugins' libraries.
+7. Stop SDL and Lua.
 
 ## 3. Main loop, timers and threads
 
@@ -730,7 +731,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - Each part of a value is allocated on its own with SDL's allocator. Values are small and short-lived, so they need no arena.
 - A table is a list and named fields together. From Lua, integer keys from 1 up to the first missing one are the list, and text keys are the fields. Other keys are reported and skipped.
 - A buffer is bytes that may hold zeros: `ECSValue_SetBuffer` copies them, and `ECSValue_GetBuffer` reads them, or a string's bytes. From Lua, a string with a zero byte becomes a buffer; to Lua, a buffer is a string.
-- A handle names an object of a handle type (10.6) by its type and its object: `ECSValue_SetHandle(value, "ecs.panel", panel)` and `ECSValue_GetHandle(value, "ecs.panel")`. The value does not own the object. To Lua it is the object's handle, and a handle from Lua stays one, so an event can name a panel by its handle.
+- A handle names an object of a handle type (10.6) by its type and its object: `ECSValue_SetHandle(value, "ecs.panel", panel)` and `ECSValue_GetHandle(value, "ecs.panel")`. The value does not own the object. To Lua it is the object's handle, and a handle from Lua stays one, so an event can name a panel by its handle. A value made from a Lua handle keeps that handle, so the object lives as long as the value.
 - Files hold only data (13.4): a buffer is written as a string, and a handle is left out.
 - Functions on a table's list have `List` in their names (`ECSValue_GetListCount`, `ECSValue_GetListItem`, `ECSValue_ListAddItem`), and functions on its named fields have `Table` (`ECSValue_GetTableField`, `ECSValue_TableSetField`).
 
@@ -742,7 +743,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - **Lua calls Lua:** a plain Lua call, because all plugins share one Lua state.
 - Callbacks (`fn<...>` parameters) work the same way in both directions. In C, a callback is a function pointer of its signature; in Lua, a function. `nil` in Lua is `nullptr` in C.
 - A callback is valid only during the call that gives it. C must not keep it; a Lua function that keeps one gets an error when it calls it later.
-- A `keep fn<signature>` callback stays valid after the call, so a service can call it later, such as when work in the background is done. The function that took it releases it when it no longer calls it: in C with `ECSService_ReleaseCallback(callback)`, which frees the closure of a Lua function; a Lua function just drops it. Callbacks that are never released are freed when the program exits, and those a failed plugin kept are freed with its registrations. A kept callback is called on the main thread only, as every callback is.
+- A `keep fn<signature>` callback stays valid after the call, so a service can call it later, such as when work in the background is done. The function that took it releases it when it no longer calls it: in C with `ECSService_ReleaseCallback(callback)`, which frees the closure of a Lua function; a Lua function just drops it. Callbacks that are never released are freed when the program exits, and those a failed plugin kept are freed with its registrations. A callback that a failed plugin's Lua code gave to another plugin stays valid, but calling it runs nothing and gives zeros. A kept callback is called on the main thread only, as every callback is.
 - A callback is a parameter only, never `out` or a result, and its own signature has no callbacks.
 - Strings, buffers and values that a Lua function gives to C stay valid until that function returns again.
 - When a Lua function called from C raises an error or gives a value of the wrong type, the error is reported (14.2) and C gets zeros.
@@ -760,6 +761,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - A handle stands for an object owned by its provider: a pointer plus a type name and a destructor, registered with `ECSHandle_RegisterType(plugin, "sound", Destroy)` by the plugin `audio`. In C, a `handle<audio.sound>` is the object's pointer.
 - In Lua, a handle is a userdata whose metatable names its type. A handle of the wrong type is rejected with a clear error. When Lua no longer uses a handle, its garbage collector calls the destructor.
 - The same object always has the same Lua handle. A provider that still uses an object after giving it to Lua counts references, and its destructor drops one.
+- A handle that waits for its finalizer is already gone from Lua, so pushing its object again makes a new handle. The destructor runs once, when the object's last handle is collected.
 - The core's own handle types are `ecs.panel`, Lua's panel handles (11.4), and `ecs.surface`, the surface a panel draws into. A surface handle is valid only during the `Draw` call that gives it, so a panel can pass its surface to a service that draws, such as the draw plugin's (20).
 - A Lua plugin provides a handle type too: `ecs.handle.registerType(name)`, `ecs.handle.new(name, value)` for a handle that stands for a Lua value, and `ecs.handle.value(handle, name)`, which gives the value back to the plugin that owns the type. Users see such a handle like any other. The core keeps the value until the handle is collected.
 - Handles that wait for their finalizer at exit are collected before the handle types are freed.

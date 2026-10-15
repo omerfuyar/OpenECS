@@ -128,9 +128,11 @@ static SHUResult ECSILua_ToValue(int index, ECSValue *value, u32 depth)
         const char *type = nullptr;
         void *object = nullptr;
 
+        // the value keeps the handle itself, so the handle it gives back is gone once its object is, and the object lives while the value does
         if (LUA.ReadHandle != nullptr && LUA.ReadHandle(index, &type, &object))
         {
-            return ECSValue_SetHandle(value, type, object);
+            lua_pushvalue(state, index);
+            return ECSIValue_SetLuaHandle(value, type, object, luaL_ref(state, LUA_REGISTRYINDEX));
         }
 
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A userdata that is not a handle, or whose object is gone, is not data; it is skipped.");
@@ -270,6 +272,13 @@ static void ECSILua_PushOrderedField(const char *name, const ECSValue *field, vo
     lua_State *state = LUA.state;
     lua_Integer length = (lua_Integer)lua_rawlen(state, -1);
 
+    // a field that is a handle is left out with its name, so the names and values after it keep their places
+    if (ECSValue_GetType(field) == ECSValueType_Handle)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A handle is not data that a file can hold; the field '%s' is left out.", name);
+        return;
+    }
+
     lua_pushstring(state, name);
     lua_rawseti(state, -2, length + 1);
     ECSILua_PushOrderedValue(field);
@@ -346,6 +355,29 @@ static void ECSILua_Warn(void *userData, const char *message, int toContinue)
     }
 }
 
+/// @brief Takes another reference to a Lua handle that a value keeps.
+static int ECSILua_KeepHandle(int reference)
+{
+    lua_rawgeti(LUA.state, LUA_REGISTRYINDEX, reference);
+    return luaL_ref(LUA.state, LUA_REGISTRYINDEX);
+}
+
+static void ECSILua_DropHandle(int reference)
+{
+    luaL_unref(LUA.state, LUA_REGISTRYINDEX, reference);
+}
+
+/// @brief Gives the object of a Lua handle that a value keeps, or nullptr once it is gone.
+static void *ECSILua_HandleObject(int reference)
+{
+    const char *type = nullptr;
+    void *object = nullptr;
+    lua_rawgeti(LUA.state, LUA_REGISTRYINDEX, reference);
+    bool found = LUA.ReadHandle != nullptr && LUA.ReadHandle(lua_gettop(LUA.state), &type, &object);
+    lua_pop(LUA.state, 1);
+    return found ? object : nullptr;
+}
+
 #pragma endregion Source Only
 
 SHUResult ECSILua_Initialize(void)
@@ -370,11 +402,15 @@ SHUResult ECSILua_Initialize(void)
     }
 
     LUA.writer = luaL_ref(LUA.state, LUA_REGISTRYINDEX);
+    ECSIValue_SetLuaFunctions(ECSILua_KeepHandle, ECSILua_DropHandle, ECSILua_HandleObject);
     return SHUResult_Ok;
 }
 
 void ECSILua_Terminate(void)
 {
+    // a value that outlives the state lets go of no handle
+    ECSIValue_SetLuaFunctions(nullptr, nullptr, nullptr);
+
     if (LUA.state != nullptr)
     {
         lua_close(LUA.state);
@@ -441,6 +477,12 @@ void ECSILua_PushValue(const ECSValue *value)
             return;
         }
         case ECSValueType_Handle:
+            if (ECSIValue_GetLuaHandle(value) != 0)
+            {
+                lua_rawgeti(state, LUA_REGISTRYINDEX, ECSIValue_GetLuaHandle(value));
+                return;
+            }
+
             if (LUA.PushHandle != nullptr)
             {
                 const char *type = ECSIValue_GetHandleType(value);
