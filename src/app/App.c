@@ -360,6 +360,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_CheckStart(ECSIKeys_Initialize(), "reading the keys", nullptr);
     ECSIApp_CheckStart(ECSIMenus_Initialize(), "registering the core's functions", nullptr);
     ECSIApp_CheckStart(ECSIInput_Initialize(), "declaring the input settings", nullptr);
+    ECSIInput_SetLogInput(arguments->logInput);
 
     // a test has no data folder; its sessions field names the folder that stands for the saved sessions
     char *dataFolder = APP.test ? nullptr : ECSIApp_XdgFolder("XDG_DATA_HOME", ".local/share");

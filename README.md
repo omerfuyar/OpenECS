@@ -93,6 +93,7 @@ Options:
   -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file
   -s, --session FILE      Open a saved session
   -f, --fresh             Start from the preset, not from the tool's last session
+  -l, --log-input         Log each key and text event as the system gives it
   -t, --test FILE         Run a test; Debug builds only
   -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit
   -v, --version           Print the version and exit
