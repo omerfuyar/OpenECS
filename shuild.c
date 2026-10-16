@@ -88,8 +88,6 @@ int main(int argc, char **argv)
     return 0;
 }
 
-#define RunCheck(cmd, ...) SHU_Assert(!SHU_UtilRun(cmd, ##__VA_ARGS__), "Running " SHUM_COLOR_RED("'%s'") " failed", cmd)
-
 /// @brief Deletes a file or folder if it exists.
 static void DeleteIfExists(const char *path)
 {
@@ -210,75 +208,51 @@ static bool IsBuilt(const char *library, bool shared)
     return SHU_UtilFileExists(path.data) == SHUFileType_Regular;
 }
 
-static void Shuild_SDL(void)
+/// @brief Builds a CMake project of dependencies/ and installs it into the build's folder. The output of each step goes to a log in the cache folder,
+/// such as .shu/Debug/SDL3-build.log, and the end of the log shows when the step fails.
+static void Shuild_CMake(const char *name, const char *source, const char *options)
 {
-    SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'SDL3'") "...");
+    SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", name);
 
     const char *root = SHU_UtilGetExecutablePath();
 
     SHUI_String sourceDir;
     SHUI_String buildDir;
     SHUI_String outputPrefixDir;
-    SHUI_SFormat(&sourceDir, "%sdependencies/SDL/", root);
-    SHUI_SFormat(&buildDir, "%s%sSDL3/", root, CONFIG.buildDir.data);
+    SHUI_String log;
+    SHUI_SFormat(&sourceDir, "%sdependencies/%s/", root, source);
+    SHUI_SFormat(&buildDir, "%s%s%s/", root, CONFIG.buildDir.data, name);
     SHUI_SFormat(&outputPrefixDir, "%s%s", root, CONFIG.outputDir.data);
 
-    RunCheck(
-        "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
-        "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
-        "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
-        "-DSDL_SHARED=ON -DSDL_STATIC=OFF "                          // link type
-        "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF " // options
-        "--log-level=WARNING",                                       // logs
-        sourceDir.data, buildDir.data, BuildType_String(CONFIG.type),
-        outputPrefixDir.data, outputPrefixDir.data);
+    SHUI_SFormat(&log, "%s%s-configure.log", CONFIG.buildDir.data, name);
+    SHU_UtilRunLogged(log.data,
+                      "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
+                      "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
+                      "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON %s",
+                      sourceDir.data, buildDir.data, BuildType_String(CONFIG.type),
+                      outputPrefixDir.data, outputPrefixDir.data, options);
 
-    RunCheck(
-        "cmake --build \"%s\" --parallel > %s",
-        buildDir.data, SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
+    SHUI_SFormat(&log, "%s%s-build.log", CONFIG.buildDir.data, name);
+    SHU_UtilRunLogged(log.data, "cmake --build \"%s\" --parallel", buildDir.data);
 
-    RunCheck(
-        "cmake --install \"%s\" > %s",
-        buildDir.data, SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
+    SHUI_SFormat(&log, "%s%s-install.log", CONFIG.buildDir.data, name);
+    SHU_UtilRunLogged(log.data, "cmake --install \"%s\"", buildDir.data);
 
-    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'SDL3'") "\n");
+    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'%s'") "\n", name);
+}
+
+static void Shuild_SDL(void)
+{
+    Shuild_CMake("SDL3", "SDL",
+                 "-DSDL_SHARED=ON -DSDL_STATIC=OFF "                          // link type
+                 "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF"); // options
 }
 
 static void Shuild_SDL_ttf(void)
 {
-    SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'SDL3_ttf'") "...");
-
-    const char *root = SHU_UtilGetExecutablePath();
-
-    SHUI_String sourceDir;
-    SHUI_String buildDir;
-    SHUI_String outputPrefixDir;
-
-    SHUI_SFormat(&sourceDir, "%sdependencies/SDL_ttf/", root);
-    SHUI_SFormat(&buildDir, "%s%sSDL3_ttf/", root, CONFIG.buildDir.data);
-    SHUI_SFormat(&outputPrefixDir, "%s%s/", root, CONFIG.outputDir.data);
-
-    // todo maybe a better way to discard / silence output ???
-
-    RunCheck(
-        "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
-        "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
-        "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON "
-        "-DBUILD_SHARED_LIBS=ON "                    // link type
-        "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF " // options
-        "--log-level=WARNING",                       // logs
-        sourceDir.data, buildDir.data, BuildType_String(CONFIG.type),
-        outputPrefixDir.data, outputPrefixDir.data);
-
-    RunCheck(
-        "cmake --build \"%s\" --parallel > %s",
-        buildDir.data, SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
-
-    RunCheck(
-        "cmake --install \"%s\" > %s",
-        buildDir.data, SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "NUL" : "/dev/null");
-
-    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'SDL3_ttf'") "\n");
+    Shuild_CMake("SDL3_ttf", "SDL_ttf",
+                 "-DBUILD_SHARED_LIBS=ON "                    // link type
+                 "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF"); // options
 }
 
 static void Shuild_lua(void)
@@ -543,11 +517,16 @@ static void Shuild_Repository(const char *folder)
 
     SHUI_SAppendC(&output, CONFIG.outputDir.data);
 
-    // it is compiled with the flags shuild compiles a build program with, SHUILD_BUILD
+    // shuild compiles it with shu and shuild from dependencies/, and runs it in its folder
+    SHUI_String program;
+    SHUI_String flags;
+    SHUI_String arguments;
+    SHUI_SFormat(&program, "%sshuild.ignore", folder);
+    SHUI_SFormat(&flags, "-I%sdependencies", SHU_UtilGetExecutablePath());
+    SHUI_SFormat(&arguments, "-b %s -o %s", BuildType_String(CONFIG.type), output.data);
+
     SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", folder);
-    // todo maybe a better way?
-    RunCheck("gcc -Idependencies %s -o %sshuild.ignore" SHUILD_BUILD, source.data, folder);
-    RunCheck("cd %s && ./shuild.ignore -b %s -o %s", folder, BuildType_String(CONFIG.type), output.data);
+    SHU_UtilBuildScript(source.data, program.data, flags.data, arguments.data);
     SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'%s'") "\n", folder);
 }
 
