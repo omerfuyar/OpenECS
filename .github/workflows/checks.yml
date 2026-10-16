@@ -1,4 +1,5 @@
 # Checks every change to dev and main: a Debug build with the static analyzer, the examples' tests under the sanitizers, a Release build, and the Lua annotations.
+# Windows builds Debug and Release with LLVM-MinGW, and runs the examples' tests, without the analyzer and the sanitizers, which MinGW does not have.
 # The examples are the tests: each one's test runs its preset, so they check the core and the standard plugins together.
 name: Checks
 
@@ -80,6 +81,59 @@ jobs:
       # code that only Release builds compile, or link, breaks here instead of at a release
       - name: Build
         run: .github/scripts/build.sh R
+
+  windows:
+    name: Windows
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
+    env:
+      CC: clang
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install the build tools
+        shell: pwsh
+        run: .github/scripts/install-windows.ps1
+
+      # SDL's DLLs are installed into bin/, beside the executable, and lib/ has their import libraries
+      - name: Name the dependencies' versions
+        id: dependencies
+        run: echo "key=$( (git submodule status --recursive; sha256sum shuild.c dependencies/other/*/*) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the built dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/Debug/lib
+            build/Debug/include
+            build/Debug/bin/*.dll
+            build/Release/lib
+            build/Release/include
+            build/Release/bin/*.dll
+          key: windows-${{ steps.dependencies.outputs.key }}
+
+      - name: Build Debug with LLVM-MinGW
+        run: .github/scripts/build.sh D
+
+      - name: Run the examples' tests
+        run: .github/scripts/test.sh build/Debug/bin/OpenECS.exe
+
+      - name: Write and compile the definition files
+        run: .github/scripts/definitions.sh build/Debug/bin/OpenECS.exe
+
+      - name: Build Release with LLVM-MinGW
+        run: .github/scripts/build.sh R
+
+      - name: Keep the build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-logs
+          path: build/*.log
 
   lua:
     name: Lua (LuaLS)

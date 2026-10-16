@@ -1,6 +1,6 @@
 # OpenECS
 
-OpenECS (Editor Composition System, I started it as an Entity Component System engine and somehow got here) is the empty shell of an editor style application, written in C. It provides panels that can be split, grouped into tabs, docked, maximized and moved into their own windows, and workspaces that hold them. It also provides plugins in C and Lua, keybindings, settings, saving and restoring sessions, and operating-system features such as the clipboard, drag and drop and dialogs. It runs on Linux.
+OpenECS (Editor Composition System, I started it as an Entity Component System engine and somehow got here) is the empty shell of an editor style application, written in C. It provides panels that can be split, grouped into tabs, docked, maximized and moved into their own windows, and workspaces that hold them. It also provides plugins in C and Lua, keybindings, settings, saving and restoring sessions, and operating-system features such as the clipboard, drag and drop and dialogs. It runs on Linux, and builds and runs on Windows.
 
 OpenECS does nothing specific to any job. Plugins decide what each panel shows and does, and a preset names the plugins and the arrangement of a tool. So the same executable becomes a text editor, a paint program, a log viewer etc.
 
@@ -68,7 +68,7 @@ See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples 
 
 ## Status
 
-OpenECS is young. It works and you can build on it, but until 1.0 a minor release may change the plugin interface; each release says what changed and how to update. Releases are built for Linux on x86_64; Windows and macOS, arm architecture are planned. Questions, ideas and the plugins you build are welcome in [Discussions](https://github.com/omerfuyar/OpenECS/discussions). Or post to [Issues](https://github.com/omerfuyar/OpenECS/issues) if you have any reports or problems.
+OpenECS is young. It works and you can build on it, but until 1.0 a minor release may change the plugin interface; each release says what changed and how to update. Releases are built for Linux on x86_64; Windows builds from source, and its releases, macOS and arm architectures are planned. Questions, ideas and the plugins you build are welcome in [Discussions](https://github.com/omerfuyar/OpenECS/discussions). Or post to [Issues](https://github.com/omerfuyar/OpenECS/issues) if you have any reports or problems.
 
 ## Documents
 
@@ -183,6 +183,18 @@ sudo zypper in libunwind-devel libusb-1_0-devel Mesa-libGL-devel libxkbcommon-de
 sudo pacman -S alsa-lib cmake hidapi ibus jack libdecor libthai fribidi libgl libpulse libusb libx11 libxcursor libxext libxfixes libxi libxinerama libxkbcommon libxrandr libxrender libxss libxtst mesa ninja pipewire sndio vulkan-driver vulkan-headers wayland wayland-protocols
 ```
 
+#### Windows
+
+LLVM-MinGW with the UCRT runtime gives the compiler, clang, and CMake and Ninja build SDL. In PowerShell:
+
+``` shell
+winget install --exact --id MartinStorsjo.LLVM-MinGW.UCRT
+winget install --exact --id Kitware.CMake
+winget install --exact --id Ninja-build.Ninja
+```
+
+Open a new terminal afterwards, so the tools are on its PATH. Debug builds have no static analyzer or sanitizers on Windows, as MinGW has neither. HTTPS and TLS connections need a file of trusted certificates, named by `SSL_CERT_FILE`, as the plugins do not read Windows' certificate store yet.
+
 ### Building
 
 Shuild builds the program. Compile the build script once; it compiles itself again when `shuild.c` changes:
@@ -193,6 +205,14 @@ gcc shuild.c -o shuild.ignore -O3
 ./shuild.ignore -b release -e
 ```
 
+On Windows, compile it with clang into `shuild.ignore.exe`, which builds with clang too:
+
+``` shell
+cd OpenECS/
+clang shuild.c -o shuild.ignore.exe -O3
+.\shuild.ignore.exe -b release -e
+```
+
 ``` text
 Usage: ./shuild.ignore [FLAG...]
 
@@ -200,8 +220,12 @@ Flags:
   -b, --build TYPE   Debug (Default) | Release | RelWithDebInfo | MinSizeRel
   -n, --no-std       Do not build the standard plugins of std/
   -e, --examples     Also build the examples of examples/, into bin/examples/
+  -c, --compiler CC  The compiler: gcc (the default), clang, or on Windows LLVM-MinGW's clang (the default there).
+                     A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/
   -h, --help         Show this help
 ```
+
+A cross compiler builds for Windows on Linux, into `build/Debug-Windows/`, for example. A program built for another system cannot run where it was built, so that build writes no definition files, and its examples' C plugins, which include the standard plugins' headers, need them written there first: run that build's `OpenECS.exe --definitions build/Debug-Windows/definitions/`, with Wine on Linux.
 
 The build puts the executable, SDL's shared libraries, the standard plugins, the first-party presets and the examples in `build/<TYPE>/bin/`, such as `build/Release/bin/`. SDL and SDL_ttf are shared libraries; Lua, Clay, libffi and stb are linked into the executable.
 
