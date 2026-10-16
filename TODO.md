@@ -17,17 +17,16 @@ What the owner wants worked on, in no fixed order. Each one is described further
 - **GPU panels on real drivers.** 21_gpu's test runs on Mesa's software Vulkan driver. The owner ran 21_gpu on an RTX 5070 with Hyprland, and it used the card. To confirm on X11, and with the panel moving between OS windows (DESIGN 5.3, 5.4).
 - **Wayland test on Hyprland.** Dragging a panel out of its window and into another one, popups, moving focus between OS windows, and the title bar's moving and resizing (DESIGN 6.10, 6.11, 7.1, 7.2, 18). The tests run on SDL's offscreen driver, where windows have places on the screen. On CachyOS with Hyprland, message dialogs, such as the question about unsaved work, showed nothing and froze OpenECS; the core now draws them itself (DESIGN 7.7), which is to confirm there.
 - **Pauses of a few seconds.** Reported on Hyprland and on openSUSE Tumbleweed. Vsync is off on Wayland now (DESIGN 3.1), which should end them; to confirm there.
+- **GPU panels on a laptop with two GPUs.** On the owner's laptop with a GTX 1050, the GPU renderer fails with "This surface does not support presenting!", so OpenECS falls back to SDL's default renderer, and the GPU panels of 21_gpu show placeholders. SDL picks the high-performance GPU, which cannot present to the window there. To try: create the renderer again with `SDL_HINT_RENDER_GPU_LOW_POWER`, so the integrated GPU, which drives the screen, presents. Then the app used 70% of the CPU to show the placeholders; to find what redraws.
 - **A crash when pop-out windows close or are tiled.** Reported on the same systems: a jump to a null address. It does not happen on X11 or on weston. Pop-out windows now share one GPU device and release their popups first; to confirm there, with the steps that cause it.
 
 ## Shuild
 
 [Shuild](https://github.com/omerfuyar/shuild) is the build tool, a single header at `dependencies/shuild`. Shu, at `dependencies/shu`, holds the types and macros it uses. The owner allows changes to both, in their style, through pull requests into their main branches. These repositories have no CI, so a pull request is merged with a merge commit once it is tested locally: shuild's examples, and OpenECS built from scratch with its checks. Then an OpenECS pull request moves the submodule. Work found in it:
 
-- **Windows and macOS.** Its Windows paths, such as the quoting for `_spawnvp` and the `-Wl,<folder>` it gives the linker for a folder of DLLs, are not tested. `SHU_UtilRun` runs commands with the system's shell, which is `cmd.exe` on Windows.
-- **Run-time search paths.** An executable or a dynamic library gets the absolute path of each library folder that holds a dynamic library it links. So a program built on one computer looks in that computer's folders first. A release would want paths from the program's own folder, such as `$ORIGIN`, which OpenECS adds itself.
-- **Long paths.** Paths are limited to `SHUC_MAX_STRING_SIZE`, 256 characters.
+- **Windows and macOS.** Shuild names libraries for the system its compiler compiles for, and cross-compiles for Windows with MinGW (omerfuyar/shuild#23). Its Windows host code, such as the quoting for `_spawnvp`, is not tested on Windows yet. `SHU_UtilRun` runs commands with the system's shell, which is `cmd.exe` on Windows.
 - **Its own todos.** The header lists a module macro, like Clay's, and renaming the macros to `SHUILD_`.
-- **Its issues that need the owner's design.** One way to name libraries on every compiler (omerfuyar/shuild#23), dynamic libraries beside the executable on Windows (omerfuyar/shuild#24), finding the compilers on the system (omerfuyar/shuild#22), the logs (omerfuyar/shuild#20), more variadic functions (omerfuyar/shuild#15), an argument parser (omerfuyar/shuild#14), memory (omerfuyar/shuild#13) and finding other build scripts (omerfuyar/shuild#7).
+- **Its issues that need the owner's design.** Finding the compilers on the system (omerfuyar/shuild#22), more variadic functions (omerfuyar/shuild#15) and finding other build scripts (omerfuyar/shuild#7), which `SHU_UtilBuildScript` covers in part.
 
 ## Standard plugins
 
