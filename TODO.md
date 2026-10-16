@@ -36,6 +36,7 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 - **web.** HTTP/2 and compressed answers, which need more libraries or more of libcurl.
 - **fs.** Watching folders on Windows and macOS; it uses inotify, so it works on Linux only.
 - **gpu: shaders from source.** gpu takes compiled shaders: SPIR-V, DXIL or MSL, the one the GPU's driver takes, so a plugin that runs on several systems ships each. SDL_shadercross could compile one source, such as HLSL or SPIR-V, to the others at run time, but it would be a new dependency, with its own: SPIRV-Cross, and DXC for DXIL. To decide: whether gpu takes source, and so the dependency, or plugins keep compiling their shaders before they ship, as 22_gpu_model does with glslang. Set aside for now; more important work comes first.
+- **math.** Plugins of math functions that other plugins share, from Lua and C: vectors, matrices and the like. The owner wants them later.
 - **gpu: text in pipelines.** `gpu.text` draws flat text, as draw does. A plugin's own shaders cannot draw text yet, such as labels in a 3D scene: gpu could give the textures of the text engine's glyphs and the rectangles of a text in them.
 
 ## Questions
