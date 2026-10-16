@@ -349,38 +349,12 @@ static void Shuild_stb(void)
     SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
 }
 
-/// @brief Reads a whole file. Free it with free.
-static char *ReadWholeFile(const char *path)
-{
-    FILE *file = fopen(path, "rb");
-    char *text = NULL;
-    long length = -1;
-
-    if (file != NULL && fseek(file, 0, SEEK_END) == 0 && (length = ftell(file)) >= 0 && fseek(file, 0, SEEK_SET) == 0)
-    {
-        text = calloc((size_t)length + 1, 1);
-    }
-
-    if (text != NULL && fread(text, 1, (size_t)length, file) != (size_t)length)
-    {
-        free(text);
-        text = NULL;
-    }
-
-    if (file != NULL)
-    {
-        fclose(file);
-    }
-
-    return text;
-}
-
 /// @brief Writes libffi's ffi.h from its template, include/ffi.h.in, with the values that libffi's configure script would give on this machine.
 static void MakeFfiHeader(const char *target, const char *path)
 {
     // the version is the second argument of AC_INIT, such as AC_INIT([libffi],[3.8.0],...)
-    char *configure = ReadWholeFile("dependencies/libffi/configure.ac"); // todo todo migrate changes like this to use shuild !!!
-    const char *init = configure == NULL ? NULL : strstr(configure, "AC_INIT([libffi],[");
+    SHUSlice configure = SHU_UtilReadFile("dependencies/libffi/configure.ac");
+    const char *init = strstr(configure.data, "AC_INIT([libffi],[");
     char version[32] = "";
     int major = 0;
     int minor = 0;
@@ -392,7 +366,7 @@ static void MakeFfiHeader(const char *target, const char *path)
         exit(1);
     }
 
-    free(configure);
+    free(configure.data);
     char number[16];
     snprintf(number, sizeof(number), "%d", major * 10000 + minor * 100 + micro);
 
@@ -405,16 +379,13 @@ static void MakeFfiHeader(const char *target, const char *path)
         {"@FFI_EXEC_TRAMPOLINE_TABLE@", "0"},
     };
 
-    char *text = ReadWholeFile("dependencies/libffi/include/ffi.h.in");
-    FILE *header = fopen(path, "wb");
+    // each name is at least 8 characters, and each value at most 31, so the header is at most 4 times as long as its template
+    SHUSlice text = SHU_UtilReadFile("dependencies/libffi/include/ffi.h.in");
+    char *header = malloc(text.size * 4 + 1);
+    usz length = 0;
+    SHU_Assert(header != NULL, "Cannot write '%s' from libffi's include/ffi.h.in.", path);
 
-    if (text == NULL || header == NULL)
-    {
-        SHU_LogError(SHUResult_ErrFile, "Cannot write '%s' from libffi's include/ffi.h.in.", path);
-        exit(1);
-    }
-
-    for (const char *cursor = text; *cursor != '\0';)
+    for (const char *cursor = text.data; *cursor != '\0';)
     {
         size_t i = 0;
 
@@ -425,17 +396,19 @@ static void MakeFfiHeader(const char *target, const char *path)
 
         if (i < sizeof(values) / sizeof(*values))
         {
-            fputs(values[i][1], header);
+            memcpy(header + length, values[i][1], strlen(values[i][1]));
+            length += strlen(values[i][1]);
             cursor += strlen(values[i][0]);
         }
         else
         {
-            fputc(*cursor++, header);
+            header[length++] = *cursor++;
         }
     }
 
-    fclose(header);
-    free(text);
+    SHU_UtilWriteFile(path, csv(cs(header, length)));
+    free(header);
+    free(text.data);
 }
 
 // libffi is compiled without its configure script: fficonfig.h is a glue header, and ffi.h is made from its template
@@ -620,13 +593,9 @@ static void WriteLuaConfig(const char *folder, const char *include, const char *
 {
     SHUI_String path;
     SHUI_SFormat(&path, "%s.luarc.json", folder);
-    FILE *file = fopen(path.data, "wb");
-
-    if (file != NULL)
-    {
-        fprintf(file, "{\n  \"workspace.library\": [\"%s\", \"%s\"]%s%s%s\n}\n", include, definitions, ignore[0] == '\0' ? "" : ",\n  \"workspace.ignoreDir\": [\"", ignore, ignore[0] == '\0' ? "" : "\"]");
-        fclose(file);
-    }
+    char text[SHUC_MAX_MESSAGE_BUFFER_SIZE];
+    int length = snprintf(text, sizeof(text), "{\n  \"workspace.library\": [\"%s\", \"%s\"]%s%s%s\n}\n", include, definitions, ignore[0] == '\0' ? "" : ",\n  \"workspace.ignoreDir\": [\"", ignore, ignore[0] == '\0' ? "" : "\"]");
+    SHU_UtilWriteFile(path.data, csv(cs(text, (usz)length)));
 }
 
 // editors complete the functions of other plugins from their definition files, which the built program writes for every plugin it finds;
