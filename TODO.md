@@ -2,6 +2,15 @@
 
 What is not decided yet, and work that is waiting, for OpenECS and the repositories it ships: OpenECS-std, OpenECS-examples and OpenECS-template. When an item is settled, write the decision into the design of the repository it belongs to, and remove it from here.
 
+## Next
+
+What the owner wants worked on, in no fixed order. Each one is described further below.
+
+- **Portable builds, then Windows and macOS.** Replace the shell commands of the three build scripts with shuild functions, then build on Windows with MinGW or LLVM, and on macOS.
+- **Shuild's issues.** Libraries that link other libraries first; the owner chose a design. Then the other issues listed under Shuild.
+- **gpu: text.** With SDL3_ttf's GPU text engine; the owner chose it.
+- **Bugs and the reports from Hyprland.** The tasks below that wait to be confirmed there, and what the owner reports from testing.
+
 ## Tasks
 
 - **Docs for every function's parameters before the first major release.** Each function of the core and of the standard plugins says what each parameter is and what it gives back: in OpenECS.h, ecs.lua and the signatures' docs. Functions are likely to change until then, so this waits for the release.
@@ -14,12 +23,14 @@ What is not decided yet, and work that is waiting, for OpenECS and the repositor
 
 ## Shuild
 
-[Shuild](https://github.com/omerfuyar/shuild) is the build tool, a single header at `dependencies/shuild`. The owner allows changes to it through pull requests into its main branch. Work found in it:
+[Shuild](https://github.com/omerfuyar/shuild) is the build tool, a single header at `dependencies/shuild`. Shu, at `dependencies/shu`, holds the types and macros it uses. The owner allows changes to both, in their style, through pull requests into their main branches. These repositories have no CI, so a pull request is merged with a merge commit once it is tested locally: shuild's examples, and OpenECS built from scratch with its checks. Then an OpenECS pull request moves the submodule. Work found in it:
+
+- **Libraries that link other libraries** (omerfuyar/shuild#18, omerfuyar/shuild#27). The owner chose this design: a library module keeps the libraries it links, and an executable that links it gets them too, in order. `SHU_ModuleLinkLibrary` on a library module records them, so the interface stays the same.
 
 - **Windows and macOS.** Its Windows paths, such as the quoting for `_spawnvp` and the `-Wl,<folder>` it gives the linker for each library folder, are not tested.
 - **Long paths.** Paths are limited to `SHUC_MAX_STRING_SIZE`, 256 characters.
 - **Its own todos.** The header lists a module macro, like Clay's, and renaming the macros to `SHUILD_`.
-- **Its issues that need the owner's design.** Libraries that link other libraries (omerfuyar/shuild#18, omerfuyar/shuild#27), one way to name libraries on every compiler (omerfuyar/shuild#23), dynamic libraries beside the executable on Windows (omerfuyar/shuild#24), finding the compilers on the system (omerfuyar/shuild#22), the logs (omerfuyar/shuild#20), more variadic functions (omerfuyar/shuild#15), an argument parser (omerfuyar/shuild#14), memory (omerfuyar/shuild#13) and finding other build scripts (omerfuyar/shuild#7).
+- **Its issues that need the owner's design.** One way to name libraries on every compiler (omerfuyar/shuild#23), dynamic libraries beside the executable on Windows (omerfuyar/shuild#24), finding the compilers on the system (omerfuyar/shuild#22), the logs (omerfuyar/shuild#20), more variadic functions (omerfuyar/shuild#15), an argument parser (omerfuyar/shuild#14), memory (omerfuyar/shuild#13) and finding other build scripts (omerfuyar/shuild#7).
 
 ## Standard plugins
 
@@ -28,7 +39,7 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 - **web.** HTTP/2 and compressed answers, which need more libraries or more of libcurl.
 - **fs.** Watching folders on Windows and macOS; it uses inotify, so it works on Linux only.
 - **gpu: shaders from source.** gpu takes compiled shaders: SPIR-V, DXIL or MSL, the one the GPU's driver takes, so a plugin that runs on several systems ships each. SDL_shadercross could compile one source, such as HLSL or SPIR-V, to the others at run time, but it would be a new dependency, with its own: SPIRV-Cross, and DXC for DXIL. To decide: whether gpu takes source, and so the dependency, or plugins keep compiling their shaders before they ship, as 22_gpu_model does with glslang. Set aside for now; more important work comes first.
-- **gpu: text.** Text in GPU surfaces: draw's glyphs uploaded as gpu textures, or SDL3_ttf's GPU text engine (`TTF_CreateGPUTextEngine`).
+- **gpu: text.** Text in GPU surfaces. The owner chose SDL3_ttf's GPU text engine (`TTF_CreateGPUTextEngine`): it gives atlas textures and vertices that gpu draws, and SDL3_ttf is already a dependency.
 
 ## Questions
 
