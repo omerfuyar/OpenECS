@@ -158,13 +158,13 @@ static void SetupConfiguration(int argc, char **argv)
         }
     }
 
-    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", standard plugins: " SHUM_COLOR_BLUE("%s") ", examples: " SHUM_COLOR_BLUE("%s"),
-                BuildType_String(CONFIG.type), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
-
     SHUI_SFormat(&CONFIG.buildDir, ".shu/%s/", BuildType_String(CONFIG.type));
     SHUI_SFormat(&CONFIG.outputDir, "build/%s/", BuildType_String(CONFIG.type));
 
     SHU_CacheConfigure(CONFIG.buildDir.data);
+
+    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", standard plugins: " SHUM_COLOR_BLUE("%s") ", examples: " SHUM_COLOR_BLUE("%s"),
+                BuildType_String(CONFIG.type), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
 }
 
 // our code gets warnings, and in Debug the static analyzer and the address and undefined-behaviour sanitizers; dependencies get none of them
@@ -257,6 +257,8 @@ static void Shuild_SDL_ttf(void)
     SHUI_SFormat(&sourceDir, "%sdependencies/SDL_ttf/", root);
     SHUI_SFormat(&buildDir, "%s%sSDL3_ttf/", root, CONFIG.buildDir.data);
     SHUI_SFormat(&outputPrefixDir, "%s%s/", root, CONFIG.outputDir.data);
+
+    // todo maybe a better way to discard / silence output ???
 
     RunCheck(
         "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
@@ -377,7 +379,7 @@ static char *ReadWholeFile(const char *path)
 static void MakeFfiHeader(const char *target, const char *path)
 {
     // the version is the second argument of AC_INIT, such as AC_INIT([libffi],[3.8.0],...)
-    char *configure = ReadWholeFile("dependencies/libffi/configure.ac");
+    char *configure = ReadWholeFile("dependencies/libffi/configure.ac"); // todo todo migrate changes like this to use shuild !!!
     const char *init = configure == NULL ? NULL : strstr(configure, "AC_INIT([libffi],[");
     char version[32] = "";
     int major = 0;
@@ -570,6 +572,7 @@ static void Shuild_Repository(const char *folder)
 
     // it is compiled with the flags shuild compiles a build program with, SHUILD_BUILD
     SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", folder);
+    // todo maybe a better way?
     RunCheck("gcc -Idependencies %s -o %sshuild.ignore" SHUILD_BUILD, source.data, folder);
     RunCheck("cd %s && ./shuild.ignore -b %s -o %s", folder, BuildType_String(CONFIG.type), output.data);
     SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'%s'") "\n", folder);
