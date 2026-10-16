@@ -21,6 +21,8 @@ static struct
     BuildType type;
     bool std;      // also build the standard plugins, from std/
     bool examples; // also build the examples, from examples/
+    const char *compiler;
+    bool windows; // the compiler compiles for Windows
     char *buildDir;
     char *outputDir;
 } CONFIG = {.type = BuildType_Debug, .std = true};
@@ -42,9 +44,24 @@ static void Shuild_Plugins(void);
 static void Shuild_other(void);
 static void Shuild_Definitions(void);
 
+/// @brief The compiler that the flags name, or the default: gcc, or on Windows LLVM-MinGW's clang.
+static const char *CompilerArgument(int argc, char **argv)
+{
+    for (int i = 1; i + 1 < argc; i++)
+    {
+        if (!strcmp(argv[i], "-c") || !strcmp(argv[i], "--compiler"))
+        {
+            return argv[i + 1];
+        }
+    }
+
+    return SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "clang" : "gcc";
+}
+
 int main(int argc, char **argv)
 {
-    SHU_CompilerTryConfigure("gcc");
+    CONFIG.compiler = CompilerArgument(argc, argv);
+    SHU_CompilerTryConfigure(CONFIG.compiler);
     SHU_UtilAutomate(argc, argv);
     SetupConfiguration(argc, argv);
 
@@ -104,6 +121,8 @@ static void PrintUsageAndExit(int status)
            "                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release\n"
            "  -n, --no-std       Do not build the standard plugins of std/\n"
            "  -e, --examples     Also build the examples of examples/, into bin/examples/\n"
+           "  -c, --compiler CC  The compiler: gcc (the default), clang, or on Windows LLVM-MinGW's clang (the default there).\n"
+           "                     A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/\n"
            "  -h, --help         Show this help\n");
     exit(status);
 }
@@ -145,6 +164,11 @@ static void SetupConfiguration(int argc, char **argv)
         {
             CONFIG.examples = true;
         }
+        else if (!strcmp(flag, "-c") || !strcmp(flag, "--compiler"))
+        {
+            // main configured the compiler already
+            i++;
+        }
         else if (!strcmp(flag, "-h") || !strcmp(flag, "--help"))
         {
             PrintUsageAndExit(0);
@@ -155,16 +179,20 @@ static void SetupConfiguration(int argc, char **argv)
         }
     }
 
-    CONFIG.buildDir = SHU_UtilFormat(".shu/%s/", BuildType_String(CONFIG.type));
-    CONFIG.outputDir = SHU_UtilFormat("build/%s/", BuildType_String(CONFIG.type));
+    // a build for another system goes to folders of its own, such as build/Debug-Windows/
+    u8 target = SHU_CompilerGetTarget();
+    const char *system = SHUM_PLATFORM_IS_HOST(target) ? "" : SHU_UtilFormat("-%s", SHUM_PLATFORM_GET_STRING(target));
+    CONFIG.windows = target == SHUM_PLATFORM_WINDOWS;
+    CONFIG.buildDir = SHU_UtilFormat(".shu/%s%s/", BuildType_String(CONFIG.type), system);
+    CONFIG.outputDir = SHU_UtilFormat("build/%s%s/", BuildType_String(CONFIG.type), system);
 
     SHU_CacheConfigure(CONFIG.buildDir);
 
-    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", standard plugins: " SHUM_COLOR_BLUE("%s") ", examples: " SHUM_COLOR_BLUE("%s"),
-                BuildType_String(CONFIG.type), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
+    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", standard plugins: " SHUM_COLOR_BLUE("%s") ", examples: " SHUM_COLOR_BLUE("%s") ", compiler: " SHUM_COLOR_BLUE("'%s'") " for " SHUM_COLOR_BLUE("%s"),
+                BuildType_String(CONFIG.type), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no", CONFIG.compiler, SHUM_PLATFORM_GET_STRING(target));
 }
 
-// our code gets warnings, and in Debug the static analyzer and the address and undefined-behaviour sanitizers; dependencies get none of them
+// our code gets warnings, and in Debug gcc's static analyzer and the address and undefined-behaviour sanitizers, which MinGW does not have; dependencies get none of them
 // release builds drop every SDL_assert
 static void SetBuildFlags(bool ownCode)
 {
@@ -176,7 +204,17 @@ static void SetBuildFlags(bool ownCode)
     case BuildType_Debug:
         if (ownCode)
         {
-            SHU_CompilerAddFlags(SHUM_FLAGS_WARNING_MID " -fanalyzer -fsanitize=address,undefined -fno-omit-frame-pointer");
+            SHU_CompilerAddFlags(SHUM_FLAGS_WARNING_MID);
+
+            if (SHU_CompilerGetIdentifier() == SHUM_COMPILER_GCC)
+            {
+                SHU_CompilerAddFlags(" -fanalyzer");
+            }
+
+            if (!CONFIG.windows)
+            {
+                SHU_CompilerAddFlags(" -fsanitize=address,undefined -fno-omit-frame-pointer");
+            }
         }
         SHU_CompilerAddFlags(SHUM_FLAGS_DEBUG SHUM_FLAGS_OPTIMIZATION_DEBUG);
         SHU_CompilerAddDefinitions("DEBUG", NULL, "SDL_ASSERT_LEVEL", "2");
@@ -202,8 +240,26 @@ static void SetBuildFlags(bool ownCode)
 
 static bool IsBuilt(const char *library, bool shared)
 {
-    char *path = SHU_UtilFormat("%slib/lib%s.%s", CONFIG.outputDir, library, shared ? "so" : "a");
-    return SHU_UtilFileExists(path) == SHUFileType_Regular;
+    // a DLL is in bin/, and lib/ has its import library
+    const char *file = !shared ? SHU_UtilLibraryFile(library, SHUModuleType_LibraryStatic)
+                       : CONFIG.windows ? SHU_UtilFormat("lib%s.dll.a", library)
+                                        : SHU_UtilLibraryFile(library, SHUModuleType_LibraryDynamic);
+    return SHU_UtilFileExists(SHU_UtilFormat("%slib/%s", CONFIG.outputDir, file)) == SHUFileType_Regular;
+}
+
+/// @brief The compiler's tool of another name, such as clang++ for clang, or x86_64-w64-mingw32-windres for x86_64-w64-mingw32-gcc.
+/// @param gcc The tool's name for gcc. @param clang The tool's name for clang.
+static char *CompilerTool(const char *gcc, const char *clang)
+{
+    const char *name = SHU_CompilerGetIdentifier() == SHUM_COMPILER_CLANG ? "clang" : "gcc";
+    const char *found = NULL;
+
+    for (const char *c = strstr(CONFIG.compiler, name); c != NULL; c = strstr(c + 1, name))
+    {
+        found = c;
+    }
+
+    return found == NULL ? SHU_UtilFormat("%s", CONFIG.compiler) : SHU_UtilFormat("%.*s%s%s", (int)(found - CONFIG.compiler), CONFIG.compiler, !strcmp(name, "clang") ? clang : gcc, found + strlen(name));
 }
 
 /// @brief Builds a CMake project of dependencies/ and installs it into the build's folder. The output of each step goes to a log in the cache folder,
@@ -218,12 +274,20 @@ static void Shuild_CMake(const char *name, const char *source, const char *optio
     char *buildDir = SHU_UtilFormat("%s%s%s/", root, CONFIG.buildDir, name);
     char *outputPrefixDir = SHU_UtilFormat("%s%s", root, CONFIG.outputDir);
 
+    // CMake compiles with the same compiler, and a cross compiler builds for its system
+    char *compilers = SHU_UtilFormat("-DCMAKE_C_COMPILER=\"%s\" -DCMAKE_CXX_COMPILER=\"%s\"", CONFIG.compiler, CompilerTool("g++", "clang++"));
+
+    if (!SHUM_PLATFORM_IS_HOST(SHU_CompilerGetTarget()))
+    {
+        compilers = SHU_UtilFormat("%s -DCMAKE_SYSTEM_NAME=%s -DCMAKE_RC_COMPILER=\"%s\"", compilers, SHUM_PLATFORM_GET_STRING(SHU_CompilerGetTarget()), CompilerTool("windres", "windres"));
+    }
+
     char *log = SHU_UtilFormat("%s%s-configure.log", CONFIG.buildDir, name);
     SHU_UtilRunLogged(log,
-                      "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
+                      "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s %s "
                       "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
                       "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON %s",
-                      sourceDir, buildDir, BuildType_String(CONFIG.type),
+                      sourceDir, buildDir, BuildType_String(CONFIG.type), compilers,
                       outputPrefixDir, outputPrefixDir, options);
 
     log = SHU_UtilFormat("%s%s-build.log", CONFIG.buildDir, name);
@@ -254,11 +318,15 @@ static void Shuild_lua(void)
     SHU_ModuleBegin("lua", "dependencies/lua");
     SetBuildFlags(false);
 
-#if SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_LINUX)
-    SHU_CompilerAddDefinitions("LUA_USE_LINUX", NULL);
-#elif SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_MACOS)
-    SHU_CompilerAddDefinitions("LUA_USE_MACOSX", NULL);
-#endif
+    // Lua finds Windows by itself
+    if (SHU_CompilerGetTarget() == SHUM_PLATFORM_LINUX)
+    {
+        SHU_CompilerAddDefinitions("LUA_USE_LINUX", NULL);
+    }
+    else if (SHU_CompilerGetTarget() == SHUM_PLATFORM_MACOS)
+    {
+        SHU_CompilerAddDefinitions("LUA_USE_MACOSX", NULL);
+    }
 
     SHU_CompilerAddDefinitions("MAKE_LIB", NULL);
     SHU_ModuleAddSourceFile("onelua.c");
@@ -379,18 +447,37 @@ static void MakeFfiHeader(const char *target, const char *path)
 // libffi is compiled without its configure script: fficonfig.h is a glue header, and ffi.h is made from its template
 static void Shuild_libffi(void)
 {
-#if defined(__x86_64__)
-    const char *target = "X86_64";
+    // Windows is built for on x86_64, and Linux on the host's processor
+    const char *target = "X86_WIN64";
     const char *targetDirectory = "src/x86/";
-    const char *const targetSources[] = {"src/x86/ffi64.c", "src/x86/unix64.S", "src/x86/ffiw64.c", "src/x86/win64.S"};
+    const char *const windowsSources[] = {"src/x86/ffiw64.c", "src/x86/win64.S"};
+    const char *const *targetSources = windowsSources;
+    usz targetSourceCount = sizeof(windowsSources) / sizeof(*windowsSources);
+
+#if defined(__x86_64__)
+    const char *const linuxSources[] = {"src/x86/ffi64.c", "src/x86/unix64.S", "src/x86/ffiw64.c", "src/x86/win64.S"};
+    const char *linuxTarget = "X86_64";
 #elif defined(__aarch64__)
-    const char *target = "AARCH64";
-    const char *targetDirectory = "src/aarch64/";
-    const char *const targetSources[] = {"src/aarch64/ffi.c", "src/aarch64/sysv.S"};
+    const char *const linuxSources[] = {"src/aarch64/ffi.c", "src/aarch64/sysv.S"};
+    const char *linuxTarget = "AARCH64";
+    targetDirectory = CONFIG.windows ? targetDirectory : "src/aarch64/";
 #else
-    SHU_LogError(SHUResult_ErrBadData, "libffi is configured for x86_64 and aarch64 only.");
-    exit(1);
+    const char *const linuxSources[] = {""};
+    const char *linuxTarget = NULL;
 #endif
+
+    if (!CONFIG.windows)
+    {
+        if (linuxTarget == NULL)
+        {
+            SHU_LogError(SHUResult_ErrBadData, "libffi is configured for x86_64 and aarch64 only.");
+            exit(1);
+        }
+
+        target = linuxTarget;
+        targetSources = linuxSources;
+        targetSourceCount = sizeof(linuxSources) / sizeof(*linuxSources);
+    }
 
     // the sources include ffi.h and ffitarget.h, so they are written to the build before libffi compiles
     char *headers = SHU_UtilFormat("%sinclude/libffi/", CONFIG.outputDir);
@@ -412,7 +499,7 @@ static void Shuild_libffi(void)
         SHU_ModuleAddSourceFile(sources[i]);
     }
 
-    for (usz i = 0; i < sizeof(targetSources) / sizeof(*targetSources); i++)
+    for (usz i = 0; i < targetSourceCount; i++)
     {
         SHU_ModuleAddSourceFile(targetSources[i]);
     }
@@ -440,20 +527,35 @@ static void Shuild_OpenECS(void)
     SHU_ModuleBegin("OpenECS", NULL);
     SetBuildFlags(true);
 
-    // the executable exports only the plugin interface: the OPENECS_EXPORT functions, whose names start with ECS
-    // it finds the shared libraries of SDL and SDL_ttf in its own folder
-    SHU_CompilerAddFlags(" -fvisibility=hidden '-Wl,--export-dynamic-symbol=ECS*' '-Wl,-rpath,$ORIGIN'");
+    // OpenECS.h exports the plugin interface from the executable, where plugins import it from (DESIGN 17.6)
+    SHU_CompilerAddDefinitions("OPENECS_CORE", NULL);
 
-    // the sanitizers find their settings in src/base/Sanitizers.c by name
-    if (CONFIG.type == BuildType_Debug)
+    if (CONFIG.windows)
     {
-        SHU_CompilerAddFlags(" '-Wl,--export-dynamic-symbol=__*san_default_*'");
+        // a plugin's DLL is linked with the executable's import library, as Windows finds a DLL's functions through it
+        SHU_CompilerAddFlags(SHU_UtilFormat(" '-Wl,--out-implib,%s%slib/libOpenECS.a'", SHU_UtilGetExecutablePath(), CONFIG.outputDir));
+    }
+    else
+    {
+        // the executable exports only the plugin interface: the OPENECS_EXPORT functions, whose names start with ECS
+        // it finds the shared libraries of SDL and SDL_ttf in its own folder
+        SHU_CompilerAddFlags(" -fvisibility=hidden '-Wl,--export-dynamic-symbol=ECS*' '-Wl,-rpath,$ORIGIN'");
+
+        // the sanitizers find their settings in src/base/Sanitizers.c by name
+        if (CONFIG.type == BuildType_Debug)
+        {
+            SHU_CompilerAddFlags(" '-Wl,--export-dynamic-symbol=__*san_default_*'");
+        }
     }
 
     SHU_ModuleAddSourceFile("src/");
     SHU_ModuleAddIncludeDirectory("include/");
 
     char *tempStr = SHU_UtilFormat("%sinclude/", CONFIG.outputDir);
+    SHU_ModuleAddIncludeDirectory(tempStr);
+
+    // ffi.h includes ffitarget.h beside it as <ffitarget.h>, which must not be a system copy of another libffi
+    tempStr = SHU_UtilFormat("%sinclude/libffi/", CONFIG.outputDir);
     SHU_ModuleAddIncludeDirectory(tempStr);
 
     tempStr = SHU_UtilFormat("%slib/", CONFIG.outputDir);
@@ -465,16 +567,23 @@ static void Shuild_OpenECS(void)
     SHU_ModuleLinkLibrary("lua");
     SHU_ModuleLinkLibrary("ffi");
     SHU_ModuleLinkLibrary("stb");
-    SHU_ModuleLinkLibrary("m");
+
+    if (!CONFIG.windows)
+    {
+        SHU_ModuleLinkLibrary("m");
+    }
 
     tempStr = SHU_UtilFormat("%sbin/", CONFIG.outputDir);
     SHU_ModuleCompile(tempStr, SHUModuleType_Executable);
 
-    // the shared libraries go next to the executable under the names it asks for, as files rather than links
-    char *library = SHU_UtilFormat("%slib/libSDL3.so.0", CONFIG.outputDir);
-    SHU_UtilCopyFile(library, tempStr);
-    library = SHU_UtilFormat("%slib/libSDL3_ttf.so.0", CONFIG.outputDir);
-    SHU_UtilCopyFile(library, tempStr);
+    // the shared libraries go next to the executable under the names it asks for, as files rather than links; CMake installs Windows' DLLs there already
+    if (!CONFIG.windows)
+    {
+        char *library = SHU_UtilFormat("%slib/libSDL3.so.0", CONFIG.outputDir);
+        SHU_UtilCopyFile(library, tempStr);
+        library = SHU_UtilFormat("%slib/libSDL3_ttf.so.0", CONFIG.outputDir);
+        SHU_UtilCopyFile(library, tempStr);
+    }
 
     tempStr = SHU_UtilFormat("%sinclude/", CONFIG.outputDir);
     SHU_UtilCopyFile("include/OpenECS.h", tempStr);
@@ -506,7 +615,7 @@ static void Shuild_Repository(const char *folder)
     // shuild compiles it with shu and shuild from dependencies/, and runs it in its folder
     char *program = SHU_UtilFormat("%sshuild.ignore", folder);
     char *flags = SHU_UtilFormat("-I%sdependencies", SHU_UtilGetExecutablePath());
-    char *arguments = SHU_UtilFormat("-b %s -o %s", BuildType_String(CONFIG.type), output);
+    char *arguments = SHU_UtilFormat("-b %s -o %s -c %s", BuildType_String(CONFIG.type), output, CONFIG.compiler);
 
     SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", folder);
     SHU_UtilBuildScript(source, program, flags, arguments);
@@ -562,9 +671,23 @@ static void Shuild_Definitions(void)
 {
     char *definitions = SHU_UtilFormat("%sdefinitions/", CONFIG.outputDir);
 
-    // a program that fails to write them does not stop the build
+    // a program built for another system cannot run here to write them
+    if (!SHUM_PLATFORM_IS_HOST(SHU_CompilerGetTarget()))
+    {
+        SHU_LogWarning("The definition files are not written, as OpenECS is built for another system.");
+        return;
+    }
+
+    // a program that fails to write them does not stop the build; cmd.exe runs a program by a path with backslashes
     DeleteIfExists(definitions);
-    SHU_UtilTryRun("%sbin/OpenECS --definitions %s > %sdefinitions.log 2>&1", CONFIG.outputDir, definitions, CONFIG.outputDir);
+    char *program = SHU_UtilFormat("%sbin/OpenECS", CONFIG.outputDir);
+
+    for (char *c = program; SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) && *c != '\0'; c++)
+    {
+        *c = *c == '/' ? '\\' : *c;
+    }
+
+    SHU_UtilTryRun("%s --definitions %s > %sdefinitions.log 2>&1", program, definitions, CONFIG.outputDir);
 
     if (SHU_UtilFileExists(definitions) != SHUFileType_Directory)
     {

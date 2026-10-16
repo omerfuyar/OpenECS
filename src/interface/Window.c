@@ -1370,7 +1370,7 @@ static SHUResult ECSIWindow_Open(const char *title)
     const char *font = ECSValue_GetString(ECSSetting_Get("ecs.font"), "");
     char *fontPath = nullptr;
 
-    if (SDL_asprintf(&fontPath, "%s%s", font[0] == '/' ? "" : SDL_GetBasePath(), font) < 0)
+    if (SDL_asprintf(&fontPath, "%s%s", ECSPath_IsAbsolute(font) ? "" : SDL_GetBasePath(), font) < 0)
     {
         return SHUResult_ErrAllocation;
     }

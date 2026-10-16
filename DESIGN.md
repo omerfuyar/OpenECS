@@ -661,7 +661,7 @@ return {
 
 ```c
 /// @brief Every native plugin defines this function. The core calls it once, after it loads the plugin's library.
-OPENECS_EXPORT SHUResult ECSPlugin_Init(ECSPlugin plugin);
+OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 ```
 
 - `ECSPlugin_Init` receives the plugin's handle. Functions that act for the plugin take it first, so the core knows who is calling.
@@ -1097,6 +1097,7 @@ OpenECS follows the XDG Base Directory specification:
 | The core's settings             | `resources/settings.lua` next to the executable                           |
 
 - The data folders come from `SDL_GetPrefPath`, which follows `XDG_DATA_HOME`. SDL has no function for the configuration and state folders, so the core reads `XDG_CONFIG_HOME` and `XDG_STATE_HOME` itself.
+- On Windows, every one of these folders is SDL's pref path, `%APPDATA%\openecs\`, as Windows has no XDG folders. What they hold has different names, so they share it.
 
 ## 17. Build and dependencies
 
@@ -1116,12 +1117,13 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.2 Linking
 
-- SDL3 and SDL3_ttf are shared libraries shipped next to the executable and found through an `$ORIGIN` run path. So the core and every plugin share one copy of SDL.
+- SDL3 and SDL3_ttf are shared libraries shipped next to the executable. On Linux it finds them through an `$ORIGIN` run path; Windows finds a program's DLLs in its own folder. So the core and every plugin share one copy of SDL.
 - Lua, Clay, libffi and stb are linked statically into the executable.
-- libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
-- The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.
-- Native plugins are shared libraries, built against the plugin header only. They do not link against the core; their calls to it are resolved when they are loaded.
-- First-party native plugins may call SDL3 and SDL3_ttf. Like their calls to the core, these calls are resolved when the plugin is loaded, against the libraries the executable loaded, so every plugin uses the executable's copy of SDL.
+- libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64 and Windows on x86_64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
+- The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default, and with `OPENECS_CORE` defined, so `OPENECS_EXPORT` exports.
+- Native plugins are shared libraries, built against the plugin header only. On Linux they do not link against the core; their calls to it are resolved when they are loaded. A DLL on Windows cannot call into the executable without its import library, so there the executable writes `lib/libOpenECS.a`, and plugins link it.
+- First-party native plugins may call SDL3 and SDL3_ttf. Like their calls to the core, these calls are resolved when the plugin is loaded, against the libraries the executable loaded, so every plugin uses the executable's copy of SDL. On Windows they link SDL's import libraries for it.
+- A plugin's own functions that the core calls, such as `ECSPlugin_Init`, are marked `OPENECS_PLUGIN`, which exports them from the plugin's library.
 - A first-party plugin is built from every C file in its folder, so the build needs no settings for each plugin. Its Lua files and its folders, which hold its Lua modules (9.6), are copied.
 - OpenECS-std and OpenECS-examples build their plugins this way, with their own builds (17.7).
 
