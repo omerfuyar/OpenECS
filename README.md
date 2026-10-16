@@ -62,7 +62,7 @@ The [standard plugins](https://github.com/omerfuyar/OpenECS-std) give plugins us
    }
    ```
 
-3. Run your tool with its preset, `./OpenECS --fresh --preset path/to/preset.lua`. Press Alt+W to see all core key binds. `N` to see the panel types of the tool and open one. `,` for the settings.
+3. Run your tool with its preset, `./OpenECS --fresh --preset path/to/preset.lua`. Press Alt+W to see all core key binds. `.` to see the panel types of the tool and open one. `,` for the settings. `/` for the launcher, to go to another tool.
 
 See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples from simple to more complex structures.
 
@@ -93,6 +93,7 @@ Options:
   -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file
   -s, --session FILE      Open a saved session
   -f, --fresh             Start from the preset, not from the tool's last session
+  -l, --log-input         Log each key and text event as the system gives it
   -t, --test FILE         Run a test; Debug builds only
   -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit
   -v, --version           Print the version and exit
@@ -222,6 +223,8 @@ The examples are the tests. Each example has a test, which Debug builds run with
 ./shuild.ignore -b debug -e
 .github/scripts/test.sh build/Debug/bin/OpenECS
 ```
+
+A test needs a Vulkan driver too, for the GPU panels of 21_gpu: one for your graphics card, or Mesa's software one, which Debian and Ubuntu install with `sudo apt-get install mesa-vulkan-drivers`.
 
 To see why a test fails, run it alone: `./build/Debug/bin/OpenECS --test build/Debug/bin/examples/3_ui/test.lua`. DESIGN.md section 17.5 explains how to write one.
 

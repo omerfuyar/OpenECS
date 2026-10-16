@@ -13,6 +13,8 @@ static struct
 {
     lua_State *state;
     int writer; // registry reference of the writer function
+    ECSILuaReadHandleFunction ReadHandle; // set by the Services module
+    ECSILuaPushHandleFunction PushHandle;
 } LUA = {0};
 
 /// @brief The writer of data files. It takes a value as ECSILua_PushOrderedValue pushes it, and returns Lua source that returns the value.
@@ -88,9 +90,9 @@ static int ECSILua_CompareTexts(const void *first, const void *second)
 }
 
 /// @brief Copies the Lua value at an index of the stack into a value. Named fields are added in the order of their names, so the same table always gives the same value.
-static SHUResult ECSILua_ToValue(int index, ECSValue *value, u32 depth)
+/// @param handles Whether a handle stays a handle; without it, a handle is skipped, so the value can go to another thread.
+static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *value, bool handles, u32 depth)
 {
-    lua_State *state = LUA.state;
     index = lua_absindex(state, index);
 
     switch (lua_type(state, index))
@@ -115,7 +117,28 @@ static SHUResult ECSILua_ToValue(int index, ECSValue *value, u32 depth)
 
         return SHUResult_Ok;
     case LUA_TSTRING:
-        return ECSValue_SetString(value, lua_tostring(state, index));
+    {
+        // a string with a zero byte is bytes, which a C string cannot hold
+        usz length = 0;
+        const char *text = lua_tolstring(state, index, &length);
+        return SDL_strlen(text) == length ? ECSValue_SetString(value, text) : ECSValue_SetBuffer(value, (SHUSliceView){.data = text, .size = length});
+    }
+    case LUA_TUSERDATA:
+    {
+        const char *type = nullptr;
+        void *object = nullptr;
+
+        // the value keeps the handle itself, so the handle it gives back is gone once its object is, and the object lives while the value does
+        if (handles && LUA.ReadHandle != nullptr && LUA.ReadHandle(index, &type, &object))
+        {
+            lua_pushvalue(state, index);
+            return ECSIValue_SetLuaHandle(value, type, object, luaL_ref(state, LUA_REGISTRYINDEX));
+        }
+
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, handles ? "A userdata that is not a handle, or whose object is gone, is not data; it is skipped." : "A userdata is not data that can go to another thread; it is skipped.");
+        ECSValue_SetNil(value);
+        return SHUResult_Ok;
+    }
     case LUA_TTABLE:
         break;
     default:
@@ -139,7 +162,7 @@ static SHUResult ECSILua_ToValue(int index, ECSValue *value, u32 depth)
         SHU_ReturnResult(ECSValue_ListAddItem(value, &item));
 
         lua_rawgeti(state, index, (lua_Integer)i);
-        SHUResult result = ECSILua_ToValue(-1, item, depth + 1);
+        SHUResult result = ECSILua_ToValue(state, -1, item, handles, depth + 1);
         lua_pop(state, 1);
         SHU_ReturnResult(result);
     }
@@ -175,7 +198,7 @@ static SHUResult ECSILua_ToValue(int index, ECSValue *value, u32 depth)
         {
             lua_pushstring(state, names[i]);
             lua_rawget(state, index);
-            result = ECSILua_ToValue(-1, field, depth + 1);
+            result = ECSILua_ToValue(state, -1, field, handles, depth + 1);
             lua_pop(state, 1);
         }
     }
@@ -209,6 +232,17 @@ static void ECSILua_PushOrderedValue(const ECSValue *value)
     case ECSValueType_String:
         lua_pushstring(state, ECSValue_GetString(value, ""));
         return;
+    case ECSValueType_Buffer:
+    {
+        SHUSlice bytes = ECSValue_GetBuffer(value, (SHUSlice){0});
+        lua_pushlstring(state, bytes.data, bytes.size);
+        return;
+    }
+    case ECSValueType_Handle:
+        // a file holds only data, so a handle is left out
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A handle is not data that a file can hold; it is left out.");
+        lua_pushnil(state);
+        return;
     case ECSValueType_Table:
         break;
     }
@@ -237,6 +271,13 @@ static void ECSILua_PushOrderedField(const char *name, const ECSValue *field, vo
     (void)userData;
     lua_State *state = LUA.state;
     lua_Integer length = (lua_Integer)lua_rawlen(state, -1);
+
+    // a field that is a handle is left out with its name, so the names and values after it keep their places
+    if (ECSValue_GetType(field) == ECSValueType_Handle)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A handle is not data that a file can hold; the field '%s' is left out.", name);
+        return;
+    }
 
     lua_pushstring(state, name);
     lua_rawseti(state, -2, length + 1);
@@ -314,6 +355,29 @@ static void ECSILua_Warn(void *userData, const char *message, int toContinue)
     }
 }
 
+/// @brief Takes another reference to a Lua handle that a value keeps.
+static int ECSILua_KeepHandle(int reference)
+{
+    lua_rawgeti(LUA.state, LUA_REGISTRYINDEX, reference);
+    return luaL_ref(LUA.state, LUA_REGISTRYINDEX);
+}
+
+static void ECSILua_DropHandle(int reference)
+{
+    luaL_unref(LUA.state, LUA_REGISTRYINDEX, reference);
+}
+
+/// @brief Gives the object of a Lua handle that a value keeps, or nullptr once it is gone.
+static void *ECSILua_HandleObject(int reference)
+{
+    const char *type = nullptr;
+    void *object = nullptr;
+    lua_rawgeti(LUA.state, LUA_REGISTRYINDEX, reference);
+    bool found = LUA.ReadHandle != nullptr && LUA.ReadHandle(lua_gettop(LUA.state), &type, &object);
+    lua_pop(LUA.state, 1);
+    return found ? object : nullptr;
+}
+
 #pragma endregion Source Only
 
 SHUResult ECSILua_Initialize(void)
@@ -338,11 +402,15 @@ SHUResult ECSILua_Initialize(void)
     }
 
     LUA.writer = luaL_ref(LUA.state, LUA_REGISTRYINDEX);
+    ECSIValue_SetLuaFunctions(ECSILua_KeepHandle, ECSILua_DropHandle, ECSILua_HandleObject);
     return SHUResult_Ok;
 }
 
 void ECSILua_Terminate(void)
 {
+    // a value that outlives the state lets go of no handle
+    ECSIValue_SetLuaFunctions(nullptr, nullptr, nullptr);
+
     if (LUA.state != nullptr)
     {
         lua_close(LUA.state);
@@ -358,26 +426,32 @@ lua_State *ECSILua_GetState(void)
     return LUA.state;
 }
 
+void ECSILua_SetHandleFunctions(ECSILuaReadHandleFunction Read, ECSILuaPushHandleFunction Push)
+{
+    LUA.ReadHandle = Read;
+    LUA.PushHandle = Push;
+}
+
 SHUResult ECSILua_GetValue(int index, ECSValue *value)
 {
     SDL_assert(LUA.state != nullptr);
     SDL_assert(value != nullptr);
 
-    return ECSILua_ToValue(index, value, 0);
+    return ECSILua_ToValue(LUA.state, index, value, true, 0);
 }
+
+static void ECSILua_Push(lua_State *state, const ECSValue *value);
 
 static void ECSILua_PushField(const char *name, const ECSValue *field, void *userData)
 {
-    (void)userData;
-    ECSILua_PushValue(field);
-    lua_setfield(LUA.state, -2, name);
+    lua_State *state = userData;
+    ECSILua_Push(state, field);
+    lua_setfield(state, -2, name);
 }
 
-void ECSILua_PushValue(const ECSValue *value)
+/// @brief Pushes a value onto a Lua stack. A handle becomes nil on a state other than the core's, which owns handles.
+static void ECSILua_Push(lua_State *state, const ECSValue *value)
 {
-    SDL_assert(LUA.state != nullptr);
-
-    lua_State *state = LUA.state;
     luaL_checkstack(state, 3, "a value is nested too deeply");
 
     if (ECSValue_GetType(value) != ECSValueType_Table)
@@ -396,6 +470,34 @@ void ECSILua_PushValue(const ECSValue *value)
         case ECSValueType_String:
             lua_pushstring(state, ECSValue_GetString(value, ""));
             return;
+        case ECSValueType_Buffer:
+        {
+            SHUSlice bytes = ECSValue_GetBuffer(value, (SHUSlice){0});
+            lua_pushlstring(state, bytes.data, bytes.size);
+            return;
+        }
+        case ECSValueType_Handle:
+            if (state != LUA.state)
+            {
+                lua_pushnil(state);
+                return;
+            }
+
+            if (ECSIValue_GetLuaHandle(value) != 0)
+            {
+                lua_rawgeti(state, LUA_REGISTRYINDEX, ECSIValue_GetLuaHandle(value));
+                return;
+            }
+
+            if (LUA.PushHandle != nullptr)
+            {
+                const char *type = ECSIValue_GetHandleType(value);
+                LUA.PushHandle(type, ECSValue_GetHandle(value, type));
+                return;
+            }
+
+            lua_pushnil(state);
+            return;
         default:
             lua_pushnil(state);
             return;
@@ -407,18 +509,59 @@ void ECSILua_PushValue(const ECSValue *value)
 
     for (usz i = 0; i < count; i++)
     {
-        ECSILua_PushValue(ECSValue_GetListItem(value, i));
+        ECSILua_Push(state, ECSValue_GetListItem(value, i));
         lua_rawseti(state, -2, (lua_Integer)i + 1);
     }
 
-    ECSIValue_TableForEachField(value, ECSILua_PushField, nullptr);
+    ECSIValue_TableForEachField(value, ECSILua_PushField, state);
+}
+
+void ECSILua_PushValue(const ECSValue *value)
+{
+    SDL_assert(LUA.state != nullptr);
+
+    ECSILua_Push(LUA.state, value);
+}
+
+lua_State *ECSILua_NewState(void)
+{
+    lua_State *state = lua_newstate(ECSILua_Allocate, nullptr, luaL_makeseed(nullptr));
+
+    if (state != nullptr)
+    {
+        lua_atpanic(state, ECSILua_Panic);
+        luaL_openlibs(state);
+    }
+
+    return state;
+}
+
+SHUResult ECSILua_GetData(lua_State *state, int index, ECSValue *value)
+{
+    SDL_assert(state != nullptr);
+    SDL_assert(value != nullptr);
+
+    return ECSILua_ToValue(state, index, value, false, 0);
+}
+
+void ECSILua_PushData(lua_State *state, const ECSValue *value)
+{
+    SDL_assert(state != nullptr);
+
+    ECSILua_Push(state, value);
 }
 
 SHUResult ECSILua_Call(int argumentCount, int resultCount)
 {
     SDL_assert(LUA.state != nullptr);
 
-    lua_State *state = LUA.state;
+    return ECSILua_CallIn(LUA.state, argumentCount, resultCount);
+}
+
+SHUResult ECSILua_CallIn(lua_State *state, int argumentCount, int resultCount)
+{
+    SDL_assert(state != nullptr);
+
     int base = lua_gettop(state) - argumentCount;
 
     lua_pushcfunction(state, ECSILua_Traceback);
@@ -462,7 +605,7 @@ SHUResult ECSILua_ReadData(const char *path, ECSValue *retValue)
         return SHUResult_ErrBadData;
     }
 
-    SHUResult result = ECSILua_ToValue(-1, retValue, 0);
+    SHUResult result = ECSILua_ToValue(state, -1, retValue, true, 0);
     lua_settop(state, top);
     return result;
 }

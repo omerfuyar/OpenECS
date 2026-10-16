@@ -19,7 +19,8 @@ static struct
         ECSIPanelType *value;
     } *types;         // stb_ds hash map; panels point to the types, so each type is allocated on its own
     ECSPanel *closed; // stb_ds array
-    u32 nextPanelId;
+    u32 nextPanelID;
+    ECSIAskFunction Ask; // asks about unsaved work; Input gives it
 } PANELS = {0};
 
 static void ECSIPanel_TypeFree(ECSIPanelType *type)
@@ -62,6 +63,100 @@ static bool ECSIPanel_ResizePixels(ECSPanel panel)
     }
 
     return panel->pixels != nullptr;
+}
+
+/// @brief Releases a GPU panel's texture on the device, and the view of it that a renderer made.
+static void ECSIPanel_ReleaseGpuTexture(ECSPanel panel)
+{
+    if (panel->texture != nullptr)
+    {
+        SDL_DestroyTexture(panel->texture);
+        panel->texture = nullptr;
+    }
+
+    if (panel->gpuTexture != nullptr)
+    {
+        SDL_ReleaseGPUTexture(panel->gpuDevice, panel->gpuTexture);
+        panel->gpuTexture = nullptr;
+        panel->gpuDevice = nullptr;
+    }
+}
+
+/// @brief Gives a GPU panel a texture of the size of its rectangle on the device of a renderer, and that renderer's view of it.
+/// The texture is kept while its size and device stay, so it moves between OS windows; a new one is drawn before it shows.
+/// @return false if the renderer has no GPU device, or the texture cannot be made.
+static bool ECSIPanel_ResizeGpuTexture(ECSPanel panel, SDL_Renderer *renderer)
+{
+    int width = (int)SDL_max(1.0f, SDL_roundf(panel->width));
+    int height = (int)SDL_max(1.0f, SDL_roundf(panel->height));
+    SDL_GPUDevice *device = SDL_GetGPURendererDevice(renderer);
+
+    if (device == nullptr)
+    {
+        ECSIPanel_Fault(panel, "The panel draws with the GPU, but OpenECS has no GPU renderer here.");
+        return false;
+    }
+
+    bool kept = panel->gpuTexture != nullptr && panel->gpuDevice == device && panel->gpuWidth == width && panel->gpuHeight == height;
+
+    if (kept && panel->texture != nullptr && SDL_GetRendererFromTexture(panel->texture) == renderer)
+    {
+        return true;
+    }
+
+    if (!kept)
+    {
+        ECSIPanel_ReleaseGpuTexture(panel);
+
+        // ARGB8888 is B8G8R8A8_UNORM on the GPU; the panel draws into it, and the renderers sample it
+        const SDL_GPUTextureCreateInfo info = {
+            .type = SDL_GPU_TEXTURETYPE_2D,
+            .format = SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM,
+            .usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
+            .width = (Uint32)width,
+            .height = (Uint32)height,
+            .layer_count_or_depth = 1,
+            .num_levels = 1,
+        };
+
+        panel->gpuTexture = SDL_CreateGPUTexture(device, &info);
+
+        if (panel->gpuTexture == nullptr)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot create a %dx%d GPU texture: %s", width, height, SDL_GetError());
+            return false;
+        }
+
+        panel->gpuDevice = device;
+        panel->gpuWidth = width;
+        panel->gpuHeight = height;
+        panel->needsDraw = true;
+    }
+    else if (panel->texture != nullptr)
+    {
+        SDL_DestroyTexture(panel->texture);
+        panel->texture = nullptr;
+    }
+
+    // the renderer shows the texture without owning it
+    SDL_PropertiesID props = SDL_CreateProperties();
+    SDL_SetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, SDL_PIXELFORMAT_ARGB8888);
+    SDL_SetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_TARGET);
+    SDL_SetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, width);
+    SDL_SetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, height);
+    SDL_SetPointerProperty(props, SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER, panel->gpuTexture);
+    panel->texture = props == 0 ? nullptr : SDL_CreateTextureWithProperties(renderer, props);
+    SDL_DestroyProperties(props);
+
+    if (panel->texture == nullptr)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot show a %dx%d GPU texture: %s", width, height, SDL_GetError());
+        return false;
+    }
+
+    // panels are opaque
+    SDL_SetTextureBlendMode(panel->texture, SDL_BLENDMODE_NONE);
+    return true;
 }
 
 static void ECSIPanel_DeliverEvent(void *target, const ECSPanelEvent *event)
@@ -153,7 +248,7 @@ SHUResult ECSIPanel_Create(ECSPanel *retPanel, const char *typeName, const ECSVa
         SHU_ReturnResult(ECSIValue_Copy(panel->savedState, savedState), ECSIPanel_Destroy(&panel););
     }
 
-    panel->id = ++PANELS.nextPanelId;
+    panel->id = ++PANELS.nextPanelID;
     panel->stateVersion = stateVersion;
     panel->needsDraw = true;
 
@@ -192,11 +287,7 @@ void ECSIPanel_Destroy(ECSPanel *panel)
         target->type->desc.Destroy(target->state);
     }
 
-    if (target->texture != nullptr)
-    {
-        SDL_DestroyTexture(target->texture);
-    }
-
+    ECSIPanel_ReleaseGpuTexture(target);
     SDL_DestroySurface(target->pixels);
     ECSIPanel_ClearAccepts(target);
     ECSValue_Destroy(&target->savedState);
@@ -228,7 +319,7 @@ void ECSIPanel_Close(ECSPanel *panel)
     ECSIPanel_Emit("ecs.panelClosed", *panel);
 
     // a closed panel is never shown again, and its OS window may close before it is destroyed, with the renderer its texture belongs to
-    ECSIPanel_ReleaseTexture(*panel);
+    ECSIPanel_ReleaseGpuTexture(*panel);
     (*panel)->closed = true;
     arrput(PANELS.closed, *panel);
     *panel = nullptr;
@@ -244,14 +335,14 @@ void ECSIPanels_DestroyClosed(void)
     arrfree(PANELS.closed);
 }
 
-void ECSIPanel_SetId(ECSPanel panel, u32 id)
+void ECSIPanel_SetID(ECSPanel panel, u32 id)
 {
     SDL_assert(panel != nullptr);
 
     if (id != 0)
     {
         panel->id = id;
-        PANELS.nextPanelId = SDL_max(PANELS.nextPanelId, id);
+        PANELS.nextPanelID = SDL_max(PANELS.nextPanelID, id);
     }
 }
 
@@ -343,6 +434,31 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         return;
     }
 
+    f64 seconds = panel->lastDrawTicks == 0 ? 0.0 : (f64)(nowTicks - panel->lastDrawTicks) / 1e9;
+
+    // a GPU panel draws into its texture on the device itself, with its own command buffer, which runs before the renderer's
+    if (panel->type->desc.surface == ECSSurfaceType_Gpu)
+    {
+        if (!ECSIPanel_ResizeGpuTexture(panel, renderer) || !ECSIPanel_WantsFrame(panel))
+        {
+            return;
+        }
+
+        ECSSurface surface = {
+            .type = ECSSurfaceType_Gpu,
+            .width = panel->gpuWidth,
+            .height = panel->gpuHeight,
+            .scale = 1.0f,
+            .texture = panel->gpuTexture,
+        };
+
+        panel->lastDrawTicks = nowTicks;
+        panel->needsDraw = false;
+        panel->type->desc.Draw(panel->state, &surface, seconds);
+        ECSIServices_EndSurface(&surface);
+        return;
+    }
+
     // a texture belongs to one renderer, and the panel may have moved to another OS window
     if (panel->texture != nullptr && SDL_GetRendererFromTexture(panel->texture) != renderer)
     {
@@ -382,14 +498,13 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
             .pitch = pixels->pitch,
         };
 
-        f64 seconds = panel->lastDrawTicks == 0 ? 0.0 : (f64)(nowTicks - panel->lastDrawTicks) / 1e9;
         panel->lastDrawTicks = nowTicks;
         panel->needsDraw = false;
 
         panel->type->desc.Draw(panel->state, &surface, seconds);
 
-        // the surface is valid only during Draw, so a Lua handle of it is too
-        ECSIServices_ForgetHandle(&surface);
+        // the services that drew into the surface finish, and its Lua handle goes
+        ECSIServices_EndSurface(&surface);
         SDL_UpdateTexture(panel->texture, nullptr, pixels->pixels, pixels->pitch);
     }
 }
@@ -596,6 +711,11 @@ void ECSIPanels_RemovePlugin(ECSPlugin plugin)
     }
 }
 
+void ECSIPanels_SetAsk(ECSIAskFunction Ask)
+{
+    PANELS.Ask = Ask;
+}
+
 bool ECSIPanels_ConfirmClose(const ECSPanel *panels, usz count, bool quitting)
 {
     SDL_assert(panels != nullptr || count == 0);
@@ -628,31 +748,19 @@ bool ECSIPanels_ConfirmClose(const ECSPanel *panels, usz count, bool quitting)
         OPENECS_ANSWER_CANCEL,
     };
 
-    const SDL_MessageBoxButtonData buttons[] = {
-        {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, OPENECS_ANSWER_SAVE, "Save"},
-        {0, OPENECS_ANSWER_DISCARD, "Discard"},
-        {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, OPENECS_ANSWER_CANCEL, "Cancel"},
-    };
-
+    const char *const buttons[] = {"Save", "Discard", "Cancel"};
     char *message = nullptr;
     SDL_asprintf(&message, "%s unsaved work:%s", unsaved == 1 ? "This panel has" : "These panels have", list == nullptr ? "" : list);
     SDL_free(list);
 
-    const SDL_MessageBoxData data = {
-        .flags = SDL_MESSAGEBOX_WARNING,
-        .title = "Unsaved work",
-        .message = message == nullptr ? "Some panels have unsaved work." : message,
-        .numbuttons = SDL_arraysize(buttons),
-        .buttons = buttons,
-    };
-
-    int answer = OPENECS_ANSWER_CANCEL;
+    const char *text = message == nullptr ? "Some panels have unsaved work." : message;
+    i32 answer = PANELS.Ask == nullptr ? -1 : PANELS.Ask("Unsaved work", text, buttons, SDL_arraysize(buttons));
 
     // without a dialog the user cannot answer; quitting discards the work so it always finishes, closing panels keeps it
-    if (!SDL_ShowMessageBox(&data, &answer))
+    if (answer < 0)
     {
         answer = quitting ? OPENECS_ANSWER_DISCARD : OPENECS_ANSWER_CANCEL;
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask about unsaved work (%s); it is %s. %s", SDL_GetError(), quitting ? "discarded" : "kept", data.message);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask about unsaved work; it is %s. %s", quitting ? "discarded" : "kept", text);
     }
 
     SDL_free(message);
@@ -872,9 +980,9 @@ SHUResult ECSIPanel_TypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
     named.name = fullName;
     desc = &named;
 
-    if (desc->surface != ECSSurfaceType_Pixels)
+    if (desc->surface != ECSSurfaceType_Pixels && desc->surface != ECSSurfaceType_Gpu)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' asks for a GPU surface, which is not implemented yet.", desc->name);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' asks for an unknown surface type.", desc->name);
         SDL_free(fullName);
         return SHUResult_ErrBadData;
     }
@@ -972,7 +1080,7 @@ const char *ECSPanel_GetTitle(ECSPanel panel)
     return panel->title;
 }
 
-u32 ECSPanel_GetId(ECSPanel panel)
+u32 ECSPanel_GetID(ECSPanel panel)
 {
     SDL_assert(panel != nullptr);
 

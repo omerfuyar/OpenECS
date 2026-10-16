@@ -84,17 +84,19 @@ int main(int argc, char **argv)
     Shuild_other();
     Shuild_OpenECS();
     Shuild_Plugins();
-    Shuild_Definitions();
 
     return 0;
 }
 
 #define RunCheck(cmd, ...) SHU_Assert(!SHU_UtilRun(cmd, ##__VA_ARGS__), "Running " SHUM_COLOR_RED("'%s'") " failed", cmd)
 
-/// @brief Copies a file or folder with its times, so an unchanged header does not make the files that include it compile again.
-static void CopyFile(const char *file, const char *directory)
+/// @brief Deletes a file or folder if it exists.
+static void DeleteIfExists(const char *path)
 {
-    RunCheck("cp -rp %s %s", file, directory);
+    if (SHU_UtilFileExists(path) != SHUFileType_Invalid)
+    {
+        SHU_UtilDeleteFile(path);
+    }
 }
 
 static void PrintUsageAndExit(int status)
@@ -156,13 +158,13 @@ static void SetupConfiguration(int argc, char **argv)
         }
     }
 
-    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", standard plugins: " SHUM_COLOR_BLUE("%s") ", examples: " SHUM_COLOR_BLUE("%s"),
-                BuildType_String(CONFIG.type), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
-
     SHUI_SFormat(&CONFIG.buildDir, ".shu/%s/", BuildType_String(CONFIG.type));
     SHUI_SFormat(&CONFIG.outputDir, "build/%s/", BuildType_String(CONFIG.type));
 
     SHU_CacheConfigure(CONFIG.buildDir.data);
+
+    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", standard plugins: " SHUM_COLOR_BLUE("%s") ", examples: " SHUM_COLOR_BLUE("%s"),
+                BuildType_String(CONFIG.type), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
 }
 
 // our code gets warnings, and in Debug the static analyzer and the address and undefined-behaviour sanitizers; dependencies get none of them
@@ -256,6 +258,8 @@ static void Shuild_SDL_ttf(void)
     SHUI_SFormat(&buildDir, "%s%sSDL3_ttf/", root, CONFIG.buildDir.data);
     SHUI_SFormat(&outputPrefixDir, "%s%s/", root, CONFIG.outputDir.data);
 
+    // todo maybe a better way to discard / silence output ???
+
     RunCheck(
         "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s "
         "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
@@ -294,10 +298,10 @@ static void Shuild_lua(void)
     SHUI_String tempStr;
     SHUI_SFormat(&tempStr, "%sinclude/lua/", CONFIG.outputDir.data);
     SHU_UtilCreateDirectory(tempStr.data);
-    CopyFile("dependencies/lua/lua.h", tempStr.data);
-    CopyFile("dependencies/lua/lauxlib.h", tempStr.data);
-    CopyFile("dependencies/lua/lualib.h", tempStr.data);
-    CopyFile("dependencies/lua/luaconf.h", tempStr.data);
+    SHU_UtilCopyFile("dependencies/lua/lua.h", tempStr.data);
+    SHU_UtilCopyFile("dependencies/lua/lauxlib.h", tempStr.data);
+    SHU_UtilCopyFile("dependencies/lua/lualib.h", tempStr.data);
+    SHU_UtilCopyFile("dependencies/lua/luaconf.h", tempStr.data);
 
     SHUI_SFormat(&tempStr, "%slib/", CONFIG.outputDir.data);
     SHU_ModuleCompile(tempStr.data, SHUModuleType_LibraryStatic);
@@ -320,8 +324,8 @@ static void Shuild_clay(void)
     // clay.c includes the headers from the submodule, so they are copied for the core after it compiles
     SHUI_SFormat(&tempStr, "%sinclude/clay/", CONFIG.outputDir.data);
     SHU_UtilCreateDirectory(tempStr.data);
-    CopyFile("dependencies/clay/clay.h", tempStr.data);
-    CopyFile("dependencies/other/clay/claySDL3.h", tempStr.data);
+    SHU_UtilCopyFile("dependencies/clay/clay.h", tempStr.data);
+    SHU_UtilCopyFile("dependencies/other/clay/claySDL3.h", tempStr.data);
 }
 
 static void Shuild_stb(void)
@@ -333,8 +337,8 @@ static void Shuild_stb(void)
     SHUI_String tempStr;
     SHUI_SFormat(&tempStr, "%sinclude/stb/", CONFIG.outputDir.data);
     SHU_UtilCreateDirectory(tempStr.data);
-    CopyFile("dependencies/stb/stb_ds.h", tempStr.data);
-    CopyFile("dependencies/other/stb/stbSDL3.h", tempStr.data);
+    SHU_UtilCopyFile("dependencies/stb/stb_ds.h", tempStr.data);
+    SHU_UtilCopyFile("dependencies/other/stb/stbSDL3.h", tempStr.data);
 
     SHU_ModuleAddSourceFile("stb.c");
 
@@ -375,7 +379,7 @@ static char *ReadWholeFile(const char *path)
 static void MakeFfiHeader(const char *target, const char *path)
 {
     // the version is the second argument of AC_INIT, such as AC_INIT([libffi],[3.8.0],...)
-    char *configure = ReadWholeFile("dependencies/libffi/configure.ac");
+    char *configure = ReadWholeFile("dependencies/libffi/configure.ac"); // todo todo migrate changes like this to use shuild !!!
     const char *init = configure == NULL ? NULL : strstr(configure, "AC_INIT([libffi],[");
     char version[32] = "";
     int major = 0;
@@ -458,7 +462,7 @@ static void Shuild_libffi(void)
     SHUI_SFormat(&tempStr, "%sffi.h", headers.data);
     MakeFfiHeader(target, tempStr.data);
     SHUI_SFormat(&tempStr, "dependencies/libffi/%sffitarget.h", targetDirectory);
-    CopyFile(tempStr.data, headers.data);
+    SHU_UtilCopyFile(tempStr.data, headers.data);
 
     SHU_ModuleBegin("ffi", "dependencies/libffi");
     SetBuildFlags(false);
@@ -532,11 +536,15 @@ static void Shuild_OpenECS(void)
     SHU_ModuleCompile(tempStr.data, SHUModuleType_Executable);
 
     // the shared libraries go next to the executable under the names it asks for, as files rather than links
-    RunCheck("cp -L %slib/libSDL3.so.0 %slib/libSDL3_ttf.so.0 %s", CONFIG.outputDir.data, CONFIG.outputDir.data, tempStr.data);
+    SHUI_String library;
+    SHUI_SFormat(&library, "%slib/libSDL3.so.0", CONFIG.outputDir.data);
+    SHU_UtilCopyFile(library.data, tempStr.data);
+    SHUI_SFormat(&library, "%slib/libSDL3_ttf.so.0", CONFIG.outputDir.data);
+    SHU_UtilCopyFile(library.data, tempStr.data);
 
     SHUI_SFormat(&tempStr, "%sinclude/", CONFIG.outputDir.data);
-    CopyFile("include/OpenECS.h", tempStr.data);
-    CopyFile("include/ecs.lua", tempStr.data);
+    SHU_UtilCopyFile("include/OpenECS.h", tempStr.data);
+    SHU_UtilCopyFile("include/ecs.lua", tempStr.data);
 }
 
 /// @brief Builds a repository checked out in a folder of OpenECS, std/ or examples/, with the shuild.c of its own (DESIGN 17.7).
@@ -564,6 +572,7 @@ static void Shuild_Repository(const char *folder)
 
     // it is compiled with the flags shuild compiles a build program with, SHUILD_BUILD
     SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", folder);
+    // todo maybe a better way?
     RunCheck("gcc -Idependencies %s -o %sshuild.ignore" SHUILD_BUILD, source.data, folder);
     RunCheck("cd %s && ./shuild.ignore -b %s -o %s", folder, BuildType_String(CONFIG.type), output.data);
     SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'%s'") "\n", folder);
@@ -574,7 +583,9 @@ static void Shuild_Plugins(void)
     // the examples are built when the flags ask for them; a copy from an earlier build is removed otherwise
     if (!CONFIG.examples)
     {
-        RunCheck("rm -rf %sbin/examples", CONFIG.outputDir.data);
+        SHUI_String examples;
+        SHUI_SFormat(&examples, "%sbin/examples/", CONFIG.outputDir.data);
+        DeleteIfExists(examples.data);
     }
 
     // OpenECS-std builds the standard plugins into bin/plugins/ and their presets into bin/presets/; OpenECS-examples builds the examples into bin/examples/
@@ -582,6 +593,9 @@ static void Shuild_Plugins(void)
     {
         Shuild_Repository("std/");
     }
+
+    // the definitions come before the examples, so an example's C plugin includes the headers of the standard plugins, such as ui.h
+    Shuild_Definitions();
 
     if (CONFIG.examples)
     {
@@ -594,16 +608,15 @@ static void Shuild_other(void)
     SHUI_String tempStr;
     SHUI_SFormat(&tempStr, "%sinclude/shu/", CONFIG.outputDir.data);
     SHU_UtilCreateDirectory(tempStr.data);
-    CopyFile("dependencies/shu/shu.h", tempStr.data);
+    SHU_UtilCopyFile("dependencies/shu/shu.h", tempStr.data);
 
-    SHUI_SFormat(&tempStr, "%sbin/", CONFIG.outputDir.data);
-
-    SHU_UtilCreateDirectory(tempStr.data);
-    CopyFile("resources/", tempStr.data);
+    SHUI_SFormat(&tempStr, "%sbin/resources/", CONFIG.outputDir.data);
+    SHU_UtilCopyFile("resources/", tempStr.data);
 }
 
 /// @brief Writes a .luarc.json file that points LuaLS at OpenECS's ecs.lua and the definition files, so editors complete what Lua code uses.
-static void WriteLuaConfig(const char *folder, const char *include, const char *definitions)
+/// @param ignore Files LuaLS leaves out of the workspace, in .gitignore's grammar, or "": the plugins' types.lua, whose classes the definition files hold already.
+static void WriteLuaConfig(const char *folder, const char *include, const char *definitions, const char *ignore)
 {
     SHUI_String path;
     SHUI_SFormat(&path, "%s.luarc.json", folder);
@@ -611,7 +624,7 @@ static void WriteLuaConfig(const char *folder, const char *include, const char *
 
     if (file != NULL)
     {
-        fprintf(file, "{\n  \"workspace.library\": [\"%s\", \"%s\"]\n}\n", include, definitions);
+        fprintf(file, "{\n  \"workspace.library\": [\"%s\", \"%s\"]%s%s%s\n}\n", include, definitions, ignore[0] == '\0' ? "" : ",\n  \"workspace.ignoreDir\": [\"", ignore, ignore[0] == '\0' ? "" : "\"]");
         fclose(file);
     }
 }
@@ -624,7 +637,8 @@ static void Shuild_Definitions(void)
     SHUI_SFormat(&definitions, "%sdefinitions/", CONFIG.outputDir.data);
 
     // a program that fails to write them does not stop the build
-    RunCheck("rm -rf %s && (%sbin/OpenECS --definitions %s > %sdefinitions.log 2>&1 || true)", definitions.data, CONFIG.outputDir.data, definitions.data, CONFIG.outputDir.data);
+    DeleteIfExists(definitions.data);
+    SHU_UtilTryRun("%sbin/OpenECS --definitions %s > %sdefinitions.log 2>&1", CONFIG.outputDir.data, definitions.data, CONFIG.outputDir.data);
 
     if (SHU_UtilFileExists(definitions.data) != SHUFileType_Directory)
     {
@@ -634,7 +648,7 @@ static void Shuild_Definitions(void)
 
     SHUI_String up;
     SHUI_SFormat(&up, "../%s", definitions.data);
-    WriteLuaConfig("", "include", definitions.data);
-    WriteLuaConfig("std/", "../include", up.data);
-    WriteLuaConfig("examples/", "../include", up.data);
+    WriteLuaConfig("", "include", definitions.data, "std/plugins/*/types.lua");
+    WriteLuaConfig("std/", "../include", up.data, "plugins/*/types.lua");
+    WriteLuaConfig("examples/", "../include", up.data, "");
 }

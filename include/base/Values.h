@@ -54,6 +54,31 @@ void ECSIValue_TableForEachField(const ECSValue *table, ECSIValueFieldFunction f
 /// @return true if the value is a table that follows the rules.
 bool ECSIValue_CheckFields(const ECSValue *table, const ECSIFieldRule *rules, usz count, char **retProblem);
 
+/// @brief Gets the name of a handle's type.
+/// @param value The value, or nullptr.
+/// @return The type's full name, or nullptr if the value is not a handle. Valid as long as the value does not change.
+const char *ECSIValue_GetHandleType(const ECSValue *value);
+
+/// @brief Takes another reference to a Lua handle that a value keeps: a registry reference. The Lua module gives it.
+typedef int (*ECSIValueKeepFunction)(int reference);
+
+/// @brief Lets go of a Lua handle that a value kept.
+typedef void (*ECSIValueDropFunction)(int reference);
+
+/// @brief Gives the object of a Lua handle that a value keeps, or nullptr once the object is gone.
+typedef void *(*ECSIValueObjectFunction)(int reference);
+
+/// @brief Sets the functions for the Lua handles that values keep; the Lua module gives them as it starts, and nullptr functions as it ends.
+void ECSIValue_SetLuaFunctions(ECSIValueKeepFunction Keep, ECSIValueDropFunction Drop, ECSIValueObjectFunction Object);
+
+/// @brief Makes a value a handle read from Lua, which keeps the Lua handle itself, so it gives Lua that same handle back, and gives C the object only while it lives.
+/// @param reference A registry reference to the Lua handle; the value owns it.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation; the reference is dropped then.
+SHUWUR SHUResult ECSIValue_SetLuaHandle(ECSValue *value, const char *type, void *object, int reference);
+
+/// @brief Gives the registry reference of the Lua handle that a value keeps, or 0 for a handle that C set, and for any other value.
+int ECSIValue_GetLuaHandle(const ECSValue *value);
+
 /// @brief Checks a version text: one to three numbers separated by dots, such as "1.2.0" or "0.1".
 /// @param text The text, or nullptr.
 /// @return true if it is a version.

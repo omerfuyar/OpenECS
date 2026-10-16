@@ -4,6 +4,7 @@
 
 #include "OpenECS.h"
 
+#include "SDL3/SDL_gpu.h"
 #include "SDL3/SDL_render.h"
 
 #pragma region Declarations
@@ -36,7 +37,11 @@ struct ECSIPanel
     f32 width;
     f32 height;
     SDL_Surface *pixels;  // what the panel drew, kept between draws
-    SDL_Texture *texture; // the pixels on the GPU, made by the renderer of the OS window that shows the panel
+    SDL_Texture *texture; // the pixels on the GPU, made by the renderer of the OS window that shows the panel; for a GPU panel, that renderer's view of gpuTexture
+    SDL_GPUTexture *gpuTexture; // a GPU panel's texture on the shared device, kept when the panel moves to another OS window; nullptr for a pixels panel
+    SDL_GPUDevice *gpuDevice;   // the device of gpuTexture
+    i32 gpuWidth;               // the size of gpuTexture
+    i32 gpuHeight;
     u64 lastDrawTicks;
     u64 focusTicks; // when the panel last got focus, for placing new panels of its type; 0 if never
     bool closed;    // out of the layout, waiting for ECSIPanels_DestroyClosed; it gets no more events
@@ -55,6 +60,13 @@ struct ECSIPanel
 /// @param typeData Kept in the type, or nullptr.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIPanel_TypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc, void *typeData);
+
+/// @brief Asks the user with a message dialog and waits for a button, as ECSIInput_Ask does.
+/// @return The index of the pressed button, or -1 if no dialog can be shown.
+typedef i32 (*ECSIAskFunction)(const char *title, const char *message, const char *const *buttons, usz count);
+
+/// @brief Sets the function that asks about unsaved work. Panels is above Input, so Input gives it as it starts; until then nothing can be asked.
+void ECSIPanels_SetAsk(ECSIAskFunction Ask);
 
 /// @brief Asks the user about the unsaved work of panels that are about to close: Save, Discard or Cancel. One dialog lists them all.
 /// @param panels The panels that close. Those without unsaved work are skipped.
@@ -120,7 +132,7 @@ void ECSIPanels_DestroyClosed(void);
 /// @brief Gives a panel the id it had in a saved session. Later panels get higher ids.
 /// @param panel The panel.
 /// @param id The saved id. 0 keeps the panel's new id.
-void ECSIPanel_SetId(ECSPanel panel, u32 id);
+void ECSIPanel_SetID(ECSPanel panel, u32 id);
 
 /// @brief Describes a panel for a session: its id, type, saved state and the state's version. A working panel saves its state through its type; a placeholder writes back the state it kept.
 /// @param panel The panel.

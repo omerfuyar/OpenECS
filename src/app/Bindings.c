@@ -1,5 +1,6 @@
 #include "app/Bindings.h"
 
+#include "app/Workers.h"
 #include "base/Lua.h"
 #include "interface/Input.h"
 #include "interface/Panels.h"
@@ -452,8 +453,23 @@ static int ECSIBindings_HandleValue(lua_State *state)
     return 1;
 }
 
+static int ECSIBindings_HandleAddMethod(lua_State *state)
+{
+    const char *type = luaL_checkstring(state, 1);
+    const char *method = luaL_checkstring(state, 2);
+    const char *function = luaL_checkstring(state, 3);
+
+    if (ECSIServices_AddMethod(ECSIBindings_Plugin(state), type, method, function))
+    {
+        return luaL_error(state, "'%s' cannot be the method '%s' of '%s'", function, method, type);
+    }
+
+    return 0;
+}
+
 static const luaL_Reg OPENECS_BINDINGS_HANDLE[] = {
     {"registerType", ECSIBindings_HandleRegisterType},
+    {"addMethod", ECSIBindings_HandleAddMethod},
     {"new", ECSIBindings_HandleNew},
     {"value", ECSIBindings_HandleValue},
     {nullptr, nullptr},
@@ -1559,7 +1575,7 @@ static int ECSIBindings_PanelIndex(lua_State *state)
     }
     else if (SDL_strcmp(key, "id") == 0)
     {
-        lua_pushinteger(state, ECSPanel_GetId(panel));
+        lua_pushinteger(state, ECSPanel_GetID(panel));
     }
     else if (SDL_strcmp(key, "type") == 0)
     {
@@ -1926,9 +1942,22 @@ static u32 *ECSIBindings_Pixel(ECSSurface *surface, lua_Integer x, lua_Integer y
     return (u32 *)((u8 *)surface->pixels.data + (usz)y * (usz)surface->pitch) + x;
 }
 
+/// @brief Gets the surface at an index for a method that reads or writes its pixels, and raises a Lua error for a GPU surface, which has none.
+static ECSSurface *ECSIBindings_CheckPixels(lua_State *state, int index)
+{
+    ECSSurface *surface = ECSIBindings_CheckSurface(index);
+
+    if (surface->type != ECSSurfaceType_Pixels)
+    {
+        luaL_error(state, "a GPU surface has no pixels; the gpu plugin draws into it");
+    }
+
+    return surface;
+}
+
 static int ECSIBindings_SurfaceSetPixel(lua_State *state)
 {
-    ECSSurface *surface = ECSIBindings_CheckSurface(1);
+    ECSSurface *surface = ECSIBindings_CheckPixels(state, 1);
     u32 *pixel = ECSIBindings_Pixel(surface, luaL_checkinteger(state, 2), luaL_checkinteger(state, 3));
 
     ECSColor color = 0;
@@ -1945,7 +1974,7 @@ static int ECSIBindings_SurfaceSetPixel(lua_State *state)
 
 static int ECSIBindings_SurfaceGetPixel(lua_State *state)
 {
-    ECSSurface *surface = ECSIBindings_CheckSurface(1);
+    ECSSurface *surface = ECSIBindings_CheckPixels(state, 1);
     u32 *pixel = ECSIBindings_Pixel(surface, luaL_checkinteger(state, 2), luaL_checkinteger(state, 3));
 
     if (pixel == nullptr)
@@ -1961,7 +1990,7 @@ static int ECSIBindings_SurfaceGetPixel(lua_State *state)
 
 static int ECSIBindings_SurfaceSetRow(lua_State *state)
 {
-    ECSSurface *surface = ECSIBindings_CheckSurface(1);
+    ECSSurface *surface = ECSIBindings_CheckPixels(state, 1);
     lua_Integer y = luaL_checkinteger(state, 2);
     usz length = 0;
     const char *bytes = luaL_checklstring(state, 3, &length);
@@ -1988,7 +2017,7 @@ static int ECSIBindings_SurfaceSetRow(lua_State *state)
 
 static int ECSIBindings_SurfaceFill(lua_State *state)
 {
-    ECSSurface *surface = ECSIBindings_CheckSurface(1);
+    ECSSurface *surface = ECSIBindings_CheckPixels(state, 1);
     lua_Integer values[4];
 
     // the rectangle is clipped to the surface, so larger numbers are clamped first
@@ -2019,6 +2048,10 @@ static int ECSIBindings_SurfaceIndex(lua_State *state)
     else if (SDL_strcmp(key, "scale") == 0)
     {
         lua_pushnumber(state, (lua_Number)surface->scale);
+    }
+    else if (SDL_strcmp(key, "type") == 0)
+    {
+        lua_pushstring(state, surface->type == ECSSurfaceType_Gpu ? "gpu" : "pixels");
     }
     else
     {
@@ -2108,6 +2141,8 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIBindings_AddTable(state, plugin, "dialog", OPENECS_BINDINGS_DIALOG);
     ECSIBindings_AddTable(state, plugin, "event", OPENECS_BINDINGS_EVENT);
     ECSIBindings_AddTable(state, plugin, "handle", OPENECS_BINDINGS_HANDLE);
+    ECSIWorkers_PushTable(state, plugin);
+    lua_setfield(state, -2, "worker");
 
     lua_newtable(state);
     lua_pushstring(state, ECSIPlugin_GetName(plugin));

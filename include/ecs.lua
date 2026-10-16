@@ -105,6 +105,44 @@ ecs.timer = {}
 ---@return ecs.Timer
 function ecs.timer.start(seconds, repeat_, fn) end
 
+-- Workers: Lua scripts on threads of their own (DESIGN 3.4)
+
+---A worker that ecs.worker.start started.
+---@class ecs.Worker
+---@field running boolean Whether its script still runs: it has not ended, and was not stopped.
+local Worker = {}
+
+---Sends a copy of a value to the worker, which its ecs.worker.receive gives. A worker that ended or was stopped gets nothing.
+---@param value any Nil, a boolean, a number, a text, or a table of them; functions and handles are skipped.
+function Worker:send(value) end
+
+---Stops the worker: its script ends at its next receive, or within a few thousand instructions. Its message and done functions are not called again.
+function Worker:stop() end
+
+---@class ecs.WorkerDesc
+---@field file string The script, a path in the plugin's folder.
+---@field input? any A value that the script gets as its `...`, copied as messages are.
+---@field message? fun(value: any) Gets each value that the script sends, on the main thread.
+---@field done? fun(ok: boolean, result: any) Gets the end of the script: true and what it returned, or false and its error.
+
+---@class ecs.worker
+ecs.worker = {}
+
+---Starts a worker: a Lua script that runs on a thread of its own, in a Lua state of its own. Lua only: a native plugin runs work with ECS_RunInBackground, or on threads of its own.
+---@param desc ecs.WorkerDesc
+---@return ecs.Worker? worker
+---@return string? message Why it did not start.
+function ecs.worker.start(desc) end
+
+---In a worker's script only: gives the oldest value that the plugin sent, waiting for one at most seconds, or without end. Gives nil when the time runs out.
+---@param seconds? number
+---@return any
+function ecs.worker.receive(seconds) end
+
+---In a worker's script only: sends a copy of a value to the plugin, whose message function gets it.
+---@param value any Nil, a boolean, a number, a text, or a table of them; functions and handles are skipped.
+function ecs.worker.send(value) end
+
 -- Panels
 
 ---A panel: a handle of type ecs.panel. Its data are fields, and what it does are methods.
@@ -154,11 +192,13 @@ function Panel:startDrag(type, value) end
 ---@return string? message Why the popup is not opened.
 function Panel:openPopup(desc) end
 
----The pixels a panel draws into: a handle of type ecs.surface, which a panel can pass to a service that draws. It is valid only while draw runs.
+---The picture a panel draws into: a handle of type ecs.surface, which a panel can pass to a service that draws. It is valid only while draw runs.
+---A GPU surface is a texture that the gpu standard plugin draws into, with gpu.frame(surface); it has no pixels, so its methods raise an error.
 ---@class ecs.Surface
 ---@field width integer
 ---@field height integer
 ---@field scale number Pixels per layout unit.
+---@field type "pixels"|"gpu" The panel type's surface.
 local Surface = {}
 
 ---Fills a rectangle with one colour, such as to clear the surface. The rectangle is in pixels, and clipped to the surface.
@@ -234,7 +274,7 @@ function Popup:setSize(width, height) end
 ---@class ecs.PanelTypeDesc
 ---@field name string The local name, such as "view"; the type is "canvas.view".
 ---@field title? string The default title of tabs and menus.
----@field surface? "pixels"|"gpu" "pixels" if missing.
+---@field surface? "pixels"|"gpu" "pixels" if missing; "gpu" gives draw a GPU texture, which the gpu standard plugin draws into.
 ---@field stateVersion? integer The version of the saved state.
 ---@field continuous? boolean true: draw runs every frame while the panel is shown, for animation. false, or missing: draw runs only when the panel is shown, resized or asks with panel:redraw().
 ---@field minWidth? number In layout units.
@@ -437,7 +477,7 @@ function ecs.session.openPreset(nameOrPath) end
 ---@class ecs.SessionEntry
 ---@field name string The file's name without .lua. For a preset, the name that ecs.session.openPreset takes.
 ---@field path string The file's path.
----@field appId string The tool's app id.
+---@field appID string The tool's app id.
 ---@field appName string The tool's name.
 ---@field lastUsed? integer Presets only: when the tool's last session was written, in seconds since 1970. Missing if it has none.
 ---@field saved? integer Sessions only: when the file was written, in seconds since 1970.
@@ -503,6 +543,12 @@ ecs.handle = {}
 ---@param name string The local name, such as "brush"; signatures name it "handle<canvas.brush>".
 function ecs.handle.registerType(name) end
 
+---Makes a function of the plugin a method of one of its handle types, so a handle's user calls it on the handle: `socket:send(data, true)`.
+---@param type string The handle type's local name, such as "brush".
+---@param method string The method's name, such as "paint".
+---@param function_ string The local name of one of the plugin's functions, registered with ecs.service.register, whose first parameter is a handle of the type.
+function ecs.handle.addMethod(type, method, function_) end
+
 ---Makes a handle that stands for a Lua value. Lua only: in C, a handle is the object's pointer.
 ---@param name string A handle type of the plugin, by its full name.
 ---@param value any
@@ -518,7 +564,7 @@ function ecs.handle.value(handle, name) end
 -- Services
 
 ---@class ecs.ServiceFunction
----@field sig string The signature, such as "int(string count, float scale)". Types: void, bool, int, int64, float, double, color, string, buffer, value, handle<name>, fn<signature>, and out before a type.
+---@field sig string The signature, such as "int(string count, float scale)". Types: void, bool, int, int64, float, double, color, string, buffer, value, handle<name>, fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
 ---@field doc? string A one-line description.
 ---@field fn function
 
@@ -601,11 +647,12 @@ ecs.dialog = {}
 ---@return string? message Why the dialog is not shown.
 function ecs.dialog.show(desc, done) end
 
----Shows a message and waits for a button.
+---Shows a message in a dialog that the core draws, and waits for a button; no plugin code runs while it waits.
+---Return presses the first button unless the user chooses another, and Escape or closing the window presses the last.
 ---@param title string
 ---@param text string
 ---@param buttons? string[] { "OK" } if missing.
----@return integer? button The pressed button's position, from 1.
+---@return integer? button The pressed button's position, from 1; nil if the dialog cannot be shown.
 function ecs.dialog.message(title, text, buttons) end
 
 -- Files: the shapes of manifests, presets, sessions and settings files, for editors. Write ---@type ecs.Manifest, for example, above the file's return.
@@ -670,6 +717,7 @@ function ecs.dialog.message(title, text, buttons) end
 ---@field settings? table<string, any> Values of settings, over the plugins' defaults.
 ---@field keys? ecs.Keys Keys for the whole tool.
 ---@field listed? boolean false leaves the preset out of the list of presets.
+---@field hint? string What to try first, such as keys to press; the title bar that OpenECS draws shows it after the tool's name.
 ---@field workspaces ecs.WorkspaceDesc[]
 
 ---A session, which OpenECS writes: a preset with the state it was saved in.

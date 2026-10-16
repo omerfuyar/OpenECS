@@ -10,7 +10,10 @@
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIServices_Initialize(void);
 
-/// @brief Destroys the objects of every handle Lua still holds, while their plugins are loaded, and frees every registered function and handle type.
+/// @brief Destroys the objects of every handle Lua still holds, before the plugins shut down (DESIGN 2.4).
+void ECSIServices_DestroyHandles(void);
+
+/// @brief Frees every registered function, handle type and kept callback, once the plugins have shut down, since their Destroy may still call functions.
 void ECSIServices_Terminate(void);
 
 /// @brief Pushes the Lua handle of an object: the one Lua already has, or a new one.
@@ -28,9 +31,21 @@ void *ECSIServices_CheckHandle(int index, const char *type);
 /// @param object The object.
 void ECSIServices_ForgetHandle(void *object);
 
+/// @brief Ends a surface once its Draw returns: runs the functions given with ECSSurface_OnDrawn for it, then makes its Lua handle invalid.
+/// @param surface The surface.
+void ECSIServices_EndSurface(ECSSurface *surface);
+
 /// @brief Pushes the metatable of a handle type, so the Bindings module can give its handles methods.
 /// @param type Name of the handle type. Nil is pushed if the type is gone.
 void ECSIServices_PushHandleMetatable(const char *type);
+
+/// @brief Makes a function of a plugin a method of one of its handle types, as ECSHandle_AddMethod does; Lua plugins call it through ecs.handle.addMethod.
+/// @param plugin The plugin.
+/// @param type The handle type's local name.
+/// @param method The method's name in Lua.
+/// @param function The local name of the function.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the method cannot be added, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSIServices_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function);
 
 /// @brief Registers a handle type that a Lua plugin provides. Its objects are Lua values, which the core keeps until the handle is collected.
 /// @param plugin The plugin.

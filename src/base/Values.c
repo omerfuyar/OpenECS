@@ -17,6 +17,21 @@ struct ECSIValue
         f64 number;
         char *string;
 
+        // buffer
+        struct
+        {
+            u8 *bytes;
+            usz size;
+        };
+
+        // handle
+        struct
+        {
+            char *handleType;
+            void *object;
+            int reference; // a registry reference to the Lua handle it was read from, or 0 for one that C set
+        };
+
         // table
         struct
         {
@@ -30,12 +45,33 @@ struct ECSIValue
     };
 };
 
+/// @brief The functions for the Lua handles that values keep, from the Lua module.
+static struct
+{
+    ECSIValueKeepFunction Keep;
+    ECSIValueDropFunction Drop;
+    ECSIValueObjectFunction Object;
+} VALUES = {0};
+
 /// @brief Frees what a value holds and makes it nil.
 static void ECSIValue_Clear(ECSValue *value)
 {
     if (value->type == ECSValueType_String)
     {
         SDL_free(value->string);
+    }
+    else if (value->type == ECSValueType_Buffer)
+    {
+        SDL_free(value->bytes);
+    }
+    else if (value->type == ECSValueType_Handle)
+    {
+        SDL_free(value->handleType);
+
+        if (value->reference != 0 && VALUES.Drop != nullptr)
+        {
+            VALUES.Drop(value->reference);
+        }
     }
     else if (value->type == ECSValueType_Table)
     {
@@ -108,6 +144,11 @@ SHUResult ECSIValue_Copy(ECSValue *value, const ECSValue *source)
         return SHUResult_Ok;
     case ECSValueType_String:
         return ECSValue_SetString(value, source->string);
+    case ECSValueType_Buffer:
+        return ECSValue_SetBuffer(value, (SHUSliceView){.data = source->bytes, .size = source->size});
+    case ECSValueType_Handle:
+        return source->reference != 0 && VALUES.Keep != nullptr ? ECSIValue_SetLuaHandle(value, source->handleType, source->object, VALUES.Keep(source->reference))
+                                                                : ECSValue_SetHandle(value, source->handleType, source->object);
     case ECSValueType_Table:
         break;
     }
@@ -152,6 +193,10 @@ bool ECSIValue_Equal(const ECSValue *first, const ECSValue *second)
         return first->number == second->number;
     case ECSValueType_String:
         return SDL_strcmp(first->string, second->string) == 0;
+    case ECSValueType_Buffer:
+        return first->size == second->size && (first->size == 0 || SDL_memcmp(first->bytes, second->bytes, first->size) == 0);
+    case ECSValueType_Handle:
+        return ECSValue_GetHandle(first, first->handleType) == ECSValue_GetHandle(second, first->handleType) && SDL_strcmp(first->handleType, second->handleType) == 0;
     case ECSValueType_Table:
         break;
     }
@@ -340,6 +385,49 @@ const char *ECSValue_GetString(const ECSValue *value, const char *fallback)
     return ECSValue_GetType(value) == ECSValueType_String ? value->string : fallback;
 }
 
+SHUSlice ECSValue_GetBuffer(const ECSValue *value, SHUSlice fallback)
+{
+    switch (ECSValue_GetType(value))
+    {
+    case ECSValueType_Buffer:
+        return (SHUSlice){.data = value->bytes, .size = value->size};
+    case ECSValueType_String:
+        return (SHUSlice){.data = value->string, .size = SDL_strlen(value->string)};
+    default:
+        return fallback;
+    }
+}
+
+const char *ECSIValue_GetHandleType(const ECSValue *value)
+{
+    return ECSValue_GetType(value) == ECSValueType_Handle ? value->handleType : nullptr;
+}
+
+void *ECSValue_GetHandle(const ECSValue *value, const char *type)
+{
+    SDL_assert(type != nullptr);
+
+    if (ECSValue_GetType(value) != ECSValueType_Handle || SDL_strcmp(value->handleType, type) != 0)
+    {
+        return nullptr;
+    }
+
+    // a handle read from Lua gives its object only while the object lives
+    return value->reference != 0 && VALUES.Object != nullptr ? VALUES.Object(value->reference) : value->object;
+}
+
+int ECSIValue_GetLuaHandle(const ECSValue *value)
+{
+    return ECSValue_GetType(value) == ECSValueType_Handle ? value->reference : 0;
+}
+
+void ECSIValue_SetLuaFunctions(ECSIValueKeepFunction Keep, ECSIValueDropFunction Drop, ECSIValueObjectFunction Object)
+{
+    VALUES.Keep = Keep;
+    VALUES.Drop = Drop;
+    VALUES.Object = Object;
+}
+
 usz ECSValue_GetListCount(const ECSValue *table)
 {
     return ECSValue_GetType(table) == ECSValueType_Table ? arrlenu(table->items) : 0;
@@ -413,6 +501,78 @@ SHUResult ECSValue_SetString(ECSValue *value, const char *string)
     ECSIValue_Clear(value);
     value->type = ECSValueType_String;
     value->string = copy;
+    return SHUResult_Ok;
+}
+
+SHUResult ECSValue_SetBuffer(ECSValue *value, SHUSliceView buffer)
+{
+    SDL_assert(value != nullptr);
+    SDL_assert(buffer.data != nullptr || buffer.size == 0);
+
+    // a copy of one byte at least, so an empty buffer has bytes to point to
+    u8 *bytes = SDL_malloc(SDL_max(buffer.size, 1));
+
+    if (bytes == nullptr)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    if (buffer.size > 0)
+    {
+        SDL_memcpy(bytes, buffer.data, buffer.size);
+    }
+
+    ECSIValue_Clear(value);
+    value->type = ECSValueType_Buffer;
+    value->bytes = bytes;
+    value->size = buffer.size;
+    return SHUResult_Ok;
+}
+
+SHUResult ECSValue_SetHandle(ECSValue *value, const char *type, void *object)
+{
+    SDL_assert(value != nullptr);
+    SDL_assert(type != nullptr);
+    SDL_assert(object != nullptr);
+
+    char *copy = SDL_strdup(type);
+
+    if (copy == nullptr)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    ECSIValue_Clear(value);
+    value->type = ECSValueType_Handle;
+    value->handleType = copy;
+    value->object = object;
+    value->reference = 0;
+    return SHUResult_Ok;
+}
+
+SHUResult ECSIValue_SetLuaHandle(ECSValue *value, const char *type, void *object, int reference)
+{
+    SDL_assert(value != nullptr);
+    SDL_assert(type != nullptr);
+    SDL_assert(object != nullptr);
+
+    char *copy = SDL_strdup(type);
+
+    if (copy == nullptr)
+    {
+        if (VALUES.Drop != nullptr)
+        {
+            VALUES.Drop(reference);
+        }
+
+        return SHUResult_ErrAllocation;
+    }
+
+    ECSIValue_Clear(value);
+    value->type = ECSValueType_Handle;
+    value->handleType = copy;
+    value->object = object;
+    value->reference = reference;
     return SHUResult_Ok;
 }
 

@@ -30,6 +30,10 @@
 /// @brief Most menus open at once: the panel menu and its submenus.
 #define OPENECS_MENU_DEPTH 4
 
+/// @brief Widest a message dialog is, and the room it keeps from the OS window's edges, in layout units.
+#define OPENECS_DIALOG_WIDTH 440.0f
+#define OPENECS_DIALOG_MARGIN 24.0f
+
 /// @brief A colour of the core's interface. Each is a setting, in OPENECS_WINDOW_SETTINGS.
 typedef enum ECSIColor
 {
@@ -103,7 +107,7 @@ typedef struct ECSIMenuView
 /// @brief An OS window: the main window, or a pop-out window, with what the core draws in it.
 typedef struct ECSIOSWindow
 {
-    u32 rootId; // the pop-out root it shows; 0 for the main window, which shows the current workspace's main root
+    u32 rootID; // the pop-out root it shows; 0 for the main window, which shows the current workspace's main root
     SDL_Window *window;
     SDL_Renderer *renderer;
     Clay_SDL3RendererData clayRenderer;
@@ -117,12 +121,19 @@ typedef struct ECSIOSWindow
 /// @brief How a popup is shown: in an SDL popup window, or inside its panel's OS window when the video driver has no popup windows.
 typedef struct ECSIPopupView
 {
-    u32 rootId;             // the root of the OS window it belongs to; it is made again if its panel moves to another one
+    u32 rootID;             // the root of the OS window it belongs to; it is made again if its panel moves to another one
     SDL_Window *window;     // SDL's popup window, or nullptr when it is drawn inside the OS window
     SDL_Renderer *renderer; // the popup window's
     SDL_Texture *texture;   // its pixels, made by the renderer that shows them
     SDL_FRect rect;         // where it shows, in the layout units of its panel's OS window
 } ECSIPopupView;
+
+/// @brief The GPU device that every OS window's renderer and every GPU panel shares. An offscreen renderer owns it, so it outlives the OS windows and the plugins, which release their GPU objects first.
+static struct
+{
+    SDL_Renderer *owner;   // the offscreen GPU renderer that made the device
+    SDL_GPUDevice *device; // nullptr without a GPU renderer
+} GPU;
 
 static struct
 {
@@ -136,7 +147,7 @@ static struct
     ECSIOSWindow *menuWindow; // the OS window that shows the menus
     u32 focusRoot;            // the root of the focused panel in the last frame, so its OS window comes forward when the focus moves to it
     char *title;              // of every OS window
-    SDL_GPUDevice *device;    // the GPU device of the main window's renderer, which every other window and popup draws with; nullptr without a GPU renderer
+    char *hint;               // what the preset tells a new user, shown after the title in the title bar OpenECS draws, or nullptr
     TTF_Font *fonts[1];
 
     i64 framePercent;     // frame rate as a percentage of the refresh rate, from ecs.vsync; 0 for no vsync and no limit
@@ -174,6 +185,9 @@ static struct
 
     ECSIMenuView menus[OPENECS_MENU_DEPTH]; // the panel menu, then its open submenus
 
+    const ECSIDialogView *dialog; // the message dialog that Input waits on, or nullptr
+    ECSIOSWindow *dialogWindow;   // the OS window that shows it
+
     // from the settings
     Clay_Color colors[ECSIColor_Count];
     f32 fontSize;
@@ -189,6 +203,7 @@ static struct
 
 /// @brief Width of the key column in the list of prefix keys.
 #define OPENECS_PREFIX_KEY_COLUMN 104.0f
+
 
 static Clay_String ECSIWindow_ClayText(const char *text)
 {
@@ -234,7 +249,7 @@ static ECSIRoot *ECSIWindow_Root(const ECSIOSWindow *os)
         return nullptr;
     }
 
-    if (os->rootId == 0)
+    if (os->rootID == 0)
     {
         usz count = 0;
         ECSIRoot *const *roots = ECSILayout_GetRoots(&count);
@@ -242,7 +257,7 @@ static ECSIRoot *ECSIWindow_Root(const ECSIOSWindow *os)
     }
 
     bool shown = false;
-    ECSIRoot *root = ECSILayout_FindRoot(os->rootId, &shown);
+    ECSIRoot *root = ECSILayout_FindRoot(os->rootID, &shown);
     return shown ? root : nullptr;
 }
 
@@ -723,8 +738,16 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *os)
                                   .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {0.0f, 0.0f}},
                               })
     {
-        CLAY_TEXT(ECSIWindow_ClayText(WINDOW.title), CLAY_TEXT_CONFIG({.textColor = color, .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
-        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}}}) {}
+        CLAY_TEXT(ECSIWindow_ClayText(WINDOW.title), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+
+        // the preset's hint follows the title, cut at the buttons when the window is narrow
+        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}, .padding = {16, 8, 0, 0}}, .clip = {.horizontal = true}})
+        {
+            if (WINDOW.hint != nullptr)
+            {
+                CLAY_TEXT(ECSIWindow_ClayText(WINDOW.hint), CLAY_TEXT_CONFIG({.textColor = color, .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+            }
+        }
 
         const ECSIIcon icons[] = {ECSIIcon_Minimize, maximized ? ECSIIcon_Restore : ECSIIcon_Maximized};
 
@@ -925,6 +948,57 @@ static void ECSIWindow_DeclareDataTarget(ECSINode *group, void *userData)
 }
 
 /// @brief Declares the core's own interface in an OS window for Clay and returns what to draw.
+/// @brief Declares the message dialog: a shade over the whole OS window, and in its middle a box with the title, the message and a row of buttons.
+static void ECSIWindow_DeclareDialog(const ECSIOSWindow *os)
+{
+    const ECSIDialogView *dialog = WINDOW.dialog;
+    f32 width = SDL_max(1.0f, SDL_min(OPENECS_DIALOG_WIDTH, os->width - 2.0f * OPENECS_DIALOG_MARGIN));
+    Clay_Color shade = WINDOW.colors[ECSIColor_Background];
+    shade.a = 176.0f;
+
+    CLAY(CLAY_ID("DialogShade"), {
+                                     .layout = {.sizing = {CLAY_SIZING_FIXED(os->width), CLAY_SIZING_FIXED(os->height)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
+                                     .backgroundColor = shade,
+                                     .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .zIndex = 20},
+                                 })
+    {
+        CLAY(CLAY_ID("Dialog"), {
+                                    .layout = {
+                                        .sizing = {CLAY_SIZING_FIXED(width), CLAY_SIZING_FIT(0)},
+                                        .padding = CLAY_PADDING_ALL(16),
+                                        .childGap = 12,
+                                        .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                                    },
+                                    .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
+                                    .cornerRadius = CLAY_CORNER_RADIUS(6),
+                                    .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {1, 1, 1, 1, 0}},
+                                })
+        {
+            CLAY_TEXT(ECSIWindow_ClayText(dialog->title), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Accent], .fontSize = (u16)WINDOW.fontSize}));
+            CLAY_TEXT(ECSIWindow_ClayText(dialog->message), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_WORDS}));
+
+            // the buttons line up at the right; the one that Return presses has the accent's border, and the one under the pointer is lighter
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}, .childGap = 8, .childAlignment = {.x = CLAY_ALIGN_X_RIGHT}}})
+            {
+                for (usz i = 0; i < dialog->count; i++)
+                {
+                    bool selected = i == dialog->selected;
+
+                    CLAY(CLAY_IDI("DialogButton", (u32)i), {
+                                                               .layout = {.padding = {12, 12, 6, 6}},
+                                                               .backgroundColor = (i32)i == dialog->hover ? WINDOW.colors[ECSIColor_Selected] : WINDOW.colors[ECSIColor_Tab],
+                                                               .cornerRadius = CLAY_CORNER_RADIUS(4),
+                                                               .border = {.color = WINDOW.colors[selected ? ECSIColor_Accent : ECSIColor_TextDim], .width = selected ? (Clay_BorderWidth){2, 2, 2, 2, 0} : (Clay_BorderWidth){1, 1, 1, 1, 0}},
+                                                           })
+                    {
+                        CLAY_TEXT(ECSIWindow_ClayText(dialog->buttons[i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                    }
+                }
+            }
+        }
+    }
+}
+
 static Clay_RenderCommandArray ECSIWindow_DeclareInterface(ECSIOSWindow *os, const ECSIRoot *root)
 {
     Clay_SetCurrentContext(os->clay);
@@ -934,7 +1008,7 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(ECSIOSWindow *os, con
     // the focus border, the list of prefix keys and the menus show in one OS window each
     ECSPanel focus = ECSILayout_GetFocus();
     ECSIRoot *focusRoot = ECSILayout_RootOf(focus);
-    bool focusWindow = focusRoot == root || (focusRoot == nullptr && os->rootId == 0);
+    bool focusWindow = focusRoot == root || (focusRoot == nullptr && os->rootID == 0);
 
     arrfree(os->tabs);
     CLAY(CLAY_ID("Root"), {.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0)}}})
@@ -1045,6 +1119,11 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(ECSIOSWindow *os, con
             }
         }
 
+        if (WINDOW.dialog != nullptr && WINDOW.dialogWindow == os)
+        {
+            ECSIWindow_DeclareDialog(os);
+        }
+
         if (WINDOW.prefixLines != nullptr && focusWindow)
         {
             CLAY_AUTO_ID({
@@ -1126,7 +1205,7 @@ static void ECSIWindow_ReleasePopup(ECSPopup popup);
 static void ECSIWindow_CloseOS(ECSIOSWindow *os)
 {
     ECSIOSWindow *main = arrlenu(WINDOW.windows) > 0 && WINDOW.windows[0] != os ? WINDOW.windows[0] : nullptr;
-    ECSIOSWindow **pointers[] = {&WINDOW.event, &WINDOW.gripWindow, &WINDOW.dropWindow, &WINDOW.dataWindow, &WINDOW.menuWindow, &WINDOW.pendingFrom};
+    ECSIOSWindow **pointers[] = {&WINDOW.event, &WINDOW.gripWindow, &WINDOW.dropWindow, &WINDOW.dataWindow, &WINDOW.menuWindow, &WINDOW.pendingFrom, &WINDOW.dialogWindow};
     WINDOW.gripGroup = WINDOW.gripWindow == os ? nullptr : WINDOW.gripGroup;
 
     for (usz i = 0; i < SDL_arraysize(pointers); i++)
@@ -1167,7 +1246,7 @@ static void ECSIWindow_CloseOS(ECSIOSWindow *os)
     {
         ECSIPopupView *view = popups[i]->window;
 
-        if (view != nullptr && (view->rootId == os->rootId || (view->texture != nullptr && SDL_GetRendererFromTexture(view->texture) == os->renderer)))
+        if (view != nullptr && (view->rootID == os->rootID || (view->texture != nullptr && SDL_GetRendererFromTexture(view->texture) == os->renderer)))
         {
             ECSIWindow_ReleasePopup(popups[i]);
         }
@@ -1191,18 +1270,22 @@ static void ECSIWindow_CloseOS(ECSIOSWindow *os)
     SDL_free(os);
 }
 
-/// @brief Creates a window's renderer: a GPU renderer on the main window's GPU device, so all windows share one device; else SDL's default renderer.
+/// @brief Creates a window's renderer: a GPU renderer on the shared GPU device, so all windows share one device; else SDL's default renderer.
 static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window, bool main)
 {
-    SDL_Renderer *renderer = main || WINDOW.device != nullptr ? SDL_CreateGPURenderer(WINDOW.device, window) : nullptr;
-
-    if (renderer != nullptr && main)
+    // the device comes from an offscreen renderer, which sets it up as SDL's GPU renderer needs it
+    if (main && GPU.owner == nullptr)
     {
-        WINDOW.device = SDL_GetGPURendererDevice(renderer);
+        GPU.owner = SDL_CreateGPURenderer(nullptr, nullptr);
+        GPU.device = GPU.owner == nullptr ? nullptr : SDL_GetGPURendererDevice(GPU.owner);
     }
 
+    SDL_Renderer *renderer = GPU.device != nullptr ? SDL_CreateGPURenderer(GPU.device, window) : nullptr;
+
+    // GPU panels need every OS window to show the device's textures, so without the main window's GPU renderer there is no device
     if (renderer == nullptr && main)
     {
+        ECSIWindow_DestroyDevice();
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "GPU renderer not available (%s); using SDL's default renderer.", SDL_GetError());
     }
 
@@ -1210,10 +1293,10 @@ static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window, bool main)
 }
 
 /// @brief Opens an OS window with its renderer and Clay context, and adds it to the list.
-/// @param rootId The pop-out root it shows, or 0 for the main window.
+/// @param rootID The pop-out root it shows, or 0 for the main window.
 /// @param flags SDL's window flags; a pop-out window opens hidden, so it can be placed first.
 /// @return The window, or nullptr if it cannot be opened.
-static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootId, i32 width, i32 height, SDL_WindowFlags flags)
+static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootID, i32 width, i32 height, SDL_WindowFlags flags)
 {
     ECSIOSWindow *os = SDL_calloc(1, sizeof(ECSIOSWindow));
 
@@ -1222,7 +1305,7 @@ static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootId, i32 width, i32 height, SDL_Wi
         return nullptr;
     }
 
-    os->rootId = rootId;
+    os->rootID = rootID;
     os->window = SDL_CreateWindow(WINDOW.title, width, height, SDL_WINDOW_RESIZABLE | (WINDOW.titleBar ? SDL_WINDOW_BORDERLESS : 0) | flags);
 
     if (os->window == nullptr)
@@ -1234,7 +1317,7 @@ static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootId, i32 width, i32 height, SDL_Wi
 
     ECSIWindow_ApplyTitleBar(os);
 
-    os->renderer = ECSIWindow_CreateRenderer(os->window, rootId == 0);
+    os->renderer = ECSIWindow_CreateRenderer(os->window, rootID == 0);
 
     if (os->renderer == nullptr)
     {
@@ -1265,7 +1348,7 @@ static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootId, i32 width, i32 height, SDL_Wi
     Clay_SetMeasureTextFunction(ECSIWindow_MeasureText, nullptr);
 
     // only the main window waits for the display, so presenting several windows does not wait once for each
-    if (rootId != 0)
+    if (rootID != 0)
     {
         SDL_SetRenderVSync(os->renderer, SDL_RENDERER_VSYNC_DISABLED);
     }
@@ -1324,7 +1407,7 @@ static void ECSIWindow_Sync(void)
         ECSIOSWindow *os = WINDOW.windows[i];
         bool shown = false;
 
-        if (ECSILayout_FindRoot(os->rootId, &shown) == nullptr)
+        if (ECSILayout_FindRoot(os->rootID, &shown) == nullptr)
         {
             arrdel(WINDOW.windows, i);
             ECSIWindow_CloseOS(os);
@@ -1383,15 +1466,15 @@ static void ECSIWindow_Sync(void)
 
     // the OS window of the focused panel comes forward when the focus moves into it
     ECSIRoot *focusRoot = ECSILayout_RootOf(ECSILayout_GetFocus());
-    u32 focusId = focusRoot == nullptr ? 0 : focusRoot->id;
+    u32 focusID = focusRoot == nullptr ? 0 : focusRoot->id;
     ECSIOSWindow *focusWindow = ECSIWindow_OfRoot(focusRoot);
 
-    if (focusId != WINDOW.focusRoot && focusWindow != nullptr && (SDL_GetWindowFlags(focusWindow->window) & SDL_WINDOW_INPUT_FOCUS) == 0)
+    if (focusID != WINDOW.focusRoot && focusWindow != nullptr && (SDL_GetWindowFlags(focusWindow->window) & SDL_WINDOW_INPUT_FOCUS) == 0)
     {
         SDL_RaiseWindow(focusWindow->window);
     }
 
-    WINDOW.focusRoot = focusId;
+    WINDOW.focusRoot = focusID;
 }
 
 #pragma region Popups
@@ -1459,7 +1542,7 @@ static ECSIPopupView *ECSIWindow_MakePopupView(ECSPopup popup, const ECSIOSWindo
         return nullptr;
     }
 
-    view->rootId = os->rootId;
+    view->rootID = os->rootID;
     popup->window = view;
 
     if (WINDOW.noPopupWindows)
@@ -1515,7 +1598,7 @@ static void ECSIWindow_UpdatePopups(void)
         }
 
         // a popup whose panel moved to another OS window is shown there anew
-        if (view != nullptr && view->rootId != os->rootId)
+        if (view != nullptr && view->rootID != os->rootID)
         {
             ECSIWindow_ReleasePopup(popup);
             view = nullptr;
@@ -1576,7 +1659,7 @@ static void ECSIWindow_ShowPopupsIn(const ECSIOSWindow *os)
     {
         ECSIPopupView *view = popups[i]->window;
 
-        if (view != nullptr && view->window == nullptr && view->texture != nullptr && view->rootId == os->rootId && ECSIWindow_OfRoot(ECSILayout_RootOf(popups[i]->panel)) == os)
+        if (view != nullptr && view->window == nullptr && view->texture != nullptr && view->rootID == os->rootID && ECSIWindow_OfRoot(ECSILayout_RootOf(popups[i]->panel)) == os)
         {
             SDL_RenderTexture(os->renderer, view->texture, nullptr, &view->rect);
         }
@@ -1756,6 +1839,12 @@ static void ECSIWindow_Present(void)
 
 #pragma endregion Source Only
 
+void ECSIWindow_SetHint(const char *hint)
+{
+    SDL_free(WINDOW.hint);
+    WINDOW.hint = hint == nullptr || hint[0] == '\0' ? nullptr : SDL_strdup(hint);
+}
+
 SHUResult ECSIWindow_Initialize(const char *title)
 {
     SDL_assert(title != nullptr);
@@ -1826,7 +1915,23 @@ void ECSIWindow_Terminate(void)
     }
 
     SDL_free(WINDOW.title);
+    SDL_free(WINDOW.hint);
     SDL_zero(WINDOW);
+}
+
+void *ECSGpu_GetDevice(void)
+{
+    return GPU.device;
+}
+
+void ECSIWindow_DestroyDevice(void)
+{
+    if (GPU.owner != nullptr)
+    {
+        SDL_DestroyRenderer(GPU.owner);
+    }
+
+    SDL_zero(GPU);
 }
 
 SDL_Window *ECSIWindow_GetMain(void)
@@ -1873,7 +1978,7 @@ ECSIRoot *ECSIWindow_GetRoot(SDL_WindowID id, bool *retMain)
 
     if (retMain != nullptr)
     {
-        *retMain = os == nullptr || os->rootId == 0;
+        *retMain = os == nullptr || os->rootID == 0;
     }
 
     return ECSIWindow_Root(os);
@@ -1920,7 +2025,7 @@ ECSPopup ECSIWindow_PopupAt(f32 x, f32 y, f32 *retX, f32 *retY)
     {
         ECSIPopupView *view = popups[i - 1]->window;
 
-        if (view != nullptr && view->window == nullptr && WINDOW.event != nullptr && view->rootId == WINDOW.event->rootId &&
+        if (view != nullptr && view->window == nullptr && WINDOW.event != nullptr && view->rootID == WINDOW.event->rootID &&
             ECSIWindow_Contains(x, y, view->rect.x, view->rect.y, view->rect.w, view->rect.h))
         {
             *retX = x - view->rect.x;
@@ -2018,26 +2123,61 @@ void ECSIWindow_Render(u64 nowTicks)
     ECSIWindow_Present();
 }
 
-SHUResult ECSIWindow_Screenshot(const char *path, usz number)
+/// @brief Draws a frame and reads what an OS window shows, before it is presented, because presenting may discard it. Present it after.
+/// @return The picture, to destroy with SDL_DestroySurface, or nullptr if there is no such window or it cannot be read.
+static SDL_Surface *ECSIWindow_ReadFrame(usz number, f32 *retScale)
 {
-    SDL_assert(path != nullptr);
-
-    // the picture is read before it is presented, because presenting may discard it
     ECSIWindow_DrawFrames(SDL_GetTicksNS());
     usz count = 0;
     ECSIRoot *const *roots = ECSILayout_GetRoots(&count);
     ECSIOSWindow *os = number >= 1 && number <= count ? ECSIWindow_OfRoot(roots[number - 1]) : nullptr;
-    SDL_Surface *picture = os == nullptr ? nullptr : SDL_RenderReadPixels(os->renderer, nullptr);
+
+    if (retScale != nullptr)
+    {
+        *retScale = os == nullptr ? 1.0f : SDL_GetWindowPixelDensity(os->window);
+    }
+
+    return os == nullptr ? nullptr : SDL_RenderReadPixels(os->renderer, nullptr);
+}
+
+SHUResult ECSIWindow_Screenshot(const char *path, usz number)
+{
+    SDL_assert(path != nullptr);
+
+    SDL_Surface *picture = ECSIWindow_ReadFrame(number, nullptr);
     bool saved = picture != nullptr && SDL_SavePNG(picture, path);
 
     if (!saved)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot save a screenshot of window %zu to '%s': %s", number, path, os == nullptr ? "there is no such window" : SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot save a screenshot of window %zu to '%s': %s", number, path, SDL_GetError());
     }
 
     SDL_DestroySurface(picture);
     ECSIWindow_Present();
     return saved ? SHUResult_Ok : SHUResult_ErrFile;
+}
+
+SHUResult ECSIWindow_ReadPixel(usz number, f32 x, f32 y, ECSColor *retColor)
+{
+    SDL_assert(retColor != nullptr);
+
+    f32 scale = 1.0f;
+    SDL_Surface *picture = ECSIWindow_ReadFrame(number, &scale);
+    Uint8 red = 0;
+    Uint8 green = 0;
+    Uint8 blue = 0;
+    Uint8 alpha = 0;
+    bool read = picture != nullptr && SDL_ReadSurfacePixel(picture, (int)(x * scale), (int)(y * scale), &red, &green, &blue, &alpha);
+    *retColor = ((ECSColor)alpha << 24) | ((ECSColor)red << 16) | ((ECSColor)green << 8) | blue;
+
+    if (!read)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot read the pixel at %g, %g of window %zu: %s", (double)x, (double)y, number, SDL_GetError());
+    }
+
+    SDL_DestroySurface(picture);
+    ECSIWindow_Present();
+    return read ? SHUResult_Ok : SHUResult_ErrBadData;
 }
 
 bool ECSIWindow_PointerDown(f32 x, f32 y)
@@ -2431,4 +2571,86 @@ void ECSIWindow_ShowPrefixKeys(const char *const *lines, usz count)
     WINDOW.prefixLines = count == 0 ? nullptr : lines;
     WINDOW.prefixLineCount = count;
     ECSILayout_RequestFrame();
+}
+
+SDL_WindowID ECSIWindow_ShowDialog(const ECSIDialogView *dialog)
+{
+    ECSILayout_RequestFrame();
+    WINDOW.dialog = dialog;
+    WINDOW.dialogWindow = nullptr;
+
+    if (dialog == nullptr)
+    {
+        return 0;
+    }
+
+    // the dialog shows over the OS window of the event that asks, such as a pop-out window's close button, and comes forward
+    ECSIOSWindow *os = WINDOW.event != nullptr && ECSIWindow_IsShown(WINDOW.event) ? WINDOW.event : arrlenu(WINDOW.windows) > 0 ? WINDOW.windows[0] : nullptr;
+
+    if (os == nullptr)
+    {
+        WINDOW.dialog = nullptr;
+        return 0;
+    }
+
+    WINDOW.dialogWindow = os;
+    SDL_RaiseWindow(os->window);
+    return SDL_GetWindowID(os->window);
+}
+
+void ECSIWindow_RenderDialog(void)
+{
+    ECSIOSWindow *os = WINDOW.dialogWindow;
+
+    if (WINDOW.dialog == nullptr || os == nullptr)
+    {
+        return;
+    }
+
+    // the panels show the pixels of their last frame, and the core's interface is laid out again with the dialog over it
+    ECSIWindow_ReadSize(os);
+    ECSIRoot *root = ECSIWindow_Root(os);
+    ECSIDrawContext context = {os->renderer, SDL_GetTicksNS()};
+    Clay_RenderCommandArray commands = ECSIWindow_DeclareInterface(os, root);
+
+    Clay_Color background = WINDOW.colors[ECSIColor_Background];
+    SDL_SetRenderDrawColor(os->renderer, (u8)background.r, (u8)background.g, (u8)background.b, (u8)background.a);
+    SDL_RenderClear(os->renderer);
+
+    if (root != nullptr)
+    {
+        ECSILayout_ForEachGroup(root, ECSIWindow_ShowGroup, &context);
+    }
+
+    SDL_Clay_RenderClayCommands(&os->clayRenderer, &commands);
+    ECSIWindow_ShowPopupsIn(os);
+    SDL_RenderPresent(os->renderer);
+}
+
+i32 ECSIWindow_DialogButtonAt(f32 x, f32 y)
+{
+    for (usz i = 0; WINDOW.dialog != nullptr && WINDOW.dialogWindow != nullptr && i < WINDOW.dialog->count; i++)
+    {
+        if (ECSIWindow_OnElement(WINDOW.dialogWindow, CLAY_IDI("DialogButton", (u32)i), x, y))
+        {
+            return (i32)i;
+        }
+    }
+
+    return -1;
+}
+
+bool ECSIWindow_DialogButtonRect(usz index, SDL_FRect *retRect)
+{
+    SDL_assert(retRect != nullptr);
+
+    if (WINDOW.dialog == nullptr || WINDOW.dialogWindow == nullptr || index >= WINDOW.dialog->count)
+    {
+        return false;
+    }
+
+    Clay_SetCurrentContext(WINDOW.dialogWindow->clay);
+    Clay_ElementData element = Clay_GetElementData(CLAY_IDI("DialogButton", (u32)index));
+    *retRect = (SDL_FRect){element.boundingBox.x, element.boundingBox.y, element.boundingBox.width, element.boundingBox.height};
+    return element.found;
 }

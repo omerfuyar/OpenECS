@@ -22,6 +22,7 @@
     "  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file\n"         \
     "  -s, --session FILE      Open a saved session\n"                                                    \
     "  -f, --fresh             Start from the preset, not from the tool's last session\n"                 \
+    "  -l, --log-input         Log each key and text event as the system gives it\n"                     \
     "  -t, --test FILE         Run a test; Debug builds only\n"                                           \
     "  -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit\n"    \
     "  -v, --version           Print the version and exit\n"                                              \
@@ -40,6 +41,7 @@ static const ECSIOption OPENECS_OPTIONS[] = {
     {"-p", "--preset", true},
     {"-s", "--session", true},
     {"-f", "--fresh", false},
+    {"-l", "--log-input", false},
     {"-t", "--test", true},
     {"-d", "--definitions", true},
     {"-v", "--version", false},
@@ -51,6 +53,7 @@ typedef enum ECSIOptionIndex
     ECSIOption_Preset,
     ECSIOption_Session,
     ECSIOption_Fresh,
+    ECSIOption_LogInput,
     ECSIOption_Test,
     ECSIOption_Definitions,
     ECSIOption_Version,
@@ -111,6 +114,9 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
             break;
         case ECSIOption_Fresh:
             retArguments->fresh = true;
+            break;
+        case ECSIOption_LogInput:
+            retArguments->logInput = true;
             break;
         case ECSIOption_Test:
             retArguments->test = value;

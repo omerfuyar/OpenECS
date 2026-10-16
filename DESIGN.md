@@ -138,6 +138,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Menus      | The core's bindable functions, and the panel and group menus that offer them (6.8).                                                                            |
 |           | Input      | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input, the clipboard, dialogs.                                         |
 | app       | Session    | Reading presets and sessions, applying them, writing them.                                                                                                     |
+|           | Workers    | Lua scripts on threads of their own, and the messages between them and the main thread (3.4).                                                                  |
 |           | Bindings   | The `ecs` module: the plugin interface for Lua plugins (11.3).                                                                                                 |
 |           | Test       | Runs a test in Debug builds (17.5).                                                                                                                            |
 |           | App        | Start-up, the main loop and shutdown (2.3, 3.1, 2.4).                                                                                                          |
@@ -146,7 +147,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 
 - No header that plugins include, and no function that plugins call, exposes a type from SDL, Lua, Clay or libffi.
 - `shu.h` is the exception; it is part of the plugin interface (1.3).
-- Native plugins get the core's SDL objects only through the built-in **sdl** plugin (9.8). A native plugin may call SDL itself, using the executable's copy (17.2), as the standard plugins do (20). Inside the core, every module calls SDL directly (1.7).
+- Native plugins get the core's SDL objects only through `ECSGpu_GetDevice` and a GPU surface's texture (9.8). A native plugin may call SDL itself, using the executable's copy (17.2), as the standard plugins do (20). Inside the core, every module calls SDL directly (1.7).
 - Plugins can call only the core functions marked `OPENECS_EXPORT`. Every other function of the core is hidden from them (17.2).
 
 ### 2.3 Start-up
@@ -168,9 +169,10 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 1. Ask about unsaved work (4.5). The user may cancel.
 2. Save the session for the next start (13.4).
 3. Destroy the panels, then the objects of handles (10.6).
-4. Destroy the plugins in reverse load order: each plugin's `Destroy` function runs (9.4). Timers and events still work then.
-5. Stop the worker threads and free the timers, then unload the plugins' libraries.
-6. Stop SDL and Lua.
+4. Destroy the plugins in reverse load order: each plugin's `Destroy` function runs (9.4). Timers, events and the functions of other plugins still work then.
+5. Stop the Lua workers (3.4) and wait for their threads. Forget the handles that plugins made while they shut down, and free the services.
+6. Stop the worker threads and free the timers, then unload the plugins' libraries.
+7. Stop SDL and Lua.
 
 ## 3. Main loop, timers and threads
 
@@ -205,14 +207,34 @@ The wait uses `SDL_WaitEventTimeout` with the time until the next timer or the n
 
 ### 3.3 Threads
 
-- OS windows, input, layout, event delivery, timers, every call into Lua and every callback that a plugin registers run on the main thread. SDL expects window and event calls there, and a Lua state must not be used by two threads at once.
+- OS windows, input, layout, event delivery, timers, every call into the plugins' Lua state and every callback that a plugin registers run on the main thread. SDL expects window and event calls there, and a Lua state must not be used by two threads at once.
 - Background work posts its result to the main thread, which delivers it.
-- `ECS_RunInBackground(plugin, work, done, data)`: `work` runs on a worker thread from a small pool, then `done` runs on the main thread. Lua code never runs on worker threads; Lua plugins use services that do their work in the background.
+- `ECS_RunInBackground(plugin, work, done, data)`: `work` runs on a worker thread from a small pool, then `done` runs on the main thread. A plugin's Lua code never runs on these threads. A Lua plugin uses services that work in the background, or starts a worker (3.4), which runs a script of its own.
 - The pool has one thread for each processor core but one, at most 4. It starts when background work first comes.
 - A function that reaches the main thread runs between passes of the main loop, and the loop makes a pass after it. A function that the main thread sends to itself runs after the current callback returns, with the queued events (8.2).
 - On exit, running work finishes and waiting work does not run, nor does its `done`.
 - The thread-safe functions are: running a function on the main thread (`ECS_RunOnMainThread`, built on `SDL_RunOnMainThread`), `ECS_RunInBackground`, and logging. Every other function is for the main thread only. Each function documents its thread rule.
 - Native plugins may create their own threads, under the same rule.
+
+### 3.4 Workers
+
+A worker is a Lua script that runs on a thread of its own, in a Lua state of its own. Lua plugins use workers for long work, such as counting or parsing, while the main thread stays free.
+
+- `ecs.worker.start(desc)` starts a worker and gives its handle, or nil and a message. The description holds:
+  - `file`, the script, a path in the plugin's folder;
+  - `input`, a value that the script gets as its `...`;
+  - `message`, a function that gets each value that the script sends;
+  - `done`, a function that gets the end of the script: `true` and the value it returned, or `false` and its error.
+- `worker:send(value)` sends a value to the worker. `worker:stop()` stops it. `worker.running` is whether its script still runs.
+- Inside the script, `require("ecs")` gives a small table: `ecs.log`, `ecs.plugin` (`name`, `version` and `folder`), and the worker's own functions:
+  - `ecs.worker.receive(seconds)` gives the oldest value that the plugin sent. It waits for one at most `seconds`, or without end if `seconds` is missing. It gives nil when the time runs out.
+  - `ecs.worker.send(value)` sends a value to the plugin.
+- The script has every Lua library, as plugins do (9.6). Its `require` finds modules in the plugin's folder first. It cannot call the core or other plugins, because they run on the main thread only.
+- Values go between the threads as copies: nil, booleans, numbers, texts, and tables of them. Functions, handles and other userdata are skipped, with a warning.
+- `message` and `done` run on the main thread, between passes of the loop, like a background task's `done` (3.3). An error in them is reported (14). So is an error in the script, which ends it.
+- `stop` ends the script at its next `receive`, or within a few thousand of its Lua instructions. After `stop`, its `message` and `done` are not called again. A script that waits in a C function, such as `io.read`, ends when that function returns.
+- A worker runs until its script ends or it is stopped, even when its handle is dropped. On exit, the core stops every worker and waits for it (2.4).
+- Lua only: a native plugin runs work with `ECS_RunInBackground`, or on threads of its own (3.3).
 
 ## 4. Panel types and panels
 
@@ -267,7 +289,7 @@ typedef struct ECSPanelTypeDesc
 ### 4.5 Unsaved work
 
 - A panel sets its flag with `ECSPanel_SetUnsaved`, and a Lua panel with `panel.unsaved = true`. Its tab shows a mark. Save calls the type's `Save`; if that fails, the close is cancelled.
-- The question is a message dialog (`SDL_ShowMessageBox`) with Save, Discard and Cancel. When several panels have unsaved work, one dialog lists them all.
+- The question is a message dialog (7.7) with Save, Discard and Cancel. When several panels have unsaved work, one dialog lists them all.
 - When the dialog cannot be shown, quitting discards the work, so quitting always finishes. Closing panels is cancelled and keeps the work.
 
 ### 4.6 Popups, pointer and text input
@@ -285,7 +307,8 @@ typedef struct ECSPanelTypeDesc
 - **Pointer.** The pointer's shape is a system shape or an image. The pointer lock uses `SDL_SetWindowRelativeMouseMode`; pressing the core prefix also ends it.
 - **Text input.** A panel says whether it accepts text and where its text cursor is, in its surface pixels: `ECSPanel_SetTextInput(panel, accept, x, y, width, height)`, and in Lua `panel:setTextInput(accept, x, y, width, height)`. The core turns text input on while the focused panel accepts text, and tells the input method where to show its window (`SDL_StartTextInput`, `SDL_SetTextInputArea`).
   - The focused panel gets the typed text as `Text` events, in UTF-8; the text is valid during the event.
-  - A key press that runs the core's keys or a binding types no text (OVERVIEW 7.3): the core drops the text that follows it.
+  - A key press that runs the core's keys or a binding types no text (OVERVIEW 7.3): the core drops the text that follows it. A key with Ctrl, Alt or Super types none anyway, so its release ends the dropping, and text without a key press, such as an input method's, still arrives.
+  - An input method, such as fcitx5 on Wayland, may repeat a held key itself: it sends a release and a press with the first press's own time. SDL's Wayland backend keeps that stale time, and when the key is released it sends at once every repeat it thinks it missed, so the key would be typed twice. A press with the same key and time as the release before it marks the key as repeated by the input method, and the core drops SDL's repeats of it, with their text, until the next release.
 
 ## 5. Surfaces and rendering
 
@@ -306,7 +329,7 @@ typedef struct ECSSurface
     SHUSlice pixels;         // pixels type: the whole picture
     i32 pitch;               // pixels type: bytes per row
 
-    ECSGpuTexture texture;   // GPU type: opaque; the sdl plugin turns it into an SDL_GPUTexture
+    void *texture;           // GPU type: the SDL_GPUTexture to draw into, on the device that ECSGpu_GetDevice gives
 } ECSSurface;
 ```
 
@@ -319,14 +342,19 @@ typedef struct ECSSurface
 
 ### 5.3 The renderer
 
-- One SDL GPU device serves every OS window. Each OS window has a 2D renderer on that device, made with `SDL_CreateGPURenderer(device, window)`.
+- One SDL GPU device serves every OS window. An offscreen GPU renderer, `SDL_CreateGPURenderer(nullptr, nullptr)`, makes it as SDL's renderer needs it, and owns it. Each OS window has a 2D renderer on that device, made with `SDL_CreateGPURenderer(device, window)`.
+- The device outlives the OS windows and the plugins: it is destroyed after every plugin's `Destroy`, so a plugin releases its GPU objects there or earlier.
+- Without a GPU renderer for the main window, every window uses SDL's default renderer, and there is no device.
 - The core draws its own interface with that 2D renderer: Clay for layout, SDL3_ttf for text.
-- A GPU surface is a texture on the shared device. Any OS window's renderer can show it by wrapping it (`SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER`), so a GPU panel moves between OS windows without recreating anything.
-- A pixels surface is uploaded to a texture when it changed. Plugins with pixels surfaces never notice how the core shows them; GPU plugins depend on the **sdl** plugin's contract instead (9.8).
+- A GPU surface is a texture on the shared device, `B8G8R8A8_UNORM`, which is `ARGB8888` on the GPU, of the panel's size in pixels. Any OS window's renderer shows it by wrapping it (`SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER`), so a GPU panel moves between OS windows without recreating its texture. The texture is made again only when the panel's size changes, and then the panel draws before it shows.
+- A pixels surface is uploaded to a texture when it changed. Plugins with pixels surfaces never notice how the core shows them; GPU panels draw into the texture themselves (5.4).
 
 ### 5.4 How plugins draw
 
-- GPU panels get the GPU device and their texture through the **sdl** plugin (9.8) and draw with SDL's GPU API.
+- A GPU panel type sets `surface` to `ECSSurfaceType_Gpu`, and in Lua `surface = "gpu"`. Its `Draw` gets a surface whose `texture` is its `SDL_GPUTexture`, on the device that `ECSGpu_GetDevice` gives (9.8). What draws into it submits its commands before `Draw` returns, or in a function given to `ECSSurface_OnDrawn`, and the core's renderer shows the texture after, in the same frame.
+- `ECSSurface_OnDrawn(surface, Drawn, data)` runs a function once the Draw that gave a surface returns, before the core shows what was drawn, for pixels and GPU surfaces and popups alike. A service that draws into surfaces finishes its work with it so, such as gpu sending what it drew to the GPU, and the plugin that called it makes no call of its own. Functions given for one surface run in order. It is C only; Lua's draw finishes its own work before it returns.
+- The standard plugin **gpu** draws into a GPU surface from Lua or C: shapes, lines and textures, and vertex buffers with a plugin's own shaders, with no SDL in sight (20). A native plugin may instead use SDL's GPU API itself, in a command buffer of its own.
+- A GPU surface has no pixels. `ECSSurface_Fill` does nothing on it, the Lua surface's pixel methods raise an error, and draw refuses it. A Lua panel type draws into its GPU surface with the gpu plugin.
 - Plugins that compute their own pixels use pixels surfaces. C writes the pixels directly; Lua uses the surface's methods (11.4).
 - `ECSSurface_Fill(surface, x, y, width, height, color)` fills a rectangle of a pixels surface with one colour, in pixels and clipped, such as to clear it. Lua: `surface:fill(x, y, width, height, color)`.
 - The **draw** plugin draws shapes, images and text into pixels surfaces on the CPU, and the **ui** plugin builds user interfaces on it (20).
@@ -463,7 +491,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 7.3 Key combinations
 
-- A key combination is modifiers plus one key, written as text: `Ctrl+Shift+P`. The modifiers are Ctrl, Shift, Alt and Super. The text is case-insensitive, and key names are SDL's.
+- A key combination is modifiers plus one key, written as text: `Ctrl+Shift+P`. The modifiers are Ctrl, Shift, Alt and Super. The text is case-insensitive, and key names are SDL's. The modifiers come first, each followed by `+`, and the rest is the key's name, which may hold a `+` itself: `Ctrl++` is Ctrl with the + key, and `Ctrl+Keypad +` Ctrl with the keypad's.
 - Bindings match SDL key codes, which follow the user's keyboard layout. SDL's default `latin_letters` option makes the letter keys of non-Latin layouts report English letters.
 - AltGr (`SDL_KMOD_MODE`) is never part of a binding. A key pressed with AltGr held is text.
 
@@ -477,7 +505,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - The prefix is the setting `ecs.prefix`. It is one key combination, never a whole modifier.
 - The keys after the prefix are the `prefix` tables of the keys tables (7.8). Each layer adds to the keys of the layers below, and `false` removes a key. So presets and the user can add keys that run service functions.
-- While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's other functions) and More (service functions). Within a section, the keys follow the order of the core's functions below. Like the menus (6.8), the list leaves out what cannot be done now.
+- While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's functions on the focused panel), Layout (closing a group, locking it and resetting the layout), Session (saving and opening sessions, and quitting) and More (service functions, such as the settings, the panel list and the launcher). Within a section, the keys follow the order of the core's functions below. Like the menus (6.8), the list leaves out what cannot be done now.
 - Keys of one kind share a line. The keys that switch workspaces show the first workspace's key to the last one's: `1...0`. Focus and move show `Arrows` and `Shift+Arrows` when their four functions are on the four arrows with the same modifiers.
 - The prefix and the key after it are the only key sequence the core handles.
 - The core's functions after the prefix, in the order the list shows them. Their keys are in the `prefix` table of the core's settings file (12.1).
@@ -509,7 +537,10 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 7.7 Dialogs
 
 - `ECSDialog_Show(plugin, &desc)` shows an open file, save file or open folder dialog, with filters such as `{ "Images", "png;jpg" }`. It does not wait: the description's `Done` function gets the paths on the main thread, or `NULL` when the user cancels or the dialog fails. Lua: `ecs.dialog.show(desc, function(files) end)`.
-- `ECSDialog_ShowMessage(title, message, buttons, count, &button)` waits for the user. Enter presses the first button and Escape the last. Lua: `ecs.dialog.message(title, text, buttons)`.
+- `ECSDialog_ShowMessage(title, message, buttons, count, &button)` waits for the user. Lua: `ecs.dialog.message(title, text, buttons)`.
+- The core draws a message dialog itself, over the OS window of the event that asks, or over the main window: a shade over the window, and a box in its middle with the title, the message and the buttons. It needs no other program. SDL's system message boxes need zenity on Wayland, and a compositor may never show its window, so OpenECS would wait for an answer that cannot come.
+- Return and Space press the chosen button, at first the first; Left, Right and Tab choose another, and Escape presses the last. A click is a press and a release of the left button on the same button. Closing the window, or the system's request to quit, presses the last button too.
+- While a dialog waits, no plugin code runs, as with a system dialog: no timers, no events and no drawing of panels. The panels show the pixels of their last frame. The OS windows' events, such as resizes, reach the main loop after the answer, and other input is the dialog's. One dialog shows at a time; a second one cannot be shown.
 
 ### 7.8 Binding keys
 
@@ -573,7 +604,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 8.4 The core's named events
 
-Panels are named by their id (`ECSPanel_GetId`, `panel:getId()`); `ECSLayout_FindPanel(id)` and `ecs.layout.find(id)` find them.
+Panels are named by their id (`ECSPanel_GetID`, `panel:getId()`); `ECSLayout_FindPanel(id)` and `ecs.layout.find(id)` find them.
 
 | Event                   | Value                              | When                                                    |
 | ----------------------- | ---------------------------------- | ------------------------------------------------------- |
@@ -642,7 +673,7 @@ OPENECS_EXPORT SHUResult ECSPlugin_Init(ECSPlugin plugin);
 ### 9.5 ABI rules
 
 - Within one plugin API version, the public types and functions, including those from `shu.h`, do not change. A change raises `OPENECS_API_VERSION`, and the core refuses plugins made for another version (14.2).
-- Adding a function needs no new version.
+- Adding a function, or a value at the end of an enumeration, needs no new version.
 - Plain C only: no C++ exceptions and no `longjmp` across the boundary.
 
 ### 9.6 Lua plugins
@@ -663,9 +694,11 @@ OPENECS_EXPORT SHUResult ECSPlugin_Init(ECSPlugin plugin);
 - Native plugins are never unloaded before exit, because their function pointers, threads and static data may still be in use.
 - The core records everything each plugin registers. If `ECSPlugin_Init` fails, the plugin's registrations are removed and it is marked failed.
 
-### 9.8 Built-in sdl plugin
+### 9.8 The GPU device
 
-- The executable contains a binding plugin named `sdl`, registered like any plugin. Its service gives native plugins SDL objects: the GPU device, a panel's GPU texture, and the SDL version.
+- Every plugin is a plugin on disk; the executable contains none. The core gives native plugins its SDL objects through two parts of its interface only: `ECSGpu_GetDevice()`, the GPU device, an `SDL_GPUDevice *` or nullptr without a GPU renderer, and a GPU surface's `texture` (5.4).
+- The core owns the device and destroys it after every plugin's `Destroy` (5.3). A plugin calls the rest of SDL itself, with the executable's copy (17.2).
+- Lua has neither. The standard plugin **gpu** draws into GPU surfaces from Lua and C, with an interface of its own (20).
 
 ### 9.9 Names
 
@@ -709,10 +742,13 @@ ecs.service.register({
 | `buffer`          | a `SHUSlice`, passed by value                      |
 | `handle<name>`    | a typed handle (10.6)                              |
 | `value`           | a generic value (10.3): a `const ECSValue *` in C  |
+| `value<Type>`     | a generic value whose Lua type is `Type`, such as `value<ui.Props>`; for definition files only (10.10) |
 | `fn<signature>`   | a function to call back (10.4)                     |
 | `out <type>`      | an output parameter; in Lua, an extra return value |
+| `keep fn<signature>` | a callback that the function keeps after it returns (10.4) |
 
 - A parameter may have a name after its type: `void(string path, float volume)`. Names only document; they never change how signatures compare. Definition files use them (10.10).
+- A value may name its Lua type: `value<ui.Element>(value<ui.ButtonProps> props)`. Like a name, the type only documents, so `value<ui.Props>` and `value` compare the same, and C still gets an `ECSValue`. The type is a LuaLS type, such as a class, `string[]` or `ui.Rect?`, without `<` or `>` in it; an alias names a type that needs them.
 - Structures are passed as handles or buffers, never by value.
 - In C, an `out` parameter is a pointer to its type. An `out value` is a value that the caller gives and the function fills.
 - There is no fixed limit on the number of parameters.
@@ -725,6 +761,9 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - Getters take a fallback, returned when the value has another type or is missing: `ECSValue_GetInteger(ECSValue_GetTableField(state, "document"), 0)`. So saved state from an older or edited file never needs extra checks.
 - Each part of a value is allocated on its own with SDL's allocator. Values are small and short-lived, so they need no arena.
 - A table is a list and named fields together. From Lua, integer keys from 1 up to the first missing one are the list, and text keys are the fields. Other keys are reported and skipped.
+- A buffer is bytes that may hold zeros: `ECSValue_SetBuffer` copies them, and `ECSValue_GetBuffer` reads them, or a string's bytes. From Lua, a string with a zero byte becomes a buffer; to Lua, a buffer is a string.
+- A handle names an object of a handle type (10.6) by its type and its object: `ECSValue_SetHandle(value, "ecs.panel", panel)` and `ECSValue_GetHandle(value, "ecs.panel")`. The value does not own the object. To Lua it is the object's handle, and a handle from Lua stays one, so an event can name a panel by its handle. A value made from a Lua handle keeps that handle, so the object lives as long as the value.
+- Files hold only data (13.4): a buffer is written as a string, and a handle is left out.
 - Functions on a table's list have `List` in their names (`ECSValue_GetListCount`, `ECSValue_GetListItem`, `ECSValue_ListAddItem`), and functions on its named fields have `Table` (`ECSValue_GetTableField`, `ECSValue_TableSetField`).
 
 ### 10.4 Calls
@@ -735,6 +774,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - **Lua calls Lua:** a plain Lua call, because all plugins share one Lua state.
 - Callbacks (`fn<...>` parameters) work the same way in both directions. In C, a callback is a function pointer of its signature; in Lua, a function. `nil` in Lua is `nullptr` in C.
 - A callback is valid only during the call that gives it. C must not keep it; a Lua function that keeps one gets an error when it calls it later.
+- A `keep fn<signature>` callback stays valid after the call, so a service can call it later, such as when work in the background is done. The function that took it releases it when it no longer calls it: in C with `ECSService_ReleaseCallback(callback)`, which frees the closure of a Lua function; a Lua function just drops it. Callbacks that are never released are freed when the program exits, and those a failed plugin kept are freed with its registrations. A callback that a failed plugin's Lua code gave to another plugin stays valid, but calling it runs nothing and gives zeros. A kept callback is called on the main thread only, as every callback is.
 - A callback is a parameter only, never `out` or a result, and its own signature has no callbacks.
 - Strings, buffers and values that a Lua function gives to C stay valid until that function returns again.
 - When a Lua function called from C raises an error or gives a value of the wrong type, the error is reported (14.2) and C gets zeros.
@@ -752,11 +792,14 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - A handle stands for an object owned by its provider: a pointer plus a type name and a destructor, registered with `ECSHandle_RegisterType(plugin, "sound", Destroy)` by the plugin `audio`. In C, a `handle<audio.sound>` is the object's pointer.
 - In Lua, a handle is a userdata whose metatable names its type. A handle of the wrong type is rejected with a clear error. When Lua no longer uses a handle, its garbage collector calls the destructor.
 - The same object always has the same Lua handle. A provider that still uses an object after giving it to Lua counts references, and its destructor drops one.
+- A handle that waits for its finalizer is already gone from Lua, so pushing its object again makes a new handle. The destructor runs once, when the object's last handle is collected.
 - The core's own handle types are `ecs.panel`, Lua's panel handles (11.4), and `ecs.surface`, the surface a panel draws into. A surface handle is valid only during the `Draw` call that gives it, so a panel can pass its surface to a service that draws, such as the draw plugin's (20).
 - A Lua plugin provides a handle type too: `ecs.handle.registerType(name)`, `ecs.handle.new(name, value)` for a handle that stands for a Lua value, and `ecs.handle.value(handle, name)`, which gives the value back to the plugin that owns the type. Users see such a handle like any other. The core keeps the value until the handle is collected.
 - Handles that wait for their finalizer at exit are collected before the handle types are freed.
 - A failed plugin's handles become invalid without their destructor. On exit, the objects of handles that Lua still holds are destroyed before plugins are destroyed.
 - A provider may free an object before its handles are collected, such as with a plugin's `free` function: `ECSHandle_Forget(object)` makes the object's handles invalid without calling the destructor, so using one raises an error.
+- A handle has methods in Lua, so a plugin writes `connection:send(data)` for `net.send(connection, data)`. A provider names them: `ECSHandle_AddMethod(plugin, "connection", "send", "send")` makes its function `send` the method `send` of its type `connection`, and a Lua plugin calls `ecs.handle.addMethod`. The function must be the provider's, and its first parameter a handle of the type. A method is the function with the handle as its first argument, so it is checked and called as the function is (10.4). C calls the functions.
+- The core cannot find methods by itself: a function's first parameter does not tell whether the function is about the handle, as `send` is, or only takes it, and the method's name often leaves out the type, as `size` does for `draw.imageSize`.
 
 ### 10.7 Buffers
 
@@ -775,11 +818,13 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 ### 10.10 Definition files
 
 - `openecs --definitions FOLDER` loads every plugin it finds, without a display, writes two definition files for each, and exits. Nothing is opened or saved. With `--preset`, it loads that preset's plugins only.
-- The build writes the definitions of the plugins it built into `build/<type>/definitions/`, and a `.luarc.json` in OpenECS, `std/` and `examples/` that names them and `include/`, so editors complete `require("ui")` there with no setup. A release's archive holds the standard plugins' definition files in its `include/`, beside `ecs.lua`, so plugin authors get them with `include/` alone.
-- `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`.
+- The build writes the definitions of the plugins it built into `build/<type>/definitions/`, after the standard plugins and before the examples, so an example's C plugin includes their headers, such as `ui.h`. It also writes a `.luarc.json` in OpenECS, `std/` and `examples/` that names them and `include/`, so editors complete `require("ui")` there with no setup. A release's archive holds the standard plugins' definition files in its `include/`, beside `ecs.lua`, so plugin authors get them with `include/` alone.
+- `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`. Each handle type of the plugin is a class there, with its methods, so an editor completes `connection:send` too.
 - `NAME.h` is a C header. Its structure is named after the plugin in PascalCase, such as `SketchCFunctions` for `sketch_c`, and has one typed function pointer for each function. `SketchCFunctions_Get(plugin, &functions)` looks them all up with their signatures.
 - A parameter without a name is called `arg1`, `arg2` and so on.
-- Types: `int` and `int64` are `integer` in Lua and `i32` and `i64` in C, `float` and `double` are `number` and `f32` and `f64`, `color` is `ecs.Color` and `ECSColor`, `buffer` is `string` and `SHUSlice`, and `value` is `any` and `const ECSValue *`. The core's handles are `ecs.Panel`, `ecs.Popup` and `ecs.Surface` in Lua and `ECSPanel`, `ECSPopup` and `ECSSurface *` in C; other handles are `userdata` and `void *`.
+- A plugin's folder may hold `types.lua`, a LuaLS meta file of annotations only, which the plugin never runs. `NAME.lua` ends with it, so the classes that `value<Type>` names are there, such as ui's `ui.ButtonProps` with its fields.
+- A plugin's folder may also hold `header.h`, which `NAME.h` ends with. It gives C plugins what the functions alone do not, such as types, inline functions and macros that call the functions, like ui's `UI_COLUMN`. It may use the structure and the functions above it.
+- Types: `int` and `int64` are `integer` in Lua and `i32` and `i64` in C, `float` and `double` are `number` and `f32` and `f64`, `color` is `ecs.Color` and `ECSColor`, `buffer` is `string` and `SHUSlice`, and `value` is `any` and `const ECSValue *`, or the type that `value<Type>` names in Lua. The core's handles are `ecs.Panel`, `ecs.Popup` and `ecs.Surface` in Lua and `ECSPanel`, `ECSPopup` and `ECSSurface *` in C; other handles are their type in Lua, such as `net.connection`, and `void *` in C.
 
 ## 11. Lua
 
@@ -803,6 +848,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 | `ecs.event`                   | declare, emit and subscribe                      |
 | `ecs.handle`                  | handle types of Lua plugins (10.6)               |
 | `ecs.timer`                   | timers                                           |
+| `ecs.worker`                  | Lua scripts on threads of their own (3.4)        |
 | `ecs.service`                 | register and look up functions                   |
 | `ecs.settings`                | declare, get, set, list and explain              |
 | `ecs.session`                 | saving, opening and listing sessions and presets |
@@ -863,7 +909,7 @@ return {
 }
 ```
 
-- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.5), and `panels`, the list of panel types (12.6).
+- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.5), `panels`, the list of panel types (12.6), and `launcher`, the list of presets and sessions (13.8), so every tool can go to another one.
 
 ### 12.4 Themes
 
@@ -921,6 +967,7 @@ return {
 - A plugin saves state of its own, apart from its panels', with the `SaveState` and `RestoreState` functions of its description (9.4). The state of a plugin that is not loaded stays in the session.
 - The app id matches the name of the tool's `.desktop` file.
 - A preset with `listed = false` is left out of the list of presets (13.7), as the launcher's own preset is.
+- A preset's `hint` tells a new user what to try first, such as the keys to press. The title bar that OpenECS draws (6.10) shows it after the tool's name, in dim text, cut at the buttons when the window is narrow. With the system's title bar, it does not show. A session keeps it, as it keeps the preset's other fields.
 
 ### 13.3 Applying a session
 
@@ -954,13 +1001,14 @@ The core converts only layout data.
 ### 13.6 Command line
 
 ```
-openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE] [-d|--definitions FOLDER] [-v|--version] [-h|--help] [FILE...]
+openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-l|--log-input] [-t|--test FILE] [-d|--definitions FOLDER] [-v|--version] [-h|--help] [FILE...]
 ```
 
 - `--version` prints the version of OpenECS (19.1) and of the plugin API, and exits.
 - `--help` prints the options, and exits.
 - Each option has a short form of one letter. An argument that starts with `-` and is not an option, or an option without its value, is reported with the help, and OpenECS exits with status 2.
 - `--fresh` starts from the preset even when `ecs.keepSession` is on (13.4).
+- `--log-input` logs each key and text event as SDL gives it: the key, whether it repeats, its time, and the text. It helps find keys or text that a system gives twice.
 - `--test` runs a test (17.5).
 - `--definitions` writes the definition files of the functions of every plugin it finds, and exits (10.10).
 - Without `--preset` and `--session`, OpenECS starts with the preset `launcher` (13.8).
@@ -979,7 +1027,7 @@ openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE
   | ------------------ | ------------------------------------------------------------------------------------------------------ |
   | `name`             | The file's name without `.lua`. For a preset, it is the name that `--preset` takes.                    |
   | `path`             | The file's path.                                                                                       |
-  | `appId`, `appName` | The tool's identity (13.2).                                                                            |
+  | `appID`, `appName` | The tool's identity (13.2).                                                                            |
   | `lastUsed`         | Presets only: when the tool's last session was written, in seconds since 1970. Missing if it has none. |
   | `saved`            | Sessions only: when the file was written, in seconds since 1970.                                       |
 
@@ -988,7 +1036,7 @@ openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE
 
 ### 13.8 The launcher
 
-When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. The preset and its plugin `launcher` are in OpenECS-std (17.7); their design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The launcher.
+When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. Every tool loads the plugin `launcher` too (12.3), and `launcher.open`, the core prefix and `/` by default, opens its list in any tool. The preset and its plugin `launcher` are in OpenECS-std (17.7); their design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The launcher.
 
 ## 14. Errors and logging
 
@@ -1068,7 +1116,7 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.2 Linking
 
-- SDL3 and SDL3_ttf are shared libraries shipped next to the executable and found through an `$ORIGIN` run path. So the core, the sdl plugin and every plugin share one copy of SDL.
+- SDL3 and SDL3_ttf are shared libraries shipped next to the executable and found through an `$ORIGIN` run path. So the core and every plugin share one copy of SDL.
 - Lua, Clay, libffi and stb are linked statically into the executable.
 - libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.
@@ -1088,7 +1136,7 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.4 Dependency versions
 
-- Every dependency is a git submodule that follows its development branch. An update moves every submodule to the latest commit of its branch (`git submodule update --remote`), and passes the checks (19.3) like any change.
+- Every dependency is a git submodule at a fixed commit: the latest commit of its development branch, or of a release tag when the branch lacks files that its release makes. An update moves each submodule to its newest such commit, and passes the checks (19.3) like any change.
 - SDL_ttf brings FreeType, HarfBuzz and PlutoSVG as its own submodules, at the commits SDL_ttf names.
 
 ### 17.5 Tests
@@ -1114,16 +1162,20 @@ OpenECS follows the XDG Base Directory specification:
   | `window(number)`                                                     | Chooses the OS window that later input goes to, and that `screenshot` saves: 1 for the main window, then the current workspace's pop-out windows in the order they were made. It is 1 at start. Gives the window's position on the screen, `x, y`. |
   | `close()`                                                            | Asks the chosen OS window to close, as its close button does.                                                                                                                                                                                      |
   | `call(name)`                                                         | Runs a bound function (7.8), such as `"ecs.layout.maximize"`, as a key would.                                                                                                                                                                      |
+  | `keyEvent(combination, down, ms, repeat)`                            | Sends one press or release of a key without modifiers as SDL gives it, with its time in milliseconds and whether it is SDL's repeat, such as an input method's own repeat (4.6). |
   | `wait(seconds)`                                                      | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                                                                                                                                                                  |
   | `session()`                                                          | The session that quitting would save now, as a Lua table (13.2).                                                                                                                                                                                   |
   | `rect(id)`                                                           | The rectangle of the shown panel with that id: `x`, `y`, `width` and `height`, and `window`, the number of its OS window.                                                                                                                          |
   | `panel(id)`                                                          | The panel with that id: its `title`, `type`, `unsaved` mark, and `fault`, the error that stopped it or a missing type.                                                                                                                             |
   | `setting(name)`                                                      | A setting's value in effect (12), such as a colour of the theme.                                                                                                                                                                                   |
   | `screenshot(path)`                                                   | Draws a frame and saves the chosen OS window's picture as a PNG file.                                                                                                                                                                              |
+  | `pixel(x, y)`                                                        | Draws a frame and gives the colour that the chosen OS window shows at a position in its layout units, as `"#RRGGBB"`, such as a GPU panel's (5.4).                                                                                               |
+  | `dialog()`                                                           | The message dialog that waits for an answer (7.7), or nil: its `title`, `message` and `buttons`, the number of the `selected` button, and `rects`, each button's rectangle in its OS window. A test answers it with `key` or `click`.            |
   | `match(actual, expected, message)`                                   | Checks that `actual` has the same number of list items as `expected`, and each item and field it names.                                                                                                                                            |
 
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
 - A Lua error fails the test and logs it with its stack trace. When `run` returns, the program quits without asking about unsaved work.
+- While a message dialog waits (7.7), the test goes on, so it can read and answer the dialog. A dialog that the test's own step opens, as `call` can, cannot wait for the test, so it is answered with its last button, and so is one that waits when the test ends.
 - The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
 - `.github/scripts/test.sh` runs every test in `bin/examples/` with a Debug build.
 
@@ -1132,7 +1184,7 @@ OpenECS follows the XDG Base Directory specification:
 - The examples are in OpenECS-examples (17.7). An example is a folder that shows plugin authors one part of the plugin interface, or one standard plugin. Its number orders the examples from the first steps to the complex ones, so they are read in order: `1_hello`, `2_native`, and so on. The examples of the plugin interface come first, then those of the standard plugins.
 - An example holds a preset, `preset.lua`, the folders of its plugins, and its tests, the files whose names start with `test`. The preset names the folder in `pluginsDir`, so the example needs nothing else but the standard plugins.
 - Its comments explain how the core behaves: what a statement makes the core do, when it may be called, and a concept the first time it appears. They do not explain the example's own logic or repeat the functions' documentation.
-- With the flag `--examples`, the examples' build copies the numbered folders of `examples/`, sources too, to `bin/examples/`, and builds each example's native plugins there.
+- With the flag `--examples`, the examples' build copies the numbered folders of `examples/`, sources too, to `bin/examples/`, and builds each example's native plugins there. A native plugin includes `OpenECS.h`, SDL and the standard plugins' definition headers (10.10).
 - A change that breaks an example changes the example in the same piece of work, so every test passes.
 
 ### 17.7 Repositories
@@ -1231,7 +1283,7 @@ OpenECS follows the XDG Base Directory specification:
 - A standard plugin is a first-party plugin whose services other plugins build on (OVERVIEW 3.3). It is built and loaded like a third-party plugin: from its folder in OpenECS-std (17.7), against the plugin interface only (2.2), with a manifest and a version of its own.
 - The core never refers to a standard plugin, and a user's plugin of the same name replaces it (9.3, 9.9).
 - Plugins that use a standard plugin name it in their manifest's `depends`, and look up its functions with the signatures it documents (10.5).
-- Each standard plugin has one job, and no two share one. A plugin that runs something, such as draw, which draws, or mixer, which plays sound, is an executor: it knows its primitives. A plugin that reads a file format is a loader: it turns the file into the objects of an executor, as image gives draw's images and audio gives mixer's sounds. So a format is read once, and what it gives works wherever the executor does.
+- Each standard plugin has one job, and no two share one. A plugin that runs something, such as draw, which draws, or mixer, which plays sound, is an executor: it knows its primitives. A plugin that reads a file format is a loader: it turns the file into the objects of an executor, as image gives draw's images and audio gives mixer's sounds. A loader may also write those objects back to the format, as image writes draw's images. So a format is handled in one place, and what it gives works wherever the executor does.
 - Standard plugins are generic building blocks. Views of one domain, such as a scene's hierarchy or an inspector, belong to the plugins of tools, which build them from the blocks.
 - Platform-specific code stays inside the plugins that need it, behind their functions, so porting OpenECS to another system changes those plugins and not the plugins built on them.
 - A standard plugin needs nothing but OpenECS: it links no library. Its calls to SDL and SDL_ttf are resolved against the executable's copies (17.2), and any other library it uses is compiled into it. So copying its folder into a `plugins/` folder installs it.
@@ -1286,13 +1338,13 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 
 **Input method.** Software that composes characters a keyboard cannot type directly, for languages such as Chinese or Japanese.
 
-**Loader.** A plugin that reads a file format into the objects of an executor.
+**Loader.** A plugin that reads a file format into the objects of an executor, and may write them back.
 
 **Local name.** The part of a name after the plugin's name and a dot, such as `view` in `canvas.view`.
 
 **LuaLS (Lua language server).** The program behind Lua support in editors such as VS Code. It reads annotations in comments, such as `---@param`, to give completion, documentation and warnings.
 
-**Main thread.** The thread on which the program starts. OS windows, input and all Lua code run there.
+**Main thread.** The thread on which the program starts. OS windows, input and the Lua code of plugins run there.
 
 **Merge commit.** A commit that joins two branches and keeps the commits of both.
 
@@ -1351,6 +1403,8 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 **Userdata (Lua).** A block of memory managed by Lua's garbage collector that holds data from C. Handles are userdata.
 
 **Vsync.** Waiting for the display's refresh before showing a new frame, so drawing matches the screen's rate.
+
+**Worker (Lua).** A Lua script that runs on a thread of its own, in a Lua state of its own, and sends values to the plugin that started it (3.4).
 
 **Workflow (GitHub Actions).** A file in `.github/workflows/` that tells GitHub which jobs to run, and when.
 

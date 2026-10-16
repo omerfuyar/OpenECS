@@ -38,6 +38,8 @@ cp $std/SDL_net/LICENSE.txt "$folder/licenses/SDL_net.txt"
 cp $std/nanosvg/LICENSE.txt "$folder/licenses/nanosvg.txt"
 cp $std/dr_libs/LICENSE "$folder/licenses/dr_libs.txt"
 cp $std/cgltf/LICENSE "$folder/licenses/cgltf.txt"
+cp $std/curl/COPYING "$folder/licenses/curl.txt"
+cp $std/mbedtls/LICENSE "$folder/licenses/mbedTLS.txt"
 cp std/plugins/draw/fonts/OFL.txt "$folder/licenses/RobotoMono.txt"
 
 cat > "$folder/licenses/README.txt" << NOTICE
@@ -56,6 +58,8 @@ SDL_net: zlib license
 nanosvg: zlib license
 dr_libs (dr_wav, dr_mp3, dr_flac): MIT No Attribution license or public domain
 cgltf: MIT license
+curl (libcurl): curl license, derived from the MIT license
+Mbed TLS: Apache License 2.0, chosen of its Apache 2.0 or GPL 2.0 licenses
 Roboto Mono font: SIL Open Font License 1.1
 NOTICE
 
