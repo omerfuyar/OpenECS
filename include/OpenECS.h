@@ -423,7 +423,7 @@ typedef enum ECSLogLevel
 
 #pragma region Paths
 
-// what a path looks like on each system: Windows takes '\' and '/' as separators, and starts an absolute path with a drive, such as C:\
+// what a path looks like on each system: Windows takes '\' and '/' as separators, and starts an absolute path with a drive, such as C:\Users.
 
 /// @brief Tells whether a character separates the folders of a path: '/', or on Windows '\' too.
 /// @lua none: Lua code gives paths to the functions that take them
