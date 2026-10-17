@@ -12,8 +12,22 @@
 /// @brief Version of this plugin interface. The core refuses a plugin whose manifest names another version.
 #define OPENECS_API_VERSION 1
 
-/// @brief Marks a function that crosses the boundary between the core and a plugin: a core function that plugins call, or a plugin function that the core calls.
+#if defined(_WIN32)
+#ifdef OPENECS_CORE
+/// @brief Marks a core function that plugins call. The core exports it; on Windows, a plugin imports it through the executable's import library, libOpenECS.a.
+#define OPENECS_EXPORT __declspec(dllexport)
+#else
+/// @brief Marks a core function that plugins call. The core exports it; on Windows, a plugin imports it through the executable's import library, libOpenECS.a.
+#define OPENECS_EXPORT __declspec(dllimport)
+#endif
+/// @brief Marks a plugin function that the core calls, such as ECSPlugin_Init. The plugin exports it.
+#define OPENECS_PLUGIN __declspec(dllexport)
+#else
+/// @brief Marks a core function that plugins call. The core exports it; on Windows, a plugin imports it through the executable's import library, libOpenECS.a.
 #define OPENECS_EXPORT __attribute__((visibility("default")))
+/// @brief Marks a plugin function that the core calls, such as ECSPlugin_Init. The plugin exports it.
+#define OPENECS_PLUGIN __attribute__((visibility("default")))
+#endif
 
 /// @brief Lets the compiler check the arguments of a printf-style function.
 /// @param formatIndex Position of the format parameter, counting from 1.
@@ -407,13 +421,59 @@ typedef enum ECSLogLevel
 
 #pragma endregion Types
 
+#pragma region Paths
+
+// what a path looks like on each system: Windows takes '\' and '/' as separators, and starts an absolute path with a drive, such as C:\Users.
+
+/// @brief Tells whether a character separates the folders of a path: '/', or on Windows '\' too.
+/// @lua none: Lua code gives paths to the functions that take them
+static inline bool ECSPath_IsSeparator(char character)
+{
+#if defined(_WIN32)
+    return character == '/' || character == '\\';
+#else
+    return character == '/';
+#endif
+}
+
+/// @brief Tells whether a path is absolute: it starts with a separator, or on Windows with a drive, such as C:\ or C:/.
+/// @lua none: Lua code gives paths to the functions that take them
+static inline bool ECSPath_IsAbsolute(const char *path)
+{
+#if defined(_WIN32)
+    if (((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':' && ECSPath_IsSeparator(path[2]))
+    {
+        return true;
+    }
+#endif
+
+    return ECSPath_IsSeparator(path[0]);
+}
+
+/// @brief Finds the last separator of a path.
+/// @return The separator in the path, or nullptr if it has none.
+/// @lua none: Lua code gives paths to the functions that take them
+static inline char *ECSPath_LastSeparator(const char *path)
+{
+    const char *last = nullptr;
+
+    for (const char *c = path; *c != '\0'; c++)
+    {
+        last = ECSPath_IsSeparator(*c) ? c : last;
+    }
+
+    return (char *)last;
+}
+
+#pragma endregion Paths
+
 #pragma region Plugin Functions
 
 /// @brief Every native plugin defines this function. The core calls it once, after it loads the plugin's library. The plugin registers everything it provides here.
 /// @param plugin The plugin itself. Keep it for the functions that act for the plugin.
 /// @return SHUResult_Ok, or an error to mark the plugin failed.
 /// @lua none: a Lua plugin's code runs when it is loaded
-OPENECS_EXPORT SHUResult ECSPlugin_Init(ECSPlugin plugin);
+OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 
 #pragma endregion Plugin Functions
 
@@ -930,8 +990,8 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSurface_OnDrawn(ECSSurface *surface, ECSSurfa
 /// @lua surface:fill
 OPENECS_EXPORT void ECSSurface_Fill(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height, ECSColor color);
 
-/// @brief Gets the GPU device that OpenECS draws with: every OS window's renderer and every GPU surface's texture are on it. A plugin draws into a GPU surface with it, through SDL's GPU API or its own renderer on the device. Main thread only.
-/// @return The SDL_GPUDevice, or nullptr without a GPU renderer. OpenECS owns it, and destroys it after every plugin's Destroy, so a plugin releases what it made on it there or earlier.
+/// @brief Gets the GPU device that OpenECS draws with: every GPU surface's texture is on it, and every OS window's renderer whose window the GPU can present to. A plugin draws into a GPU surface with it, through SDL's GPU API or its own renderer on the device. Main thread only.
+/// @return The SDL_GPUDevice, or nullptr without one. OpenECS owns it, and destroys it after every plugin's Destroy, so a plugin releases what it made on it there or earlier.
 /// @lua none: the gpu standard plugin draws into GPU surfaces from Lua
 OPENECS_EXPORT void *ECSGpu_GetDevice(void);
 

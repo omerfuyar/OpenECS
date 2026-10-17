@@ -770,7 +770,7 @@ SHUResult ECSISession_FindPreset(char **retPath, const char *nameOrPath, const c
     // a name has no folder and no extension
     usz length = SDL_strlen(nameOrPath);
 
-    if (SDL_strchr(nameOrPath, '/') != nullptr || (length > 4 && SDL_strcmp(nameOrPath + length - 4, ".lua") == 0))
+    if (ECSPath_LastSeparator(nameOrPath) != nullptr || (length > 4 && SDL_strcmp(nameOrPath + length - 4, ".lua") == 0))
     {
         *retPath = SDL_strdup(nameOrPath);
         return *retPath == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
@@ -836,8 +836,8 @@ SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
     if (pluginsDirectory != nullptr)
     {
         // relative to the preset's folder, unless it is absolute
-        const char *slash = SDL_strrchr(path, '/');
-        int folderLength = slash == nullptr || pluginsDirectory[0] == '/' ? 0 : (int)(slash - path + 1);
+        const char *slash = ECSPath_LastSeparator(path);
+        int folderLength = slash == nullptr || ECSPath_IsAbsolute(pluginsDirectory) ? 0 : (int)(slash - path + 1);
 
         if (SDL_asprintf(&retInfo->pluginsDirectory, "%.*s%s/", folderLength, path, pluginsDirectory) < 0)
         {

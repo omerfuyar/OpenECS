@@ -51,9 +51,21 @@ static struct
 } APP = {0};
 
 /// @brief Finds an XDG base folder for OpenECS: $variable/openecs/, or ~/fallback/openecs/ if the variable is not set.
+/// On Windows, every folder is SDL's pref path, %APPDATA%\openecs\ (DESIGN 16).
 /// @return The folder, ending with a separator, or nullptr if neither the variable nor HOME is set. Free it with SDL_free.
 static char *ECSIApp_XdgFolder(const char *variable, const char *fallback)
 {
+#if defined(SDL_PLATFORM_WINDOWS)
+    (void)fallback;
+    char *prefPath = SDL_GetPrefPath(nullptr, "openecs");
+
+    if (prefPath == nullptr)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "OpenECS has no folder for %s: %s", variable, SDL_GetError());
+    }
+
+    return prefPath;
+#else
     const char *base = SDL_getenv(variable);
     const char *home = SDL_getenv("HOME");
     char *folder = nullptr;
@@ -72,6 +84,7 @@ static char *ECSIApp_XdgFolder(const char *variable, const char *fallback)
     }
 
     return folder;
+#endif
 }
 
 /// @brief Removes everything a failed plugin registered, for the Plugins module.
@@ -126,7 +139,14 @@ static SHUResult ECSIApp_FindPlugins(const char *const *directories, usz directo
         for (int j = 0; j < count; j++)
         {
             // the folder's name is the plugin's: "ui/manifest.lua" is the plugin ui
-            const char *slash = SDL_strchr(manifests[j], '/');
+            const char *slash = manifests[j];
+
+            while (*slash != '\0' && !ECSPath_IsSeparator(*slash))
+            {
+                slash++;
+            }
+
+            slash = *slash == '\0' ? nullptr : slash;
             char *name = slash == nullptr ? nullptr : SDL_strndup(manifests[j], (usz)(slash - manifests[j]));
             ECSValue *item = nullptr;
             SHUResult result = name == nullptr ? SHUResult_ErrAllocation : ECSValue_ListAddItem(retList, &item);
@@ -410,7 +430,7 @@ SHUResult ECSIApp_WriteDefinitions(const char *folder)
     char *path = nullptr;
     usz length = SDL_strlen(folder);
 
-    if (SDL_asprintf(&path, "%s%s", folder, length > 0 && folder[length - 1] == '/' ? "" : "/") < 0)
+    if (SDL_asprintf(&path, "%s%s", folder, length > 0 && ECSPath_IsSeparator(folder[length - 1]) ? "" : "/") < 0)
     {
         return SHUResult_ErrAllocation;
     }

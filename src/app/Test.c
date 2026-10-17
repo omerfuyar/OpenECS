@@ -737,13 +737,13 @@ static void ECSITest_Finish(void)
 /// @brief Reads a field of the test table, at -2, that names a folder relative to the test file.
 static void ECSITest_ReadFolder(lua_State *state, const char *field, const char *path, char **retFolder)
 {
-    const char *slash = SDL_strrchr(path, '/');
+    const char *slash = ECSPath_LastSeparator(path);
 
     if (lua_getfield(state, -2, field) == LUA_TSTRING)
     {
         const char *folder = lua_tostring(state, -1);
 
-        if (SDL_asprintf(retFolder, "%.*s%s/", slash != nullptr && folder[0] != '/' ? (int)(slash - path + 1) : 0, path, folder) < 0)
+        if (SDL_asprintf(retFolder, "%.*s%s/", slash != nullptr && !ECSPath_IsAbsolute(folder) ? (int)(slash - path + 1) : 0, path, folder) < 0)
         {
             *retFolder = nullptr;
         }
@@ -803,10 +803,10 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 
     // a preset path is relative to the test file
     const char *preset = lua_getfield(state, -2, "preset") == LUA_TSTRING ? lua_tostring(state, -1) : OPENECS_TEST_PRESET;
-    const char *slash = SDL_strrchr(path, '/');
+    const char *slash = ECSPath_LastSeparator(path);
     usz length = SDL_strlen(preset);
-    bool file = SDL_strchr(preset, '/') != nullptr || (length > 4 && SDL_strcmp(preset + length - 4, ".lua") == 0);
-    int folderLength = slash != nullptr && file && preset[0] != '/' ? (int)(slash - path + 1) : 0;
+    bool file = ECSPath_LastSeparator(preset) != nullptr || (length > 4 && SDL_strcmp(preset + length - 4, ".lua") == 0);
+    int folderLength = slash != nullptr && file && !ECSPath_IsAbsolute(preset) ? (int)(slash - path + 1) : 0;
 
     if (SDL_asprintf(retPreset, "%.*s%s", folderLength, path, preset) < 0)
     {
@@ -825,7 +825,7 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
         const char *name = lua_tostring(state, -1);
         char *copy = nullptr;
 
-        if (SDL_asprintf(&copy, "%.*s%s", slash != nullptr && name[0] != '/' ? (int)(slash - path + 1) : 0, path, name) >= 0)
+        if (SDL_asprintf(&copy, "%.*s%s", slash != nullptr && !ECSPath_IsAbsolute(name) ? (int)(slash - path + 1) : 0, path, name) >= 0)
         {
             arrput(TEST.files, copy);
         }

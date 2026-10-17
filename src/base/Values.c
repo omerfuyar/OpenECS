@@ -282,7 +282,7 @@ bool ECSIValue_CheckFields(const ECSValue *table, const ECSIFieldRule *rules, us
             matches = type == ECSValueType_Bool;
             break;
         case ECSIFieldType_Integer:
-            matches = type == ECSValueType_Integer || (type == ECSValueType_Number && ECSValue_GetInteger(field, 0) == ECSValue_GetNumber(field, 0.5));
+            matches = type == ECSValueType_Integer || (type == ECSValueType_Number && (f64)ECSValue_GetInteger(field, 0) == ECSValue_GetNumber(field, 0.5));
             break;
         case ECSIFieldType_Number:
             matches = type == ECSValueType_Integer || type == ECSValueType_Number;

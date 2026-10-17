@@ -642,7 +642,7 @@ SHUResult ECSILua_WriteData(const char *path, const ECSValue *value)
         return SHUResult_ErrAllocation;
     }
 
-    char *slash = SDL_strrchr(folder, '/');
+    char *slash = ECSPath_LastSeparator(folder);
 
     if (slash != nullptr)
     {

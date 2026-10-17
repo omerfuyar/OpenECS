@@ -5,7 +5,8 @@
 
 #include "OpenECS.h"
 
-#ifdef DEBUG
+// MinGW has no sanitizers, so Windows builds keep the empty functions
+#if defined(DEBUG) && defined(__linux__)
 
 #include <dlfcn.h>
 #include <link.h>

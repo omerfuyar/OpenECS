@@ -10,3 +10,7 @@
 #define STBDS_ASSERT(condition) SDL_assert(condition)
 
 #include "stb_ds.h"
+
+// hmdel and shdel give a field's offset, a ptrdiff_t, where a size_t goes; clang warns of the sign with -Wconversion where long long is ptrdiff_t, as on Windows
+#undef STBDS_OFFSETOF
+#define STBDS_OFFSETOF(var, field) ((size_t)((char *)&(var)->field - (char *)(var)))
