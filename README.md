@@ -16,6 +16,8 @@ The [standard plugins](https://github.com/omerfuyar/OpenECS-std) give plugins us
    ./OpenECS
    ```
 
+   On Windows, unpack the zip file and open `OpenECS.exe`.
+
 2. Make your own tool from [OpenECS-template](https://github.com/omerfuyar/OpenECS-template): press "Use this template" on GitHub. It holds a preset with a plugin, and a guide that goes through each part. A Lua plugin is a folder with a manifest and an init script:
 
    ``` lua
@@ -68,7 +70,7 @@ See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples 
 
 ## Status
 
-OpenECS is young. It works and you can build on it, but until 1.0 a minor release may change the plugin interface; each release says what changed and how to update. Releases are built for Linux on x86_64; Windows builds from source, and its releases, macOS and arm architectures are planned. Questions, ideas and the plugins you build are welcome in [Discussions](https://github.com/omerfuyar/OpenECS/discussions). Or post to [Issues](https://github.com/omerfuyar/OpenECS/issues) if you have any reports or problems.
+OpenECS is young. It works and you can build on it, but until 1.0 a minor release may change the plugin interface; each release says what changed and how to update. Releases are built for Linux and Windows on x86_64; macOS and arm architectures are planned. Questions, ideas and the plugins you build are welcome in [Discussions](https://github.com/omerfuyar/OpenECS/discussions). Or post to [Issues](https://github.com/omerfuyar/OpenECS/issues) if you have any reports or problems.
 
 ## Documents
 
@@ -79,7 +81,7 @@ OpenECS is young. It works and you can build on it, but until 1.0 a minor releas
 
 ## Usage
 
-Download the archive for your system from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it and run `OpenECS` in it. The Linux build needs glibc 2.38 or later, such as Ubuntu 24.04 or Fedora 39.
+Download the archive for your system from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it and run `OpenECS` in it. The Linux build needs glibc 2.38 or later, such as Ubuntu 24.04 or Fedora 39. The Windows build needs Windows 10 or later, and opens no console window: its log is `%APPDATA%\openecs\openecs.log`, and started from a terminal, it writes there too. Its `lib/` folder holds the import libraries that a C plugin links on Windows.
 
 ### Command line
 

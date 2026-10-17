@@ -7,6 +7,7 @@
 
 #if defined(SDL_PLATFORM_WINDOWS)
 #include <stdlib.h>
+#include <windows.h>
 #else
 #include <unistd.h>
 #endif
@@ -141,10 +142,25 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
     return true;
 }
 
+#if defined(SDL_PLATFORM_WINDOWS)
+/// @brief A Windows build other than Debug has no console of its own (DESIGN 14.4). Started from a console, it writes to that console, unless its output goes somewhere already, such as a pipe.
+static void ECSIMain_AttachConsole(void)
+{
+    if (GetStdHandle(STD_ERROR_HANDLE) == nullptr && AttachConsole(ATTACH_PARENT_PROCESS))
+    {
+        (void)freopen("CONOUT$", "w", stdout);
+        (void)freopen("CONOUT$", "w", stderr);
+    }
+}
+#endif
+
 #pragma endregion Source Only
 
 int main(int argc, char **argv)
 {
+#if defined(SDL_PLATFORM_WINDOWS)
+    ECSIMain_AttachConsole();
+#endif
     ECSILog_Initialize();
     ECSIArguments arguments;
 

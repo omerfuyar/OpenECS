@@ -1,6 +1,7 @@
 #!/bin/sh
-# Packs a Release build for one platform into dist/openecs-VERSION-PLATFORM.tar.gz:
+# Packs a Release build for one platform into dist/openecs-VERSION-PLATFORM.tar.gz, or .zip for Windows:
 # the program with its plugins, presets, examples and resources; the plugin interface with the standard plugins' definition files; OpenECS's license and the licenses of what it includes.
+# For Windows, also the import libraries that a C plugin links (DESIGN 17.2).
 set -eu
 
 version="$1"
@@ -17,6 +18,16 @@ cp -r build/Release/include/shu "$folder/include/"
 # the build wrote the definition files of the plugins it found, the standard ones, so editors complete their functions with include/ alone
 cp build/Release/definitions/*.lua build/Release/definitions/*.h "$folder/include/"
 cp LICENSE.md README.md "$folder/"
+
+# the plugins' own import libraries are left out, as nothing links a plugin
+find "$folder" -name '*.dll.a' -delete
+
+case "$platform" in
+windows-*)
+    mkdir -p "$folder/lib"
+    cp build/Release/lib/libOpenECS.a build/Release/lib/libSDL3.dll.a build/Release/lib/libSDL3_ttf.dll.a "$folder/lib/"
+    ;;
+esac
 
 # the libraries linked into the program, and the font it ships
 ttf=dependencies/SDL_ttf/external
@@ -63,6 +74,22 @@ Mbed TLS: Apache License 2.0, chosen of its Apache 2.0 or GPL 2.0 licenses
 Roboto Mono font: SIL Open Font License 1.1
 NOTICE
 
-tar -C dist -czf "dist/$name.tar.gz" "$name"
+# Windows opens zip files itself; Git Bash has no zip, but GitHub's Windows runners have 7-Zip
+case "$platform" in
+windows-*)
+    archive="$name.zip"
+    rm -f "dist/$archive"
+    if command -v zip > /dev/null; then
+        (cd dist && zip -qr "$archive" "$name")
+    else
+        (cd dist && 7z a -tzip -bso0 "$archive" "$name")
+    fi
+    ;;
+*)
+    archive="$name.tar.gz"
+    tar -C dist -czf "dist/$archive" "$name"
+    ;;
+esac
+
 rm -rf "$folder"
-echo "dist/$name.tar.gz"
+echo "dist/$archive"

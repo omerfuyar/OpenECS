@@ -1071,6 +1071,7 @@ When the command line names no preset and no session, OpenECS starts with the fi
 - All logging goes through SDL's log, including SDL's own messages. The core calls it directly; plugins call `ECS_Log`, which adds the plugin's name.
 - Each line holds the time, the level, the plugin and the message: `12:30:05.123 warning  [canvas] message`. The core's own lines name `ecs`.
 - Lines go to standard error and to the log file (16). Each start writes the log file anew.
+- On Windows, only Debug builds open a console window. Other builds are Windows GUI programs, so a release opens no console beside its window. Started from a console, such as `cmd.exe`, they write to it; started with their output sent elsewhere, such as into a pipe, they write there.
 
 ## 15. Memory and ownership
 
@@ -1247,6 +1248,7 @@ OpenECS follows the XDG Base Directory specification:
   | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
   | `Debug (Linux)`   | Builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs the examples' tests (17.5) under the sanitizers; a failed test or a report fails it. Then writes the definition files of the plugins of the example `5_services` (10.10) and compiles each C header. |
   | `Release (Linux)` | Builds in Release, so code that only Release builds compile or link fails before a release.                                                                                                                                                                                                        |
+  | `Windows`         | Builds on Windows with LLVM-MinGW: in Debug, then runs the examples' tests and writes the definition files, as `Debug (Linux)` does; then in Release. It has no static analyzer or sanitizers, which MinGW lacks.                                                                                  |
   | `Lua (LuaLS)`     | Checks every Lua file with LuaLS, so code that misuses the `ecs` module, and mistakes in `ecs.lua`, fail it (9.6).                                                                                                                                                                                 |
 
 - The steps are scripts in `.github/scripts/`, so they run the same way on a contributor's computer.
@@ -1256,12 +1258,12 @@ OpenECS follows the XDG Base Directory specification:
 
 - OpenECS, OpenECS-std and OpenECS-examples are released together, with the same version. Each has a `dev` branch, a `main` branch that holds its releases, and a tag `vVERSION` for each release on its `main`.
 - `.github/workflows/release.yml` runs when a version tag is pushed. It fails when the tag does not match `OPENECS_VERSION`.
-- For each platform, it makes a Release build and packs it into `openecs-VERSION-PLATFORM.tar.gz`: the program with its plugins, presets, examples and resources, the plugin interface (`OpenECS.h`, `ecs.lua` and `shu.h`), `LICENSE`, and the licenses of the works it includes.
+- For each platform, it makes a Release build and packs it into `openecs-VERSION-PLATFORM.tar.gz`: the program with its plugins, presets, examples and resources, the plugin interface (`OpenECS.h`, `ecs.lua` and `shu.h`), `LICENSE`, and the licenses of the works it includes. The Windows package is a zip file, which Windows opens itself, with SDL's DLLs beside the program. Its `lib/` holds the import libraries of OpenECS, SDL3 and SDL3_ttf, which a C plugin links on Windows (17.2).
 - It packs the source with every submodule into `openecs-VERSION-source.tar.gz`, because GitHub's own source archives leave the submodules out. `SHA256SUMS` holds the checksums of the archives.
 - It makes a draft release with these files. Its description is `.github/release-notes/vVERSION.md`. A version below 1.0.0, or one with a suffix, is marked as a pre-release.
 - OpenECS-std and OpenECS-examples make a draft release of their own from their tag, with their source and its submodules, and their own description.
-- Releases are made for Linux on x86_64. The workflow also lists the other platforms, commented out.
-- Linux builds are made on Ubuntu 24.04, so they need glibc 2.38 or later.
+- Releases are made for Linux and Windows on x86_64. The workflow also lists the other platforms, commented out.
+- Linux builds are made on Ubuntu 24.04, so they need glibc 2.38 or later. Windows builds are made on Windows Server 2025 with LLVM-MinGW's UCRT runtime, which Windows 10 and later have.
 - The steps of a release:
   1. In OpenECS-std and OpenECS-examples, write each release's description, and merge `dev` into `main` with a pull request.
   2. On OpenECS's `dev`, move `std/` and `examples/` to those `main` commits, set `OPENECS_VERSION` to the release, and write its description.

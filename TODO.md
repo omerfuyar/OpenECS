@@ -6,14 +6,15 @@ What is not decided yet, and work that is waiting, for OpenECS and the repositor
 
 What the owner wants worked on, in no fixed order. Each one is described further below.
 
-- **Windows and macOS.** OpenECS builds on Windows with LLVM-MinGW, and the checks build and test it there. What is left: releases for Windows, and macOS. See "Releases for other platforms".
+- **Windows and macOS.** OpenECS builds on Windows with LLVM-MinGW, the checks build and test it there, and releases include it. What is left: macOS, and OpenECS-template's build on Windows. See "Releases for other platforms".
 - **Shuild's issues.** The ones listed under Shuild.
 - **Bugs and the reports from Hyprland.** The tasks below that wait to be confirmed there, and what the owner reports from testing.
 
 ## Tasks
 
 - **Docs for every function's parameters before the first major release.** Each function of the core and of the standard plugins says what each parameter is and what it gives back: in OpenECS.h, ecs.lua and the signatures' docs. Functions are likely to change until then, so this waits for the release.
-- **Releases for other platforms.** The release workflow has entries for Linux on aarch64, Windows and macOS, commented out until the build supports them (DESIGN 19.4). Windows builds now, with `.github/scripts/install-windows.ps1`; its release needs `package.sh` to make a zip with the DLLs, and a choice: whether the program opens a console window, as now, or is built with `-mwindows` and logs only to its file. macOS needs libffi's configuration for it, and its own linker flags.
+- **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out until the build supports them (DESIGN 19.4). macOS needs libffi's configuration for it, and its own linker flags. The Windows release is to try on a Windows computer: unpacking the zip, opening `OpenECS.exe`, and the log in `%APPDATA%\openecs\`.
+- **OpenECS-template on Windows.** Its `build.sh` builds C plugins with gcc into `lib<name>.so`. On Windows it would build `<name>.dll` with clang, and link the release's `lib/libOpenECS.a` and SDL's import libraries (DESIGN 17.2).
 - **TLS on Windows.** net and web check servers against a file of trusted certificates, which Windows does not have; `SSL_CERT_FILE` can name one. To read Windows' certificate store into mbedTLS, with crypt32.
 - **Linker flags at compile time.** Shuild gives a module's flags to the compiler and the linker alike, so clang warns that `-Wl,` flags are unused when it compiles. Shuild could take linker flags of their own.
 - **GPU panels on real drivers.** 21_gpu's test runs on Mesa's software Vulkan driver. The owner ran 21_gpu on an RTX 5070 with Hyprland, and it used the card. To confirm on X11, and with the panel moving between OS windows (DESIGN 5.3, 5.4).
