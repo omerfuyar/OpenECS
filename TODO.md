@@ -48,7 +48,7 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 What helps people find OpenECS and stay. Before announcing a release widely:
 
-- **A demo GIF** of 20 to 30 seconds at the top of README.md: dragging panels, popping one out, the settings window, and a plugin's code beside its panel.
+- **A longer demo GIF**: README.md's shows dragging a tab, typing, clicking and maximizing, in 11 seconds. Popping a panel out, the settings window, and a plugin's code beside its panel would show more; the tests' screenshots show one OS window, so these need a screen recording.
 - **GitHub settings**, which the owner sets for each of OpenECS, OpenECS-std, OpenECS-examples and OpenECS-template:
   - a description, one line on what the repository holds;
   - topics, such as `sdl3`, `lua`, `editor`, `plugin-system`, `c23` and `tooling`;
