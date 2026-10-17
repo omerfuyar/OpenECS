@@ -23,6 +23,7 @@ Read OVERVIEW.md and DESIGN.md before you propose or change anything.
 | `examples/`     | Submodule: OpenECS-examples, examples for plugin authors (DESIGN.md, sections 17.6 and 17.7).                          |
 | `dependencies/` | Third-party git submodules.                                                                                            |
 | `resources/`    | Files the program loads at run time.                                                                                   |
+| `docs/`         | Screenshots that README.md shows.                                                                                      |
 | `shuild.c`      | The build script (see README.md).                                                                                      |
 | `.github/`      | Checks, release workflow and their scripts, rulesets and release descriptions (DESIGN.md, section 19).                 |
 | `LICENSE.md`    | OpenECS's license, zlib.                                                                                               |
