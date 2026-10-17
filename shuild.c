@@ -534,6 +534,12 @@ static void Shuild_OpenECS(void)
     {
         // a plugin's DLL is linked with the executable's import library, as Windows finds a DLL's functions through it
         SHU_CompilerAddFlags(SHU_UtilFormat(" '-Wl,--out-implib,%s%slib/libOpenECS.a'", SHU_UtilGetExecutablePath(), CONFIG.outputDir));
+
+        // only Debug builds open a console window; the others log to their log file, and to a console they are started from (DESIGN 14.4)
+        if (CONFIG.type != BuildType_Debug)
+        {
+            SHU_CompilerAddFlags(" -Wl,--subsystem,windows");
+        }
     }
     else
     {
