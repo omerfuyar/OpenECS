@@ -7,7 +7,7 @@ What is not decided yet, and work that is waiting, for OpenECS and the repositor
 What the owner wants worked on, in no fixed order. Each one is described further below.
 
 - **Windows and macOS.** OpenECS builds on Windows with LLVM-MinGW, the checks build and test it there, and releases include it. What is left: macOS, and OpenECS-template's build on Windows. See "Releases for other platforms".
-- **Shuild's issues.** The ones listed under Shuild.
+- **Shuild.** The work listed under Shuild. Its issues are closed: compiler detection, variadic functions, and build scripts in other folders, which `SHU_UtilBuildScript` covers.
 - **Bugs and the reports from Hyprland.** The tasks below that wait to be confirmed there, and what the owner reports from testing.
 
 ## Tasks
@@ -28,7 +28,7 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **Windows and macOS.** Shuild names libraries for the system its compiler compiles for, and cross-compiles for Windows with MinGW (omerfuyar/shuild#23). Its Windows host code runs in OpenECS's Windows checks, which build OpenECS on Windows. `SHU_UtilRun` runs commands with the system's shell, which is `cmd.exe` on Windows.
 - **Its own todos.** The header lists a module macro, like Clay's, and renaming the macros to `SHUILD_`.
-- **Its issues that need the owner's design.** Finding the compilers on the system (omerfuyar/shuild#22), more variadic functions (omerfuyar/shuild#15) and finding other build scripts (omerfuyar/shuild#7), which `SHU_UtilBuildScript` covers in part.
+- **Compiler detection on Windows.** `SHU_CompilerDetect` lists the compilers on PATH, and `SHU_CompilerTryConfigure(NULL)` picks one (omerfuyar/shuild#22). Its Windows code, which lists `.exe` files, is compiled but not run on Windows yet.
 
 ## Standard plugins
 
