@@ -26,7 +26,7 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 [Shuild](https://github.com/omerfuyar/shuild) is the build tool, a single header at `dependencies/shuild`. Shu, at `dependencies/shu`, holds the types and macros it uses. The owner allows changes to both, in their style, through pull requests into their main branches. These repositories have no CI, so a pull request is merged with a merge commit once it is tested locally: shuild's examples, and OpenECS built from scratch with its checks. Then an OpenECS pull request moves the submodule. Work found in it:
 
-- **Windows and macOS.** Shuild names libraries for the system its compiler compiles for, and cross-compiles for Windows with MinGW (omerfuyar/shuild#23). Its Windows host code, such as the quoting for `_spawnvp`, is not tested on Windows yet. `SHU_UtilRun` runs commands with the system's shell, which is `cmd.exe` on Windows.
+- **Windows and macOS.** Shuild names libraries for the system its compiler compiles for, and cross-compiles for Windows with MinGW (omerfuyar/shuild#23). Its Windows host code runs in OpenECS's Windows checks, which build OpenECS on Windows. `SHU_UtilRun` runs commands with the system's shell, which is `cmd.exe` on Windows.
 - **Its own todos.** The header lists a module macro, like Clay's, and renaming the macros to `SHUILD_`.
 - **Its issues that need the owner's design.** Finding the compilers on the system (omerfuyar/shuild#22), more variadic functions (omerfuyar/shuild#15) and finding other build scripts (omerfuyar/shuild#7), which `SHU_UtilBuildScript` covers in part.
 
