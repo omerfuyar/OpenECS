@@ -50,6 +50,9 @@
             "context": "Release (Linux)"
           },
           {
+            "context": "Windows"
+          },
+          {
             "context": "Lua (LuaLS)"
           }
         ]
