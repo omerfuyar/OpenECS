@@ -4,6 +4,8 @@ OpenECS (Editor Composition System, I started it as an Entity Component System e
 
 OpenECS does nothing specific to any job. Plugins decide what each panel shows and does, and a preset names the plugins and the arrangement of a tool. So the same executable becomes a text editor, a paint program, a log viewer etc.
 
+![Panels of the examples in OpenECS: a 3D model drawn on the GPU and a terminal, split, beside a tab of user interface controls](docs/screenshots/panels.png)
+
 Anyone who needs a frontend for their backend (like a game engine and its editor) or wants to build tools that can be used for simple tasks (like a media player or something).
 
 The [standard plugins](https://github.com/omerfuyar/OpenECS-std) give plugins user interfaces, text grids, images, sound, networking, 3D models and files, so a panel starts from more than pixels.
@@ -109,6 +111,10 @@ The `examples/` folder shows how to write plugins, one part at a time: from `1_h
 ``` shell
 ./OpenECS --fresh --preset examples/1_hello/preset.lua
 ```
+
+| `3_ui`: controls of the ui plugin | `22_gpu_model`: a glTF model with its own shaders |
+| --- | --- |
+| ![The controls of 3_ui: a button, tabs, a checkbox, a switch, a slider, a selector, a dropdown, a number field and a list](docs/screenshots/ui.png) | ![The torus of 22_gpu_model, lit and shaded on the GPU](docs/screenshots/gpu-model.png) |
 
 ### Writing plugins
 
