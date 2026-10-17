@@ -201,7 +201,7 @@ winget install --exact --id Kitware.CMake
 winget install --exact --id Ninja-build.Ninja
 ```
 
-Open a new terminal afterwards, so the tools are on its PATH. Debug builds have no static analyzer or sanitizers on Windows, as MinGW has neither. HTTPS and TLS connections need a file of trusted certificates, named by `SSL_CERT_FILE`, as the plugins do not read Windows' certificate store yet.
+Open a new terminal afterwards, so the tools are on its PATH. Debug builds have no static analyzer or sanitizers on Windows, as MinGW has neither. HTTPS and TLS connections check servers against Windows' trusted root certificates, or a file of them that `SSL_CERT_FILE` names.
 
 ### Building
 
