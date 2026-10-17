@@ -1263,7 +1263,7 @@ OpenECS follows the XDG Base Directory specification:
 - It packs the source with every submodule into `openecs-VERSION-source.tar.gz`, because GitHub's own source archives leave the submodules out. `SHA256SUMS` holds the checksums of the archives.
 - It makes a draft release with these files. Its description is `.github/release-notes/vVERSION.md`. A version below 1.0.0, or one with a suffix, is marked as a pre-release.
 - OpenECS-std and OpenECS-examples make a draft release of their own from their tag, with their source and its submodules, and their own description.
-- Releases are made for Linux and Windows on x86_64. The workflow also lists the other platforms, commented out.
+- Releases are made for Linux and Windows on x86_64. The workflow also lists the other platforms, commented out. Linux is the priority; each platform needs upkeep, so others are added only when they cost little.
 - Linux builds are made on Ubuntu 24.04, so they need glibc 2.38 or later. Windows builds are made on Windows Server 2025 with LLVM-MinGW's UCRT runtime, which Windows 10 and later have.
 - The steps of a release:
   1. In OpenECS-std and OpenECS-examples, write each release's description, and merge `dev` into `main` with a pull request.
