@@ -62,7 +62,13 @@ static bool ECSIPanel_ResizePixels(ECSPanel panel)
         panel->texture = nullptr;
     }
 
-    return panel->pixels != nullptr;
+    if (panel->pixels == nullptr)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot create %dx%d pixels: %s", width, height, SDL_GetError());
+        return false;
+    }
+
+    return true;
 }
 
 /// @brief Copies a GPU panel's texture into the texture of a renderer without the device, once the panel's draw is sent: the GPU downloads it, and the renderer uploads it.
@@ -511,9 +517,10 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
     SDL_assert(panel != nullptr);
     SDL_assert(renderer != nullptr);
 
-    // placeholders and faulted panels have no pixels; the layout draws their text
+    // placeholders and faulted panels have no pixels; the layout draws their text. They want no more frames, or the loop would draw without rest
     if (panel->type == nullptr || panel->fault != nullptr || panel->type->desc.Draw == nullptr || panel->width < 1.0f || panel->height < 1.0f)
     {
+        panel->needsDraw = false;
         return;
     }
 
@@ -522,7 +529,14 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
     // a GPU panel draws into its texture on the device itself, with its own command buffer, which runs before the renderer's
     if (panel->type->desc.surface == ECSSurfaceType_Gpu)
     {
-        if (!ECSIPanel_ResizeGpuTexture(panel, renderer) || !ECSIPanel_WantsFrame(panel))
+        // a texture that cannot be made would be tried again in every frame, so the panel shows the fault instead
+        if (!ECSIPanel_ResizeGpuTexture(panel, renderer))
+        {
+            ECSIPanel_Fault(panel, "The panel's GPU texture cannot be made; the log has the reason.");
+            return;
+        }
+
+        if (!ECSIPanel_WantsFrame(panel))
         {
             return;
         }
@@ -559,6 +573,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
     {
         if (!ECSIPanel_ResizePixels(panel))
         {
+            ECSIPanel_Fault(panel, "The panel's pixels cannot be made; the log has the reason.");
             return;
         }
 
@@ -571,6 +586,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
             if (panel->texture == nullptr)
             {
                 SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot create a %dx%d texture: %s", pixels->w, pixels->h, SDL_GetError());
+                ECSIPanel_Fault(panel, "The panel's texture cannot be made; the log has the reason.");
                 return;
             }
 
