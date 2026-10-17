@@ -4,7 +4,7 @@ OpenECS (Editor Composition System, I started it as an Entity Component System e
 
 OpenECS does nothing specific to any job. Plugins decide what each panel shows and does, and a preset names the plugins and the arrangement of a tool. So the same executable becomes a text editor, a paint program, a log viewer etc.
 
-![Panels of the examples in OpenECS: a 3D model drawn on the GPU and a terminal, split, beside a tab of user interface controls](docs/screenshots/panels.png)
+![OpenECS with panels of the examples: a tab is dragged to split a group, a line is typed into a terminal, a button is clicked, and a 3D model drawn on the GPU is maximized and put back](docs/screenshots/demo.gif)
 
 Anyone who needs a frontend for their backend (like a game engine and its editor) or wants to build tools that can be used for simple tasks (like a media player or something).
 
