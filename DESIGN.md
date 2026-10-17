@@ -344,7 +344,7 @@ typedef struct ECSSurface
 
 - One SDL GPU device serves every OS window. An offscreen GPU renderer, `SDL_CreateGPURenderer(nullptr, nullptr)`, makes it as SDL's renderer needs it, and owns it. Each OS window has a 2D renderer on that device, made with `SDL_CreateGPURenderer(device, window)`.
 - The device outlives the OS windows and the plugins: it is destroyed after every plugin's `Destroy`, so a plugin releases its GPU objects there or earlier.
-- Without a GPU renderer for the main window, every window uses SDL's default renderer, and there is no device.
+- An OS window whose GPU renderer cannot be made, as when the GPU cannot present to it, uses SDL's default renderer. The device stays, and GPU panels still draw on it: that window shows a copy of each GPU panel's texture, which the GPU downloads after each draw into a texture of the window's renderer. It is slower, but GPU panels work where the GPU draws and something else presents, such as a laptop whose integrated GPU drives the screen, the offscreen windows of the tests, or Windows' software adapter. Without a GPU device, GPU panels show placeholders.
 - The core draws its own interface with that 2D renderer: Clay for layout, SDL3_ttf for text.
 - A GPU surface is a texture on the shared device, `B8G8R8A8_UNORM`, which is `ARGB8888` on the GPU, of the panel's size in pixels. Any OS window's renderer shows it by wrapping it (`SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER`), so a GPU panel moves between OS windows without recreating its texture. The texture is made again only when the panel's size changes, and then the panel draws before it shows.
 - A pixels surface is uploaded to a texture when it changed. Plugins with pixels surfaces never notice how the core shows them; GPU panels draw into the texture themselves (5.4).
@@ -696,7 +696,7 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 
 ### 9.8 The GPU device
 
-- Every plugin is a plugin on disk; the executable contains none. The core gives native plugins its SDL objects through two parts of its interface only: `ECSGpu_GetDevice()`, the GPU device, an `SDL_GPUDevice *` or nullptr without a GPU renderer, and a GPU surface's `texture` (5.4).
+- Every plugin is a plugin on disk; the executable contains none. The core gives native plugins its SDL objects through two parts of its interface only: `ECSGpu_GetDevice()`, the GPU device, an `SDL_GPUDevice *` or nullptr without one, and a GPU surface's `texture` (5.4).
 - The core owns the device and destroys it after every plugin's `Destroy` (5.3). A plugin calls the rest of SDL itself, with the executable's copy (17.2).
 - Lua has neither. The standard plugin **gpu** draws into GPU surfaces from Lua and C, with an interface of its own (20).
 

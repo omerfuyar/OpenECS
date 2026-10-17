@@ -1271,6 +1271,7 @@ static void ECSIWindow_CloseOS(ECSIOSWindow *os)
 }
 
 /// @brief Creates a window's renderer: a GPU renderer on the shared GPU device, so all windows share one device; else SDL's default renderer.
+/// The device stays without a window's GPU renderer, as when the GPU cannot present to the window: GPU panels draw on it, and that window shows copies (DESIGN 5.3).
 static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window, bool main)
 {
     // the device comes from an offscreen renderer, which sets it up as SDL's GPU renderer needs it
@@ -1278,15 +1279,18 @@ static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window, bool main)
     {
         GPU.owner = SDL_CreateGPURenderer(nullptr, nullptr);
         GPU.device = GPU.owner == nullptr ? nullptr : SDL_GetGPURendererDevice(GPU.owner);
+
+        if (GPU.device == nullptr)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "No GPU device (%s); GPU panels show placeholders.", SDL_GetError());
+        }
     }
 
     SDL_Renderer *renderer = GPU.device != nullptr ? SDL_CreateGPURenderer(GPU.device, window) : nullptr;
 
-    // GPU panels need every OS window to show the device's textures, so without the main window's GPU renderer there is no device
-    if (renderer == nullptr && main)
+    if (renderer == nullptr && GPU.device != nullptr)
     {
-        ECSIWindow_DestroyDevice();
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "GPU renderer not available (%s); using SDL's default renderer.", SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The GPU cannot present to a window (%s); it uses SDL's default renderer, and shows copies of GPU panels.", SDL_GetError());
     }
 
     return renderer != nullptr ? renderer : SDL_CreateRenderer(window, nullptr);

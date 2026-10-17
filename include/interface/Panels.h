@@ -40,6 +40,7 @@ struct ECSIPanel
     SDL_Texture *texture; // the pixels on the GPU, made by the renderer of the OS window that shows the panel; for a GPU panel, that renderer's view of gpuTexture
     SDL_GPUTexture *gpuTexture; // a GPU panel's texture on the shared device, kept when the panel moves to another OS window; nullptr for a pixels panel
     SDL_GPUDevice *gpuDevice;   // the device of gpuTexture
+    SDL_GPUTransferBuffer *gpuCopy; // where gpuTexture is downloaded to after each draw, for an OS window whose renderer has no GPU device and shows a copy; else nullptr
     i32 gpuWidth;               // the size of gpuTexture
     i32 gpuHeight;
     u64 lastDrawTicks;

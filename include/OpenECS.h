@@ -990,8 +990,8 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSurface_OnDrawn(ECSSurface *surface, ECSSurfa
 /// @lua surface:fill
 OPENECS_EXPORT void ECSSurface_Fill(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height, ECSColor color);
 
-/// @brief Gets the GPU device that OpenECS draws with: every OS window's renderer and every GPU surface's texture are on it. A plugin draws into a GPU surface with it, through SDL's GPU API or its own renderer on the device. Main thread only.
-/// @return The SDL_GPUDevice, or nullptr without a GPU renderer. OpenECS owns it, and destroys it after every plugin's Destroy, so a plugin releases what it made on it there or earlier.
+/// @brief Gets the GPU device that OpenECS draws with: every GPU surface's texture is on it, and every OS window's renderer whose window the GPU can present to. A plugin draws into a GPU surface with it, through SDL's GPU API or its own renderer on the device. Main thread only.
+/// @return The SDL_GPUDevice, or nullptr without one. OpenECS owns it, and destroys it after every plugin's Destroy, so a plugin releases what it made on it there or earlier.
 /// @lua none: the gpu standard plugin draws into GPU surfaces from Lua
 OPENECS_EXPORT void *ECSGpu_GetDevice(void);
 
