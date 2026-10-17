@@ -533,24 +533,25 @@ static void Shuild_OpenECS(void)
     if (CONFIG.windows)
     {
         // a plugin's DLL is linked with the executable's import library, as Windows finds a DLL's functions through it
-        SHU_CompilerAddFlags(SHU_UtilFormat(" '-Wl,--out-implib,%s%slib/libOpenECS.a'", SHU_UtilGetExecutablePath(), CONFIG.outputDir));
+        SHU_CompilerAddLinkerFlags(SHU_UtilFormat(" '-Wl,--out-implib,%s%slib/libOpenECS.a'", SHU_UtilGetExecutablePath(), CONFIG.outputDir));
 
         // only Debug builds open a console window; the others log to their log file, and to a console they are started from (DESIGN 14.4)
         if (CONFIG.type != BuildType_Debug)
         {
-            SHU_CompilerAddFlags(" -Wl,--subsystem,windows");
+            SHU_CompilerAddLinkerFlags(" -Wl,--subsystem,windows");
         }
     }
     else
     {
         // the executable exports only the plugin interface: the OPENECS_EXPORT functions, whose names start with ECS
         // it finds the shared libraries of SDL and SDL_ttf in its own folder
-        SHU_CompilerAddFlags(" -fvisibility=hidden '-Wl,--export-dynamic-symbol=ECS*' '-Wl,-rpath,$ORIGIN'");
+        SHU_CompilerAddFlags(" -fvisibility=hidden");
+        SHU_CompilerAddLinkerFlags(" '-Wl,--export-dynamic-symbol=ECS*' '-Wl,-rpath,$ORIGIN'");
 
         // the sanitizers find their settings in src/base/Sanitizers.c by name
         if (CONFIG.type == BuildType_Debug)
         {
-            SHU_CompilerAddFlags(" '-Wl,--export-dynamic-symbol=__*san_default_*'");
+            SHU_CompilerAddLinkerFlags(" '-Wl,--export-dynamic-symbol=__*san_default_*'");
         }
     }
 
