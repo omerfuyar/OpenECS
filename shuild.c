@@ -129,7 +129,7 @@ static void PrintUsageAndExit(int status)
 
 static void Refuse(const char *reason, const char *argument)
 {
-    SHU_LogError(0, "%s: " SHUM_COLOR_RED("'%s'"), reason, argument);
+    SHU_UtilFail(0, "%s: " SHUM_LOG_VALUE("%s"), reason, argument);
     PrintUsageAndExit(1);
 }
 
@@ -188,8 +188,8 @@ static void SetupConfiguration(int argc, char **argv)
 
     SHU_CacheConfigure(CONFIG.buildDir);
 
-    SHU_LogInfo("Build type: " SHUM_COLOR_BLUE("'%s'") ", standard plugins: " SHUM_COLOR_BLUE("%s") ", examples: " SHUM_COLOR_BLUE("%s") ", compiler: " SHUM_COLOR_BLUE("'%s'") " for " SHUM_COLOR_BLUE("%s"),
-                BuildType_String(CONFIG.type), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no", CONFIG.compiler, SHUM_PLATFORM_GET_STRING(target));
+    SHU_UtilLog("building " SHUM_LOG_VALUE("%s") " with " SHUM_LOG_VALUE("%s") " for " SHUM_LOG_VALUE("%s") "; standard plugins: " SHUM_LOG_VALUE("%s") ", examples: " SHUM_LOG_VALUE("%s"),
+            BuildType_String(CONFIG.type), CONFIG.compiler, SHUM_PLATFORM_GET_STRING(target), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
 }
 
 // our code gets warnings, and in Debug gcc's static analyzer and the address and undefined-behaviour sanitizers, which MinGW does not have; dependencies get none of them
@@ -266,7 +266,7 @@ static char *CompilerTool(const char *gcc, const char *clang)
 /// such as .shu/Debug/SDL3-build.log, and the end of the log shows when the step fails.
 static void Shuild_CMake(const char *name, const char *source, const char *options)
 {
-    SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", name);
+    SHU_UtilLog(SHUM_LOG_NAME("%s") " (CMake): building", name);
 
     const char *root = SHU_UtilGetExecutablePath();
 
@@ -296,7 +296,7 @@ static void Shuild_CMake(const char *name, const char *source, const char *optio
     log = SHU_UtilFormat("%s%s-install.log", CONFIG.buildDir, name);
     SHU_UtilRunLogged(log, "cmake --install \"%s\"", buildDir);
 
-    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'%s'") "\n", name);
+    SHU_UtilLog(SHUM_LOG_NAME("%s") " (CMake): built", name);
 }
 
 static void Shuild_SDL(void)
@@ -395,7 +395,7 @@ static void MakeFfiHeader(const char *target, const char *path)
 
     if (init == NULL || sscanf(init, "AC_INIT([libffi],[%31[^]]", version) != 1 || sscanf(version, "%d.%d.%d", &major, &minor, &micro) < 2)
     {
-        SHU_LogError(SHUResult_ErrBadData, "Cannot find libffi's version in its configure.ac.");
+        SHU_UtilFail(SHUResult_ErrBadData, "libffi's version is not in its " SHUM_LOG_PATH("configure.ac") ".");
         exit(1);
     }
 
@@ -416,7 +416,10 @@ static void MakeFfiHeader(const char *target, const char *path)
     SHUSlice text = SHU_UtilReadFile("dependencies/libffi/include/ffi.h.in");
     char *header = malloc(text.size * 4 + 1);
     usz length = 0;
-    SHU_Assert(header != NULL, "Cannot write '%s' from libffi's include/ffi.h.in.", path);
+    if (header == NULL)
+    {
+        SHU_UtilFail(SHUResult_ErrAllocation, SHUM_LOG_PATH("%s") " cannot be written from " SHUM_LOG_PATH("dependencies/libffi/include/ffi.h.in") ".", path);
+    }
 
     for (const char *cursor = text.data; *cursor != '\0';)
     {
@@ -470,7 +473,7 @@ static void Shuild_libffi(void)
     {
         if (linuxTarget == NULL)
         {
-            SHU_LogError(SHUResult_ErrBadData, "libffi is configured for x86_64 and aarch64 only.");
+            SHU_UtilFail(SHUResult_ErrBadData, SHUM_LOG_NAME("libffi") " is configured for x86_64 and aarch64 only.");
             exit(1);
         }
 
@@ -604,7 +607,13 @@ static void Shuild_Repository(const char *folder)
 {
     char *source = SHU_UtilFormat("%sshuild.c", folder);
 
-    SHU_Assert(SHU_UtilFileExists(source) == SHUFileType_Regular, "%s is not checked out, so it is not built; clone OpenECS with --recursive", folder);
+    // the name of the folder, without its last slash
+    int nameLength = (int)strlen(folder) - 1;
+
+    if (SHU_UtilFileExists(source) != SHUFileType_Regular)
+    {
+        SHU_UtilFail(SHUResult_ErrNotFound, SHUM_LOG_NAME("%.*s") " is not checked out; clone OpenECS with " SHUM_LOG_COMMAND("--recursive") ".", nameLength, folder);
+    }
 
     // the output folder is named from the repository's folder, which is one level deeper for each of its folders
     const char *output = "";
@@ -624,9 +633,9 @@ static void Shuild_Repository(const char *folder)
     char *flags = SHU_UtilFormat("-I%sdependencies", SHU_UtilGetExecutablePath());
     char *arguments = SHU_UtilFormat("-b %s -o %s -c %s", BuildType_String(CONFIG.type), output, CONFIG.compiler);
 
-    SHU_LogInfo("Starting to build " SHUM_COLOR_MAGENTA("'%s'") "...", folder);
+    SHU_UtilLog(SHUM_LOG_NAME("%.*s") " (build script): building", nameLength, folder);
     SHU_UtilBuildScript(source, program, flags, arguments);
-    SHU_LogInfo("Done building " SHUM_COLOR_MAGENTA("'%s'") "\n", folder);
+    SHU_UtilLog(SHUM_LOG_NAME("%.*s") " (build script): built", nameLength, folder);
 }
 
 static void Shuild_Plugins(void)
@@ -681,7 +690,7 @@ static void Shuild_Definitions(void)
     // a program built for another system cannot run here to write them
     if (!SHUM_PLATFORM_IS_HOST(SHU_CompilerGetTarget()))
     {
-        SHU_LogWarning("The definition files are not written, as OpenECS is built for another system.");
+        SHU_UtilWarn("the definition files are not written, as OpenECS is built for another system.");
         return;
     }
 
@@ -698,7 +707,7 @@ static void Shuild_Definitions(void)
 
     if (SHU_UtilFileExists(definitions) != SHUFileType_Directory)
     {
-        SHU_LogWarning("The definition files are not written; " SHUM_COLOR_RED("'%sdefinitions.log'") " says why.", CONFIG.outputDir);
+        SHU_UtilWarn("the definition files are not written; " SHUM_LOG_PATH("%sdefinitions.log") " says why.", CONFIG.outputDir);
         return;
     }
 
