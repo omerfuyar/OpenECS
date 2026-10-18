@@ -2072,6 +2072,30 @@ bool ECSIWindow_PopupRect(ECSPopup popup, SDL_FRect *retRect, usz *retWindow)
     return true;
 }
 
+SDL_Window *ECSIWindow_PopupWindowAt(SDL_Window *window, f32 x, f32 y, SDL_FRect *retRect)
+{
+    SDL_assert(retRect != nullptr);
+
+    usz count = 0;
+    ECSPopup *popups = ECSIPopups_GetOpen(&count);
+
+    // the newest popup on top
+    for (usz i = count; i > 0; i--)
+    {
+        ECSIPopupView *view = popups[i - 1]->window;
+
+        if (view != nullptr && view->window != nullptr && SDL_GetWindowParent(view->window) == window &&
+            (SDL_GetWindowFlags(view->window) & SDL_WINDOW_HIDDEN) == 0 &&
+            ECSIWindow_Contains(x, y, view->rect.x, view->rect.y, view->rect.w, view->rect.h))
+        {
+            *retRect = view->rect;
+            return view->window;
+        }
+    }
+
+    return nullptr;
+}
+
 ECSPanel ECSIWindow_PanelAt(f32 x, f32 y, f32 *retX, f32 *retY)
 {
     SDL_assert(retX != nullptr);
