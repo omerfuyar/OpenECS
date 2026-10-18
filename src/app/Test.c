@@ -40,6 +40,10 @@ static struct
     f32 pointerX;                 // the pointer's last position
     f32 pointerY;
     SDL_MouseButtonFlags buttons; // the buttons held
+    SDL_MouseButtonFlags delivered; // the buttons held in the events delivered so far
+    SDL_WindowID grabID;            // the window that got the press while buttons are held, as the system keeps the pointer there; 0 for the event's own
+    f32 grabX;                      // where that window shows in the event's own, so positions move into it
+    f32 grabY;
     char **files;                 // stb_ds array of the paths that the test's files field names
     char **dropped;               // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
     char *presets;                // the folder that the test's presets field names, ending with a separator, or nullptr
@@ -117,6 +121,64 @@ static void ECSITest_Send(SDL_Event event)
 
     arrput(TEST.events, event);
     arrput(TEST.eventModifiers, event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP ? event.key.mod : TEST.held);
+}
+
+/// @brief Sends a pointer event to the SDL popup window under it, in the popup's positions, as the system does; the test's positions are in the OS window.
+/// While buttons are held, events go to the window that got the press. A popup that closed in between gives them back to the OS window.
+static void ECSITest_Route(SDL_Event *event)
+{
+    SDL_WindowID *id = nullptr;
+    f32 *x = nullptr;
+    f32 *y = nullptr;
+
+    switch (event->type)
+    {
+    case SDL_EVENT_MOUSE_MOTION:
+        id = &event->motion.windowID;
+        x = &event->motion.x;
+        y = &event->motion.y;
+        break;
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+        id = &event->button.windowID;
+        x = &event->button.x;
+        y = &event->button.y;
+        break;
+    case SDL_EVENT_MOUSE_WHEEL:
+        id = &event->wheel.windowID;
+        x = &event->wheel.mouse_x;
+        y = &event->wheel.mouse_y;
+        break;
+    default:
+        return;
+    }
+
+    bool grabbed = TEST.delivered != 0 && (TEST.grabID == 0 || SDL_GetWindowFromID(TEST.grabID) != nullptr);
+    SDL_FRect rect = {0};
+
+    if (!grabbed)
+    {
+        SDL_Window *popup = ECSIWindow_PopupWindowAt(SDL_GetWindowFromID(*id), *x, *y, &rect);
+        TEST.grabID = popup != nullptr ? SDL_GetWindowID(popup) : 0;
+        TEST.grabX = rect.x;
+        TEST.grabY = rect.y;
+    }
+
+    if (TEST.grabID != 0)
+    {
+        *id = TEST.grabID;
+        *x -= TEST.grabX;
+        *y -= TEST.grabY;
+    }
+
+    if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+    {
+        TEST.delivered |= SDL_BUTTON_MASK(event->button.button);
+    }
+    else if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
+    {
+        TEST.delivered &= ~SDL_BUTTON_MASK(event->button.button);
+    }
 }
 
 /// @brief Reads the modifiers held during pointer events from an optional Lua argument, such as "Shift" or "Ctrl+Shift".
@@ -938,6 +1000,7 @@ bool ECSITest_Step(void)
     if (TEST.nextEvent < arrlenu(TEST.events))
     {
         SDL_SetModState(TEST.eventModifiers[TEST.nextEvent]);
+        ECSITest_Route(&TEST.events[TEST.nextEvent]);
         SDL_PushEvent(&TEST.events[TEST.nextEvent++]);
         return true;
     }
