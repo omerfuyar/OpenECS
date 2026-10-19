@@ -1,13 +1,13 @@
 #!/bin/sh
 # Runs the examples' tests on Wayland, in a headless sway, as test.sh runs them on SDL's offscreen driver.
 # There, popups and pop-out windows are windows of their own, which the offscreen driver does not have.
-# Sway floats every window, so each keeps the size it asks for, and the tests' positions hold.
+# Sway tiles the windows, as Hyprland and other tiling compositors do, so a window gets the size sway gives it.
 set -u
 
 executable="$1"
 runtime=$(mktemp -d)
 chmod 700 "$runtime"
-printf 'output HEADLESS-1 resolution 1920x1080\nfor_window [app_id=".*"] floating enable\n' > "$runtime/sway.conf"
+printf 'output HEADLESS-1 resolution 1920x1080\n' > "$runtime/sway.conf"
 
 mkdir -p build
 XDG_RUNTIME_DIR="$runtime" WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 \

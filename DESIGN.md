@@ -1185,7 +1185,7 @@ OpenECS follows the XDG Base Directory specification:
 - While a message dialog waits (7.7), the test goes on, so it can read and answer the dialog. A dialog that the test's own step opens, as `call` can, cannot wait for the test, so it is answered with its last button, and so is one that waits when the test ends.
 - The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
 - `.github/scripts/test.sh` runs every test in `bin/examples/` with a Debug build.
-- `.github/scripts/test-wayland.sh` runs them on Wayland, in a headless sway that floats every window, so each keeps its size. There, popups and pop-out windows are windows of their own.
+- `.github/scripts/test-wayland.sh` runs them on Wayland, in a headless sway that tiles the windows. There, popups and pop-out windows are windows of their own.
 
 ### 17.6 Examples
 
