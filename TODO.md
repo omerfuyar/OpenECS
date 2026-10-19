@@ -8,7 +8,6 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **Linux first.** Linux is the priority. Windows is supported; other platforms are not worked on for now, as each one needs upkeep (DESIGN 19.4).
 - **gpu: shaders from source.** The owner chose SDL_shadercross (see Standard plugins).
-- **math.** The math plugins (see Standard plugins).
 - **Docs for every function's parameters** (see Tasks).
 - **Bugs** that the owner reports from testing.
 
@@ -32,7 +31,6 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 - **web.** HTTP/2 and compressed answers, which need more libraries or more of libcurl.
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
 - **gpu: shaders from source.** gpu takes compiled shaders: SPIR-V, DXIL or MSL, the one the GPU's driver takes, so a plugin that runs on several systems ships each. SDL_shadercross compiles one source, HLSL or SPIR-V, to the others at run time. The owner chose to add SDL_shadercross, with SPIRV-Cross and DXC, so gpu takes HLSL or SPIR-V and compiles it for the driver.
-- **math.** Plugins of math functions that other plugins share, from Lua and C: vectors, matrices and the like. The owner wants them now.
 
 ## Questions
 
