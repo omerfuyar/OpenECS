@@ -44,14 +44,7 @@ cp dependencies/stb/LICENSE "$folder/licenses/stb.txt"
 cp resources/Roboto-LICENSE.txt "$folder/licenses/Roboto.txt"
 
 # the libraries that the standard plugins include or link, and the font draw ships
-std=std/dependencies
-cp $std/SDL_net/LICENSE.txt "$folder/licenses/SDL_net.txt"
-cp $std/nanosvg/LICENSE.txt "$folder/licenses/nanosvg.txt"
-cp $std/dr_libs/LICENSE "$folder/licenses/dr_libs.txt"
-cp $std/cgltf/LICENSE "$folder/licenses/cgltf.txt"
-cp $std/curl/COPYING "$folder/licenses/curl.txt"
-cp $std/mbedtls/LICENSE "$folder/licenses/mbedTLS.txt"
-cp std/plugins/draw/fonts/OFL.txt "$folder/licenses/RobotoMono.txt"
+std_notices=$(.github/scripts/licenses-std.sh "$folder/licenses")
 
 cat > "$folder/licenses/README.txt" << NOTICE
 OpenECS $version includes these works. Their licenses are in this folder.
@@ -65,31 +58,7 @@ libffi: MIT license
 Clay: zlib license
 stb (stb_image, stb_vorbis): MIT license or public domain
 Roboto font: Apache License 2.0
-SDL_net: zlib license
-nanosvg: zlib license
-dr_libs (dr_wav, dr_mp3, dr_flac): MIT No Attribution license or public domain
-cgltf: MIT license
-curl (libcurl): curl license, derived from the MIT license
-Mbed TLS: Apache License 2.0, chosen of its Apache 2.0 or GPL 2.0 licenses
-Roboto Mono font: SIL Open Font License 1.1
+$std_notices
 NOTICE
 
-# Windows opens zip files itself; Git Bash has no zip, but GitHub's Windows runners have 7-Zip
-case "$platform" in
-windows-*)
-    archive="$name.zip"
-    rm -f "dist/$archive"
-    if command -v zip > /dev/null; then
-        (cd dist && zip -qr "$archive" "$name")
-    else
-        (cd dist && 7z a -tzip -bso0 "$archive" "$name")
-    fi
-    ;;
-*)
-    archive="$name.tar.gz"
-    tar -C dist -czf "dist/$archive" "$name"
-    ;;
-esac
-
-rm -rf "$folder"
-echo "dist/$archive"
+.github/scripts/archive.sh "$name" "$platform"

@@ -1266,14 +1266,14 @@ OpenECS follows the XDG Base Directory specification:
 - For each platform, it makes a Release build and packs it into `openecs-VERSION-PLATFORM.tar.gz`: the program with its plugins, presets, examples and resources, the plugin interface (`OpenECS.h`, `ecs.lua` and `shu.h`), `LICENSE`, and the licenses of the works it includes. The Windows package is a zip file, which Windows opens itself, with SDL's DLLs beside the program. Its `lib/` holds the import libraries of OpenECS, SDL3 and SDL3_ttf, which a C plugin links on Windows (17.2).
 - It packs the source with every submodule into `openecs-VERSION-source.tar.gz`, because GitHub's own source archives leave the submodules out. `SHA256SUMS` holds the checksums of the archives.
 - It makes a draft release with these files. Its description is `.github/release-notes/vVERSION.md`. A version below 1.0.0, or one with a suffix, is marked as a pre-release.
-- OpenECS-std and OpenECS-examples make a draft release of their own from their tag, with their source and its submodules, and their own description.
+- OpenECS-std and OpenECS-examples make a draft release of their own from their tag, with their source and its submodules, and their own description. For each platform, it also holds their part of OpenECS's Release build of the same version, `openecs-std-VERSION-PLATFORM` and `openecs-examples-VERSION-PLATFORM`: std's plugins, the preset `launcher` and the plugins' definition files, or the examples with their native plugins. Unpacked into an OpenECS folder of that version, their folders join OpenECS's. Their workflows check out OpenECS at the same tag, so OpenECS's tag is pushed first.
 - Releases are made for Linux and Windows on x86_64. The workflow also lists the other platforms, commented out. Linux is the priority; each platform needs upkeep, so others are added only when they cost little.
 - Linux builds are made on Ubuntu 24.04, so they need glibc 2.38 or later. Windows builds are made on Windows Server 2025 with LLVM-MinGW's UCRT runtime, which Windows 10 and later have.
 - The steps of a release:
   1. In OpenECS-std and OpenECS-examples, write each release's description, and merge `dev` into `main` with a pull request.
   2. On OpenECS's `dev`, move `std/` and `examples/` to those `main` commits, set `OPENECS_VERSION` to the release, and write its description.
   3. Merge OpenECS's `dev` into `main` with a pull request.
-  4. Tag the three merge commits `vVERSION` and push the tags.
+  4. Tag the three merge commits `vVERSION` and push the tags, OpenECS's first.
   5. Check the three draft releases, then publish them.
   6. On OpenECS's `dev`, set `OPENECS_VERSION` to the next version with `-dev`.
 
