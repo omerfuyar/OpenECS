@@ -1,7 +1,7 @@
 #!/bin/sh
 # Packs the part of a Release build that OpenECS-std or OpenECS-examples makes, for that repository's own release:
 # dist/openecs-REPOSITORY-VERSION-PLATFORM.tar.gz, or .zip for Windows. Unpacked into an OpenECS folder of the same version, its folders join OpenECS's.
-# std: the plugins, the preset launcher, and the plugins' definition files in include/. examples: the examples, with their native plugins built.
+# std: the plugins, the preset launcher, and the plugins' definition files and cglm's headers in include/. examples: the examples, with their native plugins built.
 set -eu
 
 repository="$1"
@@ -18,6 +18,7 @@ std)
     mkdir -p "$folder/include" "$folder/licenses"
     cp -r build/Release/bin/plugins build/Release/bin/presets "$folder/"
     cp build/Release/definitions/*.lua build/Release/definitions/*.h "$folder/include/"
+    cp -r build/Release/include/cglm "$folder/include/"
     notices=$(.github/scripts/licenses-std.sh "$folder/licenses")
     printf 'OpenECS-std %s includes these works. Their licenses are in this folder.\n\n%s\n' "$version" "$notices" > "$folder/licenses/README.txt"
     ;;

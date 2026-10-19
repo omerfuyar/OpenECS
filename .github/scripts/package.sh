@@ -15,6 +15,8 @@ mkdir -p "$folder/include" "$folder/licenses"
 cp -r build/Release/bin/. "$folder/"
 cp include/OpenECS.h include/ecs.lua "$folder/include/"
 cp -r build/Release/include/shu "$folder/include/"
+# cglm's headers, which the cglm plugin's definition header includes, so C plugins call cglm
+cp -r build/Release/include/cglm "$folder/include/"
 # the build wrote the definition files of the plugins it found, the standard ones, so editors complete their functions with include/ alone
 cp build/Release/definitions/*.lua build/Release/definitions/*.h "$folder/include/"
 cp LICENSE.md README.md "$folder/"
