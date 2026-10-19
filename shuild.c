@@ -551,10 +551,10 @@ static void Shuild_OpenECS(void)
         SHU_CompilerAddFlags(" -fvisibility=hidden");
         SHU_CompilerAddLinkerFlags(" '-Wl,--export-dynamic-symbol=ECS*' '-Wl,-rpath,$ORIGIN'");
 
-        // the sanitizers find their settings in src/base/Sanitizers.c by name
+        // the sanitizers find their settings in src/base/Sanitizers.c by name, and its dlclose replaces the system's
         if (CONFIG.type == BuildType_Debug)
         {
-            SHU_CompilerAddLinkerFlags(" '-Wl,--export-dynamic-symbol=__*san_default_*'");
+            SHU_CompilerAddLinkerFlags(" '-Wl,--export-dynamic-symbol=__*san_default_*' '-Wl,--export-dynamic-symbol=dlclose'");
         }
     }
 
