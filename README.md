@@ -258,6 +258,8 @@ A test needs a Vulkan driver too, for the GPU panels of 21_gpu: one for your gra
 
 To see why a test fails, run it alone: `./build/Debug/bin/OpenECS --test build/Debug/bin/examples/3_ui/test.lua`. DESIGN.md section 17.5 explains how to write one.
 
+`.github/scripts/test-wayland.sh` runs the tests on Wayland, in a headless sway, where popups and pop-out windows are windows of their own. It needs sway: `sudo apt-get install sway`.
+
 ### Checks
 
 GitHub checks every pull request (DESIGN.md section 19.3). These commands run the same checks on your computer:
@@ -265,6 +267,7 @@ GitHub checks every pull request (DESIGN.md section 19.3). These commands run th
 ``` shell
 .github/scripts/build.sh D
 .github/scripts/test.sh build/Debug/bin/OpenECS
+.github/scripts/test-wayland.sh build/Debug/bin/OpenECS
 .github/scripts/build.sh R
 .github/scripts/definitions.sh build/Debug/bin/OpenECS
 ```
