@@ -1178,6 +1178,7 @@ OpenECS follows the XDG Base Directory specification:
   | `dialog()`                                                           | The message dialog that waits for an answer (7.7), or nil: its `title`, `message` and `buttons`, the number of the `selected` button, and `rects`, each button's rectangle in its OS window. A test answers it with `key` or `click`.            |
   | `match(actual, expected, message)`                                   | Checks that `actual` has the same number of list items as `expected`, and each item and field it names.                                                                                                                                            |
 
+- Before `run` goes on, each OS window gets the size the system gives it, as a tiling compositor does, and the layout follows it.
 - A pointer event over a shown popup window goes to that popup, in its own positions, as the system gives it. While a button is held, the events go to the window that got the press.
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
 - A Lua error fails the test and logs it with its stack trace. When `run` returns, the program quits without asking about unsaved work.
