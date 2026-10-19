@@ -4,7 +4,13 @@
 #include "SDL3/SDL.h"
 
 #include <stdio.h>
+
+#if defined(SDL_PLATFORM_WINDOWS)
+#include <stdlib.h>
+#include <windows.h>
+#else
 #include <unistd.h>
+#endif
 
 #pragma region Source Only
 
@@ -136,10 +142,25 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
     return true;
 }
 
+#if defined(SDL_PLATFORM_WINDOWS)
+/// @brief A Windows build other than Debug has no console of its own (DESIGN 14.4). Started from a console, it writes to that console, unless its output goes somewhere already, such as a pipe.
+static void ECSIMain_AttachConsole(void)
+{
+    if (GetStdHandle(STD_ERROR_HANDLE) == nullptr && AttachConsole(ATTACH_PARENT_PROCESS))
+    {
+        (void)freopen("CONOUT$", "w", stdout);
+        (void)freopen("CONOUT$", "w", stderr);
+    }
+}
+#endif
+
 #pragma endregion Source Only
 
 int main(int argc, char **argv)
 {
+#if defined(SDL_PLATFORM_WINDOWS)
+    ECSIMain_AttachConsole();
+#endif
     ECSILog_Initialize();
     ECSIArguments arguments;
 
@@ -168,7 +189,21 @@ int main(int argc, char **argv)
     // a session or preset opened while OpenECS ran starts a new OpenECS in place of this one; SDL can start a process but not replace one
     if (next != nullptr)
     {
+#if defined(SDL_PLATFORM_WINDOWS)
+        // Windows cannot replace a process either, so the new one starts and this one ends; SDL quotes its arguments for the command line
+        char *program = nullptr;
+        SDL_Process *process = _get_pgmptr(&program) == 0 ? SDL_CreateProcess((const char *[]){program, option, next, nullptr}, false) : nullptr;
+
+        if (process != nullptr)
+        {
+            SDL_DestroyProcess(process);
+            SDL_free(next);
+            return status;
+        }
+#else
+        (void)argv;
         execv("/proc/self/exe", (char *[]){argv[0], (char *)option, next, nullptr});
+#endif
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot start again from '%s'.", next);
         SDL_free(next);
         return 1;

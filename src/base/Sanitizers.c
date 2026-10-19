@@ -1,21 +1,19 @@
-// for dl_iterate_phdr and RTLD_NODELETE
-#define _GNU_SOURCE
-
 #include "base/Sanitizers.h"
 
 #include "OpenECS.h"
 
-#ifdef DEBUG
+// MinGW has no sanitizers, so Windows builds keep the empty functions
+#if defined(DEBUG) && defined(__linux__)
 
 #include <dlfcn.h>
-#include <link.h>
 #include <sanitizer/lsan_interface.h>
 
 #pragma region Source Only
 
-// the sanitizers look these functions up by name, so the executable exports them
+// the sanitizers look these functions up by name, and the libraries call dlclose, so the executable exports them
 OPENECS_EXPORT const char *__asan_default_options(void);
 OPENECS_EXPORT const char *__lsan_default_suppressions(void);
+OPENECS_EXPORT int dlclose(void *handle);
 
 const char *__asan_default_options(void)
 {
@@ -40,6 +38,7 @@ const char *__lsan_default_suppressions(void)
            "leak:_dri.so\n"
            "leak:libdrm\n"
            "leak:libvulkan\n" // the loader and drivers such as libvulkan_radeon.so
+           "leak:libVkLayer\n" // Vulkan layers, such as Mesa's device select
            "leak:libnvidia\n"
            "leak:libibus\n"
            "leak:libfcitx\n"
@@ -53,26 +52,15 @@ const char *__lsan_default_suppressions(void)
            "leak:GL_RunCommandQueue\n";
 }
 
-/// @brief Marks a loaded library so it is never unloaded. dlopen with RTLD_NOLOAD finds it without loading anything.
-static int ECSISanitizers_Keep(struct dl_phdr_info *info, size_t size, void *data)
+/// @brief Replaces the system's dlclose, as the executable's symbols come before the libraries': no library is unloaded until the program exits,
+/// so a leak inside one is matched by its name. Graphics drivers are otherwise unloaded when SDL or Vulkan's loader is done with them, and their leaks would show an unknown module.
+int dlclose(void *handle)
 {
-    (void)size;
-    (void)data;
-
-    if (info->dlpi_name != nullptr && info->dlpi_name[0] != '\0')
-    {
-        (void)dlopen(info->dlpi_name, RTLD_LAZY | RTLD_NOLOAD | RTLD_NODELETE);
-    }
-
+    (void)handle;
     return 0;
 }
 
 #pragma endregion Source Only
-
-void ECSISanitizers_KeepLibraries(void)
-{
-    dl_iterate_phdr(ECSISanitizers_Keep, nullptr);
-}
 
 void ECSISanitizers_CheckLeaks(void)
 {
@@ -80,10 +68,6 @@ void ECSISanitizers_CheckLeaks(void)
 }
 
 #else
-
-void ECSISanitizers_KeepLibraries(void)
-{
-}
 
 void ECSISanitizers_CheckLeaks(void)
 {

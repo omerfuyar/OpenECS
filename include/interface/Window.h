@@ -70,6 +70,14 @@ void ECSIWindow_ToPopup(ECSPopup popup, f32 x, f32 y, f32 *retX, f32 *retY);
 /// @return false if it has not been shown yet.
 bool ECSIWindow_PopupRect(ECSPopup popup, SDL_FRect *retRect, usz *retWindow);
 
+/// @brief Finds the SDL popup window that shows a point of an OS window, for tests, as the system gives it the pointer.
+/// @param window The OS window.
+/// @param x Horizontal position in its layout units.
+/// @param y Vertical position in its layout units.
+/// @param retRect Gets where the popup window shows, in the layout units of the OS window.
+/// @return The newest such popup window, or nullptr.
+SDL_Window *ECSIWindow_PopupWindowAt(SDL_Window *window, f32 x, f32 y, SDL_FRect *retRect);
+
 /// @brief Finds the visible panel under a point of the event window, or of another OS window that the point falls in on the screen.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.

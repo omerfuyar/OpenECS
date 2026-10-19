@@ -119,7 +119,7 @@ static void ECSIPlugin_Free(ECSIPlugin *plugin)
 /// @return A copy to free with SDL_free, or nullptr if out of memory.
 static char *ECSIPlugin_AbsoluteFolder(const char *folder)
 {
-    if (folder[0] == '/')
+    if (ECSPath_IsAbsolute(folder))
     {
         return SDL_strdup(folder);
     }

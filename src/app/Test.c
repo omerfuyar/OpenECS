@@ -40,6 +40,11 @@ static struct
     f32 pointerX;                 // the pointer's last position
     f32 pointerY;
     SDL_MouseButtonFlags buttons; // the buttons held
+    SDL_MouseButtonFlags delivered; // the buttons held in the events delivered so far
+    SDL_WindowID grabID;            // the window that got the press while buttons are held, as the system keeps the pointer there; 0 for the event's own
+    f32 grabX;                      // where that window shows in the event's own, so positions move into it
+    f32 grabY;
+    SDL_Point *sizes;               // stb_ds array of each OS window's size when the test last went on
     char **files;                 // stb_ds array of the paths that the test's files field names
     char **dropped;               // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
     char *presets;                // the folder that the test's presets field names, ending with a separator, or nullptr
@@ -117,6 +122,96 @@ static void ECSITest_Send(SDL_Event event)
 
     arrput(TEST.events, event);
     arrput(TEST.eventModifiers, event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP ? event.key.mod : TEST.held);
+}
+
+/// @brief Sends a pointer event to the SDL popup window under it, in the popup's positions, as the system does; the test's positions are in the OS window.
+/// While buttons are held, events go to the window that got the press. A popup that closed in between gives them back to the OS window.
+static void ECSITest_Route(SDL_Event *event)
+{
+    SDL_WindowID *id = nullptr;
+    f32 *x = nullptr;
+    f32 *y = nullptr;
+
+    switch (event->type)
+    {
+    case SDL_EVENT_MOUSE_MOTION:
+        id = &event->motion.windowID;
+        x = &event->motion.x;
+        y = &event->motion.y;
+        break;
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+        id = &event->button.windowID;
+        x = &event->button.x;
+        y = &event->button.y;
+        break;
+    case SDL_EVENT_MOUSE_WHEEL:
+        id = &event->wheel.windowID;
+        x = &event->wheel.mouse_x;
+        y = &event->wheel.mouse_y;
+        break;
+    default:
+        return;
+    }
+
+    bool grabbed = TEST.delivered != 0 && (TEST.grabID == 0 || SDL_GetWindowFromID(TEST.grabID) != nullptr);
+    SDL_FRect rect = {0};
+
+    if (!grabbed)
+    {
+        SDL_Window *popup = ECSIWindow_PopupWindowAt(SDL_GetWindowFromID(*id), *x, *y, &rect);
+        TEST.grabID = popup != nullptr ? SDL_GetWindowID(popup) : 0;
+        TEST.grabX = rect.x;
+        TEST.grabY = rect.y;
+    }
+
+    if (TEST.grabID != 0)
+    {
+        *id = TEST.grabID;
+        *x -= TEST.grabX;
+        *y -= TEST.grabY;
+    }
+
+    if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+    {
+        TEST.delivered |= SDL_BUTTON_MASK(event->button.button);
+    }
+    else if (event->type == SDL_EVENT_MOUSE_BUTTON_UP)
+    {
+        TEST.delivered &= ~SDL_BUTTON_MASK(event->button.button);
+    }
+}
+
+/// @brief Waits until the system has applied what each OS window asked for, such as its size.
+/// @return true if a window's size changed since the last call, so the loop handles it before the test goes on.
+static bool ECSITest_SyncWindows(void)
+{
+    bool changed = false;
+    usz count = 0;
+    SDL_Window *window = nullptr;
+
+    while ((window = ECSIWindow_Get(count + 1)) != nullptr)
+    {
+        SDL_Point size = {0};
+        SDL_SyncWindow(window);
+        SDL_GetWindowSize(window, &size.x, &size.y);
+
+        if (count >= arrlenu(TEST.sizes))
+        {
+            arrput(TEST.sizes, size);
+            changed = true;
+        }
+        else if (TEST.sizes[count].x != size.x || TEST.sizes[count].y != size.y)
+        {
+            TEST.sizes[count] = size;
+            changed = true;
+        }
+
+        count++;
+    }
+
+    arrsetlen(TEST.sizes, count);
+    return changed;
 }
 
 /// @brief Reads the modifiers held during pointer events from an optional Lua argument, such as "Shift" or "Ctrl+Shift".
@@ -731,19 +826,20 @@ static void ECSITest_Finish(void)
 
     arrfree(TEST.events);
     arrfree(TEST.eventModifiers);
+    arrfree(TEST.sizes);
     TEST.nextEvent = 0;
 }
 
 /// @brief Reads a field of the test table, at -2, that names a folder relative to the test file.
 static void ECSITest_ReadFolder(lua_State *state, const char *field, const char *path, char **retFolder)
 {
-    const char *slash = SDL_strrchr(path, '/');
+    const char *slash = ECSPath_LastSeparator(path);
 
     if (lua_getfield(state, -2, field) == LUA_TSTRING)
     {
         const char *folder = lua_tostring(state, -1);
 
-        if (SDL_asprintf(retFolder, "%.*s%s/", slash != nullptr && folder[0] != '/' ? (int)(slash - path + 1) : 0, path, folder) < 0)
+        if (SDL_asprintf(retFolder, "%.*s%s/", slash != nullptr && !ECSPath_IsAbsolute(folder) ? (int)(slash - path + 1) : 0, path, folder) < 0)
         {
             *retFolder = nullptr;
         }
@@ -803,10 +899,10 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 
     // a preset path is relative to the test file
     const char *preset = lua_getfield(state, -2, "preset") == LUA_TSTRING ? lua_tostring(state, -1) : OPENECS_TEST_PRESET;
-    const char *slash = SDL_strrchr(path, '/');
+    const char *slash = ECSPath_LastSeparator(path);
     usz length = SDL_strlen(preset);
-    bool file = SDL_strchr(preset, '/') != nullptr || (length > 4 && SDL_strcmp(preset + length - 4, ".lua") == 0);
-    int folderLength = slash != nullptr && file && preset[0] != '/' ? (int)(slash - path + 1) : 0;
+    bool file = ECSPath_LastSeparator(preset) != nullptr || (length > 4 && SDL_strcmp(preset + length - 4, ".lua") == 0);
+    int folderLength = slash != nullptr && file && !ECSPath_IsAbsolute(preset) ? (int)(slash - path + 1) : 0;
 
     if (SDL_asprintf(retPreset, "%.*s%s", folderLength, path, preset) < 0)
     {
@@ -825,7 +921,7 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
         const char *name = lua_tostring(state, -1);
         char *copy = nullptr;
 
-        if (SDL_asprintf(&copy, "%.*s%s", slash != nullptr && name[0] != '/' ? (int)(slash - path + 1) : 0, path, name) >= 0)
+        if (SDL_asprintf(&copy, "%.*s%s", slash != nullptr && !ECSPath_IsAbsolute(name) ? (int)(slash - path + 1) : 0, path, name) >= 0)
         {
             arrput(TEST.files, copy);
         }
@@ -938,6 +1034,7 @@ bool ECSITest_Step(void)
     if (TEST.nextEvent < arrlenu(TEST.events))
     {
         SDL_SetModState(TEST.eventModifiers[TEST.nextEvent]);
+        ECSITest_Route(&TEST.events[TEST.nextEvent]);
         SDL_PushEvent(&TEST.events[TEST.nextEvent++]);
         return true;
     }
@@ -945,6 +1042,12 @@ bool ECSITest_Step(void)
     arrfree(TEST.events);
     arrfree(TEST.eventModifiers);
     TEST.nextEvent = 0;
+
+    // the system may still resize a window, as a tiling compositor does, so the test goes on once the layout has the new size
+    if (ECSITest_SyncWindows())
+    {
+        return true;
+    }
 
     lua_State *state = ECSILua_GetState();
     int results = 0;

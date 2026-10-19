@@ -344,7 +344,7 @@ typedef struct ECSSurface
 
 - One SDL GPU device serves every OS window. An offscreen GPU renderer, `SDL_CreateGPURenderer(nullptr, nullptr)`, makes it as SDL's renderer needs it, and owns it. Each OS window has a 2D renderer on that device, made with `SDL_CreateGPURenderer(device, window)`.
 - The device outlives the OS windows and the plugins: it is destroyed after every plugin's `Destroy`, so a plugin releases its GPU objects there or earlier.
-- Without a GPU renderer for the main window, every window uses SDL's default renderer, and there is no device.
+- An OS window whose GPU renderer cannot be made, as when the GPU cannot present to it, uses SDL's default renderer. The device stays, and GPU panels still draw on it: that window shows a copy of each GPU panel's texture, which the GPU downloads after each draw into a texture of the window's renderer. It is slower, but GPU panels work where the GPU draws and something else presents, such as a laptop whose integrated GPU drives the screen, the offscreen windows of the tests, or Windows' software adapter. Without a GPU device, GPU panels show placeholders.
 - The core draws its own interface with that 2D renderer: Clay for layout, SDL3_ttf for text.
 - A GPU surface is a texture on the shared device, `B8G8R8A8_UNORM`, which is `ARGB8888` on the GPU, of the panel's size in pixels. Any OS window's renderer shows it by wrapping it (`SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER`), so a GPU panel moves between OS windows without recreating its texture. The texture is made again only when the panel's size changes, and then the panel draws before it shows.
 - A pixels surface is uploaded to a texture when it changed. Plugins with pixels surfaces never notice how the core shows them; GPU panels draw into the texture themselves (5.4).
@@ -459,9 +459,9 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Pop-out creates an OS window with a new root that holds one group with the panel. The window has the panel's size and opens at the pointer; on Wayland, the compositor places it (OVERVIEW 6.4).
 - `ecs.layout.popOut` pops out the focused panel. A panel alone in its OS window, and a panel of a locked group, stay. Code pops a panel out with the zone `ECSZone_Window`, in Lua `"window"`: `ECSLayout_Open(plugin, &panel, "text.editor", NULL, NULL, ECSZone_Window)` or `ECSLayout_Move(panel, NULL, ECSZone_Window)`.
 - Inside a pop-out window, every layout operation works as in the main window: splits, tabs, maximize, dragging and docking along its edges. Panels move between OS windows by dragging or by code.
-- A dragged panel lands in the OS window under the pointer. The core finds it from the windows' places on the screen. On Wayland, an application cannot know them: a panel dropped outside the window it was dragged from lands where the pointer enters one of the program's windows within 400 ms, and pops out otherwise.
+- A dragged panel lands in the OS window under the pointer. The core finds it from the windows' places on the screen. On Wayland, an application cannot know them: a panel dropped outside the window it was dragged from lands where the pointer enters one of the program's windows within 400 ms, and pops out otherwise; a panel alone in its OS window stays in it.
 - Each OS window has its own renderer and Clay context. Only the main window's renderer waits for vsync (3.1), so presenting several OS windows does not wait once for each.
-- A pop-out window closes when its last panel leaves it. Its close button closes its panels, after asking about unsaved work (4.5); Cancel keeps the window. Closing the main window quits.
+- A pop-out window closes when its last panel leaves it. Its close button closes its panels, after asking about unsaved work (4.5); Cancel keeps the window. Closing the main window quits, after asking about unsaved work; SDL's own quit when the last window closes is off (`SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE`), as it would answer that question.
 - When the main window's last panel leaves it while pop-out windows have panels, the first pop-out window's tree moves into the main window, so the main window is never empty. When the user closes the last panel of the tool, the program quits, and the tool's last session is removed, so the next start opens the preset.
 
 ### 6.11 Window frame
@@ -661,7 +661,7 @@ return {
 
 ```c
 /// @brief Every native plugin defines this function. The core calls it once, after it loads the plugin's library.
-OPENECS_EXPORT SHUResult ECSPlugin_Init(ECSPlugin plugin);
+OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 ```
 
 - `ECSPlugin_Init` receives the plugin's handle. Functions that act for the plugin take it first, so the core knows who is calling.
@@ -696,7 +696,7 @@ OPENECS_EXPORT SHUResult ECSPlugin_Init(ECSPlugin plugin);
 
 ### 9.8 The GPU device
 
-- Every plugin is a plugin on disk; the executable contains none. The core gives native plugins its SDL objects through two parts of its interface only: `ECSGpu_GetDevice()`, the GPU device, an `SDL_GPUDevice *` or nullptr without a GPU renderer, and a GPU surface's `texture` (5.4).
+- Every plugin is a plugin on disk; the executable contains none. The core gives native plugins its SDL objects through two parts of its interface only: `ECSGpu_GetDevice()`, the GPU device, an `SDL_GPUDevice *` or nullptr without one, and a GPU surface's `texture` (5.4).
 - The core owns the device and destroys it after every plugin's `Destroy` (5.3). A plugin calls the rest of SDL itself, with the executable's copy (17.2).
 - Lua has neither. The standard plugin **gpu** draws into GPU surfaces from Lua and C, with an interface of its own (20).
 
@@ -1057,6 +1057,7 @@ When the command line names no preset and no session, OpenECS starts with the fi
 | `ECSPlugin_Init` or the plugin's Lua file fails                                       | The plugin is marked failed and its registrations are removed. Plugins that depend on it are skipped and reported.                                                                                                                                  |
 | Invalid registration (bad signature, bad or duplicate name, the core prefix as a key) | That registration is rejected and the error is returned to the plugin, which continues.                                                                                                                                                             |
 | A panel callback raises an error                                                      | The panel becomes a faulted placeholder that shows the error. Its menu has a "Restart" entry (`ecs.panel.restart`), which recreates the panel in place from its last saved state: the state the session last saved, or the one it was created with. |
+| A panel's texture or pixels cannot be made                                            | The panel becomes a faulted placeholder, as above, so it is not tried again in every frame. The log has the reason.                                                                                                                                 |
 | A plugin callback (timer, event handler) raises an error                              | The error is reported. Repeats of the same error are counted, not reported again.                                                                                                                                                                   |
 | Problems while restoring a session                                                    | See 13.3.                                                                                                                                                                                                                                           |
 
@@ -1071,6 +1072,7 @@ When the command line names no preset and no session, OpenECS starts with the fi
 - All logging goes through SDL's log, including SDL's own messages. The core calls it directly; plugins call `ECS_Log`, which adds the plugin's name.
 - Each line holds the time, the level, the plugin and the message: `12:30:05.123 warning  [canvas] message`. The core's own lines name `ecs`.
 - Lines go to standard error and to the log file (16). Each start writes the log file anew.
+- On Windows, only Debug builds open a console window. Other builds are Windows GUI programs, so a release opens no console beside its window. Started from a console, such as `cmd.exe`, they write to it; started with their output sent elsewhere, such as into a pipe, they write there.
 
 ## 15. Memory and ownership
 
@@ -1097,6 +1099,7 @@ OpenECS follows the XDG Base Directory specification:
 | The core's settings             | `resources/settings.lua` next to the executable                           |
 
 - The data folders come from `SDL_GetPrefPath`, which follows `XDG_DATA_HOME`. SDL has no function for the configuration and state folders, so the core reads `XDG_CONFIG_HOME` and `XDG_STATE_HOME` itself.
+- On Windows, every one of these folders is SDL's pref path, `%APPDATA%\openecs\`, as Windows has no XDG folders. What they hold has different names, so they share it.
 
 ## 17. Build and dependencies
 
@@ -1116,12 +1119,13 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.2 Linking
 
-- SDL3 and SDL3_ttf are shared libraries shipped next to the executable and found through an `$ORIGIN` run path. So the core and every plugin share one copy of SDL.
+- SDL3 and SDL3_ttf are shared libraries shipped next to the executable. On Linux it finds them through an `$ORIGIN` run path; Windows finds a program's DLLs in its own folder. So the core and every plugin share one copy of SDL.
 - Lua, Clay, libffi and stb are linked statically into the executable.
-- libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
-- The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default.
-- Native plugins are shared libraries, built against the plugin header only. They do not link against the core; their calls to it are resolved when they are loaded.
-- First-party native plugins may call SDL3 and SDL3_ttf. Like their calls to the core, these calls are resolved when the plugin is loaded, against the libraries the executable loaded, so every plugin uses the executable's copy of SDL.
+- libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64 and Windows on x86_64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
+- The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default, and with `OPENECS_CORE` defined, so `OPENECS_EXPORT` exports.
+- Native plugins are shared libraries, built against the plugin header only. On Linux they do not link against the core; their calls to it are resolved when they are loaded. A DLL on Windows cannot call into the executable without its import library, so there the executable writes `lib/libOpenECS.a`, and plugins link it.
+- First-party native plugins may call SDL3 and SDL3_ttf. Like their calls to the core, these calls are resolved when the plugin is loaded, against the libraries the executable loaded, so every plugin uses the executable's copy of SDL. On Windows they link SDL's import libraries for it.
+- A plugin's own functions that the core calls, such as `ECSPlugin_Init`, are marked `OPENECS_PLUGIN`, which exports them from the plugin's library.
 - A first-party plugin is built from every C file in its folder, so the build needs no settings for each plugin. Its Lua files and its folders, which hold its Lua modules (9.6), are copied.
 - OpenECS-std and OpenECS-examples build their plugins this way, with their own builds (17.7).
 
@@ -1130,7 +1134,7 @@ OpenECS follows the XDG Base Directory specification:
 - Warnings: `-Wall -Wextra -Wpedantic -Wconversion -Wshadow`.
 - Debug builds of the core and of plugins add the static analyzer (`-fanalyzer`) and the address, leak and undefined-behaviour sanitizers (`-fsanitize=address,undefined`). Dependencies get neither.
 - The Sanitizers module sets the sanitizers' options and hides leaks inside the system libraries that SDL loads: graphics drivers, display servers, input methods, audio systems and D-Bus. In other builds its functions do nothing.
-- Debug builds keep every library loaded until the program exits, so a leak inside one is matched by its name. Graphics drivers are otherwise unloaded when their device is destroyed, and their leaks would show an unknown module.
+- Debug builds keep every library loaded until the program exits, so a leak inside one is matched by its name: the executable's `dlclose` does nothing, and comes before the system's. Graphics drivers are otherwise unloaded when SDL or Vulkan's loader is done with them, and their leaks would show an unknown module.
 - Debug builds check for leaks at shutdown, after OpenECS has freed its memory and before `SDL_Quit`.
 - Release builds set `SDL_ASSERT_LEVEL` to 0, so they have no assertions. Debug builds set it to 2.
 
@@ -1170,14 +1174,18 @@ OpenECS follows the XDG Base Directory specification:
   | `setting(name)`                                                      | A setting's value in effect (12), such as a colour of the theme.                                                                                                                                                                                   |
   | `screenshot(path)`                                                   | Draws a frame and saves the chosen OS window's picture as a PNG file.                                                                                                                                                                              |
   | `pixel(x, y)`                                                        | Draws a frame and gives the colour that the chosen OS window shows at a position in its layout units, as `"#RRGGBB"`, such as a GPU panel's (5.4).                                                                                               |
+  | `popup(number)`                                                      | An open popup, the oldest first: its rectangle `x`, `y`, `width` and `height` in its OS window, and `window`, the number of that window (4.6).                                                                                                   |
   | `dialog()`                                                           | The message dialog that waits for an answer (7.7), or nil: its `title`, `message` and `buttons`, the number of the `selected` button, and `rects`, each button's rectangle in its OS window. A test answers it with `key` or `click`.            |
   | `match(actual, expected, message)`                                   | Checks that `actual` has the same number of list items as `expected`, and each item and field it names.                                                                                                                                            |
 
+- Before `run` goes on, each OS window gets the size the system gives it, as a tiling compositor does, and the layout follows it.
+- A pointer event over a shown popup window goes to that popup, in its own positions, as the system gives it. While a button is held, the events go to the window that got the press.
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
 - A Lua error fails the test and logs it with its stack trace. When `run` returns, the program quits without asking about unsaved work.
 - While a message dialog waits (7.7), the test goes on, so it can read and answer the dialog. A dialog that the test's own step opens, as `call` can, cannot wait for the test, so it is answered with its last button, and so is one that waits when the test ends.
 - The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
 - `.github/scripts/test.sh` runs every test in `bin/examples/` with a Debug build.
+- `.github/scripts/test-wayland.sh` runs them on Wayland, in a headless sway that tiles the windows. There, popups and pop-out windows are windows of their own.
 
 ### 17.6 Examples
 
@@ -1243,8 +1251,9 @@ OpenECS follows the XDG Base Directory specification:
 
   | Check             | Does                                                                                                                                                                                                                                                                                               |
   | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `Debug (Linux)`   | Builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs the examples' tests (17.5) under the sanitizers; a failed test or a report fails it. Then writes the definition files of the plugins of the example `5_services` (10.10) and compiles each C header. |
+  | `Debug (Linux)`   | Builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs the examples' tests (17.5) under the sanitizers, on SDL's offscreen driver and then on Wayland; a failed test or a report fails it. Then writes the definition files of the plugins of the example `5_services` (10.10) and compiles each C header. |
   | `Release (Linux)` | Builds in Release, so code that only Release builds compile or link fails before a release.                                                                                                                                                                                                        |
+  | `Windows`         | Builds on Windows with LLVM-MinGW: in Debug, then runs the examples' tests and writes the definition files, as `Debug (Linux)` does; then in Release. It has no static analyzer or sanitizers, which MinGW lacks.                                                                                  |
   | `Lua (LuaLS)`     | Checks every Lua file with LuaLS, so code that misuses the `ecs` module, and mistakes in `ecs.lua`, fail it (9.6).                                                                                                                                                                                 |
 
 - The steps are scripts in `.github/scripts/`, so they run the same way on a contributor's computer.
@@ -1254,12 +1263,12 @@ OpenECS follows the XDG Base Directory specification:
 
 - OpenECS, OpenECS-std and OpenECS-examples are released together, with the same version. Each has a `dev` branch, a `main` branch that holds its releases, and a tag `vVERSION` for each release on its `main`.
 - `.github/workflows/release.yml` runs when a version tag is pushed. It fails when the tag does not match `OPENECS_VERSION`.
-- For each platform, it makes a Release build and packs it into `openecs-VERSION-PLATFORM.tar.gz`: the program with its plugins, presets, examples and resources, the plugin interface (`OpenECS.h`, `ecs.lua` and `shu.h`), `LICENSE`, and the licenses of the works it includes.
+- For each platform, it makes a Release build and packs it into `openecs-VERSION-PLATFORM.tar.gz`: the program with its plugins, presets, examples and resources, the plugin interface (`OpenECS.h`, `ecs.lua` and `shu.h`), `LICENSE`, and the licenses of the works it includes. The Windows package is a zip file, which Windows opens itself, with SDL's DLLs beside the program. Its `lib/` holds the import libraries of OpenECS, SDL3 and SDL3_ttf, which a C plugin links on Windows (17.2).
 - It packs the source with every submodule into `openecs-VERSION-source.tar.gz`, because GitHub's own source archives leave the submodules out. `SHA256SUMS` holds the checksums of the archives.
 - It makes a draft release with these files. Its description is `.github/release-notes/vVERSION.md`. A version below 1.0.0, or one with a suffix, is marked as a pre-release.
 - OpenECS-std and OpenECS-examples make a draft release of their own from their tag, with their source and its submodules, and their own description.
-- Releases are made for Linux on x86_64. The workflow also lists the other platforms, commented out.
-- Linux builds are made on Ubuntu 24.04, so they need glibc 2.38 or later.
+- Releases are made for Linux and Windows on x86_64. The workflow also lists the other platforms, commented out. Linux is the priority; each platform needs upkeep, so others are added only when they cost little.
+- Linux builds are made on Ubuntu 24.04, so they need glibc 2.38 or later. Windows builds are made on Windows Server 2025 with LLVM-MinGW's UCRT runtime, which Windows 10 and later have.
 - The steps of a release:
   1. In OpenECS-std and OpenECS-examples, write each release's description, and merge `dev` into `main` with a pull request.
   2. On OpenECS's `dev`, move `std/` and `examples/` to those `main` commits, set `OPENECS_VERSION` to the release, and write its description.

@@ -21,17 +21,21 @@ jobs:
           - platform: linux-x86_64
             runner: ubuntu-24.04
             install: .github/scripts/install-linux.sh
-          # shuild builds on Linux only for now; other platforms join here when it builds on them
+          - platform: windows-x86_64
+            runner: windows-2025
+            install: pwsh -File .github/scripts/install-windows.ps1
+          # other platforms join here when the build supports them
           # - platform: linux-aarch64
           #   runner: ubuntu-24.04-arm
           #   install: .github/scripts/install-linux.sh
-          # - platform: windows-x86_64
-          #   runner: windows-2025
-          #   install: .github/scripts/install-windows.ps1
           # - platform: macos-arm64
           #   runner: macos-15
           #   install: .github/scripts/install-macos.sh
     runs-on: ${{ matrix.runner }}
+    # Git Bash on Windows
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,7 +56,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: openecs-${{ matrix.platform }}
-          path: dist/*.tar.gz
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
 
   source:
     name: Source
@@ -86,7 +92,7 @@ jobs:
           merge-multiple: true
 
       - name: Write the checksums
-        run: cd dist && sha256sum *.tar.gz > SHA256SUMS
+        run: cd dist && sha256sum *.tar.gz *.zip > SHA256SUMS
 
       # the description is .github/release-notes/TAG.md; a version below 1.0.0, or with a suffix such as -rc.1, is a pre-release
       - name: Make the draft release

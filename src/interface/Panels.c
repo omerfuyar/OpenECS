@@ -62,7 +62,59 @@ static bool ECSIPanel_ResizePixels(ECSPanel panel)
         panel->texture = nullptr;
     }
 
-    return panel->pixels != nullptr;
+    if (panel->pixels == nullptr)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot create %dx%d pixels: %s", width, height, SDL_GetError());
+        return false;
+    }
+
+    return true;
+}
+
+/// @brief Copies a GPU panel's texture into the texture of a renderer without the device, once the panel's draw is sent: the GPU downloads it, and the renderer uploads it.
+static void ECSIPanel_CopyGpuTexture(ECSPanel panel)
+{
+    SDL_GPUCommandBuffer *commands = SDL_AcquireGPUCommandBuffer(panel->gpuDevice);
+    SDL_GPUCopyPass *pass = commands == nullptr ? nullptr : SDL_BeginGPUCopyPass(commands);
+
+    if (pass == nullptr)
+    {
+        if (commands != nullptr)
+        {
+            SDL_CancelGPUCommandBuffer(commands);
+        }
+
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot copy a GPU panel: %s", SDL_GetError());
+        return;
+    }
+
+    const SDL_GPUTextureRegion region = {.texture = panel->gpuTexture, .w = (Uint32)panel->gpuWidth, .h = (Uint32)panel->gpuHeight, .d = 1};
+    const SDL_GPUTextureTransferInfo destination = {.transfer_buffer = panel->gpuCopy};
+    SDL_DownloadFromGPUTexture(pass, &region, &destination);
+    SDL_EndGPUCopyPass(pass);
+
+    // the copy waits for the panel's commands, which were sent first, and the pixels are read once it is done
+    SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(commands);
+
+    if (fence == nullptr || !SDL_WaitForGPUFences(panel->gpuDevice, true, &fence, 1))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot copy a GPU panel: %s", SDL_GetError());
+    }
+    else
+    {
+        void *pixels = SDL_MapGPUTransferBuffer(panel->gpuDevice, panel->gpuCopy, false);
+
+        if (pixels != nullptr)
+        {
+            SDL_UpdateTexture(panel->texture, nullptr, pixels, panel->gpuWidth * 4);
+            SDL_UnmapGPUTransferBuffer(panel->gpuDevice, panel->gpuCopy);
+        }
+    }
+
+    if (fence != nullptr)
+    {
+        SDL_ReleaseGPUFence(panel->gpuDevice, fence);
+    }
 }
 
 /// @brief Releases a GPU panel's texture on the device, and the view of it that a renderer made.
@@ -74,6 +126,12 @@ static void ECSIPanel_ReleaseGpuTexture(ECSPanel panel)
         panel->texture = nullptr;
     }
 
+    if (panel->gpuCopy != nullptr)
+    {
+        SDL_ReleaseGPUTransferBuffer(panel->gpuDevice, panel->gpuCopy);
+        panel->gpuCopy = nullptr;
+    }
+
     if (panel->gpuTexture != nullptr)
     {
         SDL_ReleaseGPUTexture(panel->gpuDevice, panel->gpuTexture);
@@ -82,22 +140,25 @@ static void ECSIPanel_ReleaseGpuTexture(ECSPanel panel)
     }
 }
 
-/// @brief Gives a GPU panel a texture of the size of its rectangle on the device of a renderer, and that renderer's view of it.
+/// @brief Gives a GPU panel a texture of the size of its rectangle on OpenECS's GPU device, and a renderer's view of it.
+/// A renderer without a GPU device, as when the GPU cannot present to its window, gets a texture of its own instead, which a copy of the panel's fills after each draw.
 /// The texture is kept while its size and device stay, so it moves between OS windows; a new one is drawn before it shows.
-/// @return false if the renderer has no GPU device, or the texture cannot be made.
+/// @return false if there is no GPU device, or the texture cannot be made.
 static bool ECSIPanel_ResizeGpuTexture(ECSPanel panel, SDL_Renderer *renderer)
 {
     int width = (int)SDL_max(1.0f, SDL_roundf(panel->width));
     int height = (int)SDL_max(1.0f, SDL_roundf(panel->height));
-    SDL_GPUDevice *device = SDL_GetGPURendererDevice(renderer);
+    SDL_GPUDevice *shown = SDL_GetGPURendererDevice(renderer);
+    SDL_GPUDevice *device = shown != nullptr ? shown : ECSGpu_GetDevice();
+    bool copied = shown == nullptr;
 
     if (device == nullptr)
     {
-        ECSIPanel_Fault(panel, "The panel draws with the GPU, but OpenECS has no GPU renderer here.");
+        ECSIPanel_Fault(panel, "The panel draws with the GPU, but OpenECS has no GPU device here.");
         return false;
     }
 
-    bool kept = panel->gpuTexture != nullptr && panel->gpuDevice == device && panel->gpuWidth == width && panel->gpuHeight == height;
+    bool kept = panel->gpuTexture != nullptr && panel->gpuDevice == device && panel->gpuWidth == width && panel->gpuHeight == height && (panel->gpuCopy != nullptr) == copied;
 
     if (kept && panel->texture != nullptr && SDL_GetRendererFromTexture(panel->texture) == renderer)
     {
@@ -131,11 +192,39 @@ static bool ECSIPanel_ResizeGpuTexture(ECSPanel panel, SDL_Renderer *renderer)
         panel->gpuWidth = width;
         panel->gpuHeight = height;
         panel->needsDraw = true;
+
+        if (copied)
+        {
+            const SDL_GPUTransferBufferCreateInfo copyInfo = {.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, .size = (Uint32)width * (Uint32)height * 4};
+            panel->gpuCopy = SDL_CreateGPUTransferBuffer(device, &copyInfo);
+
+            if (panel->gpuCopy == nullptr)
+            {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot copy a %dx%d GPU texture: %s", width, height, SDL_GetError());
+                return false;
+            }
+        }
     }
     else if (panel->texture != nullptr)
     {
         SDL_DestroyTexture(panel->texture);
         panel->texture = nullptr;
+    }
+
+    // a renderer without the device shows a texture of its own, which the next draw fills
+    if (copied)
+    {
+        panel->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, width, height);
+
+        if (panel->texture == nullptr)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot create a %dx%d texture: %s", width, height, SDL_GetError());
+            return false;
+        }
+
+        SDL_SetTextureBlendMode(panel->texture, SDL_BLENDMODE_NONE);
+        panel->needsDraw = true;
+        return true;
     }
 
     // the renderer shows the texture without owning it
@@ -428,9 +517,10 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
     SDL_assert(panel != nullptr);
     SDL_assert(renderer != nullptr);
 
-    // placeholders and faulted panels have no pixels; the layout draws their text
+    // placeholders and faulted panels have no pixels; the layout draws their text. They want no more frames, or the loop would draw without rest
     if (panel->type == nullptr || panel->fault != nullptr || panel->type->desc.Draw == nullptr || panel->width < 1.0f || panel->height < 1.0f)
     {
+        panel->needsDraw = false;
         return;
     }
 
@@ -439,7 +529,14 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
     // a GPU panel draws into its texture on the device itself, with its own command buffer, which runs before the renderer's
     if (panel->type->desc.surface == ECSSurfaceType_Gpu)
     {
-        if (!ECSIPanel_ResizeGpuTexture(panel, renderer) || !ECSIPanel_WantsFrame(panel))
+        // a texture that cannot be made would be tried again in every frame, so the panel shows the fault instead
+        if (!ECSIPanel_ResizeGpuTexture(panel, renderer))
+        {
+            ECSIPanel_Fault(panel, "The panel's GPU texture cannot be made; the log has the reason.");
+            return;
+        }
+
+        if (!ECSIPanel_WantsFrame(panel))
         {
             return;
         }
@@ -456,6 +553,12 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         panel->needsDraw = false;
         panel->type->desc.Draw(panel->state, &surface, seconds);
         ECSIServices_EndSurface(&surface);
+
+        if (panel->gpuCopy != nullptr)
+        {
+            ECSIPanel_CopyGpuTexture(panel);
+        }
+
         return;
     }
 
@@ -470,6 +573,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
     {
         if (!ECSIPanel_ResizePixels(panel))
         {
+            ECSIPanel_Fault(panel, "The panel's pixels cannot be made; the log has the reason.");
             return;
         }
 
@@ -482,6 +586,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
             if (panel->texture == nullptr)
             {
                 SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot create a %dx%d texture: %s", pixels->w, pixels->h, SDL_GetError());
+                ECSIPanel_Fault(panel, "The panel's texture cannot be made; the log has the reason.");
                 return;
             }
 

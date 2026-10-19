@@ -168,12 +168,14 @@ static struct
     f32 dragStartX;
     f32 dragStartY;
     ECSIDrop drop;     // where the dragged panel lands now
+    bool dropOutside;  // the pointer is outside every OS window whose place is known, as on Wayland outside the window it was dragged from
     SDL_FRect dropRect; // the highlight of the drop place
 
     // where the system does not tell where windows are, as on Wayland, a panel released outside its OS window lands where the pointer enters next
     ECSPanel pendingPanel;   // the released panel, or nullptr
     bool pendingGroup;       // its whole group was dragged
     ECSIOSWindow *pendingFrom; // the OS window it was dragged from
+    bool pendingPopOut;        // it pops out if no other OS window takes it; not when it is alone in its OS window already
     u64 pendingUntil;        // when it pops out instead
 
     const char *dataType; // type of the data being dragged, or nullptr
@@ -1271,6 +1273,7 @@ static void ECSIWindow_CloseOS(ECSIOSWindow *os)
 }
 
 /// @brief Creates a window's renderer: a GPU renderer on the shared GPU device, so all windows share one device; else SDL's default renderer.
+/// The device stays without a window's GPU renderer, as when the GPU cannot present to the window: GPU panels draw on it, and that window shows copies (DESIGN 5.3).
 static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window, bool main)
 {
     // the device comes from an offscreen renderer, which sets it up as SDL's GPU renderer needs it
@@ -1278,15 +1281,18 @@ static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window, bool main)
     {
         GPU.owner = SDL_CreateGPURenderer(nullptr, nullptr);
         GPU.device = GPU.owner == nullptr ? nullptr : SDL_GetGPURendererDevice(GPU.owner);
+
+        if (GPU.device == nullptr)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "No GPU device (%s); GPU panels show placeholders.", SDL_GetError());
+        }
     }
 
     SDL_Renderer *renderer = GPU.device != nullptr ? SDL_CreateGPURenderer(GPU.device, window) : nullptr;
 
-    // GPU panels need every OS window to show the device's textures, so without the main window's GPU renderer there is no device
-    if (renderer == nullptr && main)
+    if (renderer == nullptr && GPU.device != nullptr)
     {
-        ECSIWindow_DestroyDevice();
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "GPU renderer not available (%s); using SDL's default renderer.", SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The GPU cannot present to a window (%s); it uses SDL's default renderer, and shows copies of GPU panels.", SDL_GetError());
     }
 
     return renderer != nullptr ? renderer : SDL_CreateRenderer(window, nullptr);
@@ -1370,7 +1376,7 @@ static SHUResult ECSIWindow_Open(const char *title)
     const char *font = ECSValue_GetString(ECSSetting_Get("ecs.font"), "");
     char *fontPath = nullptr;
 
-    if (SDL_asprintf(&fontPath, "%s%s", font[0] == '/' ? "" : SDL_GetBasePath(), font) < 0)
+    if (SDL_asprintf(&fontPath, "%s%s", ECSPath_IsAbsolute(font) ? "" : SDL_GetBasePath(), font) < 0)
     {
         return SHUResult_ErrAllocation;
     }
@@ -2068,6 +2074,30 @@ bool ECSIWindow_PopupRect(ECSPopup popup, SDL_FRect *retRect, usz *retWindow)
     return true;
 }
 
+SDL_Window *ECSIWindow_PopupWindowAt(SDL_Window *window, f32 x, f32 y, SDL_FRect *retRect)
+{
+    SDL_assert(retRect != nullptr);
+
+    usz count = 0;
+    ECSPopup *popups = ECSIPopups_GetOpen(&count);
+
+    // the newest popup on top
+    for (usz i = count; i > 0; i--)
+    {
+        ECSIPopupView *view = popups[i - 1]->window;
+
+        if (view != nullptr && view->window != nullptr && SDL_GetWindowParent(view->window) == window &&
+            (SDL_GetWindowFlags(view->window) & SDL_WINDOW_HIDDEN) == 0 &&
+            ECSIWindow_Contains(x, y, view->rect.x, view->rect.y, view->rect.w, view->rect.h))
+        {
+            *retRect = view->rect;
+            return view->window;
+        }
+    }
+
+    return nullptr;
+}
+
 ECSPanel ECSIWindow_PanelAt(f32 x, f32 y, f32 *retX, f32 *retY)
 {
     SDL_assert(retX != nullptr);
@@ -2113,7 +2143,7 @@ void ECSIWindow_Render(u64 nowTicks)
         WINDOW.pendingPanel = nullptr;
         ECSIDrop drop = {.zone = ECSIZone_PopOut};
 
-        if (ECSILayout_HasPanel(panel))
+        if (WINDOW.pendingPopOut && ECSILayout_HasPanel(panel))
         {
             ECSILayout_Drop(panel, WINDOW.pendingGroup, &drop);
         }
@@ -2323,6 +2353,7 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
         {
             // a drop that changes nothing is not highlighted
             WINDOW.drop = ECSIWindow_FindDrop(x, y, &WINDOW.dropWindow, &WINDOW.dropRect);
+            WINDOW.dropOutside = WINDOW.drop.zone == ECSIZone_PopOut;
             WINDOW.drop = ECSIWindow_DropChanges(&WINDOW.drop) ? WINDOW.drop : (ECSIDrop){0};
             ECSILayout_RequestFrame();
         }
@@ -2352,11 +2383,13 @@ ECSPanel ECSIWindow_PointerUp(void)
 {
     ECSPanel clicked = WINDOW.dragFromGrip && !WINDOW.dragging ? WINDOW.dragPanel : nullptr;
 
-    // released outside every OS window it knows the place of, the panel waits briefly for the pointer to enter another one
-    if (WINDOW.dragging && WINDOW.drop.zone == ECSIZone_PopOut && ECSIWindow_OnWayland())
+    // released outside every OS window it knows the place of, the panel waits briefly for the pointer to enter another one;
+    // so does a panel alone in its OS window, which has nowhere to pop out to
+    if (WINDOW.dragging && WINDOW.dropOutside && ECSIWindow_OnWayland())
     {
         WINDOW.pendingPanel = WINDOW.dragPanel;
         WINDOW.pendingGroup = WINDOW.dragGroup;
+        WINDOW.pendingPopOut = WINDOW.drop.zone == ECSIZone_PopOut;
         WINDOW.pendingFrom = WINDOW.event;
         WINDOW.pendingUntil = SDL_GetTicksNS() + OPENECS_PENDING_DROP_NANOSECONDS;
     }
@@ -2380,6 +2413,7 @@ bool ECSIWindow_CancelDrag(void)
     WINDOW.dragLocked = false;
     WINDOW.dragging = false;
     WINDOW.drop = (ECSIDrop){0};
+    WINDOW.dropOutside = false;
     if (dragging)
     {
         ECSILayout_RequestFrame();
