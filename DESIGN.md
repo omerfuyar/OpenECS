@@ -461,7 +461,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Inside a pop-out window, every layout operation works as in the main window: splits, tabs, maximize, dragging and docking along its edges. Panels move between OS windows by dragging or by code.
 - A dragged panel lands in the OS window under the pointer. The core finds it from the windows' places on the screen. On Wayland, an application cannot know them: a panel dropped outside the window it was dragged from lands where the pointer enters one of the program's windows within 400 ms, and pops out otherwise.
 - Each OS window has its own renderer and Clay context. Only the main window's renderer waits for vsync (3.1), so presenting several OS windows does not wait once for each.
-- A pop-out window closes when its last panel leaves it. Its close button closes its panels, after asking about unsaved work (4.5); Cancel keeps the window. Closing the main window quits.
+- A pop-out window closes when its last panel leaves it. Its close button closes its panels, after asking about unsaved work (4.5); Cancel keeps the window. Closing the main window quits, after asking about unsaved work; SDL's own quit when the last window closes is off (`SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE`), as it would answer that question.
 - When the main window's last panel leaves it while pop-out windows have panels, the first pop-out window's tree moves into the main window, so the main window is never empty. When the user closes the last panel of the tool, the program quits, and the tool's last session is removed, so the next start opens the preset.
 
 ### 6.11 Window frame
