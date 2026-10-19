@@ -168,12 +168,14 @@ static struct
     f32 dragStartX;
     f32 dragStartY;
     ECSIDrop drop;     // where the dragged panel lands now
+    bool dropOutside;  // the pointer is outside every OS window whose place is known, as on Wayland outside the window it was dragged from
     SDL_FRect dropRect; // the highlight of the drop place
 
     // where the system does not tell where windows are, as on Wayland, a panel released outside its OS window lands where the pointer enters next
     ECSPanel pendingPanel;   // the released panel, or nullptr
     bool pendingGroup;       // its whole group was dragged
     ECSIOSWindow *pendingFrom; // the OS window it was dragged from
+    bool pendingPopOut;        // it pops out if no other OS window takes it; not when it is alone in its OS window already
     u64 pendingUntil;        // when it pops out instead
 
     const char *dataType; // type of the data being dragged, or nullptr
@@ -2141,7 +2143,7 @@ void ECSIWindow_Render(u64 nowTicks)
         WINDOW.pendingPanel = nullptr;
         ECSIDrop drop = {.zone = ECSIZone_PopOut};
 
-        if (ECSILayout_HasPanel(panel))
+        if (WINDOW.pendingPopOut && ECSILayout_HasPanel(panel))
         {
             ECSILayout_Drop(panel, WINDOW.pendingGroup, &drop);
         }
@@ -2351,6 +2353,7 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
         {
             // a drop that changes nothing is not highlighted
             WINDOW.drop = ECSIWindow_FindDrop(x, y, &WINDOW.dropWindow, &WINDOW.dropRect);
+            WINDOW.dropOutside = WINDOW.drop.zone == ECSIZone_PopOut;
             WINDOW.drop = ECSIWindow_DropChanges(&WINDOW.drop) ? WINDOW.drop : (ECSIDrop){0};
             ECSILayout_RequestFrame();
         }
@@ -2380,11 +2383,13 @@ ECSPanel ECSIWindow_PointerUp(void)
 {
     ECSPanel clicked = WINDOW.dragFromGrip && !WINDOW.dragging ? WINDOW.dragPanel : nullptr;
 
-    // released outside every OS window it knows the place of, the panel waits briefly for the pointer to enter another one
-    if (WINDOW.dragging && WINDOW.drop.zone == ECSIZone_PopOut && ECSIWindow_OnWayland())
+    // released outside every OS window it knows the place of, the panel waits briefly for the pointer to enter another one;
+    // so does a panel alone in its OS window, which has nowhere to pop out to
+    if (WINDOW.dragging && WINDOW.dropOutside && ECSIWindow_OnWayland())
     {
         WINDOW.pendingPanel = WINDOW.dragPanel;
         WINDOW.pendingGroup = WINDOW.dragGroup;
+        WINDOW.pendingPopOut = WINDOW.drop.zone == ECSIZone_PopOut;
         WINDOW.pendingFrom = WINDOW.event;
         WINDOW.pendingUntil = SDL_GetTicksNS() + OPENECS_PENDING_DROP_NANOSECONDS;
     }
@@ -2408,6 +2413,7 @@ bool ECSIWindow_CancelDrag(void)
     WINDOW.dragLocked = false;
     WINDOW.dragging = false;
     WINDOW.drop = (ECSIDrop){0};
+    WINDOW.dropOutside = false;
     if (dragging)
     {
         ECSILayout_RequestFrame();

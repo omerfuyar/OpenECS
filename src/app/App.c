@@ -367,6 +367,9 @@ void ECSIApp_Start(const ECSIArguments *arguments)
         SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
     }
 
+    // the core quits when the main window closes, after asking about unsaved work; SDL's own quit for the last window would come with the close and answer that question
+    SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");
+
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL failed to start: %s", SDL_GetError());
