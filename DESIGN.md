@@ -1184,6 +1184,7 @@ OpenECS follows the XDG Base Directory specification:
 - While a message dialog waits (7.7), the test goes on, so it can read and answer the dialog. A dialog that the test's own step opens, as `call` can, cannot wait for the test, so it is answered with its last button, and so is one that waits when the test ends.
 - The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
 - `.github/scripts/test.sh` runs every test in `bin/examples/` with a Debug build.
+- `.github/scripts/test-wayland.sh` runs them on Wayland, in a headless sway that floats every window, so each keeps its size. There, popups and pop-out windows are windows of their own.
 
 ### 17.6 Examples
 
@@ -1249,7 +1250,7 @@ OpenECS follows the XDG Base Directory specification:
 
   | Check             | Does                                                                                                                                                                                                                                                                                               |
   | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `Debug (Linux)`   | Builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs the examples' tests (17.5) under the sanitizers; a failed test or a report fails it. Then writes the definition files of the plugins of the example `5_services` (10.10) and compiles each C header. |
+  | `Debug (Linux)`   | Builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs the examples' tests (17.5) under the sanitizers, on SDL's offscreen driver and then on Wayland; a failed test or a report fails it. Then writes the definition files of the plugins of the example `5_services` (10.10) and compiles each C header. |
   | `Release (Linux)` | Builds in Release, so code that only Release builds compile or link fails before a release.                                                                                                                                                                                                        |
   | `Windows`         | Builds on Windows with LLVM-MinGW: in Debug, then runs the examples' tests and writes the definition files, as `Debug (Linux)` does; then in Release. It has no static analyzer or sanitizers, which MinGW lacks.                                                                                  |
   | `Lua (LuaLS)`     | Checks every Lua file with LuaLS, so code that misuses the `ecs` module, and mistakes in `ecs.lua`, fail it (9.6).                                                                                                                                                                                 |

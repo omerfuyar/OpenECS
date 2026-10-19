@@ -1,4 +1,4 @@
-# Checks every change to dev and main: a Debug build with the static analyzer, the examples' tests under the sanitizers, a Release build, and the Lua annotations.
+# Checks every change to dev and main: a Debug build with the static analyzer, the examples' tests under the sanitizers, on SDL's offscreen driver and on Wayland, a Release build, and the Lua annotations.
 # Windows builds Debug and Release with LLVM-MinGW, and runs the examples' tests, without the analyzer and the sanitizers, which MinGW does not have.
 # The examples are the tests: each one's test runs its preset, so they check the core and the standard plugins together.
 name: Checks
@@ -44,6 +44,10 @@ jobs:
 
       - name: Run the examples' tests with the sanitizers
         run: .github/scripts/test.sh build/Debug/bin/OpenECS
+
+      # on Wayland, popups and pop-out windows are windows of their own, which the offscreen driver does not have
+      - name: Run the examples' tests on Wayland
+        run: .github/scripts/test-wayland.sh build/Debug/bin/OpenECS
 
       - name: Write and compile the definition files
         run: .github/scripts/definitions.sh build/Debug/bin/OpenECS
