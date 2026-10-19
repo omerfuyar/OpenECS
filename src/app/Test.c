@@ -44,6 +44,7 @@ static struct
     SDL_WindowID grabID;            // the window that got the press while buttons are held, as the system keeps the pointer there; 0 for the event's own
     f32 grabX;                      // where that window shows in the event's own, so positions move into it
     f32 grabY;
+    SDL_Point *sizes;               // stb_ds array of each OS window's size when the test last went on
     char **files;                 // stb_ds array of the paths that the test's files field names
     char **dropped;               // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
     char *presets;                // the folder that the test's presets field names, ending with a separator, or nullptr
@@ -179,6 +180,38 @@ static void ECSITest_Route(SDL_Event *event)
     {
         TEST.delivered &= ~SDL_BUTTON_MASK(event->button.button);
     }
+}
+
+/// @brief Waits until the system has applied what each OS window asked for, such as its size.
+/// @return true if a window's size changed since the last call, so the loop handles it before the test goes on.
+static bool ECSITest_SyncWindows(void)
+{
+    bool changed = false;
+    usz count = 0;
+    SDL_Window *window = nullptr;
+
+    while ((window = ECSIWindow_Get(count + 1)) != nullptr)
+    {
+        SDL_Point size = {0};
+        SDL_SyncWindow(window);
+        SDL_GetWindowSize(window, &size.x, &size.y);
+
+        if (count >= arrlenu(TEST.sizes))
+        {
+            arrput(TEST.sizes, size);
+            changed = true;
+        }
+        else if (TEST.sizes[count].x != size.x || TEST.sizes[count].y != size.y)
+        {
+            TEST.sizes[count] = size;
+            changed = true;
+        }
+
+        count++;
+    }
+
+    arrsetlen(TEST.sizes, count);
+    return changed;
 }
 
 /// @brief Reads the modifiers held during pointer events from an optional Lua argument, such as "Shift" or "Ctrl+Shift".
@@ -793,6 +826,7 @@ static void ECSITest_Finish(void)
 
     arrfree(TEST.events);
     arrfree(TEST.eventModifiers);
+    arrfree(TEST.sizes);
     TEST.nextEvent = 0;
 }
 
@@ -1008,6 +1042,12 @@ bool ECSITest_Step(void)
     arrfree(TEST.events);
     arrfree(TEST.eventModifiers);
     TEST.nextEvent = 0;
+
+    // the system may still resize a window, as a tiling compositor does, so the test goes on once the layout has the new size
+    if (ECSITest_SyncWindows())
+    {
+        return true;
+    }
 
     lua_State *state = ECSILua_GetState();
     int results = 0;
