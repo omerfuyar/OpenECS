@@ -26,7 +26,6 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **Windows and macOS.** Shuild names libraries for the system its compiler compiles for, and cross-compiles for Windows with MinGW (omerfuyar/shuild#23). Its Windows host code runs in OpenECS's Windows checks, which build OpenECS on Windows. `SHU_UtilRun` runs commands with the system's shell, which is `cmd.exe` on Windows.
 - **Its own todo.** The header lists a module macro, like Clay's.
-- **Compiler detection on Windows.** `SHU_CompilerDetect` lists the compilers on PATH, and `SHU_CompilerTryConfigure(NULL)` picks one (omerfuyar/shuild#22). The Windows checks run it now, with shuild's example `16_compiler_detection`; their log shows which compilers it finds there and which it picks.
 
 ## Standard plugins
 
