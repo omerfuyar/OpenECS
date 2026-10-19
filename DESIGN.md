@@ -1134,7 +1134,7 @@ OpenECS follows the XDG Base Directory specification:
 - Warnings: `-Wall -Wextra -Wpedantic -Wconversion -Wshadow`.
 - Debug builds of the core and of plugins add the static analyzer (`-fanalyzer`) and the address, leak and undefined-behaviour sanitizers (`-fsanitize=address,undefined`). Dependencies get neither.
 - The Sanitizers module sets the sanitizers' options and hides leaks inside the system libraries that SDL loads: graphics drivers, display servers, input methods, audio systems and D-Bus. In other builds its functions do nothing.
-- Debug builds keep every library loaded until the program exits, so a leak inside one is matched by its name. Graphics drivers are otherwise unloaded when their device is destroyed, and their leaks would show an unknown module.
+- Debug builds keep every library loaded until the program exits, so a leak inside one is matched by its name: the executable's `dlclose` does nothing, and comes before the system's. Graphics drivers are otherwise unloaded when SDL or Vulkan's loader is done with them, and their leaks would show an unknown module.
 - Debug builds check for leaks at shutdown, after OpenECS has freed its memory and before `SDL_Quit`.
 - Release builds set `SDL_ASSERT_LEVEL` to 0, so they have no assertions. Debug builds set it to 2.
 

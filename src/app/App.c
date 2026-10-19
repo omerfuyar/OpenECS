@@ -418,9 +418,6 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     usz fileCount = APP.definitions ? 0 : arguments->fileCount;
     char **files = APP.test ? ECSITest_GetFiles(&fileCount) : arguments->files;
     ECSIApp_OpenFiles(files, fileCount);
-
-    // drivers, plugins and system libraries are loaded now
-    ECSISanitizers_KeepLibraries();
 }
 
 SHUResult ECSIApp_WriteDefinitions(const char *folder)
@@ -518,7 +515,6 @@ char *ECSIApp_Stop(const char **retOption)
 {
     SDL_assert(retOption != nullptr);
 
-    ECSISanitizers_KeepLibraries();
     ECSITest_Terminate();
 
     // the setting in effect when the tool quits decides; a tool whose panels were all closed starts from its preset the next time

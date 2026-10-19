@@ -4,9 +4,6 @@
 
 #pragma region Declarations
 
-/// @brief Keeps every library loaded so far loaded until the program exits, so a leak inside one can be matched by its name. Graphics drivers are unloaded when their device is destroyed, before the leak check.
-void ECSISanitizers_KeepLibraries(void);
-
 /// @brief Checks for leaks now, and ends the program with an error if there are any. The check at exit is skipped then.
 void ECSISanitizers_CheckLeaks(void);
 
