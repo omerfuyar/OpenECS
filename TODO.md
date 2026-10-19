@@ -26,7 +26,7 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **Windows and macOS.** Shuild names libraries for the system its compiler compiles for, and cross-compiles for Windows with MinGW (omerfuyar/shuild#23). Its Windows host code runs in OpenECS's Windows checks, which build OpenECS on Windows. `SHU_UtilRun` runs commands with the system's shell, which is `cmd.exe` on Windows.
 - **Its own todo.** The header lists a module macro, like Clay's.
-- **Compiler detection on Windows.** `SHU_CompilerDetect` lists the compilers on PATH, and `SHU_CompilerTryConfigure(NULL)` picks one (omerfuyar/shuild#22). Its Windows code, which lists `.exe` files, is compiled but not run on Windows yet.
+- **Compiler detection on Windows.** `SHU_CompilerDetect` lists the compilers on PATH, and `SHU_CompilerTryConfigure(NULL)` picks one (omerfuyar/shuild#22). The Windows checks run it now, with shuild's example `16_compiler_detection`; their log shows which compilers it finds there and which it picks.
 
 ## Standard plugins
 
@@ -56,7 +56,7 @@ Then announce in this order, each post written for its community: SDL's forum an
 
 What would grow it most:
 
-- **Releases for Windows and macOS**, since most tool builders are not on Linux (see Tasks).
+- **Releases for macOS**, since most tool builders are not on Linux. Windows has one since 0.4.0 (see Tasks).
 - **A flagship tool** that is useful without writing code, such as a log viewer, a glTF viewer or a terminal, built from the standard plugins.
 - **A showcase** in README.md of plugins and tools others build.
 - **One place to talk**, Discord or Matrix, linked from README.md.
