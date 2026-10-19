@@ -265,6 +265,7 @@ To see why a test fails, run it alone: `./build/Debug/bin/OpenECS --test build/D
 GitHub checks every pull request (DESIGN.md section 19.3). These commands run the same checks on your computer:
 
 ``` shell
+.github/scripts/compilers.sh
 .github/scripts/build.sh D
 .github/scripts/test.sh build/Debug/bin/OpenECS
 .github/scripts/test-wayland.sh build/Debug/bin/OpenECS

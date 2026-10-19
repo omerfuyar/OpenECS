@@ -39,6 +39,9 @@ jobs:
             build/Debug/include
           key: debug-linux-${{ steps.dependencies.outputs.key }}
 
+      - name: Detect the compilers with shuild
+        run: .github/scripts/compilers.sh
+
       - name: Build with the static analyzer
         run: .github/scripts/build.sh D
 
@@ -119,6 +122,9 @@ jobs:
             build/Release/include
             build/Release/bin/*.dll
           key: windows-${{ steps.dependencies.outputs.key }}
+
+      - name: Detect the compilers with shuild
+        run: .github/scripts/compilers.sh
 
       - name: Build Debug with LLVM-MinGW
         run: .github/scripts/build.sh D
