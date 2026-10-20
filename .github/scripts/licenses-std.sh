@@ -11,6 +11,8 @@ cp $std/nanosvg/LICENSE.txt "$folder/nanosvg.txt"
 cp $std/dr_libs/LICENSE "$folder/dr_libs.txt"
 cp $std/cgltf/LICENSE "$folder/cgltf.txt"
 cp $std/cglm/LICENSE "$folder/cglm.txt"
+cp $std/glslang/LICENSE.txt "$folder/glslang.txt"
+cp $std/SPIRV-Cross/LICENSE "$folder/SPIRV-Cross.txt"
 cp $std/curl/COPYING "$folder/curl.txt"
 cp $std/mbedtls/LICENSE "$folder/mbedTLS.txt"
 cp std/plugins/draw/fonts/OFL.txt "$folder/RobotoMono.txt"
@@ -21,6 +23,8 @@ nanosvg: zlib license
 dr_libs (dr_wav, dr_mp3, dr_flac): MIT No Attribution license or public domain
 cgltf: MIT license
 cglm: MIT license
+glslang: BSD 3-Clause license, with parts under the MIT and Apache 2.0 licenses; its parser is Bison output under the Bison exception
+SPIRV-Cross: Apache License 2.0
 curl (libcurl): curl license, derived from the MIT license
 Mbed TLS: Apache License 2.0, chosen of its Apache 2.0 or GPL 2.0 licenses
 Roboto Mono font: SIL Open Font License 1.1

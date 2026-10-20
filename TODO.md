@@ -7,13 +7,13 @@ What is not decided yet, and work that is waiting, for OpenECS and the repositor
 What the owner wants worked on, in no fixed order. Each one is described further below.
 
 - **Linux first.** Linux is the priority. Windows is supported; other platforms are not worked on for now, as each one needs upkeep (DESIGN 19.4).
-- **gpu: shaders from source.** The owner chose SDL_shadercross (see Standard plugins).
 - **Docs for every function's parameters** (see Tasks).
 - **Bugs** that the owner reports from testing.
 
 ## Tasks
 
 - **Docs for every function's parameters.** Each function of the core and of the standard plugins says what each parameter is and what it gives back: in OpenECS.h, ecs.lua and the signatures' docs. The owner wants it now; a function that changes later changes its docs with it.
+- **GLSL shaders on Direct3D 12.** gpu compiles GLSL to SPIR-V, and for Direct3D 12 turns it into DXBC through SPIRV-Cross's HLSL and Windows' d3dcompiler_47.dll (OpenECS-std DESIGN 15). The checks run no GPU on Windows; to confirm with 22_gpu_model on Windows.
 - **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
 - **Import the rulesets.** The rulesets of OpenECS, OpenECS-std, OpenECS-examples and OpenECS-template require the Windows checks now, as the owner chose. The owner imports them in each repository's settings. OpenECS-examples' rulesets no longer require `Release (Linux)`, which it does not run.
 
@@ -22,6 +22,7 @@ What the owner wants worked on, in no fixed order. Each one is described further
 [Shuild](https://github.com/omerfuyar/shuild) is the build tool, a single header at `dependencies/shuild`. Shu, at `dependencies/shu`, holds the types and macros it uses. The owner allows changes to both, in their style, through pull requests into their main branches. These repositories have no CI, so a pull request is merged with a merge commit once it is tested locally: shuild's examples, and OpenECS built from scratch with its checks. Then an OpenECS pull request moves the submodule. Work found in it:
 
 - **Windows and macOS.** Shuild names libraries for the system its compiler compiles for, and cross-compiles for Windows with MinGW (omerfuyar/shuild#23). Its Windows host code runs in OpenECS's Windows checks, which build OpenECS on Windows. `SHU_UtilRun` runs commands with the system's shell, which is `cmd.exe` on Windows.
+- **Log folders on Windows.** `SHU_UtilRunLogged` makes its log's folder only when the path has the system's separators, so `a/b/c.log` fails on Windows; std's build makes the folders first. It could normalize the path, as `SHU_UtilCreateDirectory` does.
 - **Its own todo.** The header lists a module macro, like Clay's. The owner leaves it for later.
 
 ## Standard plugins
@@ -30,7 +31,6 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 - **web.** HTTP/2 and compressed answers, which need more libraries or more of libcurl.
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
-- **gpu: shaders from source.** gpu takes compiled shaders: SPIR-V, DXIL or MSL, the one the GPU's driver takes, so a plugin that runs on several systems ships each. SDL_shadercross compiles one source, HLSL or SPIR-V, to the others at run time. The owner chose to add SDL_shadercross, with SPIRV-Cross and DXC, so gpu takes HLSL or SPIR-V and compiles it for the driver.
 
 ## Questions
 
