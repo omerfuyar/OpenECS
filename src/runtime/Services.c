@@ -85,6 +85,7 @@ typedef struct ECSIParameter
     ECSIHandleType *handle;           // handles: their type
     struct ECSISignature *callback;   // callbacks: their signature, owned by the parameter
     char *luaType;                     // values: the Lua type that value<...> names for editors, or nullptr; only for documentation, as names are
+    char *doc;                         // what the parameter or result is, from the function's description, or nullptr; only for documentation
 } ECSIParameter;
 
 /// @brief A parsed signature with its libffi call description.
@@ -218,6 +219,8 @@ static void ECSIParameter_Free(ECSIParameter *parameter)
     parameter->name = nullptr;
     SDL_free(parameter->luaType);
     parameter->luaType = nullptr;
+    SDL_free(parameter->doc);
+    parameter->doc = nullptr;
 
     if (parameter->callback != nullptr)
     {
@@ -1329,6 +1332,70 @@ static void ECSIServices_FreeCallback(ECSIFunction **callback)
 
 #pragma endregion C Calls Lua
 
+/// @brief Reads the lines of a function's description after its first: "@param name text" says what a parameter is, and "@return text" what the
+/// function gives. The first line stays the description, which menus show. A line that names no parameter of the signature is reported and skipped.
+static SHUResult ECSIServices_ReadDocs(ECSIFunction *function)
+{
+    char *line = SDL_strchr(function->description, '\n');
+
+    if (line == nullptr)
+    {
+        return SHUResult_Ok;
+    }
+
+    *line++ = '\0';
+
+    while (line != nullptr)
+    {
+        char *next = SDL_strchr(line, '\n');
+
+        if (next != nullptr)
+        {
+            *next++ = '\0';
+        }
+
+        ECSIParameter *target = nullptr;
+        const char *text = nullptr;
+
+        if (SDL_strncmp(line, "@return ", 8) == 0)
+        {
+            target = &function->signature.result;
+            text = line + 8;
+        }
+        else if (SDL_strncmp(line, "@param ", 7) == 0)
+        {
+            const char *name = line + 7;
+            const char *space = SDL_strchr(name, ' ');
+            usz length = space == nullptr ? SDL_strlen(name) : (usz)(space - name);
+            text = name[length] == ' ' ? name + length + 1 : name + length;
+
+            for (usz i = 0; i < arrlenu(function->signature.parameters) && target == nullptr; i++)
+            {
+                const char *given = function->signature.parameters[i].name;
+                target = given != nullptr && SDL_strlen(given) == length && SDL_strncmp(given, name, length) == 0 ? &function->signature.parameters[i] : nullptr;
+            }
+        }
+
+        if (target == nullptr || target->doc != nullptr || text[0] == '\0')
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The description of '%s' has a line that is not \"@param name text\" of a parameter it names once, or \"@return text\" once: '%s'", function->name, line);
+        }
+        else
+        {
+            target->doc = SDL_strdup(text);
+
+            if (target->doc == nullptr)
+            {
+                return SHUResult_ErrAllocation;
+            }
+        }
+
+        line = next;
+    }
+
+    return SHUResult_Ok;
+}
+
 /// @brief Checks a function's name and makes its record, without its code.
 static SHUResult ECSIServices_Create(ECSPlugin plugin, const char *name, const char *signature, const char *description, ECSIFunction **retFunction)
 {
@@ -1358,6 +1425,11 @@ static SHUResult ECSIServices_Create(ECSPlugin plugin, const char *name, const c
     function->anchors = LUA_NOREF;
 
     SHUResult result = function->name == nullptr || function->description == nullptr ? SHUResult_ErrAllocation : ECSISignature_Parse(signature, &function->signature);
+
+    if (!result && (result = ECSIServices_ReadDocs(function)))
+    {
+        ECSISignature_Free(&function->signature);
+    }
 
     if (result)
     {
@@ -2317,7 +2389,7 @@ static void ECSIDefinition_AddLuaFunctionOf(ECSIDefinitionText *lua, const ECSIF
         {
             ECSIDefinitionText_Add(lua, "---@param %s ", ECSIDefinition_Name(signature->parameters[j], j, buffer, sizeof(buffer)));
             ECSIDefinition_AddLuaType(lua, signature->parameters[j]);
-            ECSIDefinitionText_Add(lua, "\n");
+            ECSIDefinitionText_Add(lua, "%s%s\n", signature->parameters[j].doc == nullptr ? "" : " ", signature->parameters[j].doc == nullptr ? "" : signature->parameters[j].doc);
         }
     }
 
@@ -2327,9 +2399,11 @@ static void ECSIDefinition_AddLuaFunctionOf(ECSIDefinitionText *lua, const ECSIF
 
         if ((j == 0 && result.type != ECSIParameterType_Void) || (j > 0 && result.out))
         {
+            // LuaLS reads a description after a name, or after # without one
             ECSIDefinitionText_Add(lua, "---@return ");
             ECSIDefinition_AddLuaType(lua, result);
-            ECSIDefinitionText_Add(lua, "%s%s\n", result.name == nullptr ? "" : " ", result.name == nullptr ? "" : result.name);
+            ECSIDefinitionText_Add(lua, "%s%s", result.name == nullptr ? "" : " ", result.name == nullptr ? "" : result.name);
+            ECSIDefinitionText_Add(lua, "%s%s\n", result.doc == nullptr ? "" : result.name == nullptr ? " # " : " ", result.doc == nullptr ? "" : result.doc);
         }
     }
 
@@ -2390,7 +2464,22 @@ SHUResult ECSIServices_WriteDefinitions(ECSPlugin provider, const char *folder)
         char declarator[300];
         ECSIDefinition_Member(local, member, sizeof(member));
         SDL_snprintf(declarator, sizeof(declarator), "(*%s)", member);
-        ECSIDefinitionText_Add(&c, "    /// @brief %s\n    ", function->description);
+        ECSIDefinitionText_Add(&c, "    /// @brief %s\n", function->description);
+
+        for (usz j = 0; j < arrlenu(signature->parameters); j++)
+        {
+            if (signature->parameters[j].doc != nullptr)
+            {
+                ECSIDefinitionText_Add(&c, "    /// @param %s %s\n", signature->parameters[j].name, signature->parameters[j].doc);
+            }
+        }
+
+        if (signature->result.doc != nullptr)
+        {
+            ECSIDefinitionText_Add(&c, "    /// @return %s\n", signature->result.doc);
+        }
+
+        ECSIDefinitionText_Add(&c, "    ");
         ECSIDefinition_AddCDeclaration(&c, signature->result, declarator);
         ECSIDefinition_AddCParameters(&c, signature);
         ECSIDefinitionText_Add(&c, ";\n");

@@ -19,19 +19,19 @@ local ecs = {}
 ecs.log = {}
 
 ---Writes a debug message in the plugin's name.
----@param text string
+---@param text string The message, one line or more.
 function ecs.log.debug(text) end
 
 ---Writes an information message in the plugin's name.
----@param text string
+---@param text string The message, one line or more.
 function ecs.log.info(text) end
 
 ---Writes a warning in the plugin's name.
----@param text string
+---@param text string The message, one line or more.
 function ecs.log.warn(text) end
 
 ---Writes an error in the plugin's name.
----@param text string
+---@param text string The message, one line or more.
 function ecs.log.error(text) end
 
 -- Settings
@@ -50,26 +50,26 @@ function ecs.log.error(text) end
 ecs.settings = {}
 
 ---Declares a setting of the plugin.
----@param desc ecs.SettingDesc
----@return true|nil ok
+---@param desc ecs.SettingDesc The setting's local name, type, default and description.
+---@return true|nil ok true if the setting is declared.
 ---@return string? message Why the setting is not declared.
 function ecs.settings.declare(desc) end
 
 ---Gets a setting's value from the highest layer that sets it.
----@param name string
----@return any value
+---@param name string The setting's full name, such as "canvas.grid".
+---@return any value Its value in effect, or nil if no setting has the name.
 function ecs.settings.get(name) end
 
 ---Sets a setting in the user's settings file, the highest layer, and writes the file.
----@param name string
----@param value any
----@return true|nil ok
+---@param name string The setting's full name, such as "canvas.grid".
+---@param value any The new value, of the setting's type.
+---@return true|nil ok true if the value is set and written.
 ---@return string? message Why the setting is not set.
 function ecs.settings.set(name, value) end
 
 ---Lists the names of every declared setting, in the order they were declared.
----@return string[]? names
----@return string? message
+---@return string[]? names The full names, such as "canvas.grid".
+---@return string? message Why the names cannot be listed.
 function ecs.settings.list() end
 
 ---A declared setting, as ecs.settings.explain gives it: its description, with its full name, and where its value comes from.
@@ -82,9 +82,9 @@ function ecs.settings.list() end
 ---@field layers { default: any, theme: any, preset: any, user: any } The value of each layer that sets it.
 
 ---Explains a setting: its value in effect, the layer it comes from, and what each layer says.
----@param name string
----@return ecs.SettingExplanation? explanation
----@return string? message
+---@param name string The setting's full name, such as "canvas.grid".
+---@return ecs.SettingExplanation? explanation The setting, its value and its layers; nil if it is not declared.
+---@return string? message Why it cannot be explained.
 function ecs.settings.explain(name) end
 
 -- Timers
@@ -100,9 +100,9 @@ ecs.timer = {}
 
 ---Starts a timer of the plugin.
 ---@param seconds number More than 0, or 0 for a one-shot timer.
----@param repeat_ boolean
----@param fn fun()
----@return ecs.Timer
+---@param repeat_ boolean true: it runs every seconds until stopped; false: it runs once.
+---@param fn fun() Runs on the main thread when the time comes.
+---@return ecs.Timer timer The timer, which stops it.
 function ecs.timer.start(seconds, repeat_, fn) end
 
 -- Workers: Lua scripts on threads of their own (DESIGN 3.4)
@@ -129,14 +129,14 @@ function Worker:stop() end
 ecs.worker = {}
 
 ---Starts a worker: a Lua script that runs on a thread of its own, in a Lua state of its own. Lua only: a native plugin runs work with ECS_RunInBackground, or on threads of its own.
----@param desc ecs.WorkerDesc
----@return ecs.Worker? worker
+---@param desc ecs.WorkerDesc The script, its input, and the functions that get its messages and its end.
+---@return ecs.Worker? worker The worker, which sends to it and stops it; nil if it did not start.
 ---@return string? message Why it did not start.
 function ecs.worker.start(desc) end
 
 ---In a worker's script only: gives the oldest value that the plugin sent, waiting for one at most seconds, or without end. Gives nil when the time runs out.
----@param seconds? number
----@return any
+---@param seconds? number How long to wait at most; without end if missing.
+---@return any value The value, or nil if the time ran out.
 function ecs.worker.receive(seconds) end
 
 ---In a worker's script only: sends a copy of a value to the plugin, whose message function gets it.
@@ -157,38 +157,38 @@ local Panel = {}
 function Panel:redraw() end
 
 ---Starts a timer that stops when the panel is closed.
----@param seconds number
----@param repeat_ boolean
----@param fn fun()
----@return ecs.Timer
+---@param seconds number More than 0, or 0 for a one-shot timer.
+---@param repeat_ boolean true: it runs every seconds until stopped or the panel closes; false: it runs once.
+---@param fn fun() Runs on the main thread when the time comes.
+---@return ecs.Timer timer The timer, which stops it.
 function Panel:startTimer(seconds, repeat_, fn) end
 
 ---Says whether the panel accepts typed text, and where its text cursor is. While the panel has focus and accepts text, it gets text events,
 ---and the system's input method shows its window beside the cursor. A key that runs a binding types no text.
----@param accept boolean
+---@param accept boolean true: the panel accepts typed text while it has focus; false: it does not.
 ---@param x? number The text cursor's rectangle, in surface pixels; 0 if missing.
----@param y? number
----@param width? number
----@param height? number
+---@param y? number The text cursor's top, in surface pixels; 0 if missing.
+---@param width? number The text cursor's width, in surface pixels; 0 if missing.
+---@param height? number The text cursor's height, in surface pixels; 0 if missing.
 function Panel:setTextInput(accept, x, y, width, height) end
 
 ---Sets the types of data that the panel accepts when data is dropped on it, such as "color" or "file-list".
 ---Data from other applications is "file-list", a list of paths, or "text". A new call replaces the list.
----@param types string[]
+---@param types string[] The data types the panel accepts; an empty list accepts none.
 function Panel:acceptDrops(types) end
 
 ---Starts dragging data from the panel, while a pointer button that was pressed on it is held, usually from its pointerDown or pointerMove event.
 ---The panel then gets no pointer moves until the release, and still gets its pointerUp. On release, the panel under the pointer that accepts the type gets a drop event. Escape cancels.
 ---@param type string The type of the data, such as "color".
 ---@param value? any The data: a value as in saved state.
----@return true|nil ok
+---@return true|nil ok true if the drag started.
 ---@return string? message Why no drag starts: no pointer button that was pressed on the panel is held.
 function Panel:startDrag(type, value) end
 
 ---Opens a popup next to a rectangle of the shown panel: below it, or above it if there is no room below.
 ---It closes when code closes it, on a press outside every popup, on Escape if it is a menu, and when the panel closes, fails or is hidden.
----@param desc ecs.PopupDesc
----@return ecs.Popup? popup
+---@param desc ecs.PopupDesc The popup's kind, place, size and functions.
+---@return ecs.Popup? popup The popup, which closes, draws again and resizes it; nil if it is not opened.
 ---@return string? message Why the popup is not opened.
 function Panel:openPopup(desc) end
 
@@ -202,27 +202,27 @@ function Panel:openPopup(desc) end
 local Surface = {}
 
 ---Fills a rectangle with one colour, such as to clear the surface. The rectangle is in pixels, and clipped to the surface.
----@param x integer
----@param y integer
----@param width integer
----@param height integer
+---@param x integer The rectangle's left, in pixels.
+---@param y integer The rectangle's top, in pixels.
+---@param width integer The rectangle's width, in pixels.
+---@param height integer The rectangle's height, in pixels.
 ---@param color ecs.Color It replaces the pixels.
 function Surface:fill(x, y, width, height, color) end
 
 ---Sets a pixel. Pixels outside the surface are clipped. Lua only: C writes the surface's pixels directly.
----@param x integer
----@param y integer
----@param color ecs.Color
+---@param x integer The pixel's column.
+---@param y integer The pixel's row.
+---@param color ecs.Color The colour it takes, alpha and all.
 function Surface:setPixel(x, y, color) end
 
 ---Lua only: C reads the surface's pixels directly.
----@param x integer
----@param y integer
+---@param x integer The pixel's column.
+---@param y integer The pixel's row.
 ---@return string color "#RRGGBBAA".
 function Surface:getPixel(x, y) end
 
 ---Copies a row of pixels, clipped to the surface. Lua only: C writes the surface's pixels directly.
----@param y integer
+---@param y integer The row.
 ---@param bytes string ARGB pixels, 4 bytes each in native byte order.
 ---@param x? integer The first pixel's column; 0 if missing.
 function Surface:setRow(y, bytes, x) end
@@ -249,8 +249,8 @@ function Popup:close() end
 function Popup:redraw() end
 
 ---Changes the popup's size, in layout units, and draws it again.
----@param width number
----@param height number
+---@param width number The new width, in layout units.
+---@param height number The new height, in layout units.
 function Popup:setSize(width, height) end
 
 ---@class ecs.PanelEvent
@@ -290,16 +290,16 @@ function Popup:setSize(width, height) end
 ecs.panel = {}
 
 ---Registers a panel type.
----@param desc ecs.PanelTypeDesc
----@return true|nil ok
+---@param desc ecs.PanelTypeDesc The type's local name, title, surface and functions.
+---@return true|nil ok true if the type is registered.
 ---@return string? message Why the type is not registered.
 function ecs.panel.registerType(desc) end
 
 ---Adds a service function to the panel menu of a type. Its signature is "void(handle<ecs.panel>)" or "void()".
----@param type string
----@param functionName string
----@return true|nil ok
----@return string? message
+---@param type string The panel type, by its full name, such as "canvas.view".
+---@param functionName string The service function the entry runs, such as "canvas.clear".
+---@return true|nil ok true if the entry is added.
+---@return string? message Why the entry is not added.
 function ecs.panel.addMenuEntry(type, functionName) end
 
 ---A registered panel type in a list.
@@ -335,8 +335,8 @@ function ecs.panel.restart() end
 ecs.layout = {}
 
 ---Finds a panel by its id.
----@param id integer
----@return ecs.Panel? panel
+---@param id integer The panel's id, as a panel's id field gives it.
+---@return ecs.Panel? panel The panel, or nil if no open panel has the id.
 function ecs.layout.find(id) end
 
 ---Opens a panel.
@@ -344,28 +344,30 @@ function ecs.layout.find(id) end
 ---@param saved? any The saved state the panel starts from.
 ---@param target? ecs.Panel The panel to open it next to.
 ---@param zone? ecs.Zone Where, next to the target; "default" if missing.
----@return ecs.Panel? panel
+---@return ecs.Panel? panel The new panel, or nil if it is not opened.
 ---@return string? message Why the panel is not opened.
 function ecs.layout.open(type, saved, target, zone) end
 
 ---Moves a panel next to another one, also from another workspace or OS window; or out into a new pop-out window with the zone "window". A panel alone in its OS window stays.
----@param panel ecs.Panel
+---@param panel ecs.Panel The panel to move.
 ---@param target? ecs.Panel Needed, except with the zone "window".
 ---@param zone? ecs.Zone "center" if missing.
----@return true|nil ok
----@return string? message
+---@return true|nil ok true if the panel moved.
+---@return string? message Why the panel did not move.
 function ecs.layout.move(panel, target, zone) end
 
 ---Closes a panel. If it has unsaved work, the user is asked first and may cancel.
 ---Without a panel, it is the user's close: the focused panel, unless its group is locked. Keys can run it.
----@param panel? ecs.Panel
----@return boolean closed
+---@param panel? ecs.Panel The panel to close; the focused panel if missing.
+---@return boolean closed true if the panel closed; false if the user kept its unsaved work, or its group is locked.
 function ecs.layout.close(panel) end
 
----@param panel ecs.Panel
+---Focuses a panel, and shows its workspace, group and OS window.
+---@param panel ecs.Panel The panel to focus.
 function ecs.layout.focus(panel) end
 
----@return ecs.Panel? panel The focused panel.
+---Gives the focused panel.
+---@return ecs.Panel? panel The focused panel of the shown workspace, or nil if it has none.
 function ecs.layout.getFocus() end
 
 ---Focuses the panel on the left of the focused one. Keys can run it.
@@ -427,16 +429,20 @@ function ecs.layout.reset() end
 ---@field menu fun() Shows the menu of workspaces, by number and name; an entry switches to its workspace. Keys can run it.
 ecs.workspace = {}
 
----@return integer count
+---Counts the workspaces.
+---@return integer count How many workspaces there are.
 function ecs.workspace.count() end
 
+---Gives the workspace that shows.
 ---@return integer number The shown workspace, from 1.
 function ecs.workspace.getCurrent() end
 
+---Gives a workspace's name.
 ---@param number integer From 1.
----@return string? name
+---@return string? name The workspace's name, or nil if there is no such workspace.
 function ecs.workspace.getName(number) end
 
+---Shows a workspace. Keys run it as ecs.workspace.switch1 to switch10.
 ---@param number integer From 1.
 function ecs.workspace.switch(number) end
 
@@ -456,20 +462,20 @@ ecs.session = {}
 ---Writes the session to a file: the plugins' state, the workspaces and the panels with their saved state. Quitting still saves the tool's last session.
 ---Without a path, it asks for the file with a save dialog. Keys can run it.
 ---@param path? string Missing folders are created.
----@return true|nil ok
+---@return true|nil ok true if the session is written.
 ---@return string? message Why the session is not saved.
 function ecs.session.save(path) end
 
 ---Opens a session, or a preset, in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
 ---Without a path, it asks for the file with an open dialog. Keys can run it.
 ---@param path? string A session or a preset file.
----@return true|nil ok
+---@return true|nil ok true if the session will open once the current pass of the main loop ends.
 ---@return string? message Why the session is not opened: the file is not a session, the user keeps the unsaved work, or a test runs.
 function ecs.session.open(path) end
 
 ---Opens a preset's tool in place of the current one, as ecs.session.open opens a session. The tool starts from its last session if it has one.
 ---@param nameOrPath string A preset's name, looked up in the user's presets, then in the first-party presets; or a path, which has a '/' or ends with .lua.
----@return true|nil ok
+---@return true|nil ok true if the tool will open once the current pass of the main loop ends.
 ---@return string? message Why the preset is not opened: the file is not a preset, the user keeps the unsaved work, or a test runs.
 function ecs.session.openPreset(nameOrPath) end
 
@@ -497,11 +503,11 @@ function ecs.session.sessions() end
 ecs.input = {}
 
 ---Gives a function a default key for one of the plugin's panel types. Presets and the user's settings can change it.
----@param panelType string
+---@param panelType string One of the plugin's panel types, by its full name, such as "canvas.view".
 ---@param key string A key combination, such as "Ctrl+E".
 ---@param functionName string A service function, such as "canvas.clear".
----@return true|nil ok
----@return string? message
+---@return true|nil ok true if the key is bound.
+---@return string? message Why the key is not bound.
 function ecs.input.bind(panelType, key, functionName) end
 
 -- Events
@@ -517,18 +523,18 @@ ecs.event = {}
 
 ---Declares an event that the plugin emits.
 ---@param name string The local name, such as "changed"; the event is "canvas.changed".
----@param description? string
+---@param description? string What the event says, for the user and for other plugins.
 function ecs.event.declare(name, description) end
 
 ---Emits a declared event of the plugin.
 ---@param name string The full name, such as "canvas.changed".
----@param value? any
+---@param value? any The event's value, which each subscriber gets.
 function ecs.event.emit(name, value) end
 
 ---Subscribes to an event, such as "ecs.panelOpened".
----@param name string
----@param fn fun(name: string, value: any)
----@return ecs.Subscription
+---@param name string The event's full name, such as "canvas.changed".
+---@param fn fun(name: string, value: any) Gets the event's name and value, each time it is emitted.
+---@return ecs.Subscription subscription The subscription, which cancels it.
 function ecs.event.subscribe(name, fn) end
 
 -- Handles
@@ -551,36 +557,36 @@ function ecs.handle.addMethod(type, method, function_) end
 
 ---Makes a handle that stands for a Lua value. Lua only: in C, a handle is the object's pointer.
 ---@param name string A handle type of the plugin, by its full name.
----@param value any
----@return ecs.Handle
+---@param value any The Lua value that the handle stands for.
+---@return ecs.Handle handle The new handle.
 function ecs.handle.new(name, value) end
 
 ---Gives back the value of a handle of the plugin's type. Lua only: in C, a handle is the object's pointer.
----@param handle ecs.Handle
----@param name string
----@return any value
+---@param handle ecs.Handle A handle that ecs.handle.new made.
+---@param name string The handle's type, by its full name.
+---@return any value The Lua value the handle stands for.
 function ecs.handle.value(handle, name) end
 
 -- Services
 
 ---@class ecs.ServiceFunction
 ---@field sig string The signature, such as "int(string count, float scale)". Types: void, bool, int, int64, float, double, color, string, buffer, value, handle<name>, fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
----@field doc? string A one-line description.
+---@field doc? string One line that says what the function does, which menus show. Lines after it say what its parameters and result are: "@param name text" for a parameter the signature names, and "@return text".
 ---@field fn function
 
 ---@class ecs.service
 ecs.service = {}
 
 ---Registers functions of the plugin, by their local names: { clear = {...} } of the plugin canvas registers "canvas.clear".
----@param functions table<string, ecs.ServiceFunction>
----@return true|nil ok
+---@param functions table<string, ecs.ServiceFunction> The functions, by their local names, each with its signature, description and Lua function.
+---@return true|nil ok true if every function is registered.
 ---@return string? message Which function is not registered, and why.
 function ecs.service.register(functions) end
 
 ---Gets a registered function.
 ---@param name string Such as "canvas.clear".
 ---@param signature? string The signature the caller expects.
----@return function? fn
+---@return function? fn The function, to call as any Lua function.
 ---@return string? message Why the function is not available.
 function ecs.service.get(name, signature) end
 
@@ -601,7 +607,7 @@ function ecs.service.get(name, signature) end
 ecs.plugin = {}
 
 ---Registers the plugin's description, once. saveState and restoreState go together.
----@param desc ecs.PluginDesc
+---@param desc ecs.PluginDesc The plugin's state version and functions.
 function ecs.plugin.register(desc) end
 
 -- Clipboard
@@ -609,20 +615,24 @@ function ecs.plugin.register(desc) end
 ---@class ecs.clipboard
 ecs.clipboard = {}
 
----@param text string
----@return boolean ok
+---Puts text on the system's clipboard.
+---@param text string The text, UTF-8.
+---@return boolean ok true if the clipboard took the text.
 function ecs.clipboard.setText(text) end
 
----@return string text
+---Gives the text on the system's clipboard.
+---@return string text The clipboard's text, or an empty text if it holds none.
 function ecs.clipboard.getText() end
 
+---Puts data of a type on the system's clipboard, such as a PNG image.
 ---@param mimeType string Such as "image/png".
----@param bytes string
----@return boolean ok
+---@param bytes string The data.
+---@return boolean ok true if the clipboard took the data.
 function ecs.clipboard.setData(mimeType, bytes) end
 
----@param mimeType string
----@return string? bytes
+---Gives the clipboard's data of a type.
+---@param mimeType string Such as "image/png".
+---@return string? bytes The data, or nil if the clipboard holds none of that type.
 function ecs.clipboard.getData(mimeType) end
 
 -- Dialogs
@@ -641,16 +651,16 @@ function ecs.clipboard.getData(mimeType) end
 ecs.dialog = {}
 
 ---Shows a file dialog. done gets the chosen paths, or nil if the user cancelled.
----@param desc ecs.DialogDesc
----@param done fun(files: string[]?)
----@return true|nil ok
+---@param desc ecs.DialogDesc The dialog's type, filters, start location and whether it takes many.
+---@param done fun(files: string[]?) Gets the chosen paths, or nil if the user cancelled, on the main thread.
+---@return true|nil ok true if the dialog is shown.
 ---@return string? message Why the dialog is not shown.
 function ecs.dialog.show(desc, done) end
 
 ---Shows a message in a dialog that the core draws, and waits for a button; no plugin code runs while it waits.
 ---Return presses the first button unless the user chooses another, and Escape or closing the window presses the last.
----@param title string
----@param text string
+---@param title string The dialog's title.
+---@param text string The message.
 ---@param buttons? string[] { "OK" } if missing.
 ---@return integer? button The pressed button's position, from 1; nil if the dialog cannot be shown.
 function ecs.dialog.message(title, text, buttons) end

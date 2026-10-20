@@ -713,18 +713,20 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 
 - A plain C function can be registered without a hand-written wrapper.
 - Each function also has a one-line description, so menus and key-binding editors can show it.
+- Lines after the description say what the parameters and the result are, for the definition files (10.10): `@param name text` for a parameter that the signature names, and `@return text` for the result, or an output parameter's `@param`. Menus show the first line only. A line that names no parameter of the signature, or names one twice, is reported and skipped.
 - In C, a function of any type is passed as `ECSFunction` and cast back to its real type by the caller.
 - A function is registered by its local name (9.9): the plugin `audio` registers `play`, which others look up as `audio.play`.
 
 ```c
-ECSService_RegisterFunction(plugin, "play", (ECSFunction)AudioPlay, "int(string, float)", "Play a sound file");
+ECSService_RegisterFunction(plugin, "play", (ECSFunction)AudioPlay, "int(string path, float volume)",
+                            "Play a sound file\n@param path The file\n@param volume From 0 to 1\n@return The sound's number");
 ```
 
 ```lua
 local ecs = require("ecs")
 
 ecs.service.register({
-  play = { sig = "int(string, float)", doc = "Play a sound file",
+  play = { sig = "int(string path, float volume)", doc = "Play a sound file\n@param path The file\n@param volume From 0 to 1\n@return The sound's number",
            fn = function(path, volume) ... end },
 })
 ```
@@ -819,8 +821,8 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 
 - `openecs --definitions FOLDER` loads every plugin it finds, without a display, writes two definition files for each, and exits. Nothing is opened or saved. With `--preset`, it loads that preset's plugins only.
 - The build writes the definitions of the plugins it built into `build/<type>/definitions/`, after the standard plugins and before the examples, so an example's C plugin includes their headers, such as `ui.h`. It also writes a `.luarc.json` in OpenECS, `std/` and `examples/` that names them and `include/`, so editors complete `require("ui")` there with no setup. A release's archive holds the standard plugins' definition files in its `include/`, beside `ecs.lua`, so plugin authors get them with `include/` alone.
-- `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`. Each handle type of the plugin is a class there, with its methods, so an editor completes `connection:send` too.
-- `NAME.h` is a C header. Its structure is named after the plugin in PascalCase, such as `SketchCFunctions` for `sketch_c`, and has one typed function pointer for each function. `SketchCFunctions_Get(plugin, &functions)` looks them all up with their signatures.
+- `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, with what each parameter and result is (10.1), so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`. Each handle type of the plugin is a class there, with its methods, so an editor completes `connection:send` too.
+- `NAME.h` is a C header. Its structure is named after the plugin in PascalCase, such as `SketchCFunctions` for `sketch_c`, and has one typed function pointer for each function, with its description and what each parameter and the result are. `SketchCFunctions_Get(plugin, &functions)` looks them all up with their signatures.
 - A parameter without a name is called `arg1`, `arg2` and so on.
 - A plugin's folder may hold `types.lua`, a LuaLS meta file of annotations only, which the plugin never runs. `NAME.lua` ends with it, so the classes that `value<Type>` names are there, such as ui's `ui.ButtonProps` with its fields.
 - A plugin's folder may also hold `header.h`, which `NAME.h` ends with. It gives C plugins what the functions alone do not, such as types, inline functions and macros that call the functions, like ui's `UI_COLUMN`. It may use the structure and the functions above it.
