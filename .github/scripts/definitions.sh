@@ -10,6 +10,6 @@ rm -rf "$folder"
 "$executable" --preset "$(dirname "$executable")/examples/5_services/preset.lua" --definitions "$folder" > build/definitions.log 2>&1
 
 for header in "$folder"/*.h; do
-    printf '#include "%s"\n' "$(basename "$header")" | "${CC:-gcc}" -std=c23 -Wall -Wextra -Werror -fsyntax-only -Iinclude -Idependencies -I"$folder" -x c -
+    printf '#include "%s"\n' "$(basename "$header")" | "${CC:-gcc}" -std=c23 -Wall -Wextra -Werror -fsyntax-only -Iinclude -Idependencies -I"$(dirname "$executable")/../include" -I"$folder" -x c -
     echo "compiles $header"
 done
