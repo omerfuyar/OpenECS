@@ -29,6 +29,8 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 - **web.** HTTP/2 and compressed answers, which need more libraries or more of libcurl.
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
+- **draw's clips.** draw keeps a clip rectangle by its surface's pointer until `unclip`. A panel whose draw fails between them keeps its clip on its next draw. A core call when a draw ends would let draw drop it.
+- **Settings without a Changed function.** A plugin cannot hear when a core setting, such as `ecs.font`, changes, so draw compares `ecs.font` each time it opens a font size. A core event for changed settings would tell it.
 
 ## Questions
 
