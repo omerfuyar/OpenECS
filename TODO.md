@@ -22,6 +22,7 @@ What the owner wants worked on, in no fixed order. Each one is described further
 [Shuild](https://github.com/omerfuyar/shuild) is the build tool, a single header at `dependencies/shuild`. Shu, at `dependencies/shu`, holds the types and macros it uses. The owner allows changes to both, in their style, through pull requests into their main branches. These repositories have no CI, so a pull request is merged with a merge commit once it is tested locally: shuild's examples, and OpenECS built from scratch with its checks. Then an OpenECS pull request moves the submodule. Work found in it:
 
 - **Windows and macOS.** Shuild names libraries for the system its compiler compiles for, and cross-compiles for Windows with MinGW (omerfuyar/shuild#23). Its Windows host code runs in OpenECS's Windows checks, which build OpenECS on Windows. `SHU_UtilRun` runs commands with the system's shell, which is `cmd.exe` on Windows.
+- **Log folders on Windows.** `SHU_UtilRunLogged` makes its log's folder only when the path has the system's separators, so `a/b/c.log` fails on Windows; std's build makes the folders first. It could normalize the path, as `SHU_UtilCreateDirectory` does.
 - **Its own todo.** The header lists a module macro, like Clay's. The owner leaves it for later.
 
 ## Standard plugins
