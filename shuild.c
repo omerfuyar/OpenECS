@@ -55,13 +55,13 @@ static const char *CompilerArgument(int argc, char **argv)
         }
     }
 
-    return SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) ? "clang" : "gcc";
+    return SHUM_HOST_WINDOWS ? "clang" : "gcc";
 }
 
 int main(int argc, char **argv)
 {
     CONFIG.compiler = CompilerArgument(argc, argv);
-    SHU_CompilerTryConfigure(CONFIG.compiler);
+    SHU_CompilerConfigureTry(CONFIG.compiler);
     SHU_UtilAutomate(argc, argv);
     SetupConfiguration(argc, argv);
 
@@ -180,16 +180,16 @@ static void SetupConfiguration(int argc, char **argv)
     }
 
     // a build for another system goes to folders of its own, such as build/Debug-Windows/
-    u8 target = SHU_CompilerGetTarget();
-    const char *system = SHUM_PLATFORM_IS_HOST(target) ? "" : SHU_UtilFormat("-%s", SHUM_PLATFORM_GET_STRING(target));
-    CONFIG.windows = target == SHUM_PLATFORM_WINDOWS;
+    SHUPlatform target = SHU_CompilerGetTarget();
+    const char *system = SHUM_PLATFORM_IS_HOST(target) ? "" : SHU_UtilFormat("-%s", SHUPlatform_GetString(target));
+    CONFIG.windows = target == SHUPlatform_Windows;
     CONFIG.buildDir = SHU_UtilFormat(".shu/%s%s/", BuildType_String(CONFIG.type), system);
     CONFIG.outputDir = SHU_UtilFormat("build/%s%s/", BuildType_String(CONFIG.type), system);
 
     SHU_CacheConfigure(CONFIG.buildDir);
 
     SHU_UtilLog("building " SHUM_LOG_VALUE("%s") " with " SHUM_LOG_VALUE("%s") " for " SHUM_LOG_VALUE("%s") "; standard plugins: " SHUM_LOG_VALUE("%s") ", examples: " SHUM_LOG_VALUE("%s"),
-            BuildType_String(CONFIG.type), CONFIG.compiler, SHUM_PLATFORM_GET_STRING(target), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
+            BuildType_String(CONFIG.type), CONFIG.compiler, SHUPlatform_GetString(target), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
 }
 
 // our code gets warnings, and in Debug gcc's static analyzer and the address and undefined-behaviour sanitizers, which MinGW does not have; dependencies get none of them
@@ -206,7 +206,7 @@ static void SetBuildFlags(bool ownCode)
         {
             SHU_CompilerAddFlags(SHUM_FLAGS_WARNING_MID);
 
-            if (SHU_CompilerGetIdentifier() == SHUM_COMPILER_GCC)
+            if (SHU_CompilerGetIdentifier() == SHUCompiler_GCC)
             {
                 SHU_CompilerAddFlags(" -fanalyzer");
             }
@@ -251,7 +251,7 @@ static bool IsBuilt(const char *library, bool shared)
 /// @param gcc The tool's name for gcc. @param clang The tool's name for clang.
 static char *CompilerTool(const char *gcc, const char *clang)
 {
-    const char *name = SHU_CompilerGetIdentifier() == SHUM_COMPILER_CLANG ? "clang" : "gcc";
+    const char *name = SHU_CompilerGetIdentifier() == SHUCompiler_Clang ? "clang" : "gcc";
     const char *found = NULL;
 
     for (const char *c = strstr(CONFIG.compiler, name); c != NULL; c = strstr(c + 1, name))
@@ -279,7 +279,7 @@ static void Shuild_CMake(const char *name, const char *source, const char *optio
 
     if (!SHUM_PLATFORM_IS_HOST(SHU_CompilerGetTarget()))
     {
-        compilers = SHU_UtilFormat("%s -DCMAKE_SYSTEM_NAME=%s -DCMAKE_RC_COMPILER=\"%s\"", compilers, SHUM_PLATFORM_GET_STRING(SHU_CompilerGetTarget()), CompilerTool("windres", "windres"));
+        compilers = SHU_UtilFormat("%s -DCMAKE_SYSTEM_NAME=%s -DCMAKE_RC_COMPILER=\"%s\"", compilers, SHUPlatform_GetString(SHU_CompilerGetTarget()), CompilerTool("windres", "windres"));
     }
 
     char *log = SHU_UtilFormat("%s%s-configure.log", CONFIG.buildDir, name);
@@ -319,11 +319,11 @@ static void Shuild_lua(void)
     SetBuildFlags(false);
 
     // Lua finds Windows by itself
-    if (SHU_CompilerGetTarget() == SHUM_PLATFORM_LINUX)
+    if (SHU_CompilerGetTarget() == SHUPlatform_Linux)
     {
         SHU_CompilerAddDefinitions("LUA_USE_LINUX", NULL);
     }
-    else if (SHU_CompilerGetTarget() == SHUM_PLATFORM_MACOS)
+    else if (SHU_CompilerGetTarget() == SHUPlatform_MacOS)
     {
         SHU_CompilerAddDefinitions("LUA_USE_MACOSX", NULL);
     }
@@ -698,12 +698,12 @@ static void Shuild_Definitions(void)
     DeleteIfExists(definitions);
     char *program = SHU_UtilFormat("%sbin/OpenECS", CONFIG.outputDir);
 
-    for (char *c = program; SHUM_PLATFORM_IS_HOST(SHUM_PLATFORM_WINDOWS) && *c != '\0'; c++)
+    for (char *c = program; SHUM_HOST_WINDOWS && *c != '\0'; c++)
     {
         *c = *c == '/' ? '\\' : *c;
     }
 
-    SHU_UtilTryRun("%s --definitions %s > %sdefinitions.log 2>&1", program, definitions, CONFIG.outputDir);
+    SHU_UtilRunTry("%s --definitions %s > %sdefinitions.log 2>&1", program, definitions, CONFIG.outputDir);
 
     if (SHU_UtilFileExists(definitions) != SHUFileType_Directory)
     {
