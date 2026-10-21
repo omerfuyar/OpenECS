@@ -98,7 +98,7 @@ function Timer:stop() end
 ---@class ecs.timer
 ecs.timer = {}
 
----Starts a timer of the plugin.
+---Starts a timer of the plugin. A panel's timer is stopped in its type's destroy, as its subscriptions end there.
 ---@param seconds number More than 0, or 0 for a one-shot timer.
 ---@param repeat_ boolean true: it runs every seconds until stopped; false: it runs once.
 ---@param fn fun() Runs on the main thread when the time comes.
@@ -155,13 +155,6 @@ local Panel = {}
 
 ---Asks for the panel to be drawn again.
 function Panel:redraw() end
-
----Starts a timer that stops when the panel is closed.
----@param seconds number More than 0, or 0 for a one-shot timer.
----@param repeat_ boolean true: it runs every seconds until stopped or the panel closes; false: it runs once.
----@param fn fun() Runs on the main thread when the time comes.
----@return ecs.Timer timer The timer, which stops it.
-function Panel:startTimer(seconds, repeat_, fn) end
 
 ---Says whether the panel accepts typed text, and where its text cursor is. While the panel has focus and accepts text, it gets text events,
 ---and the system's input method shows its window beside the cursor. A key that runs a binding types no text.

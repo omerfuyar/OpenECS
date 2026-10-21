@@ -360,14 +360,12 @@ static void ECSIBindings_TimerRelease(void *data)
     SDL_free(timer);
 }
 
-/// @brief Starts a timer for a plugin, and pushes its handle.
-/// @param owner The panel the timer belongs to, or nullptr.
-static int ECSIBindings_StartTimer(lua_State *state, ECSPlugin plugin, const void *owner, int first)
+static int ECSIBindings_TimerStart(lua_State *state)
 {
-    f64 seconds = (f64)luaL_checknumber(state, first);
-    bool repeat = lua_toboolean(state, first + 1);
-    luaL_checktype(state, first + 2, LUA_TFUNCTION);
-    luaL_argcheck(state, seconds > 0.0 || (seconds == 0.0 && !repeat), first, "must be positive, or 0 for a one-shot timer");
+    f64 seconds = (f64)luaL_checknumber(state, 1);
+    bool repeat = lua_toboolean(state, 2);
+    luaL_checktype(state, 3, LUA_TFUNCTION);
+    luaL_argcheck(state, seconds > 0.0 || (seconds == 0.0 && !repeat), 1, "must be positive, or 0 for a one-shot timer");
 
     ECSILuaTimer *timer = SDL_malloc(sizeof(ECSILuaTimer));
 
@@ -380,24 +378,19 @@ static int ECSIBindings_StartTimer(lua_State *state, ECSPlugin plugin, const voi
     *handle = timer;
     luaL_setmetatable(state, OPENECS_LUA_TIMER);
 
-    lua_pushvalue(state, first + 2);
+    lua_pushvalue(state, 3);
     timer->function = luaL_ref(state, LUA_REGISTRYINDEX);
     lua_pushvalue(state, -1);
     timer->handle = luaL_ref(state, LUA_REGISTRYINDEX);
-    timer->plugin = plugin;
+    timer->plugin = ECSIBindings_Plugin(state);
 
-    if (ECSIEvents_StartTimer(plugin, owner, &timer->timer, seconds, repeat, ECSIBindings_TimerTick, ECSIBindings_TimerRelease, timer))
+    if (ECSIEvents_StartTimer(timer->plugin, &timer->timer, seconds, repeat, ECSIBindings_TimerTick, ECSIBindings_TimerRelease, timer))
     {
         ECSIBindings_TimerRelease(timer);
         return luaL_error(state, "out of memory");
     }
 
     return 1;
-}
-
-static int ECSIBindings_TimerStart(lua_State *state)
-{
-    return ECSIBindings_StartTimer(state, ECSIBindings_Plugin(state), nullptr, 1);
 }
 
 static int ECSIBindings_TimerStop(lua_State *state)
@@ -1615,13 +1608,6 @@ static int ECSIBindings_PanelNewIndex(lua_State *state)
     return 0;
 }
 
-static int ECSIBindings_PanelStartTimer(lua_State *state)
-{
-    ECSPanel panel = ECSIBindings_CheckPanel(state, 1);
-    luaL_argcheck(state, panel->type != nullptr, 1, "the panel has no type");
-    return ECSIBindings_StartTimer(state, panel->type->plugin, panel, 2);
-}
-
 static int ECSIBindings_PanelAcceptDrops(lua_State *state)
 {
     ECSPanel panel = ECSIBindings_CheckPanel(state, 1);
@@ -1886,7 +1872,6 @@ static const luaL_Reg OPENECS_BINDINGS_PANEL_METHODS[] = {
     {"acceptDrops", ECSIBindings_PanelAcceptDrops},
     {"startDrag", ECSIBindings_PanelStartDrag},
     {"redraw", ECSIBindings_PanelRedraw},
-    {"startTimer", ECSIBindings_PanelStartTimer},
     {nullptr, nullptr},
 };
 

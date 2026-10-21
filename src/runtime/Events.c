@@ -8,7 +8,6 @@
 typedef struct ECSITimer
 {
     ECSPlugin plugin;
-    const void *owner;
     u64 dueTicks;      // nanoseconds, as SDL_GetTicksNS
     u64 intervalTicks; // nanoseconds
     bool repeat;
@@ -515,7 +514,7 @@ void ECSIEvents_Deliver(void)
     ECSIEvents_FreeCancelled();
 }
 
-SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, const void *owner, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data)
+SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data)
 {
     SDL_assert(plugin != nullptr);
     SDL_assert(retTimer != nullptr);
@@ -533,7 +532,6 @@ SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, const void *owner, ECSTimer *r
 
     *timer = (ECSITimer){
         .plugin = plugin,
-        .owner = owner,
         .dueTicks = SDL_GetTicksNS() + intervalTicks,
         .intervalTicks = intervalTicks,
         .repeat = repeat,
@@ -545,21 +543,6 @@ SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, const void *owner, ECSTimer *r
     arrput(EVENTS.timers, timer);
     *retTimer = timer;
     return SHUResult_Ok;
-}
-
-void ECSIEvents_StopTimersOf(const void *owner)
-{
-    SDL_assert(owner != nullptr);
-
-    for (usz i = 0; i < arrlenu(EVENTS.timers); i++)
-    {
-        if (EVENTS.timers[i]->owner == owner)
-        {
-            EVENTS.timers[i]->stopped = true;
-        }
-    }
-
-    ECSIEvents_FreeStoppedTimers();
 }
 
 void ECSIEvents_StopTimersOfPlugin(ECSPlugin plugin)
@@ -706,12 +689,17 @@ void ECSIEvents_Terminate(void)
 
 SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
 {
-    return ECSIEvents_StartTimer(plugin, nullptr, retTimer, seconds, repeat, function, nullptr, data);
+    return ECSIEvents_StartTimer(plugin, retTimer, seconds, repeat, function, nullptr, data);
 }
 
 void ECSTimer_Stop(ECSTimer *timer)
 {
-    SDL_assert(timer != nullptr && *timer != nullptr);
+    SDL_assert(timer != nullptr);
+
+    if (*timer == nullptr)
+    {
+        return;
+    }
 
     (*timer)->stopped = true;
     *timer = nullptr;

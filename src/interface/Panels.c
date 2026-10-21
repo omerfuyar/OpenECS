@@ -369,7 +369,6 @@ void ECSIPanel_Destroy(ECSPanel *panel)
     SDL_assert(panel != nullptr && *panel != nullptr);
 
     ECSPanel target = *panel;
-    ECSIEvents_StopTimersOf(target);
 
     if (target->type != nullptr)
     {
@@ -404,7 +403,6 @@ void ECSIPanel_Close(ECSPanel *panel)
     SDL_assert(panel != nullptr && *panel != nullptr);
     SDL_assert(!(*panel)->closed);
 
-    ECSIEvents_StopTimersOf(*panel);
     ECSIPanel_Emit("ecs.panelClosed", *panel);
 
     // a closed panel is never shown again, and its OS window may close before it is destroyed, with the renderer its texture belongs to
@@ -931,7 +929,6 @@ bool ECSIPanel_Restart(ECSPanel panel)
     }
 
     // the new state says again which data it accepts
-    ECSIEvents_StopTimersOf(panel);
     ECSIPanel_ClearAccepts(panel);
     panel->textInput = false;
     SDL_free(panel->fault);
@@ -1117,14 +1114,6 @@ SHUResult ECSIPanel_TypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
     shput(PANELS.types, name, type);
 
     return SHUResult_Ok;
-}
-
-SHUResult ECSPanel_StartTimer(ECSPanel panel, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
-{
-    SDL_assert(panel != nullptr);
-    SDL_assert(panel->type != nullptr); // placeholders run no code
-
-    return ECSIEvents_StartTimer(panel->type->plugin, panel, retTimer, seconds, repeat, function, nullptr, data);
 }
 
 bool ECSPanel_GetUnsaved(ECSPanel panel)

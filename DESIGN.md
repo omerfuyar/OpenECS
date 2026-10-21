@@ -203,7 +203,7 @@ The wait uses `SDL_WaitEventTimeout` with the time until the next timer or the n
 
 - Plugins ask for timers: once or repeating, with an interval. Timers run on the main thread, in step 3 of the loop.
 - `ECSTimer_Start(plugin, &timer, 0.1, true, function, data)` writes a new timer into `timer`; `ECSTimer_Stop(&timer)` stops it. Lua: `ecs.timer.start(0.1, true, fn)` returns a handle, and `handle:stop()` stops it.
-- `ECSPanel_StartTimer(panel, &timer, ...)` starts a timer that belongs to a panel. It stops when the panel closes, and its handle is invalid then.
+- Timers belong to the plugin, as subscriptions do. A panel that starts a timer stops it in its type's `Destroy`.
 - A one-shot timer ends after its function returns, and its handle is invalid then. A repeating timer that falls behind skips the calls it missed.
 
 ### 3.3 Threads
@@ -868,7 +868,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 ### 11.4 Panels in Lua
 
 - A Lua panel type is a table (4.1). The core registers C callbacks that call its Lua functions in protected calls.
-- Panels are handles. What a panel is, is a field: `panel.id`, `panel.type`, `panel.title` and `panel.unsaved`, of which `title` and `unsaved` can be set: `panel.title = "main.lua"`. What a panel does, is a method: `panel:redraw()`, `panel:startTimer(seconds, repeat, fn)`, `panel:setTextInput(...)`, `panel:acceptDrops(types)`, `panel:startDrag(type, value)` and `panel:openPopup(desc)`. Each has one form only. A handle of a destroyed panel raises an error when it is used.
+- Panels are handles. What a panel is, is a field: `panel.id`, `panel.type`, `panel.title` and `panel.unsaved`, of which `title` and `unsaved` can be set: `panel.title = "main.lua"`. What a panel does, is a method: `panel:redraw()`, `panel:setTextInput(...)`, `panel:acceptDrops(types)`, `panel:startDrag(type, value)` and `panel:openPopup(desc)`. Each has one form only. A handle of a destroyed panel raises an error when it is used.
 - `draw(state, surface, seconds)` gets a surface handle (10.6) with `width`, `height` and `scale`, and the methods `fill(x, y, width, height, color)` (5.4), `setPixel(x, y, color)`, `getPixel(x, y)` and `setRow(y, bytes, x)`. Colours are texts (5.2), and `getPixel` gives `"#RRGGBBAA"`; `setRow` takes the row's pixels as a string, ARGB in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
 - `event(state, event)` gets a table: `type` (such as `"pointerDown"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `scrollX` and `scrollY` for the wheel, `key` (SDL's key name) for keys, `width` and `height` for `shown` and `resized`, `x`, `y`, `dataType` and `value` for `drop` (7.9), and `text` for `text` (4.6).
 
