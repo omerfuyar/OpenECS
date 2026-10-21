@@ -91,7 +91,7 @@ git clone https://github.com/omerfuyar/OpenECS
 git submodule update --init --recursive
 ```
 
-### Dependent Packages
+### Development Dependencies
 
 #### Linux
 
