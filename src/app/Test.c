@@ -566,7 +566,7 @@ static int ECSITest_Session(lua_State *state)
     }
 
     // values are pushed onto the main state, and the test runs in its own thread
-    ECSILua_PushValue(session);
+    ECSILua_PushValue(ECSILua_GetState(), session);
     lua_xmove(ECSILua_GetState(), state, 1);
     ECSValue_Destroy(&session);
     return 1;
@@ -648,7 +648,7 @@ static int ECSITest_Panel(lua_State *state)
     }
 
     // values are pushed onto the main state, and the test runs in its own thread
-    ECSILua_PushValue(ECSValue_GetTableField(saved, "state"));
+    ECSILua_PushValue(ECSILua_GetState(), ECSValue_GetTableField(saved, "state"));
     lua_xmove(ECSILua_GetState(), state, 1);
     lua_setfield(state, -2, "state");
     ECSValue_Destroy(&saved);
@@ -726,7 +726,7 @@ static int ECSITest_Setting(lua_State *state)
     }
 
     // values are pushed onto the main state, and the test runs in its own thread
-    ECSILua_PushValue(value);
+    ECSILua_PushValue(ECSILua_GetState(), value);
     lua_xmove(ECSILua_GetState(), state, 1);
     return 1;
 }
@@ -871,7 +871,7 @@ static SHUResult ECSITest_PushTable(lua_State *state)
 {
     luaL_newlib(state, OPENECS_TEST_FUNCTIONS);
 
-    if (luaL_loadbufferx(state, OPENECS_TEST_MATCH, sizeof(OPENECS_TEST_MATCH) - 1, "=match", "t") != LUA_OK || ECSILua_Call(0, 1))
+    if (luaL_loadbufferx(state, OPENECS_TEST_MATCH, sizeof(OPENECS_TEST_MATCH) - 1, "=match", "t") != LUA_OK || ECSILua_Call(state, 0, 1))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "test.match does not load: %s", lua_tostring(state, -1));
         lua_pop(state, 2);
@@ -948,7 +948,7 @@ SHUResult ECSITest_Load(const char *path, char **retPreset)
     lua_setmetatable(state, -2);
     lua_setupvalue(state, -2, 1);
 
-    if (ECSILua_Call(0, 1))
+    if (ECSILua_Call(state, 0, 1))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Error in the test '%s': %s", path, lua_tostring(state, -1));
         lua_settop(state, top);

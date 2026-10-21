@@ -692,7 +692,7 @@ static void ECSIServices_PushOutput(lua_State *state, ECSIParameter parameter, c
         lua_pushlstring(state, slot->buffer.data == nullptr ? "" : slot->buffer.data, slot->buffer.data == nullptr ? 0 : slot->buffer.size);
         break;
     case ECSIParameterType_Value:
-        ECSILua_PushValue(slot->pointer);
+        ECSILua_PushValue(state, slot->pointer);
         break;
     default:
         lua_pushnil(state);
@@ -766,7 +766,7 @@ static int ECSIServices_CallC(lua_State *state)
 
         ECSValue *value = nullptr;
         result = result ? result : ECSValue_Create(&value);
-        result = result || parameter.out ? result : ECSILua_GetValue(indices[i], value);
+        result = result || parameter.out ? result : ECSILua_GetValue(state, indices[i], value);
         slots[i].pointer = value;
 
         if (parameter.out)
@@ -1040,7 +1040,7 @@ static void ECSIServices_PushArgument(lua_State *state, ECSIParameter parameter,
         break;
     }
     case ECSIParameterType_Value:
-        ECSILua_PushValue(*(const ECSValue *const *)argument);
+        ECSILua_PushValue(state, *(const ECSValue *const *)argument);
         break;
     default:
         lua_pushnil(state);
@@ -1160,7 +1160,7 @@ static bool ECSIServices_WriteOutput(lua_State *state, ECSIFunction *function, i
             *(const ECSValue **)target = value;
         }
 
-        return value != nullptr && ECSILua_GetValue(index, value) == SHUResult_Ok;
+        return value != nullptr && ECSILua_GetValue(state, index, value) == SHUResult_Ok;
     }
     default:
         return true;
@@ -1274,7 +1274,7 @@ static void ECSIServices_CallLua(ffi_cif *cif, void *result, void **arguments, v
         }
     }
 
-    bool failed = ECSILua_Call(pushed, resultCount) != SHUResult_Ok;
+    bool failed = ECSILua_Call(state, pushed, resultCount) != SHUResult_Ok;
     ECSIServices_EndCallbacks(state, callbacks);
 
     if (failed)

@@ -20,4 +20,9 @@ void ECSIWorkers_Terminate(void);
 /// @param plugin The plugin.
 void ECSIWorkers_PushTable(lua_State *state, ECSPlugin plugin);
 
+/// @brief Pushes a table of log functions that write in a plugin's name: debug, info, warn and error. The plugin's ecs.log and its workers' ecs.log are such tables.
+/// @param state The core's Lua state, or a worker's.
+/// @param plugin The plugin.
+void ECSIWorkers_PushLog(lua_State *state, ECSPlugin plugin);
+
 #pragma endregion Declarations
