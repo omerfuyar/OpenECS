@@ -100,10 +100,10 @@ ecs.timer = {}
 
 ---Starts a timer of the plugin. A panel's timer is stopped in its type's destroy, as its subscriptions end there.
 ---@param seconds number More than 0, or 0 for a one-shot timer.
----@param repeat_ boolean true: it runs every seconds until stopped; false: it runs once.
----@param fn fun() Runs on the main thread when the time comes.
+---@param repeats boolean true: it runs every seconds until stopped; false: it runs once.
+---@param callback fun() Runs on the main thread when the time comes.
 ---@return ecs.Timer timer The timer, which stops it.
-function ecs.timer.start(seconds, repeat_, fn) end
+function ecs.timer.start(seconds, repeats, callback) end
 
 -- Workers: Lua scripts on threads of their own (DESIGN 3.4)
 
@@ -526,9 +526,9 @@ function ecs.event.emit(name, value) end
 
 ---Subscribes to an event, such as "ecs.panelOpened".
 ---@param name string The event's full name, such as "canvas.changed".
----@param fn fun(name: string, value: any) Gets the event's name and value, each time it is emitted.
+---@param callback fun(name: string, value: any) Gets the event's name and value, each time it is emitted.
 ---@return ecs.Subscription subscription The subscription, which ends it.
-function ecs.event.subscribe(name, fn) end
+function ecs.event.subscribe(name, callback) end
 
 -- Handles
 
@@ -545,8 +545,8 @@ function ecs.handle.registerType(name) end
 ---Makes a function of the plugin a method of one of its handle types, so a handle's user calls it on the handle: `socket:send(data, true)`.
 ---@param type string The handle type's local name, such as "brush".
 ---@param method string The method's name, such as "paint".
----@param function_ string The local name of one of the plugin's functions, registered with ecs.service.register, whose first parameter is a handle of the type.
-function ecs.handle.addMethod(type, method, function_) end
+---@param functionName string The local name of one of the plugin's functions, registered with ecs.service.register, whose first parameter is a handle of the type.
+function ecs.handle.addMethod(type, method, functionName) end
 
 ---Makes a handle that stands for a Lua value. Lua only: in C, a handle is the object's pointer.
 ---@param name string A handle type of the plugin, by its full name.
@@ -579,7 +579,7 @@ function ecs.service.register(functions) end
 ---Gets a registered function.
 ---@param name string Such as "canvas.clear".
 ---@param signature? string The signature the caller expects.
----@return function? fn The function, to call as any Lua function.
+---@return function? callback The function, to call as any Lua function.
 ---@return string? message Why the function is not available.
 function ecs.service.get(name, signature) end
 

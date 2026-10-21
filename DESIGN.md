@@ -203,7 +203,7 @@ The wait uses `SDL_WaitEventTimeout` with the time until the next timer or the n
 ### 3.2 Timers
 
 - Plugins ask for timers: once or repeating, with an interval. Timers run on the main thread, in step 3 of the loop.
-- `ECSTimer_Start(plugin, &timer, 0.1, true, function, data)` writes a new timer into `timer`; `ECSTimer_Stop(&timer)` stops it. Lua: `ecs.timer.start(0.1, true, fn)` returns a handle, and `handle:stop()` stops it.
+- `ECSTimer_Start(plugin, &timer, 0.1, true, function, data)` writes a new timer into `timer`; `ECSTimer_Stop(&timer)` stops it. Lua: `ecs.timer.start(0.1, true, callback)` returns a handle, and `handle:stop()` stops it.
 - Timers belong to the plugin, as subscriptions do. A panel that starts a timer stops it in its type's `Destroy`.
 - A one-shot timer ends after its function returns, and its handle is invalid then. A repeating timer that falls behind skips the calls it missed.
 
@@ -605,7 +605,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - `ECSEvent_Subscribe(plugin, &subscription, name, fn, data)` calls `fn(data, name, value)` for each emission; `ECSEvent_Unsubscribe` ends it. A subscriber hears the core's events, its own, and those of plugins its manifest depends on. The event must be declared first, so a plugin subscribes after its dependencies have loaded.
 - Emissions are queued like every other event (8.2).
 - When a plugin fails, its events, its subscriptions and the subscriptions to its events are removed.
-- Lua: `ecs.event.declare(name, description)`, `ecs.event.emit(name, value)` and `ecs.event.subscribe(name, fn)`, which returns a subscription with `unsubscribe()`. `fn` gets the name and the value.
+- Lua: `ecs.event.declare(name, description)`, `ecs.event.emit(name, value)` and `ecs.event.subscribe(name, callback)`, which returns a subscription with `unsubscribe()`. `callback` gets the name and the value.
 
 ### 8.4 The core's named events
 
