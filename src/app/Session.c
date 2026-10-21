@@ -871,7 +871,7 @@ SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info)
     SDL_assert(info != nullptr);
 
     SESSION.info = info;
-    SHU_ReturnResult(ECSIKeys_SetTool(ECSValue_GetTableField(info->file, "keys")));
+    SHU_ReturnResult(ECSIKeys_SetPreset(ECSValue_GetTableField(info->file, "keys")));
 
     // plugins get their state before panels are created, so panels find their data
     ECSIPlugins_RestoreStates(ECSValue_GetTableField(info->file, "pluginState"));

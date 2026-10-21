@@ -25,7 +25,7 @@ void ECSIKeys_Terminate(void);
 /// @brief Sets the preset's keys table (DESIGN 7.8). What it holds that never works is reported.
 /// @param keys The keys table, or nullptr. The core copies it.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSIKeys_SetTool(const ECSValue *keys);
+SHUWUR SHUResult ECSIKeys_SetPreset(const ECSValue *keys);
 
 /// @brief Adds the keys table of the next workspace, in the order the layout adds workspaces.
 /// @param keys The keys table, or nullptr for none. The core copies it.
