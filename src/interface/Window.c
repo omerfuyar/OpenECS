@@ -119,6 +119,7 @@ typedef struct ECSIOSWindow
     f32 width; // in layout units
     f32 height;
     ECSITabRef *tabs; // stb_ds array of the tabs drawn in its last frame
+    u64 raised;       // when it last opened or got the focus, counted across the OS windows; the highest is in front
 } ECSIOSWindow;
 
 /// @brief How a popup is shown: in an SDL popup window, or inside its panel's OS window when the video driver has no popup windows.
@@ -162,6 +163,8 @@ static struct
     ECSINode *gripGroup; // lone group whose grip is shown, or nullptr
     ECSINode *dragSplit; // split whose divider is dragged, or nullptr
     usz dragDivider;      // the dragged divider follows this child
+
+    u64 raises; // counts the OS windows' openings and focus changes, so the one in front is known (ECSIOSWindow.raised)
 
     ECSPanel dragPanel; // panel pressed on its tab or grip, or nullptr; it is dragged once the pointer moves far enough
     bool dragGroup;     // the whole group of dragPanel is dragged, pressed on its tab row
@@ -376,28 +379,25 @@ static ECSIOSWindow *ECSIWindow_Under(f32 x, f32 y, f32 *retX, f32 *retY)
     *retX = x;
     *retY = y;
 
-    if (event == nullptr || ECSIWindow_Contains(x, y, 0.0f, 0.0f, event->width, event->height))
-    {
-        return event;
-    }
-
     // windows know their places on the screen, except on Wayland, where a point outside the event window falls in none
-    if (ECSIWindow_OnWayland())
+    if (event == nullptr || ECSIWindow_OnWayland())
     {
-        return nullptr;
+        return event == nullptr || ECSIWindow_Contains(x, y, 0.0f, 0.0f, event->width, event->height) ? event : nullptr;
     }
 
     int eventX = 0;
     int eventY = 0;
     SDL_GetWindowPosition(event->window, &eventX, &eventY);
+    ECSIOSWindow *front = nullptr;
 
+    // where windows overlap, the one in front takes the point; SDL does not tell the windows' order, so the one that last opened or got the focus counts as in front
     for (usz i = 0; i < arrlenu(WINDOW.windows); i++)
     {
         ECSIOSWindow *os = WINDOW.windows[i];
-        int left = 0;
-        int top = 0;
+        int left = eventX;
+        int top = eventY;
 
-        if (os == event || !ECSIWindow_IsShown(os) || !SDL_GetWindowPosition(os->window, &left, &top))
+        if (!ECSIWindow_IsShown(os) || (os != event && !SDL_GetWindowPosition(os->window, &left, &top)))
         {
             continue;
         }
@@ -405,15 +405,15 @@ static ECSIOSWindow *ECSIWindow_Under(f32 x, f32 y, f32 *retX, f32 *retY)
         f32 localX = x + (f32)(eventX - left);
         f32 localY = y + (f32)(eventY - top);
 
-        if (ECSIWindow_Contains(localX, localY, 0.0f, 0.0f, os->width, os->height))
+        if (ECSIWindow_Contains(localX, localY, 0.0f, 0.0f, os->width, os->height) && (front == nullptr || os->raised > front->raised))
         {
+            front = os;
             *retX = localX;
             *retY = localY;
-            return os;
         }
     }
 
-    return nullptr;
+    return front;
 }
 
 /// @brief Forgets the nodes the window points to; the layout calls it after the trees change.
@@ -1316,6 +1316,7 @@ static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootID, i32 width, i32 height, SDL_Wi
     }
 
     os->rootID = rootID;
+    os->raised = ++WINDOW.raises;
     os->window = SDL_CreateWindow(WINDOW.title, width, height, SDL_WINDOW_RESIZABLE | (WINDOW.titleBar ? SDL_WINDOW_BORDERLESS : 0) | flags);
 
     if (os->window == nullptr)
@@ -1997,6 +1998,16 @@ ECSIRoot *ECSIWindow_GetRoot(SDL_WindowID id, bool *retMain)
     }
 
     return ECSIWindow_Root(os);
+}
+
+void ECSIWindow_Focused(SDL_WindowID id)
+{
+    ECSIOSWindow *os = ECSIWindow_Find(id);
+
+    if (os != nullptr)
+    {
+        os->raised = ++WINDOW.raises;
+    }
 }
 
 void ECSIWindow_SetEventWindow(SDL_WindowID id)
