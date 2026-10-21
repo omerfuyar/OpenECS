@@ -57,6 +57,7 @@ static const char *const OPENECS_CORE_EVENTS[][2] = {
     {"ecs.focusChanged", "Another panel got the focus: { panel = id }, or {} when no panel has it"},
     {"ecs.workspaceSwitched", "Another workspace is shown: { workspace = number }"},
     {"ecs.layoutChanged", "Panels were moved, grouped, closed, maximized or locked: {}"},
+    {"ecs.settingChanged", "A setting's value in effect changed: { name = full name }"},
 };
 
 /// @brief Work for a worker thread.

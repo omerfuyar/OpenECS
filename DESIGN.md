@@ -616,6 +616,7 @@ Panels are named by their id (`ECSPanel_GetID`, `panel:getId()`); `ECSLayout_Fin
 | `ecs.focusChanged`      | `{ panel = id }`, or `{}` for none | Another panel gets the focus                            |
 | `ecs.workspaceSwitched` | `{ workspace = number }`           | Another workspace is shown                              |
 | `ecs.layoutChanged`     | nil                                | Panels are moved, grouped, closed, maximized or locked  |
+| `ecs.settingChanged`    | `{ name = full name }`             | A setting's value in effect changes                     |
 
 ## 9. Plugins
 
@@ -885,7 +886,7 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 
 ### 12.1 Declaring
 
-- Plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. The core declares its own with a name, a type and a description; their defaults are in the core's settings file. Owners are told when their settings change: the description's `Changed` function runs after the queued events (3.1, step 4), and only when the value in effect really changed.
+- Plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. The core declares its own with a name, a type and a description; their defaults are in the core's settings file. Owners are told when their settings change: the description's `Changed` function runs after the queued events (3.1, step 4), and only when the value in effect really changed. Then the core emits `ecs.settingChanged` with the setting's full name, so any plugin can follow a setting it does not own, such as `ecs.font`.
 - Types: `bool`, `integer`, `number`, `string`, `choice` (one of a list), `key` (a key combination, 7.3), `color` (`"#RRGGBB"` or `"#RRGGBBAA"`, 5.2), `list` and `table`. A value must have its setting's type: a `key` must read as a key combination, and a `color` as a colour.
 - The core's settings hold the core's choices of look and behaviour: the prefix, focus and vsync, the window's size, font and colours, the sizes of tab rows, dividers and grips, the distances that start drags and drops, and the reopen limit.
 - The core's settings file is `resources/settings.lua` next to the executable, in the format of the user's file (12.3). It is part of the defaults layer (OVERVIEW 10.4), the only place that gives the core's settings their defaults, and holds the core's default keys (7.8). OpenECS does not start if the file cannot be read, or if it gives a core setting no value of its type. Its `ecs.prefix` must be a key combination, because a prefix that cannot be read falls back to it.

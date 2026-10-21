@@ -1,6 +1,7 @@
 #include "runtime/Settings.h"
 
 #include "base/Lua.h"
+#include "runtime/Events.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -890,6 +891,17 @@ void ECSISettings_DeliverChanges(void)
         {
             setting->Changed(setting->data);
         }
+
+        // every plugin may hear it, as the owner is told only of its own settings
+        ECSValue *value = nullptr;
+        ECSValue *field = nullptr;
+
+        if (ECSValue_Create(&value) == SHUResult_Ok && ECSValue_TableSetField(value, "name", &field) == SHUResult_Ok && ECSValue_SetString(field, setting->name) == SHUResult_Ok)
+        {
+            ECSIEvents_EmitCore("ecs.settingChanged", value);
+        }
+
+        ECSValue_Destroy(&value);
     }
 
     arrfree(SETTINGS.changed);
