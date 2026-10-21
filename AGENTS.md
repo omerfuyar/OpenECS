@@ -57,12 +57,14 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Changing anything that is marked as decided.
 - Adding a dependency.
 - Changing submodules, except moving `std/` and `examples/` to a newer commit of their repository's `dev` (DESIGN.md, section 17.7).
+- Editing a README.md, in any of the project's repositories, or the template's GUIDE.md. They are written for people: show the owner the change you propose, and edit only after the owner reviews it.
 
 **Never**
 
 - Push, unless the owner tells you to.
 - Edit anything under `dependencies/`. Change `std/` and `examples/` in their own repositories, which follow this file too.
 - Break or invent code conventions. Follow DESIGN.md section 1.
+- Tell people to run a shell script, in any document. Scripts are for CI and agents; people build and test with shuild (`shuild.c`), so anything they need goes there.
 
 ## Git
 
