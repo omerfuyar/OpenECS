@@ -43,6 +43,10 @@ SDL_Window *ECSIWindow_OfPanel(ECSPanel panel);
 /// @return The root, or nullptr if the window shows none now.
 ECSIRoot *ECSIWindow_GetRoot(SDL_WindowID id, bool *retMain);
 
+/// @brief Notes that an OS window got the focus, so it counts as in front of the others when a dragged panel is over windows that overlap.
+/// @param id The OS window's id; a window that is not one of the core's OS windows is ignored.
+void ECSIWindow_Focused(SDL_WindowID id);
+
 /// @brief Chooses the OS window of the pointer event being handled. The pointer functions below and ECSIWindow_PanelAt take positions in its layout units.
 /// @param id SDL's id of the window; an unknown id chooses the main window.
 void ECSIWindow_SetEventWindow(SDL_WindowID id);

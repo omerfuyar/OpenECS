@@ -927,6 +927,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
     // the panel focused last in an OS window gets the focus when the window gets the system's
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
     {
+        ECSIWindow_Focused(event->window.windowID);
         ECSIRoot *root = ECSIWindow_GetRoot(event->window.windowID, nullptr);
 
         if (root != nullptr)
