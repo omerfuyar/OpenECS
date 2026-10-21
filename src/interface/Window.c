@@ -1,6 +1,5 @@
 #include "interface/Window.h"
 
-#include "interface/SystemDrag.h"
 #include "runtime/Settings.h"
 
 #include "SDL3/SDL.h"
@@ -28,8 +27,6 @@
 #define OPENECS_RESIZE_EDGE 6.0f
 /// @brief How long a panel dropped outside its OS window waits for the pointer to enter another one, where the system does not tell where windows are, in nanoseconds.
 #define OPENECS_PENDING_DROP_NANOSECONDS (400 * SDL_NS_PER_MS)
-/// @brief Longest wait of the main loop while the system carries a drag, in milliseconds.
-#define OPENECS_SYSTEM_DRAG_WAIT 8
 /// @brief Most menus open at once: the panel menu and its submenus.
 #define OPENECS_MENU_DEPTH 4
 
@@ -175,15 +172,17 @@ static struct
     f32 dragStartY;
     ECSIDrop drop;     // where the dragged panel lands now
     bool dropOutside;  // the pointer is outside every OS window whose place is known, as on Wayland outside the window it was dragged from
-    bool systemDrag;   // the system carries the drag, as on Wayland once the pointer leaves the window it was dragged from (SystemDrag)
     SDL_FRect dropRect; // the highlight of the drop place
 
-    // where the system does not tell where windows are, as on Wayland, a panel released outside its OS window lands where the pointer enters next
-    ECSPanel pendingPanel;   // the released panel, or nullptr
-    bool pendingGroup;       // its whole group was dragged
-    ECSIOSWindow *pendingFrom; // the OS window it was dragged from
-    bool pendingPopOut;        // it pops out if no other OS window takes it; not when it is alone in its OS window already
-    u64 pendingUntil;        // when it pops out instead
+    // on Wayland, which does not tell where windows are, a panel released outside its OS window lands where the pointer enters next
+    struct
+    {
+        ECSPanel panel;       // the released panel, or nullptr
+        bool group;           // its whole group was dragged
+        ECSIOSWindow *from;   // the OS window it was dragged from
+        ECSIDrop drop;        // where it lands if no other OS window takes it: a pop-out, or nowhere when it is alone in its OS window already
+        u64 until;            // when it lands there
+    } pending;
 
     const char *dataType; // type of the data being dragged, or nullptr
     f32 dataX;            // the pointer's position while data is dragged, in dataWindow
@@ -1211,7 +1210,7 @@ static void ECSIWindow_ReleasePopup(ECSPopup popup);
 static void ECSIWindow_CloseOS(ECSIOSWindow *os)
 {
     ECSIOSWindow *main = arrlenu(WINDOW.windows) > 0 && WINDOW.windows[0] != os ? WINDOW.windows[0] : nullptr;
-    ECSIOSWindow **pointers[] = {&WINDOW.event, &WINDOW.gripWindow, &WINDOW.dropWindow, &WINDOW.dataWindow, &WINDOW.menuWindow, &WINDOW.pendingFrom, &WINDOW.dialogWindow};
+    ECSIOSWindow **pointers[] = {&WINDOW.event, &WINDOW.gripWindow, &WINDOW.dropWindow, &WINDOW.dataWindow, &WINDOW.menuWindow, &WINDOW.pending.from, &WINDOW.dialogWindow};
     WINDOW.gripGroup = WINDOW.gripWindow == os ? nullptr : WINDOW.gripGroup;
 
     for (usz i = 0; i < SDL_arraysize(pointers); i++)
@@ -1407,9 +1406,6 @@ static SHUResult ECSIWindow_Open(const char *title)
     i64 height = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.windowHeight"), 0), 1, SDL_MAX_SINT32);
     WINDOW.event = ECSIWindow_OpenOS(0, (i32)width, (i32)height, 0);
     WINDOW.menuWindow = WINDOW.event;
-
-    // a drag that the system carries continues a press, which it must have seen
-    ECSISystemDrag_Prepare();
     return WINDOW.event == nullptr ? SHUResult_ErrInternal : SHUResult_Ok;
 }
 
@@ -1902,8 +1898,6 @@ SHUResult ECSIWindow_Initialize(const char *title)
 
 void ECSIWindow_Terminate(void)
 {
-    ECSISystemDrag_Terminate();
-    WINDOW.systemDrag = false;
     ECSILayout_SetForget(nullptr);
     ECSIPopups_SetRelease(nullptr);
 
@@ -2127,14 +2121,19 @@ ECSPanel ECSIWindow_PanelAt(f32 x, f32 y, f32 *retX, f32 *retY)
     return ECSILayout_PanelAt(ECSIWindow_Root(os), *retX, *retY);
 }
 
-/// @brief Gets how long the main loop may wait for the next frame, in milliseconds: 0 when one is due, -1 when none is wanted.
-static i32 ECSIWindow_NextFrameWait(void)
+/// @brief Gets the milliseconds until a time, rounded up; 0 once it has come.
+static i32 ECSIWindow_MillisecondsUntil(u64 ticks)
+{
+    u64 now = SDL_GetTicksNS();
+    return now >= ticks ? 0 : (i32)((ticks - now + SDL_NS_PER_MS - 1) / SDL_NS_PER_MS);
+}
+
+i32 ECSIWindow_GetFrameWait(void)
 {
     // a panel waiting to land wakes the loop when its wait ends
-    if (WINDOW.pendingPanel != nullptr)
+    if (WINDOW.pending.panel != nullptr)
     {
-        u64 now = SDL_GetTicksNS();
-        return now >= WINDOW.pendingUntil ? 0 : (i32)((WINDOW.pendingUntil - now + SDL_NS_PER_MS - 1) / SDL_NS_PER_MS);
+        return ECSIWindow_MillisecondsUntil(WINDOW.pending.until);
     }
 
     // windows that cannot be seen are not drawn; showing one again asks for a frame
@@ -2150,32 +2149,16 @@ static i32 ECSIWindow_NextFrameWait(void)
         return -1;
     }
 
-    u64 next = WINDOW.lastFrameTicks + WINDOW.frameNanoseconds;
-    u64 now = SDL_GetTicksNS();
-    return now >= next ? 0 : (i32)((next - now + SDL_NS_PER_MS - 1) / SDL_NS_PER_MS);
-}
-
-i32 ECSIWindow_GetFrameWait(void)
-{
-    i32 wait = ECSIWindow_NextFrameWait();
-
-    // while the system carries a drag, its news come apart from SDL's events, so the loop looks for them often
-    return WINDOW.systemDrag && (wait < 0 || wait > OPENECS_SYSTEM_DRAG_WAIT) ? OPENECS_SYSTEM_DRAG_WAIT : wait;
+    return ECSIWindow_MillisecondsUntil(WINDOW.lastFrameTicks + WINDOW.frameNanoseconds);
 }
 
 void ECSIWindow_Render(u64 nowTicks)
 {
     // a panel that no other OS window took pops out
-    if (WINDOW.pendingPanel != nullptr && nowTicks >= WINDOW.pendingUntil)
+    if (WINDOW.pending.panel != nullptr && nowTicks >= WINDOW.pending.until)
     {
-        ECSPanel panel = WINDOW.pendingPanel;
-        WINDOW.pendingPanel = nullptr;
-        ECSIDrop drop = {.zone = ECSIZone_PopOut};
-
-        if (WINDOW.pendingPopOut && ECSILayout_HasPanel(panel))
-        {
-            ECSILayout_Drop(panel, WINDOW.pendingGroup, &drop);
-        }
+        ECSILayout_Drop(WINDOW.pending.panel, WINDOW.pending.group, &WINDOW.pending.drop);
+        WINDOW.pending.panel = nullptr;
     }
 
     ECSIWindow_DrawFrames(nowTicks);
@@ -2242,14 +2225,6 @@ SHUResult ECSIWindow_ReadPixel(usz number, f32 x, f32 y, ECSColor *retColor)
 bool ECSIWindow_PointerDown(f32 x, f32 y)
 {
     ECSIOSWindow *os = WINDOW.event;
-
-    // a press while the system carries a drag ends it where it is, as the release was missed
-    if (WINDOW.systemDrag)
-    {
-        ECSISystemDrag_Cancel();
-        WINDOW.systemDrag = false;
-        ECSIWindow_CancelDrag();
-    }
 
     // the title bar's buttons, from the right: close, maximize or restore, and minimize; the rest of it moves the window, which the system does
     if (WINDOW.titleBar && y < WINDOW.titleBarHeight)
@@ -2334,33 +2309,6 @@ bool ECSIWindow_PointerDown(f32 x, f32 y)
     return false;
 }
 
-/// @brief Ends a press on a tab, a grip or a divider when the button is released: a dragged panel lands, and a grip that was not dragged is clicked.
-/// @return The panel whose grip was clicked, or nullptr.
-static ECSPanel ECSIWindow_Release(void)
-{
-    ECSPanel clicked = WINDOW.dragFromGrip && !WINDOW.dragging ? WINDOW.dragPanel : nullptr;
-
-    // released outside every OS window it knows the place of, the panel waits briefly for the pointer to enter another one;
-    // so does a panel alone in its OS window, which has nowhere to pop out to
-    if (WINDOW.dragging && WINDOW.dropOutside && ECSIWindow_OnWayland())
-    {
-        WINDOW.pendingPanel = WINDOW.dragPanel;
-        WINDOW.pendingGroup = WINDOW.dragGroup;
-        WINDOW.pendingPopOut = WINDOW.drop.zone == ECSIZone_PopOut;
-        WINDOW.pendingFrom = WINDOW.event;
-        WINDOW.pendingUntil = SDL_GetTicksNS() + OPENECS_PENDING_DROP_NANOSECONDS;
-    }
-    else if (WINDOW.dragging)
-    {
-        ECSILayout_Drop(WINDOW.dragPanel, WINDOW.dragGroup, &WINDOW.drop);
-    }
-
-    ECSIWindow_CancelDrag();
-    WINDOW.dragSplit = nullptr;
-    ECSIWindow_SetCursor(SDL_SYSTEM_CURSOR_DEFAULT);
-    return clicked;
-}
-
 /// @brief Finds where the dragged panel lands with the pointer at a point of the event window, and marks it. A drop that changes nothing is not marked.
 static void ECSIWindow_FindDragDrop(f32 x, f32 y)
 {
@@ -2370,69 +2318,16 @@ static void ECSIWindow_FindDragDrop(f32 x, f32 y)
     ECSILayout_RequestFrame();
 }
 
-/// @brief The pointer moved during a drag that the system carries: over one of the program's OS windows, or outside them.
-static void ECSIWindow_SystemDragMove(SDL_Window *window, f32 x, f32 y)
-{
-    if (!WINDOW.dragging || WINDOW.dragPanel == nullptr)
-    {
-        return;
-    }
-
-    ECSIOSWindow *os = window == nullptr ? nullptr : ECSIWindow_Find(SDL_GetWindowID(window));
-
-    if (os != nullptr)
-    {
-        WINDOW.event = os;
-        ECSIWindow_FindDragDrop(x, y);
-        return;
-    }
-
-    // outside the program's windows, or over a popup, the panel pops out
-    WINDOW.drop = (ECSIDrop){.zone = ECSIZone_PopOut};
-    WINDOW.dropWindow = nullptr;
-    WINDOW.dropRect = (SDL_FRect){0};
-    WINDOW.dropOutside = true;
-    WINDOW.drop = ECSIWindow_DropChanges(&WINDOW.drop) ? WINDOW.drop : (ECSIDrop){0};
-    ECSILayout_RequestFrame();
-}
-
-/// @brief A drag that the system carries ended: the panel lands where the pointer was last.
-static void ECSIWindow_SystemDragEnd(bool carried)
-{
-    WINDOW.systemDrag = false;
-
-    // a drag that the compositor did not take ends as the release of any drag does
-    if (!carried)
-    {
-        ECSIWindow_Release();
-        return;
-    }
-
-    if (WINDOW.dragging && WINDOW.drop.zone != ECSIZone_None && ECSILayout_HasPanel(WINDOW.dragPanel))
-    {
-        ECSILayout_Drop(WINDOW.dragPanel, WINDOW.dragGroup, &WINDOW.drop);
-    }
-
-    ECSIWindow_CancelDrag();
-    ECSIWindow_SetCursor(SDL_SYSTEM_CURSOR_DEFAULT);
-}
-
 bool ECSIWindow_PointerMove(f32 x, f32 y)
 {
     // a panel released outside its OS window lands where the pointer enters another one
-    if (WINDOW.pendingPanel != nullptr && WINDOW.event != WINDOW.pendingFrom)
+    if (WINDOW.pending.panel != nullptr && WINDOW.event != WINDOW.pending.from)
     {
-        ECSPanel panel = WINDOW.pendingPanel;
-        WINDOW.pendingPanel = nullptr;
         SDL_FRect rect = {0};
         ECSIOSWindow *os = nullptr;
         ECSIDrop drop = ECSIWindow_FindDrop(x, y, &os, &rect);
-
-        if (ECSILayout_HasPanel(panel))
-        {
-            ECSILayout_Drop(panel, WINDOW.pendingGroup, &drop);
-        }
-
+        ECSILayout_Drop(WINDOW.pending.panel, WINDOW.pending.group, &drop);
+        WINDOW.pending.panel = nullptr;
         return true;
     }
 
@@ -2472,12 +2367,6 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
         if (WINDOW.dragging)
         {
             ECSIWindow_FindDragDrop(x, y);
-
-            // on Wayland, the drag goes on as one the compositor carries once the pointer leaves the window, so the other windows see the pointer and mark the drop
-            if (WINDOW.dropOutside && ECSIWindow_OnWayland() && !WINDOW.systemDrag)
-            {
-                WINDOW.systemDrag = ECSISystemDrag_Start(WINDOW.event->window, ECSIWindow_SystemDragMove, ECSIWindow_SystemDragEnd);
-            }
         }
 
         if (WINDOW.dragging && !wasDragging)
@@ -2503,8 +2392,26 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
 
 ECSPanel ECSIWindow_PointerUp(void)
 {
-    // when the system takes the drag, SDL releases the button; the drag goes on until the system ends it
-    return WINDOW.systemDrag ? nullptr : ECSIWindow_Release();
+    ECSPanel clicked = WINDOW.dragFromGrip && !WINDOW.dragging ? WINDOW.dragPanel : nullptr;
+
+    // on Wayland, a panel released outside the OS window it was dragged from waits briefly for the pointer to enter another one
+    if (WINDOW.dragging && WINDOW.dropOutside && ECSIWindow_OnWayland())
+    {
+        WINDOW.pending.panel = WINDOW.dragPanel;
+        WINDOW.pending.group = WINDOW.dragGroup;
+        WINDOW.pending.from = WINDOW.event;
+        WINDOW.pending.drop = WINDOW.drop;
+        WINDOW.pending.until = SDL_GetTicksNS() + OPENECS_PENDING_DROP_NANOSECONDS;
+    }
+    else if (WINDOW.dragging)
+    {
+        ECSILayout_Drop(WINDOW.dragPanel, WINDOW.dragGroup, &WINDOW.drop);
+    }
+
+    ECSIWindow_CancelDrag();
+    WINDOW.dragSplit = nullptr;
+    ECSIWindow_SetCursor(SDL_SYSTEM_CURSOR_DEFAULT);
+    return clicked;
 }
 
 bool ECSIWindow_CancelDrag(void)

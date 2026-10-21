@@ -12,7 +12,6 @@
 #include "interface/Menus.h"
 #include "interface/Panels.h"
 #include "interface/Popups.h"
-#include "interface/SystemDrag.h"
 #include "interface/Window.h"
 #include "runtime/Events.h"
 #include "runtime/Plugins.h"
@@ -480,9 +479,6 @@ int ECSIApp_Run(void)
         {
             break;
         }
-
-        // a drag that the system carries tells its moves apart from SDL's events
-        ECSISystemDrag_Pump();
 
         ECSIEvents_RunTimers();
         ECSIEvents_Deliver();
