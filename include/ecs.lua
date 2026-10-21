@@ -357,9 +357,9 @@ function ecs.layout.open(type, saved, target, zone) end
 function ecs.layout.move(panel, target, zone) end
 
 ---Closes a panel. If it has unsaved work, the user is asked first and may cancel.
----Without a panel, it is the user's close: the focused panel, unless its group is locked. Keys can run it.
----@param panel? ecs.Panel The panel to close; the focused panel if missing.
----@return boolean closed true if the panel closed; false if the user kept its unsaved work, or its group is locked.
+---Keys run ecs.layout.close as the user's close: it closes the focused panel, unless its group is locked.
+---@param panel ecs.Panel The panel to close.
+---@return boolean closed true if the panel closed; false if the user kept its unsaved work.
 function ecs.layout.close(panel) end
 
 ---Focuses a panel, and shows its workspace, group and OS window.
@@ -460,15 +460,15 @@ function ecs.app.quit() end
 ecs.session = {}
 
 ---Writes the session to a file: the plugins' state, the workspaces and the panels with their saved state. Quitting still saves the tool's last session.
----Without a path, it asks for the file with a save dialog. Keys can run it.
----@param path? string Missing folders are created.
+---Keys run ecs.session.save, which asks for the file with a save dialog.
+---@param path string The file. Missing folders are created.
 ---@return true|nil ok true if the session is written.
 ---@return string? message Why the session is not saved.
 function ecs.session.save(path) end
 
----Opens a session, or a preset, in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
----Without a path, it asks for the file with an open dialog. Keys can run it.
----@param path? string A session or a preset file.
+---Opens a session in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
+---Keys run ecs.session.open, which asks for the file with an open dialog.
+---@param path string A session file. A preset is refused; ecs.session.openPreset opens it.
 ---@return true|nil ok true if the session will open once the current pass of the main loop ends.
 ---@return string? message Why the session is not opened: the file is not a session, the user keeps the unsaved work, or a test runs.
 function ecs.session.open(path) end

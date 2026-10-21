@@ -774,8 +774,9 @@ OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPa
 OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone);
 
 /// @brief Closes a panel. If it has unsaved work, the user is asked first and may cancel. Main thread only.
-/// @param panel Panel to close, or nullptr for the user's close, which keys run: the focused panel, unless its group is locked. Its handle is invalid after the panel closes.
-/// @return true if the panel closed.
+/// @param panel Panel to close. Its handle is invalid after the panel closes.
+/// @return true if the panel closed; false if the user kept its unsaved work.
+/// @note Keys run ecs.layout.close, the user's close: it closes the focused panel, unless its group is locked.
 /// @lua ecs.layout.close
 OPENECS_EXPORT bool ECSLayout_Close(ECSPanel panel);
 
@@ -817,20 +818,23 @@ OPENECS_EXPORT const char *ECSWorkspace_GetName(usz number);
 OPENECS_EXPORT void ECSWorkspace_Switch(usz number);
 
 /// @brief Writes the session to a file: the plugins' state, the workspaces and the panels with their saved state. Quitting still saves the tool's last session. Main thread only.
-/// @param path Path of the file, or nullptr to ask the user with a save dialog that starts in the folder of saved sessions. Missing folders are created.
-/// @return SHUResult_Ok when the file is written or the dialog is shown, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
+/// @param path Path of the file. Missing folders are created.
+/// @return SHUResult_Ok, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
+/// @note Keys run ecs.session.save, which asks for the file with a save dialog that starts in the folder of saved sessions.
 /// @lua ecs.session.save
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_Save(const char *path);
 
-/// @brief Opens a session, or a preset, in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session. Main thread only.
-/// @param path Path of the session or preset file, or nullptr to ask the user with an open dialog that starts in the folder of saved sessions.
-/// @return SHUResult_Ok if OpenECS restarts into the session or the dialog is shown, SHUResult_ErrFile or SHUResult_ErrBadData if the file is not a session, SHUResult_Err if the user keeps the unsaved work, SHUResult_ErrPrivileges during a test, which cannot restart, or SHUResult_ErrAllocation.
+/// @brief Opens a session in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session. Main thread only.
+/// @param path Path of the session file. A preset is refused; ECSSession_OpenPreset opens it.
+/// @return SHUResult_Ok if OpenECS restarts into the session, SHUResult_ErrFile or SHUResult_ErrBadData if the file is not a session, SHUResult_Err if the user keeps the unsaved work, SHUResult_ErrPrivileges during a test, which cannot restart, or SHUResult_ErrAllocation.
+/// @note Keys run ecs.session.open, which asks for the file with an open dialog that starts in the folder of saved sessions.
 /// @lua ecs.session.open
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_Open(const char *path);
 
 /// @brief Opens a preset's tool in place of the current one, as ECSSession_Open opens a session. The tool starts from its last session if it has one. Main thread only.
 /// @param nameOrPath A preset's name, looked up in the user's presets, then in the first-party presets; or a path, which has a '/' or ends with .lua.
 /// @return SHUResult_Ok if OpenECS restarts into the tool, SHUResult_ErrFile or SHUResult_ErrBadData if the file is not a preset, SHUResult_Err if the user keeps the unsaved work, SHUResult_ErrPrivileges during a test, which cannot restart, or SHUResult_ErrAllocation.
+/// @note Keys run ecs.session.open, which asks for the file with an open dialog that starts in the folder of saved sessions.
 /// @lua ecs.session.openPreset
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_OpenPreset(const char *nameOrPath);
 

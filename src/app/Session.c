@@ -542,7 +542,18 @@ static void ECSISession_OpenChosen(void *data, const char *const *files, usz cou
     }
 }
 
-/// @brief Shows a dialog of saved sessions and presets, which starts in the sessions folder. A save dialog suggests a file named after the preset, so a new file is made by pressing Save.
+/// @brief Refuses to open a session or a preset during a test, which cannot restart.
+static bool ECSISession_CanOpen(void)
+{
+    if (!SESSION.canOpen)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A test starts from its preset alone, so it cannot open a session or a preset.");
+    }
+
+    return SESSION.canOpen;
+}
+
+/// @brief Shows a dialog of saved sessions, which starts in the sessions folder. A save dialog suggests a file named after the preset, so a new file is made by pressing Save.
 static SHUResult ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunction Done)
 {
     if (SESSION.folder != nullptr && !SDL_CreateDirectory(SESSION.folder))
@@ -557,26 +568,26 @@ static SHUResult ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunctio
         location = nullptr;
     }
 
-    ECSDialogFilter filter = {"OpenECS sessions and presets", "lua"};
+    ECSDialogFilter filter = {"OpenECS sessions", "lua"};
     ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = location != nullptr ? location : SESSION.folder, .Done = Done};
     SHUResult result = ECSIInput_ShowDialog(nullptr, &desc);
     SDL_free(location);
     return result;
 }
 
-/// @brief What keys and menus run as ecs.session.save: saving without a path, which asks for the file.
+/// @brief What keys and menus run as ecs.session.save: it asks for the file with a save dialog.
 static void ECSISession_SaveBound(void)
 {
-    if (ECSSession_Save(nullptr))
+    if (ECSISession_ShowDialog(ECSDialogType_SaveFile, ECSISession_SaveChosen))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask where to save the session.");
     }
 }
 
-/// @brief What keys and menus run as ecs.session.open: opening without a path, which asks for the file. ECSSession_Open reports why it refuses.
+/// @brief What keys and menus run as ecs.session.open: it asks for the file with an open dialog. ECSSession_Open reports why it refuses the file.
 static void ECSISession_OpenBound(void)
 {
-    if (ECSSession_Open(nullptr) == SHUResult_ErrAllocation)
+    if (ECSISession_CanOpen() && ECSISession_ShowDialog(ECSDialogType_OpenFile, ECSISession_OpenChosen))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot ask which session to open.");
     }
@@ -719,11 +730,18 @@ static void ECSISession_FreeFiles(ECSISessionFile **files)
 /// @brief Opens a session or a preset in place of the current one, once the user has been asked about unsaved work.
 static SHUResult ECSISession_OpenFile(const char *path, bool preset)
 {
-    // the file is checked first, so a file that is not a session never stops OpenECS
+    // the file is checked first, so a file that is not a session never stops OpenECS; a session is a preset that OpenECS wrote with the plugins' state
     ECSIPresetInfo info = {0};
     SHUResult result = ECSISession_ReadInfo(path, &info);
+    bool session = ECSValue_GetTableField(info.file, "pluginState") != nullptr;
     ECSISession_FreeInfo(&info);
     SHU_ReturnResult(result);
+
+    if (!preset && !session)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is a preset, not a session; ecs.session.openPreset opens it.", path);
+        return SHUResult_ErrBadData;
+    }
 
     // like closing panels, opening a session keeps the unsaved work when the user cannot be asked
     ECSPanel *panels = ECSILayout_GetPanels();
@@ -747,17 +765,6 @@ static SHUResult ECSISession_OpenFile(const char *path, bool preset)
     SESSION.nextIsPreset = preset;
     SDL_Log("OpenECS starts again from the %s '%s'.", preset ? "preset" : "session", path);
     return SHUResult_Ok;
-}
-
-/// @brief Refuses to open a session or a preset during a test, which cannot restart.
-static bool ECSISession_CanOpen(void)
-{
-    if (!SESSION.canOpen)
-    {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "A test starts from its preset alone, so it cannot open a session or a preset.");
-    }
-
-    return SESSION.canOpen;
 }
 
 #pragma endregion Source Only
@@ -946,7 +953,7 @@ SHUResult ECSISession_Initialize(const ECSISessionFolders *folders, bool canOpen
         return SHUResult_ErrAllocation;
     }
 
-    // keys run the same names as the Lua functions, which ask for the file when they get no path
+    // keys run the same names as the Lua functions, and ask for the file with a dialog
     SHU_ReturnResult(ECSIServices_RegisterCore("ecs.session.save", (ECSFunction)ECSISession_SaveBound, "void()", "Save session"));
     SHU_ReturnResult(ECSIServices_RegisterCore("ecs.session.open", (ECSFunction)ECSISession_OpenBound, "void()", "Open session"));
     return ECSIServices_RegisterCore("ecs.layout.reset", (ECSFunction)ECSISession_ResetBound, "void()", "Reset layout");
@@ -974,14 +981,11 @@ void ECSISession_Terminate(void)
 
 SHUResult ECSSession_Open(const char *path)
 {
+    SDL_assert(path != nullptr);
+
     if (!ECSISession_CanOpen())
     {
         return SHUResult_ErrPrivileges;
-    }
-
-    if (path == nullptr)
-    {
-        return ECSISession_ShowDialog(ECSDialogType_OpenFile, ECSISession_OpenChosen);
     }
 
     return ECSISession_OpenFile(path, false);
@@ -1035,11 +1039,7 @@ SHUResult ECSSession_ListSessions(ECSValue *retList)
 SHUResult ECSSession_Save(const char *path)
 {
     SDL_assert(SESSION.info != nullptr);
-
-    if (path == nullptr)
-    {
-        return ECSISession_ShowDialog(ECSDialogType_SaveFile, ECSISession_SaveChosen);
-    }
+    SDL_assert(path != nullptr);
 
     ECSValue *session = nullptr;
     SHU_ReturnResult(ECSValue_Create(&session));

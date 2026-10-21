@@ -2221,19 +2221,9 @@ SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone)
 
 bool ECSLayout_Close(ECSPanel panel)
 {
-    // without a panel, it is the user's close, which a lock stops
-    if (panel == nullptr)
-    {
-        panel = ECSILayout_GetFocus();
+    SDL_assert(panel != nullptr);
 
-        if (panel != nullptr && ECSILayout_IsLocked(panel))
-        {
-            SDL_Log("'%s' is locked; unlock it to close it.", panel->title);
-            return false;
-        }
-    }
-
-    if (panel == nullptr || !ECSILayout_HasPanel(panel) || !ECSIPanels_ConfirmClose(&panel, 1, false))
+    if (!ECSILayout_HasPanel(panel) || !ECSIPanels_ConfirmClose(&panel, 1, false))
     {
         return false;
     }

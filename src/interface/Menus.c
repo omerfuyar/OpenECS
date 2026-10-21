@@ -333,9 +333,19 @@ static void ECSIMenus_PopOut(void)
     ECSILayout_PopOut();
 }
 
+/// @brief The user's close: the focused panel, unless its group is locked.
 static void ECSIMenus_Close(void)
 {
-    ECSLayout_Close(nullptr);
+    ECSPanel focus = ECSILayout_GetFocus();
+
+    if (focus != nullptr && ECSILayout_IsLocked(focus))
+    {
+        SDL_Log("'%s' is locked; unlock it to close it.", focus->title);
+    }
+    else if (focus != nullptr)
+    {
+        ECSLayout_Close(focus);
+    }
 }
 
 static void ECSIMenus_CloseGroup(void)

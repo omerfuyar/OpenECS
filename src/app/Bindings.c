@@ -769,7 +769,7 @@ static int ECSIBindings_LayoutMove(lua_State *state)
 
 static int ECSIBindings_LayoutClose(lua_State *state)
 {
-    lua_pushboolean(state, ECSLayout_Close(ECSIBindings_OptPanel(state, 1)));
+    lua_pushboolean(state, ECSLayout_Close(ECSIBindings_CheckPanel(state, 1)));
     return 1;
 }
 
@@ -848,13 +848,13 @@ static const luaL_Reg OPENECS_BINDINGS_WORKSPACE[] = {
 
 static int ECSIBindings_SessionSave(lua_State *state)
 {
-    const char *path = luaL_optstring(state, 1, nullptr);
+    const char *path = luaL_checkstring(state, 1);
     SHUResult result = ECSSession_Save(path);
 
     if (result)
     {
         lua_pushnil(state);
-        lua_pushfstring(state, "the session is not saved to '%s' (%s)", path == nullptr ? "a file" : path, SHUResult_String(result));
+        lua_pushfstring(state, "the session is not saved to '%s' (%s)", path, SHUResult_String(result));
         return 2;
     }
 
@@ -864,13 +864,13 @@ static int ECSIBindings_SessionSave(lua_State *state)
 
 static int ECSIBindings_SessionOpen(lua_State *state)
 {
-    const char *path = luaL_optstring(state, 1, nullptr);
+    const char *path = luaL_checkstring(state, 1);
     SHUResult result = ECSSession_Open(path);
 
     if (result)
     {
         lua_pushnil(state);
-        lua_pushfstring(state, "the session '%s' is not opened (%s)", path == nullptr ? "" : path, result == SHUResult_Err ? "the unsaved work is kept" : SHUResult_String(result));
+        lua_pushfstring(state, "the session '%s' is not opened (%s)", path, result == SHUResult_Err ? "the unsaved work is kept" : SHUResult_String(result));
         return 2;
     }
 
