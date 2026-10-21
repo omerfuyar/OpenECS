@@ -464,7 +464,7 @@ const char *ECSIKeys_Find(u32 key, u32 modifiers, ECSPanel focus)
 bool ECSIKeys_IsPrefix(u32 key, u32 modifiers)
 {
     ECSIKeys_ReadPrefix();
-    return key == KEYS.prefixKey && (modifiers & ECSModifier_AltGr) == 0 && modifiers == KEYS.prefixModifiers;
+    return key == KEYS.prefixKey && modifiers == KEYS.prefixModifiers;
 }
 
 const ECSIKeyBinding *ECSIKeys_GetPrefixKeys(void)
