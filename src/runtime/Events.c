@@ -376,7 +376,7 @@ void ECSIEvents_EmitCore(const char *name, const ECSValue *value)
     }
 }
 
-SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, const char *name, ECSSubscription *retSubscription, ECSEventFunction function, ECSTimerFunction release, void *data)
+SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscription, const char *name, ECSEventFunction function, ECSTimerFunction release, void *data)
 {
     SDL_assert(plugin != nullptr);
     SDL_assert(name != nullptr && retSubscription != nullptr && function != nullptr);
@@ -471,9 +471,9 @@ SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name, const ECSValue *valu
     return ECSIEvents_Emit(name, value);
 }
 
-SHUResult ECSEvent_Subscribe(ECSPlugin plugin, const char *name, ECSSubscription *retSubscription, ECSEventFunction function, void *data)
+SHUResult ECSEvent_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscription, const char *name, ECSEventFunction function, void *data)
 {
-    return ECSIEvents_Subscribe(plugin, name, retSubscription, function, nullptr, data);
+    return ECSIEvents_Subscribe(plugin, retSubscription, name, function, nullptr, data);
 }
 
 void ECSEvent_Unsubscribe(ECSSubscription *subscription)

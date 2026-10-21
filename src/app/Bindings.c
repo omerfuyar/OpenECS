@@ -169,7 +169,7 @@ static void ECSIBindings_SettingChanged(void *data)
     }
 }
 
-static int ECSIBindings_SettingsDeclare(lua_State *state)
+static int ECSIBindings_SettingDeclare(lua_State *state)
 {
     luaL_checktype(state, 1, LUA_TTABLE);
     ECSILuaListener *listener = nullptr;
@@ -246,14 +246,14 @@ static int ECSIBindings_SettingsDeclare(lua_State *state)
     return 1;
 }
 
-static int ECSIBindings_SettingsGet(lua_State *state)
+static int ECSIBindings_SettingGet(lua_State *state)
 {
     const ECSValue *value = ECSSetting_Get(luaL_checkstring(state, 1));
     ECSILua_PushValue(value);
     return 1;
 }
 
-static int ECSIBindings_SettingsSet(lua_State *state)
+static int ECSIBindings_SettingSet(lua_State *state)
 {
     const char *name = luaL_checkstring(state, 1);
     ECSValue *value = nullptr;
@@ -277,7 +277,7 @@ static int ECSIBindings_SettingsSet(lua_State *state)
 typedef SHUResult (*ECSIBindingsFillFunction)(const char *name, ECSValue *retValue);
 
 /// @brief Pushes a value that a settings function fills, or nil and a message.
-static int ECSIBindings_SettingsPush(lua_State *state, ECSIBindingsFillFunction fill, const char *name)
+static int ECSIBindings_SettingPush(lua_State *state, ECSIBindingsFillFunction fill, const char *name)
 {
     ECSValue *value = nullptr;
     SHUResult result = ECSValue_Create(&value);
@@ -296,28 +296,28 @@ static int ECSIBindings_SettingsPush(lua_State *state, ECSIBindingsFillFunction 
     return 1;
 }
 
-static SHUResult ECSIBindings_SettingsFillList(const char *name, ECSValue *retValue)
+static SHUResult ECSIBindings_SettingFillList(const char *name, ECSValue *retValue)
 {
     (void)name;
     return ECSSetting_List(retValue);
 }
 
-static int ECSIBindings_SettingsList(lua_State *state)
+static int ECSIBindings_SettingList(lua_State *state)
 {
-    return ECSIBindings_SettingsPush(state, ECSIBindings_SettingsFillList, nullptr);
+    return ECSIBindings_SettingPush(state, ECSIBindings_SettingFillList, nullptr);
 }
 
-static int ECSIBindings_SettingsExplain(lua_State *state)
+static int ECSIBindings_SettingExplain(lua_State *state)
 {
-    return ECSIBindings_SettingsPush(state, ECSSetting_Explain, luaL_checkstring(state, 1));
+    return ECSIBindings_SettingPush(state, ECSSetting_Explain, luaL_checkstring(state, 1));
 }
 
-static const luaL_Reg OPENECS_BINDINGS_SETTINGS[] = {
-    {"declare", ECSIBindings_SettingsDeclare},
-    {"get", ECSIBindings_SettingsGet},
-    {"set", ECSIBindings_SettingsSet},
-    {"list", ECSIBindings_SettingsList},
-    {"explain", ECSIBindings_SettingsExplain},
+static const luaL_Reg OPENECS_BINDINGS_SETTING[] = {
+    {"declare", ECSIBindings_SettingDeclare},
+    {"get", ECSIBindings_SettingGet},
+    {"set", ECSIBindings_SettingSet},
+    {"list", ECSIBindings_SettingList},
+    {"explain", ECSIBindings_SettingExplain},
     {nullptr, nullptr},
 };
 
@@ -479,7 +479,7 @@ static const luaL_Reg OPENECS_BINDINGS_HANDLE[] = {
 
 #pragma region Plugin
 
-static SHUResult ECSIBindings_PluginSaveState(void *data, ECSValue *retState)
+static SHUResult ECSIBindings_PluginSaveState(void *data, ECSValue *retSavedState)
 {
     ECSILuaPlugin *luaPlugin = data;
     lua_State *state = ECSILua_GetState();
@@ -492,7 +492,7 @@ static SHUResult ECSIBindings_PluginSaveState(void *data, ECSValue *retState)
         return SHUResult_ErrBadData;
     }
 
-    SHUResult result = ECSILua_GetValue(-1, retState);
+    SHUResult result = ECSILua_GetValue(-1, retSavedState);
     lua_pop(state, 1);
     return result;
 }
@@ -671,7 +671,7 @@ static int ECSIBindings_EventSubscribe(lua_State *state)
     subscription->handle = luaL_ref(state, LUA_REGISTRYINDEX);
     subscription->plugin = plugin;
 
-    SHUResult result = ECSIEvents_Subscribe(plugin, name, &subscription->subscription, ECSIBindings_EventCall, ECSIBindings_EventRelease, subscription);
+    SHUResult result = ECSIEvents_Subscribe(plugin, &subscription->subscription, name, ECSIBindings_EventCall, ECSIBindings_EventRelease, subscription);
 
     if (result)
     {
@@ -682,7 +682,7 @@ static int ECSIBindings_EventSubscribe(lua_State *state)
     return 1;
 }
 
-static int ECSIBindings_EventCancel(lua_State *state)
+static int ECSIBindings_EventUnsubscribe(lua_State *state)
 {
     ECSILuaSubscription **handle = luaL_checkudata(state, 1, OPENECS_LUA_SUBSCRIPTION);
 
@@ -703,7 +703,7 @@ static const luaL_Reg OPENECS_BINDINGS_EVENT[] = {
 };
 
 static const luaL_Reg OPENECS_BINDINGS_SUBSCRIPTION_METHODS[] = {
-    {"cancel", ECSIBindings_EventCancel},
+    {"unsubscribe", ECSIBindings_EventUnsubscribe},
     {nullptr, nullptr},
 };
 
@@ -786,7 +786,7 @@ static int ECSIBindings_LayoutGetFocus(lua_State *state)
     return 1;
 }
 
-static int ECSIBindings_LayoutFind(lua_State *state)
+static int ECSIBindings_LayoutFindPanel(lua_State *state)
 {
     lua_Integer id = luaL_checkinteger(state, 1);
     ECSIServices_PushHandle(OPENECS_LUA_PANEL, id > 0 && id <= SDL_MAX_UINT32 ? ECSLayout_FindPanel((u32)id) : nullptr);
@@ -794,7 +794,7 @@ static int ECSIBindings_LayoutFind(lua_State *state)
 }
 
 static const luaL_Reg OPENECS_BINDINGS_LAYOUT[] = {
-    {"find", ECSIBindings_LayoutFind},
+    {"findPanel", ECSIBindings_LayoutFindPanel},
     {"open", ECSIBindings_LayoutOpen},
     {"move", ECSIBindings_LayoutMove},
     {"close", ECSIBindings_LayoutClose},
@@ -803,7 +803,7 @@ static const luaL_Reg OPENECS_BINDINGS_LAYOUT[] = {
     {nullptr, nullptr},
 };
 
-static int ECSIBindings_WorkspaceCount(lua_State *state)
+static int ECSIBindings_WorkspaceGetCount(lua_State *state)
 {
     lua_pushinteger(state, (lua_Integer)ECSWorkspace_GetCount());
     return 1;
@@ -835,7 +835,7 @@ static int ECSIBindings_WorkspaceSwitch(lua_State *state)
 }
 
 static const luaL_Reg OPENECS_BINDINGS_WORKSPACE[] = {
-    {"count", ECSIBindings_WorkspaceCount},
+    {"getCount", ECSIBindings_WorkspaceGetCount},
     {"getCurrent", ECSIBindings_WorkspaceGetCurrent},
     {"getName", ECSIBindings_WorkspaceGetName},
     {"switch", ECSIBindings_WorkspaceSwitch},
@@ -912,12 +912,12 @@ static int ECSIBindings_SessionPushList(lua_State *state, SHUResult (*List)(ECSV
     return 1;
 }
 
-static int ECSIBindings_SessionPresets(lua_State *state)
+static int ECSIBindings_SessionListPresets(lua_State *state)
 {
     return ECSIBindings_SessionPushList(state, ECSSession_ListPresets);
 }
 
-static int ECSIBindings_SessionSessions(lua_State *state)
+static int ECSIBindings_SessionListSessions(lua_State *state)
 {
     return ECSIBindings_SessionPushList(state, ECSSession_ListSessions);
 }
@@ -926,8 +926,8 @@ static const luaL_Reg OPENECS_BINDINGS_SESSION[] = {
     {"save", ECSIBindings_SessionSave},
     {"open", ECSIBindings_SessionOpen},
     {"openPreset", ECSIBindings_SessionOpenPreset},
-    {"presets", ECSIBindings_SessionPresets},
-    {"sessions", ECSIBindings_SessionSessions},
+    {"listPresets", ECSIBindings_SessionListPresets},
+    {"listSessions", ECSIBindings_SessionListSessions},
     {nullptr, nullptr},
 };
 
@@ -1092,8 +1092,8 @@ static int ECSIBindings_DialogShow(lua_State *state)
     return 1;
 }
 
-/// @brief ecs.dialog.message(title, text, { buttons }) gives the position of the pressed button, from 1, or nil.
-static int ECSIBindings_DialogMessage(lua_State *state)
+/// @brief ecs.dialog.showMessage(title, text, { buttons }) gives the position of the pressed button, from 1, or nil.
+static int ECSIBindings_DialogShowMessage(lua_State *state)
 {
     const char *title = luaL_checkstring(state, 1);
     const char *text = luaL_checkstring(state, 2);
@@ -1127,15 +1127,15 @@ static int ECSIBindings_DialogMessage(lua_State *state)
 
 static const luaL_Reg OPENECS_BINDINGS_DIALOG[] = {
     {"show", ECSIBindings_DialogShow},
-    {"message", ECSIBindings_DialogMessage},
+    {"showMessage", ECSIBindings_DialogShowMessage},
     {nullptr, nullptr},
 };
 
 #pragma endregion Dialogs
 
-#pragma region Input
+#pragma region Keys
 
-static int ECSIBindings_InputBind(lua_State *state)
+static int ECSIBindings_KeyBind(lua_State *state)
 {
     const char *panelType = luaL_checkstring(state, 1);
     const char *key = luaL_checkstring(state, 2);
@@ -1154,12 +1154,12 @@ static int ECSIBindings_InputBind(lua_State *state)
     return 1;
 }
 
-static const luaL_Reg OPENECS_BINDINGS_INPUT[] = {
-    {"bind", ECSIBindings_InputBind},
+static const luaL_Reg OPENECS_BINDINGS_KEY[] = {
+    {"bind", ECSIBindings_KeyBind},
     {nullptr, nullptr},
 };
 
-#pragma endregion Input
+#pragma endregion Keys
 
 #pragma region Services
 
@@ -1375,10 +1375,10 @@ static void ECSIBindings_PushEvent(lua_State *state, const ECSPanelEvent *event)
         lua_setfield(state, -2, "x");
         lua_pushnumber(state, (lua_Number)event->wheel.y);
         lua_setfield(state, -2, "y");
-        lua_pushnumber(state, (lua_Number)event->wheel.amountX);
-        lua_setfield(state, -2, "wheelX");
-        lua_pushnumber(state, (lua_Number)event->wheel.amountY);
-        lua_setfield(state, -2, "wheelY");
+        lua_pushnumber(state, (lua_Number)event->wheel.scrollX);
+        lua_setfield(state, -2, "scrollX");
+        lua_pushnumber(state, (lua_Number)event->wheel.scrollY);
+        lua_setfield(state, -2, "scrollY");
         break;
     case ECSPanelEventType_KeyDown:
     case ECSPanelEventType_KeyUp:
@@ -1439,7 +1439,7 @@ static void ECSIBindings_PanelEvent(void *data, const ECSPanelEvent *event)
     }
 }
 
-static SHUResult ECSIBindings_PanelSaveState(void *data, ECSValue *retState)
+static SHUResult ECSIBindings_PanelSaveState(void *data, ECSValue *retSavedState)
 {
     ECSILuaPanel *luaPanel = data;
     lua_State *state = ECSILua_GetState();
@@ -1457,7 +1457,7 @@ static SHUResult ECSIBindings_PanelSaveState(void *data, ECSValue *retState)
         return SHUResult_ErrBadData;
     }
 
-    SHUResult result = ECSILua_GetValue(-1, retState);
+    SHUResult result = ECSILua_GetValue(-1, retSavedState);
     lua_pop(state, 1);
     return result;
 }
@@ -1583,7 +1583,7 @@ static int ECSIBindings_PanelIndex(lua_State *state)
     }
     else if (SDL_strcmp(key, "unsaved") == 0)
     {
-        lua_pushboolean(state, ECSPanel_IsUnsaved(panel));
+        lua_pushboolean(state, ECSPanel_GetUnsaved(panel));
     }
     else
     {
@@ -1688,8 +1688,8 @@ static int ECSIBindings_PanelStartDrag(lua_State *state)
 
 #pragma region Popups
 
-/// @brief Names of the kinds of popups in Lua, in the order of ECSPopupKind.
-static const char *const OPENECS_BINDINGS_POPUP_KINDS[] = {"menu", "tooltip", nullptr};
+/// @brief Names of the popup types in Lua, in the order of ECSPopupType.
+static const char *const OPENECS_BINDINGS_POPUP_TYPES[] = {"menu", "tooltip", nullptr};
 
 /// @brief Reads a popup handle. Raises a Lua error if it is not one, or its popup has closed.
 static ECSPopup ECSIBindings_CheckPopup(int index)
@@ -1718,7 +1718,10 @@ static void ECSIBindings_PopupFailed(lua_State *state, const ECSILuaPopup *luaPo
 {
     ECSIPlugin_ReportError(luaPopup->plugin, lua_tostring(state, -1));
     lua_pop(state, 1);
-    ECSPopup_Close(luaPopup->popup);
+
+    // the copy is set to nullptr; the popup's handle stays until its closed function forgets it
+    ECSPopup popup = luaPopup->popup;
+    ECSPopup_Close(&popup);
 }
 
 static void ECSIBindings_PopupDraw(void *data, ECSSurface *surface)
@@ -1790,12 +1793,12 @@ static int ECSIBindings_PanelOpenPopup(lua_State *state)
     luaL_argcheck(state, panel->type != nullptr, 1, "the panel has no type");
     luaL_checktype(state, 2, LUA_TTABLE);
 
-    lua_getfield(state, 2, "kind");
-    ECSPopupKind kind = (ECSPopupKind)luaL_checkoption(state, -1, "menu", OPENECS_BINDINGS_POPUP_KINDS);
+    lua_getfield(state, 2, "type");
+    ECSPopupType type = (ECSPopupType)luaL_checkoption(state, -1, "menu", OPENECS_BINDINGS_POPUP_TYPES);
     lua_pop(state, 1);
 
     ECSPopupDesc desc = {
-        .kind = kind,
+        .type = type,
         .width = ECSIBindings_OptNumberField(state, 2, "width", 0.0f),
         .height = ECSIBindings_OptNumberField(state, 2, "height", 0.0f),
         .Draw = ECSIBindings_PopupDraw,
@@ -1828,7 +1831,7 @@ static int ECSIBindings_PanelOpenPopup(lua_State *state)
     luaPopup->desc = luaL_ref(state, LUA_REGISTRYINDEX);
     luaPopup->plugin = panel->type->plugin;
     desc.data = luaPopup;
-    SHUResult result = ECSPopup_Open(panel, &desc, &luaPopup->popup);
+    SHUResult result = ECSPopup_Open(panel, &luaPopup->popup, &desc);
 
     if (result)
     {
@@ -1846,7 +1849,8 @@ static int ECSIBindings_PanelOpenPopup(lua_State *state)
 static int ECSIBindings_PopupClose(lua_State *state)
 {
     (void)state;
-    ECSPopup_Close(ECSIBindings_CheckPopup(1));
+    ECSPopup popup = ECSIBindings_CheckPopup(1);
+    ECSPopup_Close(&popup);
     return 0;
 }
 
@@ -1903,7 +1907,7 @@ static int ECSIBindings_PanelAddMenuEntry(lua_State *state)
     return 1;
 }
 
-static int ECSIBindings_PanelTypes(lua_State *state)
+static int ECSIBindings_PanelListTypes(lua_State *state)
 {
     ECSValue *list = nullptr;
     SHUResult result = ECSValue_Create(&list);
@@ -1921,7 +1925,7 @@ static int ECSIBindings_PanelTypes(lua_State *state)
 }
 
 static const luaL_Reg OPENECS_BINDINGS_PANEL[] = {
-    {"types", ECSIBindings_PanelTypes},
+    {"listTypes", ECSIBindings_PanelListTypes},
     {"registerType", ECSIBindings_PanelRegisterType},
     {"addMenuEntry", ECSIBindings_PanelAddMenuEntry},
     {nullptr, nullptr},
@@ -2129,11 +2133,11 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
 {
     lua_newtable(state);
     ECSIBindings_AddTable(state, plugin, "log", OPENECS_BINDINGS_LOG);
-    ECSIBindings_AddTable(state, plugin, "settings", OPENECS_BINDINGS_SETTINGS);
+    ECSIBindings_AddTable(state, plugin, "setting", OPENECS_BINDINGS_SETTING);
     ECSIBindings_AddTable(state, plugin, "timer", OPENECS_BINDINGS_TIMER);
     ECSIBindings_AddTable(state, plugin, "panel", OPENECS_BINDINGS_PANEL);
     ECSIBindings_AddTable(state, plugin, "service", OPENECS_BINDINGS_SERVICE);
-    ECSIBindings_AddTable(state, plugin, "input", OPENECS_BINDINGS_INPUT);
+    ECSIBindings_AddTable(state, plugin, "key", OPENECS_BINDINGS_KEY);
     ECSIBindings_AddTable(state, plugin, "layout", OPENECS_BINDINGS_LAYOUT);
     ECSIBindings_AddTable(state, plugin, "workspace", OPENECS_BINDINGS_WORKSPACE);
     ECSIBindings_AddTable(state, plugin, "session", OPENECS_BINDINGS_SESSION);

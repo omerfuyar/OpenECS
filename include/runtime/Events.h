@@ -20,7 +20,7 @@ void ECSIEvents_EmitCore(const char *name, const ECSValue *value);
 
 /// @brief Subscribes to a named event like ECSEvent_Subscribe, with a function that releases the data when the subscription is freed. The Bindings module uses it for Lua.
 /// @param release Function called with the data when the subscription is freed, or nullptr.
-SHUWUR SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, const char *name, ECSSubscription *retSubscription, ECSEventFunction function, ECSTimerFunction release, void *data);
+SHUWUR SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscription, const char *name, ECSEventFunction function, ECSTimerFunction release, void *data);
 
 /// @brief Removes a plugin's named events and subscriptions, and the subscriptions to its events.
 /// @param plugin The plugin.

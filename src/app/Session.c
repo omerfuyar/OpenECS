@@ -631,7 +631,7 @@ static int ECSISession_CompareFiles(const void *a, const void *b)
 static SHUResult ECSISession_SetText(ECSValue *entry, const char *name, const char *text)
 {
     ECSValue *field = nullptr;
-    SHU_ReturnResult(ECSValue_TableSetField(entry, name, &field));
+    SHU_ReturnResult(ECSValue_SetTableField(entry, name, &field));
     return ECSValue_SetString(field, text);
 }
 
@@ -646,7 +646,7 @@ static SHUResult ECSISession_SetTime(ECSValue *entry, const char *name, const ch
     }
 
     ECSValue *field = nullptr;
-    SHU_ReturnResult(ECSValue_TableSetField(entry, name, &field));
+    SHU_ReturnResult(ECSValue_SetTableField(entry, name, &field));
     ECSValue_SetInteger(field, info.modify_time / (SDL_Time)SDL_NS_PER_SECOND);
     return SHUResult_Ok;
 }
@@ -675,7 +675,7 @@ static SHUResult ECSISession_FillList(ECSValue *retList, ECSISessionFile *files,
         if (!result && (!presets || ECSValue_GetBool(ECSValue_GetTableField(info.file, "listed"), true)))
         {
             ECSValue *entry = nullptr;
-            result = ECSValue_ListAddItem(retList, &entry);
+            result = ECSValue_AddListItem(retList, &entry);
 
             if (!result)
             {
@@ -770,7 +770,7 @@ SHUResult ECSISession_FindPreset(char **retPath, const char *nameOrPath, const c
     // a name has no folder and no extension
     usz length = SDL_strlen(nameOrPath);
 
-    if (ECSPath_LastSeparator(nameOrPath) != nullptr || (length > 4 && SDL_strcmp(nameOrPath + length - 4, ".lua") == 0))
+    if (ECSPath_FindLastSeparator(nameOrPath) != nullptr || (length > 4 && SDL_strcmp(nameOrPath + length - 4, ".lua") == 0))
     {
         *retPath = SDL_strdup(nameOrPath);
         return *retPath == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
@@ -836,7 +836,7 @@ SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
     if (pluginsDirectory != nullptr)
     {
         // relative to the preset's folder, unless it is absolute
-        const char *slash = ECSPath_LastSeparator(path);
+        const char *slash = ECSPath_FindLastSeparator(path);
         int folderLength = slash == nullptr || ECSPath_IsAbsolute(pluginsDirectory) ? 0 : (int)(slash - path + 1);
 
         if (SDL_asprintf(&retInfo->pluginsDirectory, "%.*s%s/", folderLength, path, pluginsDirectory) < 0)
@@ -889,7 +889,7 @@ SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
     ECSValue *field = nullptr;
     usz current = 0;
     SHUResult result = ECSIValue_Copy(retSession, info->file);
-    result = result ? result : ECSValue_TableSetField(retSession, "format", &field);
+    result = result ? result : ECSValue_SetTableField(retSession, "format", &field);
 
     if (!result)
     {
@@ -899,13 +899,13 @@ SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
     // the plugin directory is written resolved, because the session lives in another folder
     if (!result && info->pluginsDirectory != nullptr)
     {
-        result = ECSValue_TableSetField(retSession, "pluginsDir", &field);
+        result = ECSValue_SetTableField(retSession, "pluginsDir", &field);
         result = result ? result : ECSValue_SetString(field, info->pluginsDirectory);
     }
 
-    result = result ? result : ECSValue_TableSetField(retSession, "pluginState", &field);
+    result = result ? result : ECSValue_SetTableField(retSession, "pluginState", &field);
     result = result ? result : ECSIPlugins_SaveStates(field);
-    result = result ? result : ECSValue_TableSetField(retSession, "workspaces", &field);
+    result = result ? result : ECSValue_SetTableField(retSession, "workspaces", &field);
     result = result ? result : ECSILayout_Save(field, &current);
 
     // the layout knows nothing of keys, so each workspace's keys are added to it
@@ -916,12 +916,12 @@ SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
 
         if (keys != nullptr)
         {
-            result = ECSValue_TableSetField((ECSValue *)ECSValue_GetListItem(field, i), "keys", &copy);
+            result = ECSValue_SetTableField((ECSValue *)ECSValue_GetListItem(field, i), "keys", &copy);
             result = result ? result : ECSIValue_Copy(copy, keys);
         }
     }
 
-    result = result ? result : ECSValue_TableSetField(retSession, "currentWorkspace", &field);
+    result = result ? result : ECSValue_SetTableField(retSession, "currentWorkspace", &field);
 
     if (!result)
     {

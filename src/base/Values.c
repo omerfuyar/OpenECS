@@ -158,14 +158,14 @@ SHUResult ECSIValue_Copy(ECSValue *value, const ECSValue *source)
     for (usz i = 0; i < arrlenu(source->items); i++)
     {
         ECSValue *item = nullptr;
-        SHU_ReturnResult(ECSValue_ListAddItem(value, &item));
+        SHU_ReturnResult(ECSValue_AddListItem(value, &item));
         SHU_ReturnResult(ECSIValue_Copy(item, source->items[i]));
     }
 
     for (usz i = 0; i < shlenu(source->fields); i++)
     {
         ECSValue *field = nullptr;
-        SHU_ReturnResult(ECSValue_TableSetField(value, source->fields[i].key, &field));
+        SHU_ReturnResult(ECSValue_SetTableField(value, source->fields[i].key, &field));
         SHU_ReturnResult(ECSIValue_Copy(field, source->fields[i].value));
     }
 
@@ -584,7 +584,7 @@ void ECSValue_SetTable(ECSValue *value)
     value->type = ECSValueType_Table;
 }
 
-SHUResult ECSValue_ListAddItem(ECSValue *table, ECSValue **retItem)
+SHUResult ECSValue_AddListItem(ECSValue *table, ECSValue **retItem)
 {
     SDL_assert(table != nullptr);
     SDL_assert(retItem != nullptr);
@@ -595,7 +595,7 @@ SHUResult ECSValue_ListAddItem(ECSValue *table, ECSValue **retItem)
     return SHUResult_Ok;
 }
 
-SHUResult ECSValue_TableSetField(ECSValue *table, const char *name, ECSValue **retField)
+SHUResult ECSValue_SetTableField(ECSValue *table, const char *name, ECSValue **retField)
 {
     SDL_assert(table != nullptr);
     SDL_assert(name != nullptr);

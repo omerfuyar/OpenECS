@@ -690,16 +690,16 @@ SHUResult ECSIPlugins_SaveStates(ECSValue *states)
             continue;
         }
 
-        SHUResult result = ECSValue_TableSetField(states, plugin->name, &entry);
+        SHUResult result = ECSValue_SetTableField(states, plugin->name, &entry);
 
         if (!result)
         {
             ECSValue_SetTable(entry);
-            result = ECSValue_TableSetField(entry, "state", &field);
+            result = ECSValue_SetTableField(entry, "state", &field);
         }
 
         result = result ? result : ECSIValue_Copy(field, saved);
-        result = result ? result : ECSValue_TableSetField(entry, "stateVersion", &field);
+        result = result ? result : ECSValue_SetTableField(entry, "stateVersion", &field);
 
         if (!result)
         {

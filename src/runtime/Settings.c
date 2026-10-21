@@ -317,7 +317,7 @@ static void ECSISettings_ReadField(const char *name, const ECSValue *field, void
         return;
     }
 
-    reader->result = ECSValue_TableSetField(reader->layer, name, &copy);
+    reader->result = ECSValue_SetTableField(reader->layer, name, &copy);
     reader->result = reader->result ? reader->result : ECSIValue_Copy(copy, field);
 }
 
@@ -328,7 +328,7 @@ static void ECSISettings_CopyField(const char *name, const ECSValue *field, void
 
     if (!copier->result)
     {
-        copier->result = ECSValue_TableSetField(copier->target, name, &copy);
+        copier->result = ECSValue_SetTableField(copier->target, name, &copy);
         copier->result = copier->result ? copier->result : ECSIValue_Copy(copy, field);
     }
 }
@@ -345,7 +345,7 @@ static SHUResult ECSISettings_ReadPlugins(const ECSValue *part)
 
         if (name != nullptr)
         {
-            SHU_ReturnResult(ECSValue_ListAddItem(SETTINGS.plugins, &item));
+            SHU_ReturnResult(ECSValue_AddListItem(SETTINGS.plugins, &item));
             SHU_ReturnResult(ECSValue_SetString(item, name));
         }
     }
@@ -469,7 +469,7 @@ static SHUResult ECSISettings_ReadFile(ECSISettingsLayer layer, const char *fold
 static SHUResult ECSISettings_ExplainField(ECSValue *explanation, const char *name, const ECSValue *value)
 {
     ECSValue *field = nullptr;
-    SHU_ReturnResult(ECSValue_TableSetField(explanation, name, &field));
+    SHU_ReturnResult(ECSValue_SetTableField(explanation, name, &field));
     return ECSIValue_Copy(field, value);
 }
 
@@ -477,7 +477,7 @@ static SHUResult ECSISettings_ExplainField(ECSValue *explanation, const char *na
 static SHUResult ECSISettings_ExplainText(ECSValue *explanation, const char *name, const char *text)
 {
     ECSValue *field = nullptr;
-    SHU_ReturnResult(ECSValue_TableSetField(explanation, name, &field));
+    SHU_ReturnResult(ECSValue_SetTableField(explanation, name, &field));
     return ECSValue_SetString(field, text);
 }
 
@@ -896,7 +896,7 @@ void ECSISettings_DeliverChanges(void)
         ECSValue *value = nullptr;
         ECSValue *field = nullptr;
 
-        if (ECSValue_Create(&value) == SHUResult_Ok && ECSValue_TableSetField(value, "name", &field) == SHUResult_Ok && ECSValue_SetString(field, setting->name) == SHUResult_Ok)
+        if (ECSValue_Create(&value) == SHUResult_Ok && ECSValue_SetTableField(value, "name", &field) == SHUResult_Ok && ECSValue_SetString(field, setting->name) == SHUResult_Ok)
         {
             ECSIEvents_EmitCore("ecs.settingChanged", value);
         }
@@ -989,7 +989,7 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
     ECSValue *tool = (ECSValue *)ECSValue_GetTableField(ECSValue_GetTableField(SETTINGS.userFile, "tools"), SETTINGS.appID);
     ECSValue *part = ECSValue_GetTableField(tool, name) != nullptr ? tool : SETTINGS.userFile;
     ECSValue *field = nullptr;
-    result = result ? result : ECSValue_TableSetField(part, name, &field);
+    result = result ? result : ECSValue_SetTableField(part, name, &field);
     result = result ? result : ECSIValue_Copy(field, value);
     result = result ? result : ECSISettings_BuildLayer(ECSISettingsLayer_User, SETTINGS.userFile);
 
@@ -1024,7 +1024,7 @@ SHUResult ECSSetting_List(ECSValue *retList)
     for (usz i = 0; i < shlenu(SETTINGS.settings); i++)
     {
         ECSValue *item = nullptr;
-        SHU_ReturnResult(ECSValue_ListAddItem(retList, &item));
+        SHU_ReturnResult(ECSValue_AddListItem(retList, &item));
         SHU_ReturnResult(ECSValue_SetString(item, SETTINGS.settings[i].key));
     }
 
@@ -1062,13 +1062,13 @@ SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation)
     for (usz i = 0; i < arrlenu(setting->choices); i++)
     {
         ECSValue *item = nullptr;
-        SHU_ReturnResult(choices == nullptr ? ECSValue_TableSetField(retExplanation, "choices", &choices) : SHUResult_Ok);
-        SHU_ReturnResult(ECSValue_ListAddItem(choices, &item));
+        SHU_ReturnResult(choices == nullptr ? ECSValue_SetTableField(retExplanation, "choices", &choices) : SHUResult_Ok);
+        SHU_ReturnResult(ECSValue_AddListItem(choices, &item));
         SHU_ReturnResult(ECSValue_SetString(item, setting->choices[i]));
     }
 
     ECSValue *layers = nullptr;
-    SHU_ReturnResult(ECSValue_TableSetField(retExplanation, "layers", &layers));
+    SHU_ReturnResult(ECSValue_SetTableField(retExplanation, "layers", &layers));
     ECSValue_SetTable(layers);
     SHU_ReturnResult(ECSISettings_ExplainField(layers, "default", setting->defaultValue));
 

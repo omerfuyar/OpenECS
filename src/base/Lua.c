@@ -159,7 +159,7 @@ static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *value, b
     for (usz i = 1; i <= count; i++)
     {
         ECSValue *item = nullptr;
-        SHU_ReturnResult(ECSValue_ListAddItem(value, &item));
+        SHU_ReturnResult(ECSValue_AddListItem(value, &item));
 
         lua_rawgeti(state, index, (lua_Integer)i);
         SHUResult result = ECSILua_ToValue(state, -1, item, handles, depth + 1);
@@ -192,7 +192,7 @@ static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *value, b
     for (usz i = 0; i < arrlenu(names) && !result; i++)
     {
         ECSValue *field = nullptr;
-        result = ECSValue_TableSetField(value, names[i], &field);
+        result = ECSValue_SetTableField(value, names[i], &field);
 
         if (!result)
         {
@@ -642,7 +642,7 @@ SHUResult ECSILua_WriteData(const char *path, const ECSValue *value)
         return SHUResult_ErrAllocation;
     }
 
-    char *slash = ECSPath_LastSeparator(folder);
+    char *slash = ECSPath_FindLastSeparator(folder);
 
     if (slash != nullptr)
     {

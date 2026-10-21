@@ -150,7 +150,7 @@ static SHUResult ECSIApp_FindPlugins(const char *const *directories, usz directo
             slash = *slash == '\0' ? nullptr : slash;
             char *name = slash == nullptr ? nullptr : SDL_strndup(manifests[j], (usz)(slash - manifests[j]));
             ECSValue *item = nullptr;
-            SHUResult result = name == nullptr ? SHUResult_ErrAllocation : ECSValue_ListAddItem(retList, &item);
+            SHUResult result = name == nullptr ? SHUResult_ErrAllocation : ECSValue_AddListItem(retList, &item);
             result = result ? result : ECSValue_SetString(item, name);
             SDL_free(name);
             SHU_ReturnResult(result, SDL_free(manifests););

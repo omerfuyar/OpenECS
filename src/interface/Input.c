@@ -159,7 +159,7 @@ static void ECSIInput_SendWheel(ECSPanel panel, const SDL_MouseWheelEvent *wheel
     ECSPanelEvent event = {
         .type = ECSPanelEventType_Wheel,
         .modifiers = ECSIInput_Modifiers(SDL_GetModState()),
-        .wheel = {.x = x - panel->x, .y = y - panel->y, .amountX = wheel->x * direction, .amountY = wheel->y * direction},
+        .wheel = {.x = x - panel->x, .y = y - panel->y, .scrollX = wheel->x * direction, .scrollY = wheel->y * direction},
     };
 
     ECSIPanel_PostEvent(panel, &event);
@@ -304,7 +304,7 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
         ECSPanelEvent wheel = {
             .type = ECSPanelEventType_Wheel,
             .modifiers = ECSIInput_Modifiers(SDL_GetModState()),
-            .wheel = {.x = x, .y = y, .amountX = event->wheel.x * direction, .amountY = event->wheel.y * direction},
+            .wheel = {.x = x, .y = y, .scrollX = event->wheel.x * direction, .scrollY = event->wheel.y * direction},
         };
 
         if (popup != nullptr)
@@ -328,7 +328,7 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
 
         if (menu != nullptr && event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_ESCAPE)
         {
-            ECSPopup_Close(menu);
+            ECSPopup_Close(&menu);
         }
         else if (menu != nullptr)
         {
@@ -395,7 +395,7 @@ static void ECSIInput_CompleteDrop(f32 x, f32 y)
         for (usz i = 0; !result && i < arrlenu(INPUT.droppedFiles); i++)
         {
             ECSValue *item = nullptr;
-            result = ECSValue_ListAddItem(value, &item);
+            result = ECSValue_AddListItem(value, &item);
             result = result ? result : ECSValue_SetString(item, INPUT.droppedFiles[i]);
         }
 

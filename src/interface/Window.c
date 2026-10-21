@@ -1564,7 +1564,7 @@ static ECSIPopupView *ECSIWindow_MakePopupView(ECSPopup popup, const ECSIOSWindo
         return view;
     }
 
-    SDL_WindowFlags flags = popup->desc.kind == ECSPopupKind_Menu ? SDL_WINDOW_POPUP_MENU : SDL_WINDOW_TOOLTIP;
+    SDL_WindowFlags flags = popup->desc.type == ECSPopupType_Menu ? SDL_WINDOW_POPUP_MENU : SDL_WINDOW_TOOLTIP;
     view->window = SDL_CreatePopupWindow(os->window, (int)rect.x, (int)rect.y, (int)rect.w, (int)rect.h, flags | SDL_WINDOW_TRANSPARENT);
     view->renderer = view->window == nullptr ? nullptr : ECSIWindow_CreateRenderer(view->window, false);
 

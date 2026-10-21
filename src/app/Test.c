@@ -833,7 +833,7 @@ static void ECSITest_Finish(void)
 /// @brief Reads a field of the test table, at -2, that names a folder relative to the test file.
 static void ECSITest_ReadFolder(lua_State *state, const char *field, const char *path, char **retFolder)
 {
-    const char *slash = ECSPath_LastSeparator(path);
+    const char *slash = ECSPath_FindLastSeparator(path);
 
     if (lua_getfield(state, -2, field) == LUA_TSTRING)
     {
@@ -899,9 +899,9 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 
     // a preset path is relative to the test file
     const char *preset = lua_getfield(state, -2, "preset") == LUA_TSTRING ? lua_tostring(state, -1) : OPENECS_TEST_PRESET;
-    const char *slash = ECSPath_LastSeparator(path);
+    const char *slash = ECSPath_FindLastSeparator(path);
     usz length = SDL_strlen(preset);
-    bool file = ECSPath_LastSeparator(preset) != nullptr || (length > 4 && SDL_strcmp(preset + length - 4, ".lua") == 0);
+    bool file = ECSPath_FindLastSeparator(preset) != nullptr || (length > 4 && SDL_strcmp(preset + length - 4, ".lua") == 0);
     int folderLength = slash != nullptr && file && !ECSPath_IsAbsolute(preset) ? (int)(slash - path + 1) : 0;
 
     if (SDL_asprintf(retPreset, "%.*s%s", folderLength, path, preset) < 0)

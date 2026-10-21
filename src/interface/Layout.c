@@ -239,7 +239,7 @@ static void ECSILayout_EmitFocus(ECSPanel panel)
         ECSValue_SetTable(value);
 
         // with no focused panel, the table stays empty
-        if (panel != nullptr && ECSValue_TableSetField(value, "panel", &field) == SHUResult_Ok)
+        if (panel != nullptr && ECSValue_SetTableField(value, "panel", &field) == SHUResult_Ok)
         {
             ECSValue_SetInteger(field, ECSPanel_GetID(panel));
         }
@@ -1073,18 +1073,18 @@ static SHUResult ECSILayout_SaveNode(const ECSIRoot *root, const ECSINode *node,
     if (node->parent != nullptr)
     {
         bool fixed = node->fixedSize > 0.0f;
-        SHU_ReturnResult(ECSValue_TableSetField(retNode, fixed ? "size" : "share", &field));
+        SHU_ReturnResult(ECSValue_SetTableField(retNode, fixed ? "size" : "share", &field));
         ECSValue_SetNumber(field, fixed ? node->fixedSize : node->share);
     }
 
     if (node->type == ECSINodeType_Split)
     {
-        SHU_ReturnResult(ECSValue_TableSetField(retNode, "split", &field));
+        SHU_ReturnResult(ECSValue_SetTableField(retNode, "split", &field));
         SHU_ReturnResult(ECSValue_SetString(field, node->vertical ? "vertical" : "horizontal"));
 
         for (usz i = 0; i < arrlenu(node->children); i++)
         {
-            SHU_ReturnResult(ECSValue_ListAddItem(retNode, &field));
+            SHU_ReturnResult(ECSValue_AddListItem(retNode, &field));
             SHU_ReturnResult(ECSILayout_SaveNode(root, node->children[i], field));
         }
 
@@ -1092,27 +1092,27 @@ static SHUResult ECSILayout_SaveNode(const ECSIRoot *root, const ECSINode *node,
     }
 
     ECSValue *panels = nullptr;
-    SHU_ReturnResult(ECSValue_TableSetField(retNode, "panels", &panels));
+    SHU_ReturnResult(ECSValue_SetTableField(retNode, "panels", &panels));
     ECSValue_SetTable(panels);
 
     for (usz i = 0; i < arrlenu(node->panels); i++)
     {
-        SHU_ReturnResult(ECSValue_ListAddItem(panels, &field));
+        SHU_ReturnResult(ECSValue_AddListItem(panels, &field));
         SHU_ReturnResult(ECSIPanel_Save(node->panels[i], field));
     }
 
-    SHU_ReturnResult(ECSValue_TableSetField(retNode, "shown", &field));
+    SHU_ReturnResult(ECSValue_SetTableField(retNode, "shown", &field));
     ECSValue_SetInteger(field, (i64)node->shown + 1);
 
     if (node->locked)
     {
-        SHU_ReturnResult(ECSValue_TableSetField(retNode, "locked", &field));
+        SHU_ReturnResult(ECSValue_SetTableField(retNode, "locked", &field));
         ECSValue_SetBool(field, true);
     }
 
     if (root->maximized == node)
     {
-        SHU_ReturnResult(ECSValue_TableSetField(retNode, "maximized", &field));
+        SHU_ReturnResult(ECSValue_SetTableField(retNode, "maximized", &field));
         ECSValue_SetBool(field, true);
     }
 
@@ -1386,7 +1386,7 @@ void ECSILayout_WorkspaceSwitch(usz index)
     ECSValue *value = nullptr;
     ECSValue *field = nullptr;
 
-    if (ECSValue_Create(&value) == SHUResult_Ok && ECSValue_TableSetField(value, "workspace", &field) == SHUResult_Ok)
+    if (ECSValue_Create(&value) == SHUResult_Ok && ECSValue_SetTableField(value, "workspace", &field) == SHUResult_Ok)
     {
         ECSValue_SetInteger(field, (i64)index + 1);
         ECSIEvents_EmitCore("ecs.workspaceSwitched", value);
@@ -2085,18 +2085,18 @@ SHUResult ECSILayout_Save(ECSValue *retWorkspaces, usz *retCurrent)
         ECSValue *saved = nullptr;
         ECSValue *field = nullptr;
 
-        SHU_ReturnResult(ECSValue_ListAddItem(retWorkspaces, &saved));
-        SHU_ReturnResult(ECSValue_TableSetField(saved, "name", &field));
+        SHU_ReturnResult(ECSValue_AddListItem(retWorkspaces, &saved));
+        SHU_ReturnResult(ECSValue_SetTableField(saved, "name", &field));
         SHU_ReturnResult(ECSValue_SetString(field, workspace->name));
 
         if (workspace->focus != nullptr)
         {
-            SHU_ReturnResult(ECSValue_TableSetField(saved, "focus", &field));
+            SHU_ReturnResult(ECSValue_SetTableField(saved, "focus", &field));
             ECSValue_SetInteger(field, workspace->focus->id);
         }
 
         ECSValue *windows = nullptr;
-        SHU_ReturnResult(ECSValue_TableSetField(saved, "windows", &windows));
+        SHU_ReturnResult(ECSValue_SetTableField(saved, "windows", &windows));
         ECSValue_SetTable(windows);
 
         // the main window's tree first, empty if it has no panels and pop-out windows follow; a pop-out window's tree also has its size
@@ -2109,7 +2109,7 @@ SHUResult ECSILayout_Save(ECSValue *retWorkspaces, usz *retCurrent)
                 break;
             }
 
-            SHU_ReturnResult(ECSValue_ListAddItem(windows, &field));
+            SHU_ReturnResult(ECSValue_AddListItem(windows, &field));
             ECSValue_SetTable(field);
 
             if (root->tree != nullptr)
@@ -2120,9 +2120,9 @@ SHUResult ECSILayout_Save(ECSValue *retWorkspaces, usz *retCurrent)
             if (j > 0)
             {
                 ECSValue *size = nullptr;
-                SHU_ReturnResult(ECSValue_TableSetField(field, "width", &size));
+                SHU_ReturnResult(ECSValue_SetTableField(field, "width", &size));
                 ECSValue_SetNumber(size, root->width);
-                SHU_ReturnResult(ECSValue_TableSetField(field, "height", &size));
+                SHU_ReturnResult(ECSValue_SetTableField(field, "height", &size));
                 ECSValue_SetNumber(size, root->height);
             }
         }

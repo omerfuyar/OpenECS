@@ -442,9 +442,9 @@ SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retPanel)
 
     ECSValue *field = nullptr;
     ECSValue_SetTable(retPanel);
-    SHU_ReturnResult(ECSValue_TableSetField(retPanel, "id", &field));
+    SHU_ReturnResult(ECSValue_SetTableField(retPanel, "id", &field));
     ECSValue_SetInteger(field, panel->id);
-    SHU_ReturnResult(ECSValue_TableSetField(retPanel, "type", &field));
+    SHU_ReturnResult(ECSValue_SetTableField(retPanel, "type", &field));
     SHU_ReturnResult(ECSValue_SetString(field, panel->typeName));
 
     const ECSValue *state = panel->savedState;
@@ -475,12 +475,12 @@ SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retPanel)
 
     if (state != nullptr)
     {
-        result = ECSValue_TableSetField(retPanel, "stateVersion", &field);
+        result = ECSValue_SetTableField(retPanel, "stateVersion", &field);
 
         if (!result)
         {
             ECSValue_SetInteger(field, version);
-            result = ECSValue_TableSetField(retPanel, "state", &field);
+            result = ECSValue_SetTableField(retPanel, "state", &field);
         }
 
         result = result ? result : ECSIValue_Copy(field, state);
@@ -657,7 +657,7 @@ void ECSIPanel_Emit(const char *name, ECSPanel panel)
     ECSValue *value = nullptr;
     ECSValue *field = nullptr;
 
-    if (ECSValue_Create(&value) || ECSValue_TableSetField(value, "panel", &field))
+    if (ECSValue_Create(&value) || ECSValue_SetTableField(value, "panel", &field))
     {
         ECSValue_Destroy(&value);
         return;
@@ -665,7 +665,7 @@ void ECSIPanel_Emit(const char *name, ECSPanel panel)
 
     ECSValue_SetInteger(field, panel->id);
 
-    if (ECSValue_TableSetField(value, "type", &field) == SHUResult_Ok && ECSValue_SetString(field, panel->typeName) == SHUResult_Ok)
+    if (ECSValue_SetTableField(value, "type", &field) == SHUResult_Ok && ECSValue_SetString(field, panel->typeName) == SHUResult_Ok)
     {
         ECSIEvents_EmitCore(name, value);
     }
@@ -974,7 +974,7 @@ static int SDLCALL ECSIPanel_CompareTypes(const void *a, const void *b)
 static SHUResult ECSIPanel_SetStringField(ECSValue *table, const char *name, const char *string)
 {
     ECSValue *field = nullptr;
-    SHU_ReturnResult(ECSValue_TableSetField(table, name, &field));
+    SHU_ReturnResult(ECSValue_SetTableField(table, name, &field));
     return ECSValue_SetString(field, string);
 }
 
@@ -1002,7 +1002,7 @@ SHUResult ECSPanelType_List(ECSValue *retList)
     for (usz i = 0; i < count && !result; i++)
     {
         ECSValue *entry = nullptr;
-        result = ECSValue_ListAddItem(retList, &entry);
+        result = ECSValue_AddListItem(retList, &entry);
 
         if (!result)
         {
@@ -1127,7 +1127,7 @@ SHUResult ECSPanel_StartTimer(ECSPanel panel, ECSTimer *retTimer, f64 seconds, b
     return ECSIEvents_StartTimer(panel->type->plugin, panel, retTimer, seconds, repeat, function, nullptr, data);
 }
 
-bool ECSPanel_IsUnsaved(ECSPanel panel)
+bool ECSPanel_GetUnsaved(ECSPanel panel)
 {
     SDL_assert(panel != nullptr);
 
