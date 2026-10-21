@@ -187,15 +187,6 @@ static bool ECSIInput_ConfirmQuit(void)
     return quit;
 }
 
-/// @brief Moves the keyboard focus to a panel; the layout tells both panels.
-static void ECSIInput_Focus(ECSPanel panel)
-{
-    if (panel != nullptr)
-    {
-        ECSILayout_SetFocus(panel);
-    }
-}
-
 /// @brief Gets the panel that got the pointer press, unless code closed it since.
 static ECSPanel ECSIInput_PointerPanel(void)
 {
@@ -1010,7 +1001,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
         if (panel != nullptr)
         {
-            ECSIInput_Focus(panel);
+            ECSILayout_SetFocus(panel);
             INPUT.pointerPanel = panel;
 
             ECSIInput_SendPointer(panel, ECSPanelEventType_PointerDown, x, y, button->button);
@@ -1050,7 +1041,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
         // in hover mode, only real pointer movement over a panel moves focus; dividers and tab rows are outside every panel
         if (INPUT.pointerPanel == nullptr && SDL_strcmp(ECSValue_GetString(ECSSetting_Get("ecs.focus"), ""), "hover") == 0)
         {
-            ECSIInput_Focus(panel);
+            ECSILayout_SetFocus(panel);
         }
 
         ECSIInput_SendPointer(panel, ECSPanelEventType_PointerMove, x, y, 0);

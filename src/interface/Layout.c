@@ -46,7 +46,7 @@ static struct
     i64 reopenLimit; // how many closed panels ecs.layout.reopen remembers
 } LAYOUT = {0};
 
-static ECSIWorkspace *ECSILayout_Current(void)
+static ECSIWorkspace *ECSILayout_GetCurrent(void)
 {
     return arrlenu(LAYOUT.workspaces) == 0 ? nullptr : &LAYOUT.workspaces[LAYOUT.current];
 }
@@ -116,7 +116,7 @@ static void ECSILayout_Place(ECSINode *node, f32 x, f32 y, f32 width, f32 height
 }
 
 /// @brief Calls a function for every group of a tree.
-static void ECSILayout_ForEachGroupIn(ECSINode *node, ECSILayoutGroupFunction function, void *userData)
+static void ECSILayout_ForEachGroupInTree(ECSINode *node, ECSILayoutGroupFunction function, void *userData)
 {
     if (node == nullptr)
     {
@@ -131,24 +131,31 @@ static void ECSILayout_ForEachGroupIn(ECSINode *node, ECSILayoutGroupFunction fu
 
     for (usz i = 0; i < arrlenu(node->children); i++)
     {
-        ECSILayout_ForEachGroupIn(node->children[i], function, userData);
+        ECSILayout_ForEachGroupInTree(node->children[i], function, userData);
     }
 }
 
-/// @brief Tells each panel of a group whether it is visible. userData points to the group whose panel is shown, or to nullptr for every group of the current workspace.
+/// @brief Which groups of a root show their panels, for ECSILayout_TellVisible.
+typedef struct ECSIVisibleGroups
+{
+    bool current;   // the root belongs to the current workspace
+    ECSINode *only; // its maximized group, which hides the others; nullptr when none is maximized
+} ECSIVisibleGroups;
+
+/// @brief Tells each panel of a group whether it is visible: the shown panel of a group of the current workspace that no maximized group hides. userData is an ECSIVisibleGroups.
 static void ECSILayout_TellVisible(ECSINode *group, void *userData)
 {
-    ECSINode *const *only = userData;
+    const ECSIVisibleGroups *visibleGroups = userData;
+    bool groupVisible = visibleGroups->current && (visibleGroups->only == nullptr || visibleGroups->only == group);
 
     for (usz i = 0; i < arrlenu(group->panels); i++)
     {
-        bool visible = only != nullptr && (*only == nullptr || *only == group) && i == group->shown;
-        ECSIPanel_SetVisible(group->panels[i], visible);
+        ECSIPanel_SetVisible(group->panels[i], groupVisible && i == group->shown);
     }
 }
 
 /// @brief Finds the group that holds a panel.
-static ECSINode *ECSILayout_FindGroup(ECSINode *node, ECSPanel panel)
+static ECSINode *ECSILayout_FindGroupInTree(ECSINode *node, ECSPanel panel)
 {
     if (node == nullptr)
     {
@@ -170,7 +177,7 @@ static ECSINode *ECSILayout_FindGroup(ECSINode *node, ECSPanel panel)
 
     for (usz i = 0; i < arrlenu(node->children); i++)
     {
-        ECSINode *group = ECSILayout_FindGroup(node->children[i], panel);
+        ECSINode *group = ECSILayout_FindGroupInTree(node->children[i], panel);
 
         if (group != nullptr)
         {
@@ -183,11 +190,11 @@ static ECSINode *ECSILayout_FindGroup(ECSINode *node, ECSPanel panel)
 
 /// @brief Finds the group that holds a panel in a workspace, and its root.
 /// @param retRoot Gets the root, or nullptr.
-static ECSINode *ECSILayout_FindIn(const ECSIWorkspace *workspace, ECSPanel panel, ECSIRoot **retRoot)
+static ECSINode *ECSILayout_FindGroupInWorkspace(const ECSIWorkspace *workspace, ECSPanel panel, ECSIRoot **retRoot)
 {
     for (usz i = 0; workspace != nullptr && panel != nullptr && i < arrlenu(workspace->roots); i++)
     {
-        ECSINode *group = ECSILayout_FindGroup(workspace->roots[i]->tree, panel);
+        ECSINode *group = ECSILayout_FindGroupInTree(workspace->roots[i]->tree, panel);
 
         if (group != nullptr)
         {
@@ -204,18 +211,28 @@ static ECSINode *ECSILayout_FindIn(const ECSIWorkspace *workspace, ECSPanel pane
 }
 
 /// @brief Finds the workspace, root and group that hold a panel, in any workspace.
+/// @param retWorkspace Gets the workspace, or nullptr.
 /// @param retRoot Gets the root, or nullptr.
+/// @param retGroup Gets the group, or nullptr.
 /// @return false if the panel is not in the layout.
 static bool ECSILayout_Locate(ECSPanel panel, ECSIWorkspace **retWorkspace, ECSIRoot **retRoot, ECSINode **retGroup)
 {
     for (usz i = 0; panel != nullptr && i < arrlenu(LAYOUT.workspaces); i++)
     {
-        ECSINode *group = ECSILayout_FindIn(&LAYOUT.workspaces[i], panel, retRoot);
+        ECSINode *group = ECSILayout_FindGroupInWorkspace(&LAYOUT.workspaces[i], panel, retRoot);
 
         if (group != nullptr)
         {
-            *retWorkspace = &LAYOUT.workspaces[i];
-            *retGroup = group;
+            if (retWorkspace != nullptr)
+            {
+                *retWorkspace = &LAYOUT.workspaces[i];
+            }
+
+            if (retGroup != nullptr)
+            {
+                *retGroup = group;
+            }
+
             return true;
         }
     }
@@ -245,6 +262,25 @@ static void ECSILayout_EmitFocus(ECSPanel panel)
     ECSValue_Destroy(&value);
 }
 
+/// @brief Tells the panel that loses the focus and the one that gets it, either of which may be nullptr, and emits ecs.focusChanged.
+static void ECSILayout_TellFocus(ECSPanel old, ECSPanel focus)
+{
+    ECSPanelEvent event = {.type = ECSPanelEventType_Unfocused};
+
+    if (old != nullptr)
+    {
+        ECSIPanel_PostEvent(old, &event);
+    }
+
+    if (focus != nullptr)
+    {
+        event.type = ECSPanelEventType_Focused;
+        ECSIPanel_PostEvent(focus, &event);
+    }
+
+    ECSILayout_EmitFocus(focus);
+}
+
 /// @brief Changes a workspace's focus. In the current workspace, the panel that loses focus and the one that gets it are told.
 static void ECSILayout_ChangeFocus(ECSIWorkspace *workspace, ECSPanel panel)
 {
@@ -263,25 +299,10 @@ static void ECSILayout_ChangeFocus(ECSIWorkspace *workspace, ECSPanel panel)
         panel->focusTicks = SDL_GetTicksNS();
     }
 
-    if (workspace != ECSILayout_Current())
+    if (workspace == ECSILayout_GetCurrent())
     {
-        return;
+        ECSILayout_TellFocus(old, panel);
     }
-
-    ECSPanelEvent event = {.type = ECSPanelEventType_Unfocused};
-
-    if (old != nullptr)
-    {
-        ECSIPanel_PostEvent(old, &event);
-    }
-
-    if (panel != nullptr)
-    {
-        event.type = ECSPanelEventType_Focused;
-        ECSIPanel_PostEvent(panel, &event);
-    }
-
-    ECSILayout_EmitFocus(panel);
 }
 
 /// @brief Finds the first panel of a tree.
@@ -374,6 +395,46 @@ static void ECSILayout_CloseTree(ECSINode *node)
     ECSILayout_FreeNode(node);
 }
 
+/// @brief Destroys the panels of a tree at once and frees its nodes.
+static void ECSILayout_DestroyTree(ECSINode *node)
+{
+    ECSILayout_NodeDestroy(&node);
+}
+
+/// @brief Function that closes or destroys the panels of a tree, and frees its nodes.
+typedef void (*ECSILayoutTreeFunction)(ECSINode *tree);
+
+/// @brief Frees every workspace, and the closed panels that ecs.layout.reopen remembers.
+static void ECSILayout_FreeWorkspaces(ECSILayoutTreeFunction FreeTree)
+{
+    for (usz i = 0; i < arrlenu(LAYOUT.workspaces); i++)
+    {
+        for (usz j = 0; j < arrlenu(LAYOUT.workspaces[i].roots); j++)
+        {
+            ECSIRoot *root = LAYOUT.workspaces[i].roots[j];
+
+            if (root->tree != nullptr)
+            {
+                FreeTree(root->tree);
+            }
+
+            SDL_free(root);
+        }
+
+        arrfree(LAYOUT.workspaces[i].roots);
+        SDL_free(LAYOUT.workspaces[i].name);
+    }
+
+    arrfree(LAYOUT.workspaces);
+
+    for (usz i = 0; i < arrlenu(LAYOUT.closed); i++)
+    {
+        ECSValue_Destroy(&LAYOUT.closed[i].saved);
+    }
+
+    arrfree(LAYOUT.closed);
+}
+
 /// @brief Tidies a subtree after an operation: frees empty groups and splits, merges a split into a parent split of the same direction, and replaces a split that has one child by that child.
 /// @return The node that takes the subtree's place, or nullptr if nothing is left.
 static ECSINode *ECSILayout_TidyNode(ECSIRoot *root, ECSINode *node)
@@ -452,12 +513,6 @@ static ECSINode *ECSILayout_TidyNode(ECSIRoot *root, ECSINode *node)
     return only;
 }
 
-/// @brief Emits ecs.layoutChanged, which carries nothing.
-static void ECSILayout_EmitLayoutChanged(void)
-{
-    ECSIEvents_EmitCore("ecs.layoutChanged", nullptr);
-}
-
 /// @brief Lets the window forget the nodes it points to, because nodes may have been freed or hidden.
 static void ECSILayout_Forget(void)
 {
@@ -465,6 +520,14 @@ static void ECSILayout_Forget(void)
     {
         LAYOUT.Forget();
     }
+}
+
+/// @brief Follows a change of the layout: the window forgets the nodes it points to and draws again, and ecs.layoutChanged is emitted.
+static void ECSILayout_Changed(void)
+{
+    ECSILayout_Forget();
+    LAYOUT.frameNeeded = true;
+    ECSIEvents_EmitCore("ecs.layoutChanged", nullptr);
 }
 
 /// @brief Tidies a root's tree.
@@ -482,7 +545,7 @@ static void ECSILayout_TidyRoot(ECSIRoot *root)
 }
 
 /// @brief Removes the pop-out roots of a workspace that have no panels left. A main root left without panels takes the panels of the first pop-out window, so the main window never shows nothing while another window has panels.
-static void ECSILayout_DropEmptyRoots(ECSIWorkspace *workspace)
+static void ECSILayout_RemoveEmptyRoots(ECSIWorkspace *workspace)
 {
     for (usz i = 1; i < arrlenu(workspace->roots);)
     {
@@ -519,11 +582,9 @@ static void ECSILayout_Tidy(ECSIWorkspace *workspace)
         ECSILayout_TidyRoot(workspace->roots[i]);
     }
 
-    ECSILayout_DropEmptyRoots(workspace);
+    ECSILayout_RemoveEmptyRoots(workspace);
 
-    ECSILayout_Forget();
-    LAYOUT.frameNeeded = true;
-    ECSILayout_EmitLayoutChanged();
+    ECSILayout_Changed();
 }
 
 #pragma region Moving
@@ -603,16 +664,16 @@ static void ECSILayout_Unlink(ECSIRoot *root, ECSINode *node)
 
 /// @brief Places a node that is out of every tree: beside a group, along an edge of a root, as the whole tree of an empty root, or as the tree of a new pop-out root.
 /// @param split A new split for the side and edge zones, which it then owns; nullptr for the others.
-/// @param pop A new root for a pop-out, which the workspace then owns; nullptr for the others.
-static void ECSILayout_Attach(ECSIWorkspace *workspace, ECSINode *node, ECSINode *split, ECSIRoot *pop, const ECSIDrop *drop)
+/// @param popOutRoot A new root for a pop-out, which the workspace then owns; nullptr for the others.
+static void ECSILayout_Attach(ECSIWorkspace *workspace, ECSINode *node, ECSINode *split, ECSIRoot *popOutRoot, const ECSIDrop *drop)
 {
     bool first = drop->zone == ECSIZone_Left || drop->zone == ECSIZone_Top || drop->zone == ECSIZone_WindowLeft || drop->zone == ECSIZone_WindowTop;
 
-    if (pop != nullptr)
+    if (popOutRoot != nullptr)
     {
-        pop->tree = node;
+        popOutRoot->tree = node;
         node->parent = nullptr;
-        arrput(workspace->roots, pop);
+        arrput(workspace->roots, popOutRoot);
     }
     else if (drop->root->tree == nullptr)
     {
@@ -633,46 +694,71 @@ static void ECSILayout_Attach(ECSIWorkspace *workspace, ECSINode *node, ECSINode
     }
 }
 
-/// @brief Makes what a move needs before it changes anything, so a failed allocation changes nothing: a group for a panel that leaves its group, a split for a side or edge zone, and a root for a pop-out.
-/// @return false if memory ran out.
-static bool ECSILayout_Prepare(const ECSIDrop *drop, ECSINode **retGroup, ECSINode **retSplit, ECSIRoot **retRoot)
+/// @brief Makes the nodes a move to a new place needs before it changes anything, so a failed allocation changes nothing: a split for a side or edge zone, and a root for a pop-out.
+/// @param retSplit Gets the split, or nullptr for the other zones.
+/// @param retRoot Gets the root, or nullptr for the other zones.
+/// @return false if memory ran out; nothing is left made then.
+static bool ECSILayout_AllocateForMove(const ECSIDrop *drop, ECSINode **retSplit, ECSIRoot **retRoot)
 {
     bool vertical = drop->zone == ECSIZone_Top || drop->zone == ECSIZone_Bottom || drop->zone == ECSIZone_WindowTop || drop->zone == ECSIZone_WindowBottom;
-    bool failed = (retGroup != nullptr && ECSILayout_GroupCreate(retGroup)) ||
-                  ((ECSILayout_IsSide(drop->zone) || ECSILayout_IsEdge(drop->zone)) && ECSILayout_SplitCreate(retSplit, vertical)) ||
+    bool failed = ((ECSILayout_IsSide(drop->zone) || ECSILayout_IsEdge(drop->zone)) && ECSILayout_SplitCreate(retSplit, vertical)) ||
                   (drop->zone == ECSIZone_PopOut && (*retRoot = ECSILayout_NewRoot()) == nullptr);
 
     if (failed)
     {
-        SDL_free(retGroup != nullptr ? *retGroup : nullptr);
         SDL_free(*retSplit);
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Out of memory while moving a panel.");
+        *retSplit = nullptr;
     }
 
     return !failed;
 }
 
-/// @brief Gives a new pop-out root its size: the drop's, or else the moved panel's.
-static void ECSILayout_SizePopOut(ECSIRoot *pop, const ECSIDrop *drop, ECSPanel panel)
+/// @brief Puts a panel into a group at a position, before the panel there.
+static void ECSILayout_InsertPanel(ECSINode *group, usz index, ECSPanel panel)
 {
-    pop->width = drop->width > 0.0f ? drop->width : SDL_max(panel->width, OPENECS_MIN_POP_OUT_SIZE);
-    pop->height = drop->height > 0.0f ? drop->height : SDL_max(panel->height, OPENECS_MIN_POP_OUT_SIZE);
+    // arrins of stb_ds does not compile cleanly with sign warnings, so the gap is opened by hand
+    arrput(group->panels, panel);
+    SDL_memmove(&group->panels[index + 1], &group->panels[index], (arrlenu(group->panels) - 1 - index) * sizeof(ECSPanel));
+    group->panels[index] = panel;
 }
 
-/// @brief Moves a panel to a drop place, then tidies the trees. The panel gets the focus.
-/// @param user true when the user moves the panel; locks stop the user but not code.
-static void ECSILayout_Move(ECSIWorkspace *workspace, ECSPanel panel, const ECSIDrop *drop, bool user)
+/// @brief Takes a panel out of its group. The group shows the panel after it, or the last one; tidying removes a group that empties.
+/// @return The panel's position in the group before.
+static usz ECSILayout_TakePanel(ECSINode *group, ECSPanel panel)
+{
+    usz index = ECSILayout_IndexOf(group, panel);
+    arrdel(group->panels, index);
+    group->shown = arrlenu(group->panels) == 0 ? 0 : SDL_min(group->shown, arrlenu(group->panels) - 1);
+    return index;
+}
+
+/// @brief Checks whether locks let the user move a group's panels to a drop place: a locked group's panels stay, and a locked group takes no panels. Locks stop the user, not code.
+static bool ECSILayout_LocksAllow(const ECSINode *source, const ECSIDrop *drop)
+{
+    bool join = drop->zone == ECSIZone_Center || drop->zone == ECSIZone_Tabs;
+    return !source->locked && !(join && drop->group != nullptr && drop->group->locked);
+}
+
+/// @brief Gives a new pop-out root its size: the drop's, or else the moved panel's.
+static void ECSILayout_SizePopOut(ECSIRoot *popOutRoot, const ECSIDrop *drop, ECSPanel panel)
+{
+    popOutRoot->width = drop->width > 0.0f ? drop->width : SDL_max(panel->width, OPENECS_MIN_POP_OUT_SIZE);
+    popOutRoot->height = drop->height > 0.0f ? drop->height : SDL_max(panel->height, OPENECS_MIN_POP_OUT_SIZE);
+}
+
+/// @brief Moves a panel to a drop place, then tidies the trees. The panel gets the focus. Locks do not stop it; ECSILayout_LocksAllow checks them for the user.
+static void ECSILayout_Move(ECSIWorkspace *workspace, ECSPanel panel, const ECSIDrop *drop)
 {
     ECSIRoot *sourceRoot = nullptr;
-    ECSINode *source = ECSILayout_FindIn(workspace, panel, &sourceRoot);
+    ECSINode *source = ECSILayout_FindGroupInWorkspace(workspace, panel, &sourceRoot);
     ECSINode *target = drop->group;
     bool side = ECSILayout_IsSide(drop->zone);
     bool join = drop->zone == ECSIZone_Center || drop->zone == ECSIZone_Tabs;
 
-    // a panel cannot join its own group again, split away from a group that holds only itself, or pop out of a window that holds only itself; locked panels stay
+    // a panel cannot join its own group again, split away from a group that holds only itself, or pop out of a window that holds only itself
     bool alone = arrlenu(source == nullptr ? nullptr : source->panels) == 1;
 
-    if (source == nullptr || drop->zone == ECSIZone_None || (user && source->locked) ||
+    if (source == nullptr || drop->zone == ECSIZone_None ||
         (source == target && ((join && drop->zone == ECSIZone_Center) || (side && alone))) ||
         (drop->zone == ECSIZone_PopOut && alone && sourceRoot->tree == source))
     {
@@ -680,29 +766,23 @@ static void ECSILayout_Move(ECSIWorkspace *workspace, ECSPanel panel, const ECSI
     }
 
     // without a group, a panel joins only an empty window
-    if ((user && target != nullptr && target->locked && join) || (join && target == nullptr && (drop->root == nullptr || drop->root->tree != nullptr)))
+    if (join && target == nullptr && (drop->root == nullptr || drop->root->tree != nullptr))
     {
         return;
     }
 
     ECSINode *group = nullptr;
     ECSINode *split = nullptr;
-    ECSIRoot *pop = nullptr;
+    ECSIRoot *popOutRoot = nullptr;
 
-    if (!(join && target != nullptr) && !ECSILayout_Prepare(drop, &group, &split, &pop))
+    if (!(join && target != nullptr) && (ECSILayout_GroupCreate(&group) || !ECSILayout_AllocateForMove(drop, &split, &popOutRoot)))
     {
+        SDL_free(group);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Out of memory while moving a panel.");
         return;
     }
 
-    usz index = 0;
-
-    while (source->panels[index] != panel)
-    {
-        index++;
-    }
-
-    arrdel(source->panels, index);
-    source->shown = arrlenu(source->panels) == 0 ? 0 : SDL_min(source->shown, arrlenu(source->panels) - 1);
+    usz index = ECSILayout_TakePanel(source, panel);
 
     if (join && target != nullptr)
     {
@@ -710,21 +790,18 @@ static void ECSILayout_Move(ECSIWorkspace *workspace, ECSPanel panel, const ECSI
         usz gap = drop->zone == ECSIZone_Center ? arrlenu(target->panels) : drop->index;
         gap = source == target && index < gap ? gap - 1 : gap;
         gap = SDL_min(gap, arrlenu(target->panels));
-        // arrins of stb_ds does not compile cleanly with sign warnings, so the gap is opened by hand
-        arrput(target->panels, panel);
-        SDL_memmove(&target->panels[gap + 1], &target->panels[gap], (arrlenu(target->panels) - 1 - gap) * sizeof(ECSPanel));
-        target->panels[gap] = panel;
+        ECSILayout_InsertPanel(target, gap, panel);
         target->shown = gap;
     }
     else
     {
-        if (pop != nullptr)
+        if (popOutRoot != nullptr)
         {
-            ECSILayout_SizePopOut(pop, drop, panel);
+            ECSILayout_SizePopOut(popOutRoot, drop, panel);
         }
 
         arrput(group->panels, panel);
-        ECSILayout_Attach(workspace, group, split, pop, drop);
+        ECSILayout_Attach(workspace, group, split, popOutRoot, drop);
     }
 
     sourceRoot->maximized = nullptr;
@@ -738,12 +815,11 @@ static void ECSILayout_Move(ECSIWorkspace *workspace, ECSPanel panel, const ECSI
     ECSILayout_Tidy(workspace);
 }
 
-/// @brief Moves a whole group to a drop place, then tidies the trees. The group's shown panel gets the focus.
-/// @param user true when the user moves the group; locks stop the user but not code.
-static void ECSILayout_MoveGroup(ECSIWorkspace *workspace, ECSINode *group, const ECSIDrop *drop, bool user)
+/// @brief Moves a whole group to a drop place, then tidies the trees. The group's shown panel gets the focus. Locks do not stop it.
+static void ECSILayout_MoveGroup(ECSIWorkspace *workspace, ECSINode *group, const ECSIDrop *drop)
 {
     ECSIRoot *sourceRoot = nullptr;
-    ECSILayout_FindIn(workspace, group->panels[group->shown], &sourceRoot);
+    ECSILayout_FindGroupInWorkspace(workspace, group->panels[group->shown], &sourceRoot);
     ECSINode *target = drop->group;
     bool join = drop->zone == ECSIZone_Center || drop->zone == ECSIZone_Tabs;
 
@@ -751,7 +827,7 @@ static void ECSILayout_MoveGroup(ECSIWorkspace *workspace, ECSINode *group, cons
     bool whole = sourceRoot->tree == group;
 
     if (drop->zone == ECSIZone_None || target == group || (whole && (drop->zone == ECSIZone_PopOut || (ECSILayout_IsEdge(drop->zone) && drop->root == sourceRoot))) ||
-        (user && (group->locked || (join && target != nullptr && target->locked))) || (join && target == nullptr && (drop->root == nullptr || drop->root->tree != nullptr)))
+        (join && target == nullptr && (drop->root == nullptr || drop->root->tree != nullptr)))
     {
         return;
     }
@@ -765,9 +841,7 @@ static void ECSILayout_MoveGroup(ECSIWorkspace *workspace, ECSINode *group, cons
 
         for (usz i = 0; i < arrlenu(group->panels); i++, gap++)
         {
-            arrput(target->panels, group->panels[i]);
-            SDL_memmove(&target->panels[gap + 1], &target->panels[gap], (arrlenu(target->panels) - 1 - gap) * sizeof(ECSPanel));
-            target->panels[gap] = group->panels[i];
+            ECSILayout_InsertPanel(target, gap, group->panels[i]);
         }
 
         target->shown = gap - arrlenu(group->panels) + group->shown;
@@ -777,21 +851,22 @@ static void ECSILayout_MoveGroup(ECSIWorkspace *workspace, ECSINode *group, cons
     else
     {
         ECSINode *split = nullptr;
-        ECSIRoot *pop = nullptr;
+        ECSIRoot *popOutRoot = nullptr;
 
-        if (!ECSILayout_Prepare(drop, nullptr, &split, &pop))
+        if (!ECSILayout_AllocateForMove(drop, &split, &popOutRoot))
         {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Out of memory while moving a panel.");
             return;
         }
 
-        if (pop != nullptr)
+        if (popOutRoot != nullptr)
         {
-            ECSILayout_SizePopOut(pop, drop, shown);
+            ECSILayout_SizePopOut(popOutRoot, drop, shown);
         }
 
         // the group leaves its place, which tidying removes if one child is left
         ECSILayout_Unlink(sourceRoot, group);
-        ECSILayout_Attach(workspace, group, split, pop, drop);
+        ECSILayout_Attach(workspace, group, split, popOutRoot, drop);
     }
 
     sourceRoot->maximized = nullptr;
@@ -818,12 +893,12 @@ static SHUResult ECSILayout_Add(ECSIWorkspace *workspace, ECSINode *group, ECSPa
     arrput(group->panels, panel);
     group->shown = arrlenu(group->panels) - 1;
     ECSIRoot *root = nullptr;
-    ECSILayout_FindIn(workspace, panel, &root);
+    ECSILayout_FindGroupInWorkspace(workspace, panel, &root);
     ECSIDrop drop = {.zone = zone, .root = zone == ECSIZone_PopOut ? nullptr : root, .group = group};
 
     if (zone != ECSIZone_Center && zone != ECSIZone_None)
     {
-        ECSILayout_Move(workspace, panel, &drop, false);
+        ECSILayout_Move(workspace, panel, &drop);
     }
 
     ECSILayout_ChangeFocus(workspace, panel);
@@ -831,36 +906,58 @@ static SHUResult ECSILayout_Add(ECSIWorkspace *workspace, ECSINode *group, ECSPa
     return SHUResult_Ok;
 }
 
-/// @brief Takes a panel out of its group and tidies the workspace. If the panel had the focus, the first panel gets it.
-static void ECSILayout_Detach(ECSIWorkspace *workspace, ECSINode *group, ECSPanel panel)
+/// @brief Takes a panel out of the layout and tidies the workspace. If the panel had the focus, the panel its group shows now gets it, or else the workspace's first panel.
+static void ECSILayout_RemovePanel(ECSIWorkspace *workspace, ECSINode *group, ECSPanel panel)
 {
-    usz index = 0;
+    ECSILayout_TakePanel(group, panel);
+    bool focused = workspace->focus == panel;
+    bool emptied = arrlenu(group->panels) == 0;
 
-    while (group->panels[index] != panel)
+    // tidying frees a group that empties, so its panel is chosen before
+    if (focused)
     {
-        index++;
+        ECSILayout_ChangeFocus(workspace, emptied ? nullptr : group->panels[group->shown]);
     }
 
-    // tidying removes a group that empties, and forgets it if it was maximized
-    arrdel(group->panels, index);
-    group->shown = arrlenu(group->panels) == 0 ? 0 : SDL_min(group->shown, arrlenu(group->panels) - 1);
     ECSILayout_Tidy(workspace);
 
-    if (workspace->focus == panel)
+    if (focused && emptied)
     {
         ECSILayout_ChangeFocus(workspace, ECSILayout_FirstPanelOf(workspace));
     }
 }
 
+/// @brief Saves a panel that closes, so ecs.layout.reopen can open it again next to a panel that stays in its group. The oldest saved panels go beyond ecs.reopenLimit.
+static void ECSILayout_RememberClosed(const ECSINode *group, ECSPanel panel)
+{
+    usz index = ECSILayout_IndexOf(group, panel);
+    ECSIClosedPanel closed = {.neighbour = arrlenu(group->panels) > 1 ? ECSPanel_GetID(group->panels[index == 0 ? 1 : 0]) : 0};
+
+    // the oldest panels make room, and a limit made smaller drops more of them
+    while (arrlenu(LAYOUT.closed) > 0 && (i64)arrlenu(LAYOUT.closed) >= LAYOUT.reopenLimit)
+    {
+        ECSValue_Destroy(&LAYOUT.closed[0].saved);
+        arrdel(LAYOUT.closed, 0);
+    }
+
+    if (LAYOUT.reopenLimit <= 0 || ECSValue_Create(&closed.saved) || ECSIPanel_Save(panel, closed.saved))
+    {
+        ECSValue_Destroy(&closed.saved);
+        return;
+    }
+
+    arrput(LAYOUT.closed, closed);
+}
+
 /// @brief Finds the group a new panel joins in a workspace: the focused group, else the first one, or nullptr if the workspace has no panels.
 static ECSINode *ECSILayout_DefaultGroup(ECSIWorkspace *workspace)
 {
-    ECSINode *group = ECSILayout_FindIn(workspace, workspace->focus, nullptr);
-    return group != nullptr ? group : ECSILayout_FindIn(workspace, ECSILayout_FirstPanelOf(workspace), nullptr);
+    ECSINode *group = ECSILayout_FindGroupInWorkspace(workspace, workspace->focus, nullptr);
+    return group != nullptr ? group : ECSILayout_FindGroupInWorkspace(workspace, ECSILayout_FirstPanelOf(workspace), nullptr);
 }
 
 /// @brief Converts a public zone to a drop zone.
-static ECSIZone ECSILayout_Zone(ECSZone zone)
+static ECSIZone ECSILayout_ConvertZone(ECSZone zone)
 {
     switch (zone)
     {
@@ -920,7 +1017,7 @@ typedef struct ECSIGroupHit
     ECSINode *group;
 } ECSIGroupHit;
 
-static void ECSILayout_FindGroupAt(ECSINode *group, void *userData)
+static void ECSILayout_HitGroup(ECSINode *group, void *userData)
 {
     ECSIGroupHit *hit = userData;
 
@@ -974,7 +1071,7 @@ typedef struct ECSIPanelHit
     ECSPanel panel;
 } ECSIPanelHit;
 
-static void ECSILayout_FindPanel(ECSINode *group, void *userData)
+static void ECSILayout_HitPanel(ECSINode *group, void *userData)
 {
     ECSIPanelHit *hit = userData;
 
@@ -994,14 +1091,14 @@ static void ECSILayout_FindPanel(ECSINode *group, void *userData)
 typedef struct ECSINeighbourSearch
 {
     ECSPanel from;
-    i32 dx;
-    i32 dy;
+    i32 directionX;
+    i32 directionY;
     ECSPanel best;
     f32 bestGap;
     f32 bestOverlap;
 } ECSINeighbourSearch;
 
-static void ECSILayout_FindNeighbourIn(ECSINode *group, void *userData)
+static void ECSILayout_ConsiderNeighbour(ECSINode *group, void *userData)
 {
     ECSINeighbourSearch *search = userData;
 
@@ -1021,14 +1118,14 @@ static void ECSILayout_FindNeighbourIn(ECSINode *group, void *userData)
     f32 gap = 0.0f;
     f32 overlap = 0.0f;
 
-    if (search->dx != 0)
+    if (search->directionX != 0)
     {
-        gap = search->dx > 0 ? panel->x - (from->x + from->width) : from->x - (panel->x + panel->width);
+        gap = search->directionX > 0 ? panel->x - (from->x + from->width) : from->x - (panel->x + panel->width);
         overlap = SDL_min(from->y + from->height, panel->y + panel->height) - SDL_max(from->y, panel->y);
     }
     else
     {
-        gap = search->dy > 0 ? panel->y - (from->y + from->height) : from->y - (panel->y + panel->height);
+        gap = search->directionY > 0 ? panel->y - (from->y + from->height) : from->y - (panel->y + panel->height);
         overlap = SDL_min(from->x + from->width, panel->x + panel->width) - SDL_max(from->x, panel->x);
     }
 
@@ -1045,7 +1142,7 @@ static void ECSILayout_FindNeighbourIn(ECSINode *group, void *userData)
     }
 }
 
-static void ECSILayout_WantsFrameIn(ECSINode *group, void *userData)
+static void ECSILayout_CheckFrameWanted(ECSINode *group, void *userData)
 {
     bool *wants = userData;
 
@@ -1181,25 +1278,7 @@ void ECSILayout_SetForget(ECSILayoutForgetFunction function)
 
 void ECSILayout_Terminate(void)
 {
-    for (usz i = 0; i < arrlenu(LAYOUT.workspaces); i++)
-    {
-        for (usz j = 0; j < arrlenu(LAYOUT.workspaces[i].roots); j++)
-        {
-            ECSILayout_FreeRoot(LAYOUT.workspaces[i].roots[j]);
-        }
-
-        arrfree(LAYOUT.workspaces[i].roots);
-        SDL_free(LAYOUT.workspaces[i].name);
-    }
-
-    arrfree(LAYOUT.workspaces);
-
-    for (usz i = 0; i < arrlenu(LAYOUT.closed); i++)
-    {
-        ECSValue_Destroy(&LAYOUT.closed[i].saved);
-    }
-
-    arrfree(LAYOUT.closed);
+    ECSILayout_FreeWorkspaces(ECSILayout_DestroyTree);
     SDL_zero(LAYOUT);
 }
 
@@ -1336,7 +1415,7 @@ SHUResult ECSILayout_WorkspaceAdd(const char *name, const ECSIRootDesc *roots, u
     // a pop-out window without panels is left out
     if (!failed)
     {
-        ECSILayout_DropEmptyRoots(&workspace);
+        ECSILayout_RemoveEmptyRoots(&workspace);
     }
 
     if (failed)
@@ -1365,23 +1444,8 @@ void ECSILayout_WorkspaceSwitch(usz index)
     }
 
     // the focus moves to the other workspace's focused panel
-    ECSPanel old = LAYOUT.workspaces[LAYOUT.current].focus;
-    ECSPanel focus = LAYOUT.workspaces[index].focus;
-    ECSPanelEvent event = {.type = ECSPanelEventType_Unfocused};
-
-    if (old != nullptr)
-    {
-        ECSIPanel_PostEvent(old, &event);
-    }
-
-    if (focus != nullptr)
-    {
-        event.type = ECSPanelEventType_Focused;
-        ECSIPanel_PostEvent(focus, &event);
-    }
-
+    ECSILayout_TellFocus(LAYOUT.workspaces[LAYOUT.current].focus, LAYOUT.workspaces[index].focus);
     LAYOUT.current = index;
-    ECSILayout_EmitFocus(focus);
 
     ECSValue *value = nullptr;
     ECSValue *field = nullptr;
@@ -1399,42 +1463,9 @@ void ECSILayout_WorkspaceSwitch(usz index)
 
 void ECSILayout_Clear(void)
 {
-    ECSIWorkspace *workspace = ECSILayout_Current();
-    ECSPanel focus = workspace != nullptr ? workspace->focus : nullptr;
-    ECSPanelEvent event = {.type = ECSPanelEventType_Unfocused};
-
-    if (focus != nullptr)
-    {
-        ECSIPanel_PostEvent(focus, &event);
-    }
-
-    for (usz i = 0; i < arrlenu(LAYOUT.workspaces); i++)
-    {
-        for (usz j = 0; j < arrlenu(LAYOUT.workspaces[i].roots); j++)
-        {
-            ECSIRoot *root = LAYOUT.workspaces[i].roots[j];
-
-            if (root->tree != nullptr)
-            {
-                ECSILayout_CloseTree(root->tree);
-            }
-
-            SDL_free(root);
-        }
-
-        arrfree(LAYOUT.workspaces[i].roots);
-        SDL_free(LAYOUT.workspaces[i].name);
-    }
-
-    arrfree(LAYOUT.workspaces);
+    // the panels close at once, so they hear of no change of focus
+    ECSILayout_FreeWorkspaces(ECSILayout_CloseTree);
     LAYOUT.current = 0;
-
-    for (usz i = 0; i < arrlenu(LAYOUT.closed); i++)
-    {
-        ECSValue_Destroy(&LAYOUT.closed[i].saved);
-    }
-
-    arrfree(LAYOUT.closed);
     ECSILayout_Forget();
     LAYOUT.frameNeeded = true;
 }
@@ -1447,21 +1478,11 @@ void ECSILayout_ShowFirst(usz index)
     }
 
     LAYOUT.current = index < arrlenu(LAYOUT.workspaces) ? index : 0;
-    ECSPanel focus = LAYOUT.workspaces[LAYOUT.current].focus;
-    ECSPanelEvent event = {.type = ECSPanelEventType_Focused};
-
-    if (focus != nullptr)
-    {
-        ECSIPanel_PostEvent(focus, &event);
-    }
-
-    ECSILayout_EmitFocus(focus);
-    ECSILayout_Forget();
-    LAYOUT.frameNeeded = true;
-    ECSILayout_EmitLayoutChanged();
+    ECSILayout_TellFocus(nullptr, LAYOUT.workspaces[LAYOUT.current].focus);
+    ECSILayout_Changed();
 }
 
-usz ECSILayout_GetCurrentWorkspace(void)
+usz ECSILayout_GetCurrentIndex(void)
 {
     return LAYOUT.current;
 }
@@ -1479,7 +1500,7 @@ bool ECSILayout_WantsFrame(void)
 
     for (usz i = 0; i < count; i++)
     {
-        ECSILayout_ForEachGroup(roots[i], ECSILayout_WantsFrameIn, &wants);
+        ECSILayout_ForEachGroup(roots[i], ECSILayout_CheckFrameWanted, &wants);
     }
 
     return wants;
@@ -1489,7 +1510,7 @@ void ECSILayout_Update(void)
 {
     // requests made while the frame is drawn, such as a tab row that scrolls, get the next frame
     LAYOUT.frameNeeded = false;
-    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
 
     if (workspace == nullptr)
     {
@@ -1513,8 +1534,8 @@ void ECSILayout_Update(void)
         for (usz j = 0; j < arrlenu(LAYOUT.workspaces[i].roots); j++)
         {
             ECSIRoot *root = LAYOUT.workspaces[i].roots[j];
-            ECSINode *only = root->maximized;
-            ECSILayout_ForEachGroupIn(root->tree, ECSILayout_TellVisible, &LAYOUT.workspaces[i] == workspace ? &only : nullptr);
+            ECSIVisibleGroups visibleGroups = {.current = &LAYOUT.workspaces[i] == workspace, .only = root->maximized};
+            ECSILayout_ForEachGroupInTree(root->tree, ECSILayout_TellVisible, &visibleGroups);
         }
     }
 }
@@ -1532,20 +1553,34 @@ void ECSILayout_ForEachGroup(const ECSIRoot *root, ECSILayoutGroupFunction funct
     }
     else
     {
-        ECSILayout_ForEachGroupIn(root->tree, function, userData);
+        ECSILayout_ForEachGroupInTree(root->tree, function, userData);
     }
+}
+
+usz ECSILayout_IndexOf(const ECSINode *group, ECSPanel panel)
+{
+    SDL_assert(group != nullptr);
+
+    usz index = 0;
+
+    while (group->panels[index] != panel)
+    {
+        index++;
+    }
+
+    return index;
 }
 
 ECSINode *ECSILayout_GroupOf(ECSPanel panel)
 {
-    return ECSILayout_FindIn(ECSILayout_Current(), panel, nullptr);
+    return ECSILayout_FindGroupInWorkspace(ECSILayout_GetCurrent(), panel, nullptr);
 }
 
 ECSIRoot *const *ECSILayout_GetRoots(usz *retCount)
 {
     SDL_assert(retCount != nullptr);
 
-    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
     *retCount = workspace == nullptr ? 0 : arrlenu(workspace->roots);
     return workspace == nullptr ? nullptr : workspace->roots;
 }
@@ -1573,10 +1608,8 @@ ECSIRoot *ECSILayout_FindRoot(u32 id, bool *retShown)
 
 ECSIRoot *ECSILayout_RootOf(ECSPanel panel)
 {
-    ECSIWorkspace *workspace = nullptr;
     ECSIRoot *root = nullptr;
-    ECSINode *group = nullptr;
-    return ECSILayout_Locate(panel, &workspace, &root, &group) ? root : nullptr;
+    return ECSILayout_Locate(panel, nullptr, &root, nullptr) ? root : nullptr;
 }
 
 void ECSILayout_SetRootArea(ECSIRoot *root, f32 top, f32 width, f32 height)
@@ -1601,9 +1634,9 @@ void ECSILayout_FocusRoot(ECSIRoot *root)
 {
     SDL_assert(root != nullptr);
 
-    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
 
-    if (workspace == nullptr || ECSILayout_FindGroup(root->tree, workspace->focus) != nullptr)
+    if (workspace == nullptr || ECSILayout_FindGroupInTree(root->tree, workspace->focus) != nullptr)
     {
         return;
     }
@@ -1621,39 +1654,39 @@ void ECSILayout_FocusRoot(ECSIRoot *root)
 
     if (best != nullptr)
     {
-        ECSILayout_ShowTab(best);
+        ECSLayout_Focus(best);
     }
 }
 
 bool ECSILayout_CanPopOut(ECSPanel panel)
 {
     ECSIRoot *root = nullptr;
-    ECSINode *group = ECSILayout_FindIn(ECSILayout_Current(), panel, &root);
+    ECSINode *group = ECSILayout_FindGroupInWorkspace(ECSILayout_GetCurrent(), panel, &root);
     return group != nullptr && !group->locked && !(root->tree == group && arrlenu(group->panels) == 1);
 }
 
 void ECSILayout_PopOut(void)
 {
-    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
     ECSPanel panel = workspace == nullptr ? nullptr : workspace->focus;
 
     if (panel != nullptr && ECSILayout_IsLocked(panel))
     {
-        SDL_Log("'%s' is locked; unlock it to pop it out.", panel->title);
+        SDL_Log("'%s' is locked; unlock it to popOutRoot it out.", panel->title);
         return;
     }
 
     if (panel != nullptr)
     {
         ECSIDrop drop = {.zone = ECSIZone_PopOut};
-        ECSILayout_Move(workspace, panel, &drop, true);
+        ECSILayout_Move(workspace, panel, &drop);
     }
 }
 
 ECSINode *ECSILayout_GroupAt(const ECSIRoot *root, f32 x, f32 y)
 {
     ECSIGroupHit hit = {x, y, nullptr};
-    ECSILayout_ForEachGroup(root, ECSILayout_FindGroupAt, &hit);
+    ECSILayout_ForEachGroup(root, ECSILayout_HitGroup, &hit);
     return hit.group;
 }
 
@@ -1726,42 +1759,42 @@ void ECSILayout_Drop(ECSPanel panel, bool group, const ECSIDrop *drop)
 {
     SDL_assert(drop != nullptr);
 
-    ECSIWorkspace *workspace = ECSILayout_Current();
-    ECSINode *source = ECSILayout_FindIn(workspace, panel, nullptr);
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
+    ECSINode *source = ECSILayout_FindGroupInWorkspace(workspace, panel, nullptr);
 
-    if (source == nullptr)
+    if (source == nullptr || !ECSILayout_LocksAllow(source, drop))
     {
         return;
     }
 
     if (group)
     {
-        ECSILayout_MoveGroup(workspace, source, drop, true);
+        ECSILayout_MoveGroup(workspace, source, drop);
     }
     else
     {
-        ECSILayout_Move(workspace, panel, drop, true);
+        ECSILayout_Move(workspace, panel, drop);
     }
 }
 
 ECSPanel ECSILayout_PanelAt(const ECSIRoot *root, f32 x, f32 y)
 {
     ECSIPanelHit hit = {x, y, nullptr};
-    ECSILayout_ForEachGroup(root, ECSILayout_FindPanel, &hit);
+    ECSILayout_ForEachGroup(root, ECSILayout_HitPanel, &hit);
     return hit.panel;
 }
 
 ECSPanel ECSILayout_GetFocus(void)
 {
-    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
     return workspace == nullptr ? nullptr : workspace->focus;
 }
 
 void ECSILayout_SetFocus(ECSPanel panel)
 {
-    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
 
-    if (workspace != nullptr)
+    if (workspace != nullptr && panel != nullptr)
     {
         ECSILayout_ChangeFocus(workspace, panel);
     }
@@ -1769,53 +1802,54 @@ void ECSILayout_SetFocus(ECSPanel panel)
 
 bool ECSILayout_HasPanel(ECSPanel panel)
 {
-    ECSIWorkspace *workspace = nullptr;
-    ECSINode *group = nullptr;
-    return ECSILayout_Locate(panel, &workspace, nullptr, &group);
+    return ECSILayout_Locate(panel, nullptr, nullptr, nullptr);
 }
 
-ECSPanel ECSILayout_FindNeighbour(i32 dx, i32 dy)
+ECSPanel ECSILayout_FindNeighbour(i32 directionX, i32 directionY)
 {
-    ECSINeighbourSearch search = {ECSILayout_GetFocus(), dx, dy, nullptr, 0.0f, 0.0f};
+    ECSINeighbourSearch search = {ECSILayout_GetFocus(), directionX, directionY, nullptr, 0.0f, 0.0f};
     ECSIRoot *root = nullptr;
 
-    if (ECSILayout_FindIn(ECSILayout_Current(), search.from, &root) == nullptr)
+    if (ECSILayout_FindGroupInWorkspace(ECSILayout_GetCurrent(), search.from, &root) == nullptr)
     {
         return nullptr;
     }
 
-    ECSILayout_ForEachGroup(root, ECSILayout_FindNeighbourIn, &search);
+    ECSILayout_ForEachGroup(root, ECSILayout_ConsiderNeighbour, &search);
     return search.best;
 }
 
-void ECSILayout_MoveFocus(i32 dx, i32 dy)
+void ECSILayout_MoveFocus(i32 directionX, i32 directionY)
 {
-    ECSIWorkspace *workspace = ECSILayout_Current();
-    ECSPanel neighbour = ECSILayout_FindNeighbour(dx, dy);
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
+    ECSPanel neighbour = ECSILayout_FindNeighbour(directionX, directionY);
     ECSIRoot *root = nullptr;
 
-    if (workspace == nullptr || ECSILayout_FindIn(workspace, workspace->focus, &root) == nullptr)
+    if (workspace == nullptr || ECSILayout_FindGroupInWorkspace(workspace, workspace->focus, &root) == nullptr)
     {
         return;
     }
 
-    ECSIDrop drop = {.zone = dx < 0 ? ECSIZone_WindowLeft : dx > 0 ? ECSIZone_WindowRight
-                                                          : dy < 0   ? ECSIZone_WindowTop
+    ECSIDrop drop = {.zone = directionX < 0 ? ECSIZone_WindowLeft : directionX > 0 ? ECSIZone_WindowRight
+                                                          : directionY < 0   ? ECSIZone_WindowTop
                                                                      : ECSIZone_WindowBottom,
                      .root = root};
 
     if (neighbour != nullptr)
     {
-        drop = (ECSIDrop){.zone = ECSIZone_Center, .root = root, .group = ECSILayout_FindGroup(root->tree, neighbour)};
+        drop = (ECSIDrop){.zone = ECSIZone_Center, .root = root, .group = ECSILayout_FindGroupInTree(root->tree, neighbour)};
     }
 
-    ECSILayout_Move(workspace, workspace->focus, &drop, true);
+    if (ECSILayout_LocksAllow(ECSILayout_FindGroupInTree(root->tree, workspace->focus), &drop))
+    {
+        ECSILayout_Move(workspace, workspace->focus, &drop);
+    }
 }
 
 ECSPanel ECSILayout_NextTab(void)
 {
-    ECSIWorkspace *workspace = ECSILayout_Current();
-    ECSINode *group = workspace == nullptr ? nullptr : ECSILayout_FindIn(workspace, workspace->focus, nullptr);
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
+    ECSINode *group = workspace == nullptr ? nullptr : ECSILayout_FindGroupInWorkspace(workspace, workspace->focus, nullptr);
 
     if (group == nullptr || arrlenu(group->panels) < 2)
     {
@@ -1829,14 +1863,14 @@ ECSPanel ECSILayout_NextTab(void)
 
 bool ECSILayout_IsLocked(ECSPanel panel)
 {
-    ECSINode *group = ECSILayout_FindIn(ECSILayout_Current(), panel, nullptr);
+    ECSINode *group = ECSILayout_FindGroupInWorkspace(ECSILayout_GetCurrent(), panel, nullptr);
     return group != nullptr && group->locked;
 }
 
 bool ECSILayout_IsMaximized(ECSPanel panel)
 {
     ECSIRoot *root = nullptr;
-    ECSINode *group = ECSILayout_FindIn(ECSILayout_Current(), panel, &root);
+    ECSINode *group = ECSILayout_FindGroupInWorkspace(ECSILayout_GetCurrent(), panel, &root);
     return group != nullptr && root->maximized == group;
 }
 
@@ -1845,26 +1879,10 @@ const ECSPanel *ECSILayout_GetGroup(ECSPanel panel, usz *retCount, usz *retShown
     SDL_assert(retCount != nullptr);
     SDL_assert(retShown != nullptr);
 
-    ECSINode *group = ECSILayout_FindIn(ECSILayout_Current(), panel, nullptr);
+    ECSINode *group = ECSILayout_FindGroupInWorkspace(ECSILayout_GetCurrent(), panel, nullptr);
     *retCount = group == nullptr ? 0 : arrlenu(group->panels);
     *retShown = group == nullptr ? 0 : group->shown;
     return group == nullptr ? nullptr : group->panels;
-}
-
-void ECSILayout_ShowTab(ECSPanel panel)
-{
-    ECSIWorkspace *workspace = ECSILayout_Current();
-    ECSINode *group = ECSILayout_FindIn(workspace, panel, nullptr);
-
-    for (usz i = 0; group != nullptr && i < arrlenu(group->panels); i++)
-    {
-        if (group->panels[i] == panel)
-        {
-            group->shown = i;
-            ECSILayout_ChangeFocus(workspace, panel);
-            LAYOUT.frameNeeded = true;
-        }
-    }
 }
 
 bool ECSILayout_CanReopen(void)
@@ -1874,24 +1892,22 @@ bool ECSILayout_CanReopen(void)
 
 void ECSILayout_ToggleLock(void)
 {
-    ECSIWorkspace *workspace = ECSILayout_Current();
-    ECSINode *group = workspace == nullptr ? nullptr : ECSILayout_FindIn(workspace, workspace->focus, nullptr);
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
+    ECSINode *group = workspace == nullptr ? nullptr : ECSILayout_FindGroupInWorkspace(workspace, workspace->focus, nullptr);
 
     if (group != nullptr)
     {
         group->locked = !group->locked;
-        ECSILayout_Forget();
-        LAYOUT.frameNeeded = true;
-        ECSILayout_EmitLayoutChanged();
+        ECSILayout_Changed();
         SDL_Log("The group of '%s' is %s.", workspace->focus->title, group->locked ? "locked" : "unlocked");
     }
 }
 
 void ECSILayout_ToggleMaximize(void)
 {
-    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
     ECSIRoot *root = nullptr;
-    ECSINode *group = workspace == nullptr ? nullptr : ECSILayout_FindIn(workspace, workspace->focus, &root);
+    ECSINode *group = workspace == nullptr ? nullptr : ECSILayout_FindGroupInWorkspace(workspace, workspace->focus, &root);
 
     if (group == nullptr)
     {
@@ -1899,9 +1915,7 @@ void ECSILayout_ToggleMaximize(void)
     }
 
     root->maximized = root->maximized == group ? nullptr : group;
-    ECSILayout_Forget();
-    LAYOUT.frameNeeded = true;
-    ECSILayout_EmitLayoutChanged();
+    ECSILayout_Changed();
 }
 
 void ECSILayout_ClosePanel(ECSPanel panel)
@@ -1914,62 +1928,10 @@ void ECSILayout_ClosePanel(ECSPanel panel)
         return;
     }
 
-    usz index = 0;
-
-    while (group->panels[index] != panel)
-    {
-        index++;
-    }
-
-    // ecs.layout.reopen opens it again next to a panel that stays in its group
-    ECSIClosedPanel closed = {.neighbour = arrlenu(group->panels) > 1 ? ECSPanel_GetID(group->panels[index == 0 ? 1 : 0]) : 0};
-
-    if (ECSValue_Create(&closed.saved) == SHUResult_Ok && ECSIPanel_Save(panel, closed.saved) == SHUResult_Ok)
-    {
-        // a limit made smaller drops the oldest panels too
-        while (arrlenu(LAYOUT.closed) > 0 && (i64)arrlenu(LAYOUT.closed) >= LAYOUT.reopenLimit)
-        {
-            ECSValue_Destroy(&LAYOUT.closed[0].saved);
-            arrdel(LAYOUT.closed, 0);
-        }
-
-        if (LAYOUT.reopenLimit > 0)
-        {
-            arrput(LAYOUT.closed, closed);
-        }
-        else
-        {
-            ECSValue_Destroy(&closed.saved);
-        }
-    }
-    else
-    {
-        ECSValue_Destroy(&closed.saved);
-    }
-
-    arrdel(group->panels, index);
-
-    // tidying frees an empty group, so the next focus is found before and after
-    bool emptied = arrlenu(group->panels) == 0;
-    bool focused = workspace->focus == panel;
-
-    if (!emptied)
-    {
-        group->shown = SDL_min(group->shown, arrlenu(group->panels) - 1);
-    }
-
-    if (focused)
-    {
-        ECSILayout_ChangeFocus(workspace, emptied ? nullptr : group->panels[group->shown]);
-    }
-
-    ECSIPanel_Close(&panel);
-    ECSILayout_Tidy(workspace);
-
-    if (focused && emptied)
-    {
-        ECSILayout_ChangeFocus(workspace, ECSILayout_FirstPanelOf(workspace));
-    }
+    ECSILayout_RememberClosed(group, panel);
+    ECSPanel closed = panel;
+    ECSIPanel_Close(&closed);
+    ECSILayout_RemovePanel(workspace, group, panel);
 
     // once the last panel of every workspace is closed, there is nothing left to show
     ECSPanel *left = ECSILayout_GetPanels();
@@ -1984,7 +1946,7 @@ bool ECSILayout_WasEmptied(void)
 
 void ECSILayout_Reopen(void)
 {
-    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
 
     if (workspace == nullptr || arrlenu(LAYOUT.closed) == 0)
     {
@@ -2000,7 +1962,7 @@ void ECSILayout_Reopen(void)
 
     if (neighbour == nullptr || !ECSILayout_Locate(neighbour, &workspace, nullptr, &group))
     {
-        workspace = ECSILayout_Current();
+        workspace = ECSILayout_GetCurrent();
         group = ECSILayout_DefaultGroup(workspace);
     }
 
@@ -2029,9 +1991,9 @@ void ECSILayout_Reopen(void)
 
 void ECSILayout_MoveToWorkspace(usz index)
 {
-    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
     ECSPanel panel = workspace == nullptr ? nullptr : workspace->focus;
-    ECSINode *group = ECSILayout_FindIn(workspace, panel, nullptr);
+    ECSINode *group = ECSILayout_FindGroupInWorkspace(workspace, panel, nullptr);
 
     if (group == nullptr || index >= arrlenu(LAYOUT.workspaces) || index == LAYOUT.current)
     {
@@ -2047,7 +2009,7 @@ void ECSILayout_MoveToWorkspace(usz index)
     // the panel joins the other workspace's focused group, and becomes its focus; this workspace stays shown
     ECSIWorkspace *target = &LAYOUT.workspaces[index];
     ECSINode *targetGroup = ECSILayout_DefaultGroup(target);
-    ECSILayout_Detach(workspace, group, panel);
+    ECSILayout_RemovePanel(workspace, group, panel);
 
     if (ECSILayout_Add(target, targetGroup, panel, ECSIZone_Center))
     {
@@ -2137,7 +2099,7 @@ SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type,
     SDL_assert(retPanel != nullptr);
     SDL_assert(type != nullptr);
 
-    ECSIWorkspace *workspace = ECSILayout_Current();
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
     ECSINode *group = nullptr;
 
     if (workspace == nullptr)
@@ -2148,7 +2110,7 @@ SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type,
 
     if (target != nullptr)
     {
-        group = ECSILayout_FindIn(workspace, target, nullptr);
+        group = ECSILayout_FindGroupInWorkspace(workspace, target, nullptr);
 
         if (group == nullptr)
         {
@@ -2165,13 +2127,13 @@ SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type,
             ECSILayout_FindRecent(workspace->roots[i]->tree, &search);
         }
 
-        group = ECSILayout_FindIn(workspace, search.best != nullptr ? search.best : workspace->focus, nullptr);
+        group = ECSILayout_FindGroupInWorkspace(workspace, search.best != nullptr ? search.best : workspace->focus, nullptr);
         group = group != nullptr ? group : ECSILayout_DefaultGroup(workspace);
     }
 
     ECSPanel panel = nullptr;
     SHU_ReturnResult(ECSIPanel_Create(&panel, type, state, state == nullptr ? 0 : ECSIPanels_GetStateVersion(type)));
-    SHU_ReturnResult(ECSILayout_Add(workspace, group, panel, ECSILayout_Zone(zone)), ECSIPanel_Destroy(&panel););
+    SHU_ReturnResult(ECSILayout_Add(workspace, group, panel, ECSILayout_ConvertZone(zone)), ECSIPanel_Destroy(&panel););
     ECSIPanel_Emit("ecs.panelOpened", panel);
     *retPanel = panel;
     return SHUResult_Ok;
@@ -2197,7 +2159,7 @@ SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone)
     if (target == nullptr)
     {
         ECSIDrop drop = {.zone = ECSIZone_PopOut};
-        ECSILayout_Move(workspace, panel, &drop, false);
+        ECSILayout_Move(workspace, panel, &drop);
         return SHUResult_Ok;
     }
 
@@ -2206,16 +2168,16 @@ SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone)
         return SHUResult_ErrNotFound;
     }
 
-    ECSIDrop drop = {.zone = ECSILayout_Zone(zone), .root = root, .group = group};
+    ECSIDrop drop = {.zone = ECSILayout_ConvertZone(zone), .root = root, .group = group};
 
     if (workspace == targetWorkspace)
     {
-        ECSILayout_Move(workspace, panel, &drop, false);
+        ECSILayout_Move(workspace, panel, &drop);
         return SHUResult_Ok;
     }
 
     // to another workspace: the panel leaves its group, then joins the target's group, or goes beside it
-    ECSILayout_Detach(workspace, source, panel);
+    ECSILayout_RemovePanel(workspace, source, panel);
     return ECSILayout_Add(targetWorkspace, group, panel, drop.zone);
 }
 
@@ -2256,15 +2218,7 @@ void ECSLayout_Focus(ECSPanel panel)
 
     // the workspace and the tab are shown first, so the panel is focused where the user sees it
     ECSILayout_WorkspaceSwitch((usz)(workspace - LAYOUT.workspaces));
-
-    for (usz i = 0; i < arrlenu(group->panels); i++)
-    {
-        if (group->panels[i] == panel)
-        {
-            ECSILayout_GroupShow(group, i);
-        }
-    }
-
+    ECSILayout_GroupShow(group, ECSILayout_IndexOf(group, panel));
     ECSILayout_ChangeFocus(workspace, panel);
 }
 

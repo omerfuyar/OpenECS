@@ -180,7 +180,7 @@ SHUWUR SHUResult ECSILayout_Save(ECSValue *retWorkspaces, usz *retCurrent);
 
 /// @brief Gets the current workspace.
 /// @return Its position, starting at 0.
-usz ECSILayout_GetCurrentWorkspace(void);
+usz ECSILayout_GetCurrentIndex(void);
 
 /// @brief Gets the roots of the current workspace: the main window's, then the pop-out windows', in the order they were made.
 /// @param retCount Gets the number of roots; 0 if there is no workspace.
@@ -241,6 +241,12 @@ void ECSILayout_ForEachGroup(const ECSIRoot *root, ECSILayoutGroupFunction funct
 /// @return The group, or nullptr.
 ECSINode *ECSILayout_GroupOf(ECSPanel panel);
 
+/// @brief Gets a panel's position in its group.
+/// @param group The group.
+/// @param panel One of the group's panels.
+/// @return The position, starting at 0.
+usz ECSILayout_IndexOf(const ECSINode *group, ECSPanel panel);
+
 /// @brief Finds the visible group of a root at a point.
 /// @param root The root, or nullptr for none.
 /// @param x Horizontal position in layout units.
@@ -282,19 +288,19 @@ ECSPanel ECSILayout_PanelAt(const ECSIRoot *root, f32 x, f32 y);
 ECSPanel ECSILayout_GetFocus(void);
 
 /// @brief Sets the focused panel of the current workspace. The panel that loses focus and the one that gets it are told.
-/// @param panel Panel to focus.
+/// @param panel Panel to focus; nullptr changes nothing.
 void ECSILayout_SetFocus(ECSPanel panel);
 
 /// @brief Finds the nearest panel in a direction from the focused panel, in its OS window.
-/// @param dx -1 for left, 1 for right, 0 otherwise.
-/// @param dy -1 for up, 1 for down, 0 otherwise.
+/// @param directionX -1 for left, 1 for right, 0 otherwise.
+/// @param directionY -1 for up, 1 for down, 0 otherwise.
 /// @return The panel, or nullptr if there is none in that direction.
-ECSPanel ECSILayout_FindNeighbour(i32 dx, i32 dy);
+ECSPanel ECSILayout_FindNeighbour(i32 directionX, i32 directionY);
 
 /// @brief Moves the focused panel into the group of the nearest panel in a direction, or docks it along that edge of its OS window if there is none.
-/// @param dx -1 for left, 1 for right, 0 otherwise.
-/// @param dy -1 for up, 1 for down, 0 otherwise.
-void ECSILayout_MoveFocus(i32 dx, i32 dy);
+/// @param directionX -1 for left, 1 for right, 0 otherwise.
+/// @param directionY -1 for up, 1 for down, 0 otherwise.
+void ECSILayout_MoveFocus(i32 directionX, i32 directionY);
 
 /// @brief Shows the next tab of the focused panel's group.
 /// @return The panel shown now, or nullptr.
@@ -316,10 +322,6 @@ bool ECSILayout_IsMaximized(ECSPanel panel);
 /// @param retShown Gets the position of the shown panel.
 /// @return The panels, valid until the layout changes, or nullptr.
 const ECSPanel *ECSILayout_GetGroup(ECSPanel panel, usz *retCount, usz *retShown);
-
-/// @brief Shows a panel's tab in its group of the current workspace, and focuses the panel.
-/// @param panel The panel.
-void ECSILayout_ShowTab(ECSPanel panel);
 
 /// @brief Checks whether there is a closed panel that ECSILayout_Reopen can open again.
 bool ECSILayout_CanReopen(void);

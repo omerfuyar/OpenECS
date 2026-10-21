@@ -136,7 +136,7 @@ static void ECSIKeys_AddPrefixKey(const char *name, const ECSValue *field, void 
 /// @brief Merges the keys after the prefix from every layer if the keys tables or the current workspace changed. A higher layer adds to the lower ones.
 static void ECSIKeys_ReadPrefixKeys(void)
 {
-    usz workspace = ECSILayout_GetCurrentWorkspace();
+    usz workspace = ECSILayout_GetCurrentIndex();
 
     if (!KEYS.prefixKeysDirty && workspace == KEYS.prefixWorkspace)
     {
@@ -214,7 +214,7 @@ static void ECSIKeys_ConsiderTable(ECSIBindingSearch *search, const ECSValue *ke
 static const char *ECSIKeys_FindFor(u32 key, u32 modifiers, const char *panelType)
 {
     ECSIBindingSearch search = {.key = key, .modifiers = modifiers};
-    usz workspace = ECSILayout_GetCurrentWorkspace();
+    usz workspace = ECSILayout_GetCurrentIndex();
 
     ECSIKeys_ConsiderTable(&search, ECSISettings_GetKeys(ECSISettingsLayer_User), ECSIKeysLayer_User, false, panelType);
 
@@ -497,7 +497,7 @@ char *ECSIKeys_BoundTextOf(const char *panelType, const char *function)
     SDL_assert(panelType != nullptr);
     SDL_assert(function != nullptr);
 
-    usz workspace = ECSILayout_GetCurrentWorkspace();
+    usz workspace = ECSILayout_GetCurrentIndex();
     const ECSValue *tables[] = {
         ECSISettings_GetKeys(ECSISettingsLayer_User),
         workspace < arrlenu(KEYS.workspaceKeys) ? KEYS.workspaceKeys[workspace] : nullptr,

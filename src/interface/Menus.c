@@ -47,15 +47,6 @@ static struct
     ECSIMenuLevel *levels;  // stb_ds array of the open menus, the panel menu first; while any is open, it gets the pointer and the keys
 } MENUS = {0};
 
-/// @brief Moves the keyboard focus to a panel; the layout tells both panels.
-static void ECSIMenus_Focus(ECSPanel panel)
-{
-    if (panel != nullptr)
-    {
-        ECSILayout_SetFocus(panel);
-    }
-}
-
 static void ECSIMenus_FreeEntries(ECSIMenuEntry **entries)
 {
     for (usz i = 0; i < arrlenu(*entries); i++)
@@ -266,7 +257,7 @@ static void ECSIMenus_Run(usz level, usz index)
 
     if (tab != nullptr)
     {
-        ECSILayout_ShowTab(tab);
+        ECSLayout_Focus(tab);
     }
 
     if (function != nullptr)
@@ -280,22 +271,22 @@ static void ECSIMenus_Run(usz level, usz index)
 
 static void ECSIMenus_FocusLeft(void)
 {
-    ECSIMenus_Focus(ECSILayout_FindNeighbour(-1, 0));
+    ECSILayout_SetFocus(ECSILayout_FindNeighbour(-1, 0));
 }
 
 static void ECSIMenus_FocusRight(void)
 {
-    ECSIMenus_Focus(ECSILayout_FindNeighbour(1, 0));
+    ECSILayout_SetFocus(ECSILayout_FindNeighbour(1, 0));
 }
 
 static void ECSIMenus_FocusUp(void)
 {
-    ECSIMenus_Focus(ECSILayout_FindNeighbour(0, -1));
+    ECSILayout_SetFocus(ECSILayout_FindNeighbour(0, -1));
 }
 
 static void ECSIMenus_FocusDown(void)
 {
-    ECSIMenus_Focus(ECSILayout_FindNeighbour(0, 1));
+    ECSILayout_SetFocus(ECSILayout_FindNeighbour(0, 1));
 }
 
 static void ECSIMenus_MoveLeft(void)
@@ -320,17 +311,7 @@ static void ECSIMenus_MoveDown(void)
 
 static void ECSIMenus_NextTab(void)
 {
-    ECSIMenus_Focus(ECSILayout_NextTab());
-}
-
-static void ECSIMenus_Maximize(void)
-{
-    ECSILayout_ToggleMaximize();
-}
-
-static void ECSIMenus_PopOut(void)
-{
-    ECSILayout_PopOut();
+    ECSILayout_SetFocus(ECSILayout_NextTab());
 }
 
 static void ECSIMenus_Close(void)
@@ -371,16 +352,6 @@ static void ECSIMenus_CloseGroup(void)
     }
 
     arrfree(panels);
-}
-
-static void ECSIMenus_Lock(void)
-{
-    ECSILayout_ToggleLock();
-}
-
-static void ECSIMenus_Reopen(void)
-{
-    ECSILayout_Reopen();
 }
 
 static void ECSIMenus_Restart(void)
@@ -448,12 +419,12 @@ static const struct
     {"ecs.layout.moveUp", ECSIMenus_MoveUp, "Move up"},
     {"ecs.layout.moveDown", ECSIMenus_MoveDown, "Move down"},
     {"ecs.layout.nextTab", ECSIMenus_NextTab, "Next tab"},
-    {"ecs.layout.maximize", ECSIMenus_Maximize, "Maximize"},
-    {"ecs.layout.popOut", ECSIMenus_PopOut, "Pop out"},
+    {"ecs.layout.maximize", ECSILayout_ToggleMaximize, "Maximize"},
+    {"ecs.layout.popOut", ECSILayout_PopOut, "Pop out"},
     {"ecs.layout.close", ECSIMenus_Close, "Close"},
     {"ecs.layout.closeGroup", ECSIMenus_CloseGroup, "Close group"},
-    {"ecs.layout.lock", ECSIMenus_Lock, "Lock"},
-    {"ecs.layout.reopen", ECSIMenus_Reopen, "Reopen closed"},
+    {"ecs.layout.lock", ECSILayout_ToggleLock, "Lock"},
+    {"ecs.layout.reopen", ECSILayout_Reopen, "Reopen closed"},
     {"ecs.panel.restart", ECSIMenus_Restart, "Restart"},
     ECSIMenus_WorkspaceEntries(1),
     ECSIMenus_WorkspaceEntries(2),

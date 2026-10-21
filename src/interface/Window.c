@@ -596,13 +596,7 @@ static bool ECSIWindow_DropChanges(const ECSIDrop *drop)
     // a gap next to the panel's own tab leaves it where it is
     if (drop->zone == ECSIZone_Tabs)
     {
-        usz index = 0;
-
-        while (source->panels[index] != WINDOW.dragPanel)
-        {
-            index++;
-        }
-
+        usz index = ECSILayout_IndexOf(source, WINDOW.dragPanel);
         return drop->index != index && drop->index != index + 1;
     }
 
@@ -2308,7 +2302,7 @@ bool ECSIWindow_PointerDown(f32 x, f32 y)
 
         if (ECSIWindow_OnElement(osWindow, CLAY_IDI("Tab", (u32)i), x, y))
         {
-            ECSILayout_ShowTab(panel);
+            ECSLayout_Focus(panel);
 
             // a locked panel cannot be dragged, but its tab still shows it
             if (!group->locked)
