@@ -206,7 +206,7 @@ static void SetBuildFlags(bool ownCode)
         {
             SHU_CompilerAddFlags(SHUM_FLAGS_WARNING_MID);
 
-            if (SHU_CompilerGetIdentifier() == SHUCompiler_GCC)
+            if (SHU_CompilerGetFamily() == SHUCompiler_GCC)
             {
                 SHU_CompilerAddFlags(" -fanalyzer");
             }
@@ -251,7 +251,7 @@ static bool IsBuilt(const char *library, bool shared)
 /// @param gcc The tool's name for gcc. @param clang The tool's name for clang.
 static char *CompilerTool(const char *gcc, const char *clang)
 {
-    const char *name = SHU_CompilerGetIdentifier() == SHUCompiler_Clang ? "clang" : "gcc";
+    const char *name = SHU_CompilerGetFamily() == SHUCompiler_Clang ? "clang" : "gcc";
     const char *found = NULL;
 
     for (const char *c = strstr(CONFIG.compiler, name); c != NULL; c = strstr(c + 1, name))
@@ -268,7 +268,7 @@ static void Shuild_CMake(const char *name, const char *source, const char *optio
 {
     SHU_UtilLog(SHUM_LOG_NAME("%s") " (CMake): building", name);
 
-    const char *root = SHU_UtilGetExecutablePath();
+    const char *root = SHU_UtilGetScriptDirectory();
 
     char *sourceDir = SHU_UtilFormat("%sdependencies/%s/", root, source);
     char *buildDir = SHU_UtilFormat("%s%s%s/", root, CONFIG.buildDir, name);
@@ -536,7 +536,7 @@ static void Shuild_OpenECS(void)
     if (CONFIG.windows)
     {
         // a plugin's DLL is linked with the executable's import library, as Windows finds a DLL's functions through it
-        SHU_CompilerAddLinkerFlags(SHU_UtilFormat(" '-Wl,--out-implib,%s%slib/libOpenECS.a'", SHU_UtilGetExecutablePath(), CONFIG.outputDir));
+        SHU_CompilerAddLinkerFlags(SHU_UtilFormat(" '-Wl,--out-implib,%s%slib/libOpenECS.a'", SHU_UtilGetScriptDirectory(), CONFIG.outputDir));
 
         // only Debug builds open a console window; the others log to their log file, and to a console they are started from (DESIGN 14.4)
         if (CONFIG.type != BuildType_Debug)
@@ -630,7 +630,7 @@ static void Shuild_Repository(const char *folder)
 
     // shuild compiles it with shu and shuild from dependencies/, and runs it in its folder
     char *program = SHU_UtilFormat("%sshuild.ignore", folder);
-    char *flags = SHU_UtilFormat("-I%sdependencies", SHU_UtilGetExecutablePath());
+    char *flags = SHU_UtilFormat("-I%sdependencies", SHU_UtilGetScriptDirectory());
     char *arguments = SHU_UtilFormat("-b %s -o %s -c %s", BuildType_String(CONFIG.type), output, CONFIG.compiler);
 
     SHU_UtilLog(SHUM_LOG_NAME("%.*s") " (build script): building", nameLength, folder);
