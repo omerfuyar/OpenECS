@@ -13,8 +13,8 @@ typedef struct ECSIPresetInfo
     char *name;
     char *appID;
     char *appName;
-    char *pluginsDirectory; // nullptr if the preset names none; ends with a separator
-    ECSValue *file;         // the whole file; its depends field names the plugins it needs
+    char *pluginsFolder; // nullptr if the preset names none; ends with a separator
+    ECSValue *file;      // the whole file; its depends field names the plugins it needs
 } ECSIPresetInfo;
 
 /// @brief Folders of the files that presets and sessions are read from and written to. Each ends with a separator, or is nullptr if there is none.
@@ -25,6 +25,11 @@ typedef struct ECSISessionFolders
     const char *state;    // the state folder, which holds each tool's last session
     const char *origin;   // the preset, or the session the command line named, that ecs.layout.reset builds the layout from
 } ECSISessionFolders;
+
+/// @brief Tells whether a preset is named by its path rather than by its name: a path has a folder or ends with .lua.
+/// @param nameOrPath The preset's name or path.
+/// @return true if it is a path.
+bool ECSISession_IsPresetPath(const char *nameOrPath);
 
 /// @brief Finds a preset's file.
 /// @param retPath The path. Free it with SDL_free.

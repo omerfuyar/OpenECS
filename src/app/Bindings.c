@@ -452,7 +452,7 @@ static int ECSIBindings_HandleAddMethod(lua_State *state)
     const char *method = luaL_checkstring(state, 2);
     const char *function = luaL_checkstring(state, 3);
 
-    if (ECSIServices_AddMethod(ECSIBindings_Plugin(state), type, method, function))
+    if (ECSHandle_AddMethod(ECSIBindings_Plugin(state), type, method, function))
     {
         return luaL_error(state, "'%s' cannot be the method '%s' of '%s'", function, method, type);
     }
@@ -1258,7 +1258,7 @@ static void ECSIBindings_PanelFailed(lua_State *state, const ECSILuaPanel *luaPa
 
 static void ECSIBindings_PanelFree(lua_State *state, ECSILuaPanel *luaPanel)
 {
-    ECSIServices_ForgetHandle(luaPanel->panel);
+    ECSHandle_Forget(luaPanel->panel);
     luaL_unref(state, LUA_REGISTRYINDEX, luaPanel->state);
     luaL_unref(state, LUA_REGISTRYINDEX, luaPanel->handle);
     SDL_free(luaPanel);
@@ -1759,7 +1759,7 @@ static void ECSIBindings_PopupClosed(void *data)
         lua_pop(state, 1);
     }
 
-    ECSIServices_ForgetHandle(luaPopup->popup);
+    ECSHandle_Forget(luaPopup->popup);
     luaL_unref(state, LUA_REGISTRYINDEX, luaPopup->desc);
     SDL_free(luaPopup);
 }

@@ -1581,13 +1581,6 @@ void *ECSIServices_CheckHandle(int index, const char *type)
     return handle->object;
 }
 
-void ECSIServices_ForgetHandle(void *object)
-{
-    SDL_assert(object != nullptr);
-
-    ECSIServices_DropObject(object);
-}
-
 void ECSIServices_EndSurface(ECSSurface *surface)
 {
     SDL_assert(surface != nullptr);
@@ -1608,7 +1601,7 @@ void ECSIServices_EndSurface(ECSSurface *surface)
     }
 
     // the surface is valid only during Draw, so a Lua handle of it is too
-    ECSIServices_ForgetHandle(surface);
+    ECSHandle_Forget(surface);
 }
 
 SHUResult ECSSurface_OnDrawn(ECSSurface *surface, ECSSurfaceDrawnFunction Drawn, void *data)
@@ -1925,7 +1918,7 @@ const char *ECSIServices_GetDescription(const char *name)
     return function == nullptr ? nullptr : function->description;
 }
 
-SHUResult ECSIServices_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function)
+SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function)
 {
     SDL_assert(plugin != nullptr);
     SDL_assert(type != nullptr);
@@ -2068,21 +2061,31 @@ SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, ECSHandleDe
     return result;
 }
 
-SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function)
-{
-    SDL_assert(plugin != nullptr);
-    SDL_assert(type != nullptr);
-    SDL_assert(method != nullptr);
-    SDL_assert(function != nullptr);
-
-    return ECSIServices_AddMethod(plugin, type, method, function);
-}
-
 void ECSHandle_Forget(void *object)
 {
     SDL_assert(object != nullptr);
 
-    ECSIServices_ForgetHandle(object);
+    ECSIServices_DropObject(object);
+}
+
+void ECSHandle_Free(ECSPlugin plugin, const char *type, void *object)
+{
+    SDL_assert(plugin != nullptr);
+    SDL_assert(type != nullptr);
+    SDL_assert(object != nullptr);
+
+    // Lua may have no handle of the object, so its type is found by name
+    char *fullName = ECSIPlugin_FullName(plugin, type);
+    ECSIHandleType *handleType = fullName == nullptr ? nullptr : ECSIServices_FindHandleType(fullName);
+    SDL_free(fullName);
+    SDL_assert(handleType != nullptr && handleType->plugin == plugin);
+
+    ECSIServices_DropObject(object);
+
+    if (handleType != nullptr && handleType->Destroy != nullptr)
+    {
+        handleType->Destroy(object);
+    }
 }
 
 SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, const char *name, const char *signature)

@@ -182,7 +182,7 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
 
     const char *directories[3];
     usz directoryCount = 0;
-    const char *candidates[] = {preset->pluginsDirectory, userPlugins, firstPartyPlugins};
+    const char *candidates[] = {preset->pluginsFolder, userPlugins, firstPartyPlugins};
 
     for (usz i = 0; i < SDL_arraysize(candidates); i++)
     {

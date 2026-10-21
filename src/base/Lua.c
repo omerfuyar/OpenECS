@@ -642,11 +642,11 @@ SHUResult ECSILua_WriteData(const char *path, const ECSValue *value)
         return SHUResult_ErrAllocation;
     }
 
-    char *slash = ECSPath_FindLastSeparator(folder);
+    const char *slash = ECSPath_FindLastSeparator(path);
 
     if (slash != nullptr)
     {
-        slash[1] = '\0';
+        folder[slash - path + 1] = '\0';
     }
 
     bool written = (slash == nullptr || SDL_CreateDirectory(folder)) && SDL_SaveFile(temporary, text, length) && SDL_RenamePath(temporary, path);

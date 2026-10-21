@@ -421,52 +421,6 @@ typedef enum ECSLogLevel
 
 #pragma endregion Types
 
-#pragma region Paths
-
-// what a path looks like on each system: Windows takes '\' and '/' as separators, and starts an absolute path with a drive, such as C:\Users.
-
-/// @brief Tells whether a character separates the folders of a path: '/', or on Windows '\' too.
-/// @lua none: Lua code gives paths to the functions that take them
-static inline bool ECSPath_IsSeparator(char character)
-{
-#if defined(_WIN32)
-    return character == '/' || character == '\\';
-#else
-    return character == '/';
-#endif
-}
-
-/// @brief Tells whether a path is absolute: it starts with a separator, or on Windows with a drive, such as C:\ or C:/.
-/// @lua none: Lua code gives paths to the functions that take them
-static inline bool ECSPath_IsAbsolute(const char *path)
-{
-#if defined(_WIN32)
-    if (((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':' && ECSPath_IsSeparator(path[2]))
-    {
-        return true;
-    }
-#endif
-
-    return ECSPath_IsSeparator(path[0]);
-}
-
-/// @brief Finds the last separator of a path.
-/// @return The separator in the path, or nullptr if it has none.
-/// @lua none: Lua code gives paths to the functions that take them
-static inline char *ECSPath_FindLastSeparator(const char *path)
-{
-    const char *last = nullptr;
-
-    for (const char *c = path; *c != '\0'; c++)
-    {
-        last = ECSPath_IsSeparator(*c) ? c : last;
-    }
-
-    return (char *)last;
-}
-
-#pragma endregion Paths
-
 #pragma region Plugin Functions
 
 /// @brief Every native plugin defines this function. The core calls it once, after it loads the plugin's library. The plugin registers everything it provides here.
@@ -484,6 +438,31 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 /// @return The folder, ending with a separator. The core owns it while the plugin is loaded.
 /// @lua none: the field ecs.plugin.folder
 OPENECS_EXPORT const char *ECSPlugin_GetFolder(ECSPlugin plugin);
+
+/// @brief Tells whether a character separates the folders of a path: '/', or on Windows '\' too.
+/// @param character The character.
+/// @return true if it is a separator.
+/// @lua none: Lua code gives paths to the functions that take them
+OPENECS_EXPORT bool ECSPath_IsSeparator(char character);
+
+/// @brief Tells whether a path is absolute: it starts with a separator, or on Windows with a drive, such as C:\ or C:/.
+/// @param path The path.
+/// @return true if it is absolute.
+/// @lua none: Lua code gives paths to the functions that take them
+OPENECS_EXPORT bool ECSPath_IsAbsolute(const char *path);
+
+/// @brief Finds the last separator of a path.
+/// @param path The path.
+/// @return The separator in the path, or nullptr if it has none.
+/// @lua none: Lua code gives paths to the functions that take them
+OPENECS_EXPORT const char *ECSPath_FindLastSeparator(const char *path);
+
+/// @brief Makes a path absolute: a relative path is relative to the program's folder, and an absolute one stays as it is.
+/// @param retFullPath The absolute path. Free it with SDL_free.
+/// @param path The path.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua none: Lua code gives paths to the functions that take them
+OPENECS_EXPORT SHUWUR SHUResult ECSPath_GetFull(char **retFullPath, const char *path);
 
 /// @brief Registers a plugin's description: how it saves and restores its own state in sessions, and what it does before the program exits. Call it once, from ECSPlugin_Init. Main thread only.
 /// @param plugin The plugin.
@@ -744,6 +723,13 @@ OPENECS_EXPORT SHUWUR SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char
 /// @param object The object.
 /// @lua none: Lua frees an object with its provider's free function, or lets go of its handle
 OPENECS_EXPORT void ECSHandle_Forget(void *object);
+
+/// @brief Frees an object of one of the plugin's handle types: Lua's handles of it are invalid from now on, and the type's Destroy is called with it, such as from a free function of the plugin's service. Main thread only.
+/// @param plugin The plugin that registered the handle type.
+/// @param type The handle type's local name, such as "sound".
+/// @param object The object.
+/// @lua none: Lua frees an object with its provider's free function, or lets go of its handle
+OPENECS_EXPORT void ECSHandle_Free(ECSPlugin plugin, const char *type, void *object);
 
 /// @brief Gives a function a default key for one of the plugin's panel types: the key works while a panel of that type has focus. Presets and the user's settings can change it. Main thread only.
 /// @param plugin The plugin. It owns the panel type.

@@ -1,6 +1,7 @@
 #include "app/Session.h"
 
 #include "base/Lua.h"
+#include "base/Paths.h"
 #include "base/Values.h"
 #include "interface/Input.h"
 #include "interface/Keys.h"
@@ -769,15 +770,21 @@ static SHUResult ECSISession_OpenFile(const char *path, bool preset)
 
 #pragma endregion Source Only
 
+bool ECSISession_IsPresetPath(const char *nameOrPath)
+{
+    SDL_assert(nameOrPath != nullptr);
+
+    // a name has no folder and no extension
+    usz length = SDL_strlen(nameOrPath);
+    return ECSPath_FindLastSeparator(nameOrPath) != nullptr || (length > 4 && SDL_strcmp(nameOrPath + length - 4, ".lua") == 0);
+}
+
 SHUResult ECSISession_FindPreset(char **retPath, const char *nameOrPath, const char *userFolder)
 {
     SDL_assert(retPath != nullptr);
     SDL_assert(nameOrPath != nullptr);
 
-    // a name has no folder and no extension
-    usz length = SDL_strlen(nameOrPath);
-
-    if (ECSPath_FindLastSeparator(nameOrPath) != nullptr || (length > 4 && SDL_strcmp(nameOrPath + length - 4, ".lua") == 0))
+    if (ECSISession_IsPresetPath(nameOrPath))
     {
         *retPath = SDL_strdup(nameOrPath);
         return *retPath == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
@@ -834,19 +841,16 @@ SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
     const ECSValue *file = retInfo->file;
     const ECSValue *app = ECSValue_GetTableField(file, "app");
     const char *appID = ECSValue_GetString(ECSValue_GetTableField(app, "id"), nullptr);
-    const char *pluginsDirectory = ECSValue_GetString(ECSValue_GetTableField(file, "pluginsDir"), nullptr);
+    const char *pluginsFolder = ECSValue_GetString(ECSValue_GetTableField(file, "pluginsDir"), nullptr);
 
     retInfo->name = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "name"), ""));
     retInfo->appName = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(app, "name"), ""));
     retInfo->appID = SDL_strdup(appID);
 
-    if (pluginsDirectory != nullptr)
+    // relative to the preset's folder, unless it is absolute
+    if (pluginsFolder != nullptr)
     {
-        // relative to the preset's folder, unless it is absolute
-        const char *slash = ECSPath_FindLastSeparator(path);
-        int folderLength = slash == nullptr || ECSPath_IsAbsolute(pluginsDirectory) ? 0 : (int)(slash - path + 1);
-
-        if (SDL_asprintf(&retInfo->pluginsDirectory, "%.*s%s/", folderLength, path, pluginsDirectory) < 0)
+        if (SDL_asprintf(&retInfo->pluginsFolder, "%.*s%s/", ECSIPath_GetFolderLength(path, pluginsFolder), path, pluginsFolder) < 0)
         {
             return SHUResult_ErrAllocation;
         }
@@ -867,7 +871,7 @@ void ECSISession_FreeInfo(ECSIPresetInfo *info)
     SDL_free(info->name);
     SDL_free(info->appID);
     SDL_free(info->appName);
-    SDL_free(info->pluginsDirectory);
+    SDL_free(info->pluginsFolder);
     ECSValue_Destroy(&info->file);
     SDL_zerop(info);
 }
@@ -903,11 +907,11 @@ SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
         ECSValue_SetInteger(field, OPENECS_SESSION_FORMAT);
     }
 
-    // the plugin directory is written resolved, because the session lives in another folder
-    if (!result && info->pluginsDirectory != nullptr)
+    // the plugins folder is written resolved, because the session lives in another folder
+    if (!result && info->pluginsFolder != nullptr)
     {
         result = ECSValue_SetTableField(retSession, "pluginsDir", &field);
-        result = result ? result : ECSValue_SetString(field, info->pluginsDirectory);
+        result = result ? result : ECSValue_SetString(field, info->pluginsFolder);
     }
 
     result = result ? result : ECSValue_SetTableField(retSession, "pluginState", &field);
