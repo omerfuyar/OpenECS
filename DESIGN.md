@@ -509,26 +509,27 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The prefix is the setting `ecs.prefix`. It is one key combination, never a whole modifier.
 - The keys after the prefix are the `prefix` tables of the keys tables (7.8). Each layer adds to the keys of the layers below, and `false` removes a key. So presets and the user can add keys that run service functions.
 - While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's functions on the focused panel), Layout (closing a group, locking it and resetting the layout), Session (saving and opening sessions, and quitting) and More (service functions, such as the settings, the panel list and the launcher). Within a section, the keys follow the order of the core's functions below. Like the menus (6.8), the list leaves out what cannot be done now.
-- Keys of one kind share a line. The keys that switch workspaces show the first workspace's key to the last one's: `1...0`. Focus and move show `Arrows` and `Shift+Arrows` when their four functions are on the four arrows with the same modifiers.
+- Keys of one kind share a line. The keys that switch workspaces show the first workspace's key to the last one's: `1...0`, and the keys that move the focused panel to a workspace the same way: `Shift+1...0`. Focus and move show `Arrows` and `Shift+Arrows` when their four functions are on the four arrows with the same modifiers.
 - The prefix and the key after it are the only key sequence the core handles.
 - The core's functions after the prefix, in the order the list shows them. Their keys are in the `prefix` table of the core's settings file (12.1).
 
-  | Function                                            | Action                                                                                                   |
-  | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-  | `ecs.layout.focusLeft` and so on                    | Move focus                                                                                               |
-  | `ecs.layout.moveLeft` and so on                     | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
-  | `ecs.layout.nextTab`                                | Show the next tab                                                                                        |
-  | `ecs.layout.maximize`                               | Maximize or restore                                                                                      |
-  | `ecs.layout.popOut`                                 | Pop out                                                                                                  |
-  | `ecs.layout.close`                                  | Close the panel                                                                                          |
-  | `ecs.layout.closeGroup`                             | Close the group's panels                                                                                 |
-  | `ecs.layout.lock`                                   | Lock or unlock the group                                                                                 |
-  | `ecs.layout.reopen`                                 | Reopen the last closed panel                                                                             |
-  | `ecs.panel.restart`                                 | Restart the failed panel                                                                                 |
-  | `ecs.session.save`                                  | Save the session to a file, which a save dialog asks for (13.4)                                          |
-  | `ecs.session.open`                                  | Open a session or a preset, which an open dialog asks for (13.5)                                         |
-  | `ecs.workspace.switch1` to `ecs.workspace.switch10` | Switch to workspace 1 to 10                                                                              |
-  | `ecs.workspace.menu`                                | Show the menu of workspaces (6.8)                                                                        |
+  | Function                                                        | Action                                                                                                   |
+  | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+  | `ecs.layout.focusLeft` and so on                                | Move focus                                                                                               |
+  | `ecs.layout.moveLeft` and so on                                 | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
+  | `ecs.layout.nextTab`                                            | Show the next tab                                                                                        |
+  | `ecs.layout.maximize`                                           | Maximize or restore                                                                                      |
+  | `ecs.layout.popOut`                                             | Pop out                                                                                                  |
+  | `ecs.layout.close`                                              | Close the panel                                                                                          |
+  | `ecs.layout.closeGroup`                                         | Close the group's panels                                                                                 |
+  | `ecs.layout.lock`                                               | Lock or unlock the group                                                                                 |
+  | `ecs.layout.reopen`                                             | Reopen the last closed panel                                                                             |
+  | `ecs.panel.restart`                                             | Restart the failed panel                                                                                 |
+  | `ecs.session.save`                                              | Save the session to a file, which a save dialog asks for (13.4)                                          |
+  | `ecs.session.open`                                              | Open a session or a preset, which an open dialog asks for (13.5)                                         |
+  | `ecs.workspace.switch1` to `ecs.workspace.switch10`             | Switch to workspace 1 to 10                                                                              |
+  | `ecs.layout.moveToWorkspace1` to `ecs.layout.moveToWorkspace10` | Move the focused panel to workspace 1 to 10                                                              |
+  | `ecs.workspace.menu`                                            | Show the menu of workspaces (6.8)                                                                        |
 
 - Escape after the prefix cancels. It is not a function, so it always works.
 

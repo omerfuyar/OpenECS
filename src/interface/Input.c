@@ -14,8 +14,9 @@
 
 #pragma region Source Only
 
-/// @brief Start of the names of the functions that switch workspaces; the workspace's number follows.
-#define OPENECS_WORKSPACE_FUNCTION "ecs.workspace.switch"
+/// @brief Starts of the names of the functions that switch workspaces and that move the focused panel to one; the workspace's number follows.
+#define OPENECS_SWITCH_FUNCTION "ecs.workspace.switch"
+#define OPENECS_MOVE_FUNCTION "ecs.layout.moveToWorkspace"
 
 /// @brief Choices of the setting ecs.focus; its value comes from the core's settings file.
 static const char *const OPENECS_FOCUS_CHOICES[] = {"click", "hover", nullptr};
@@ -515,9 +516,10 @@ static char *ECSIInput_FoldArrows(usz index, bool *listed, const char **retDescr
     return nullptr;
 }
 
-/// @brief Folds every key that switches workspaces into one line, from the first workspace's key to the last one's, such as "1...0".
+/// @brief Folds the keys of one workspace function family into one line, from the first workspace's key to the last one's, such as "1...0" or "Shift+1...0".
+/// @param start Start of the family's names; the workspace's number follows.
 /// @return The line's key text, made for the list.
-static char *ECSIInput_FoldWorkspaces(bool *listed)
+static char *ECSIInput_FoldWorkspaces(const char *start, bool *listed)
 {
     const char *firstKey = nullptr;
     const char *lastKey = nullptr;
@@ -530,12 +532,12 @@ static char *ECSIInput_FoldWorkspaces(bool *listed)
     {
         const char *function = keys[i].function;
 
-        if (SDL_strncmp(function, OPENECS_WORKSPACE_FUNCTION, SDL_strlen(OPENECS_WORKSPACE_FUNCTION)) != 0)
+        if (SDL_strncmp(function, start, SDL_strlen(start)) != 0)
         {
             continue;
         }
 
-        i64 number = SDL_strtoll(function + SDL_strlen(OPENECS_WORKSPACE_FUNCTION), nullptr, 10);
+        i64 number = SDL_strtoll(function + SDL_strlen(start), nullptr, 10);
         listed[i] = true;
 
         if (firstKey == nullptr || number < first)
@@ -551,14 +553,17 @@ static char *ECSIInput_FoldWorkspaces(bool *listed)
         }
     }
 
-    char *text = nullptr;
-
     if (first == last)
     {
         return SDL_strdup(firstKey);
     }
 
-    return SDL_asprintf(&text, "%s...%s", firstKey, lastKey) < 0 ? nullptr : text;
+    // the last key leaves out the modifiers it shares with the first: "Shift+1...0"
+    const char *plus = SDL_strrchr(lastKey, '+');
+    usz modifiersLength = plus == nullptr ? 0 : (usz)(plus - lastKey + 1);
+    const char *lastName = SDL_strncmp(firstKey, lastKey, modifiersLength) == 0 ? lastKey + modifiersLength : lastKey;
+    char *text = nullptr;
+    return SDL_asprintf(&text, "%s...%s", firstKey, lastName) < 0 ? nullptr : text;
 }
 
 /// @brief Orders two keys after the prefix by the order of their functions among the core's, then by their key texts. userData is the keys.
@@ -622,8 +627,22 @@ static void ECSIInput_SetPrefix(bool active)
                 }
 
                 const char *description = nullptr;
-                bool workspace = SDL_strncmp(function, OPENECS_WORKSPACE_FUNCTION, SDL_strlen(OPENECS_WORKSPACE_FUNCTION)) == 0;
-                char *text = workspace ? ECSIInput_FoldWorkspaces(listed) : ECSIInput_FoldArrows(i, listed, &description);
+                char *text = nullptr;
+
+                if (SDL_strncmp(function, OPENECS_SWITCH_FUNCTION, SDL_strlen(OPENECS_SWITCH_FUNCTION)) == 0)
+                {
+                    text = ECSIInput_FoldWorkspaces(OPENECS_SWITCH_FUNCTION, listed);
+                    description = "Switch to workspace";
+                }
+                else if (SDL_strncmp(function, OPENECS_MOVE_FUNCTION, SDL_strlen(OPENECS_MOVE_FUNCTION)) == 0)
+                {
+                    text = ECSIInput_FoldWorkspaces(OPENECS_MOVE_FUNCTION, listed);
+                    description = "Move panel to workspace";
+                }
+                else
+                {
+                    text = ECSIInput_FoldArrows(i, listed, &description);
+                }
 
                 if (text != nullptr)
                 {
@@ -631,8 +650,7 @@ static void ECSIInput_SetPrefix(bool active)
                 }
 
                 arrput(INPUT.prefixLines, text != nullptr ? text : keys[i].text);
-                arrput(INPUT.prefixLines, workspace ? "Switch to workspace" : description != nullptr ? description
-                                                                                                  : ECSIMenus_LabelOf(function, focus));
+                arrput(INPUT.prefixLines, description != nullptr ? description : ECSIMenus_LabelOf(function, focus));
             }
 
             if (arrlenu(INPUT.prefixLines) == start + 2)
