@@ -35,7 +35,7 @@ usz ECSIWindow_NumberOf(ECSPanel panel);
 
 /// @brief Gets the OS window that shows a panel, for its text input.
 /// @return The window, or the main window if the panel is not shown.
-SDL_Window *ECSIWindow_OfPanel(ECSPanel panel);
+SDL_Window *ECSIWindow_GetPanelWindow(ECSPanel panel);
 
 /// @brief Gets the root that an OS window shows.
 /// @param id SDL's id of the window.

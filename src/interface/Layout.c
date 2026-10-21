@@ -51,11 +51,6 @@ static ECSIWorkspace *ECSILayout_Current(void)
     return arrlenu(LAYOUT.workspaces) == 0 ? nullptr : &LAYOUT.workspaces[LAYOUT.current];
 }
 
-static bool ECSILayout_Contains(f32 x, f32 y, f32 left, f32 top, f32 width, f32 height)
-{
-    return x >= left && y >= top && x < left + width && y < top + height;
-}
-
 /// @brief Computes the rectangles of a node and its children, and places the shown panel of each group.
 static void ECSILayout_Place(ECSINode *node, f32 x, f32 y, f32 width, f32 height)
 {
@@ -929,7 +924,7 @@ static void ECSILayout_FindGroupAt(ECSINode *group, void *userData)
 {
     ECSIGroupHit *hit = userData;
 
-    if (ECSILayout_Contains(hit->x, hit->y, group->x, group->y, group->width, group->height))
+    if (ECSILayout_Contains((SDL_FRect){group->x, group->y, group->width, group->height}, hit->x, hit->y))
     {
         hit->group = group;
     }
@@ -955,8 +950,8 @@ static void ECSILayout_FindDivider(ECSINode *node, ECSIDividerHit *hit)
     {
         ECSINode *child = node->children[i];
         bool over = node->vertical
-                        ? ECSILayout_Contains(hit->x, hit->y, node->x, child->y + child->height, node->width, LAYOUT.dividerSize)
-                        : ECSILayout_Contains(hit->x, hit->y, child->x + child->width, node->y, LAYOUT.dividerSize, node->height);
+                        ? ECSILayout_Contains((SDL_FRect){node->x, child->y + child->height, node->width, LAYOUT.dividerSize}, hit->x, hit->y)
+                        : ECSILayout_Contains((SDL_FRect){child->x + child->width, node->y, LAYOUT.dividerSize, node->height}, hit->x, hit->y);
 
         if (over)
         {
@@ -990,7 +985,7 @@ static void ECSILayout_FindPanel(ECSINode *group, void *userData)
 
     ECSPanel panel = group->panels[group->shown];
 
-    if (ECSILayout_Contains(hit->x, hit->y, panel->x, panel->y, panel->width, panel->height))
+    if (ECSILayout_Contains((SDL_FRect){panel->x, panel->y, panel->width, panel->height}, hit->x, hit->y))
     {
         hit->panel = panel;
     }
@@ -1167,6 +1162,11 @@ SHUResult ECSILayout_Initialize(void)
 
     ECSILayout_ReadSettings(nullptr);
     return SHUResult_Ok;
+}
+
+bool ECSILayout_Contains(SDL_FRect rect, f32 x, f32 y)
+{
+    return x >= rect.x && y >= rect.y && x < rect.x + rect.w && y < rect.y + rect.h;
 }
 
 f32 ECSILayout_GetTabRowHeight(void)

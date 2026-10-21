@@ -1234,7 +1234,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
 void ECSIInput_UpdateTextInput(void)
 {
     ECSPanel focus = ECSILayout_GetFocus();
-    SDL_Window *window = ECSIWindow_OfPanel(focus);
+    SDL_Window *window = ECSIWindow_GetPanelWindow(focus);
     bool on = focus != nullptr && focus->textInput && focus->fault == nullptr;
     SDL_Rect area = {0};
 
