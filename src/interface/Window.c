@@ -2364,6 +2364,18 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
         return true;
     }
 
+    // a press on a tab or grip becomes a drag once the pointer moves far enough; a locked grip is never dragged, and pulling it is not a click
+    if (WINDOW.dragPanel != nullptr && !WINDOW.dragging && SDL_fabsf(x - WINDOW.dragStartX) + SDL_fabsf(y - WINDOW.dragStartY) >= WINDOW.dragThreshold)
+    {
+        if (WINDOW.dragLocked)
+        {
+            ECSIWindow_CancelDrag();
+            return true;
+        }
+
+        WINDOW.dragging = true;
+    }
+
     // the pointer shows a divider can be dragged, and while a panel is dragged
     ECSINode *split = WINDOW.dragSplit;
     usz divider = 0;
@@ -2385,26 +2397,9 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
 
     if (WINDOW.dragPanel != nullptr)
     {
-        bool wasDragging = WINDOW.dragging;
-        bool moved = SDL_fabsf(x - WINDOW.dragStartX) + SDL_fabsf(y - WINDOW.dragStartY) >= WINDOW.dragThreshold;
-
-        // a locked grip is never dragged, and pulling it is not a click
-        if (moved && WINDOW.dragLocked)
-        {
-            ECSIWindow_CancelDrag();
-            return true;
-        }
-
-        WINDOW.dragging = WINDOW.dragging || moved;
-
         if (WINDOW.dragging)
         {
             ECSIWindow_FindDragDrop(x, y);
-        }
-
-        if (WINDOW.dragging && !wasDragging)
-        {
-            ECSIWindow_SetCursor(SDL_SYSTEM_CURSOR_MOVE);
         }
 
         return true;
@@ -2509,14 +2504,13 @@ void ECSIWindow_ShowMenu(usz level, SDL_FRect anchor, const char *const *lines, 
 {
     SDL_assert(level < OPENECS_MENU_DEPTH);
 
-    // a menu that closes or changes closes its submenus
-    for (usz i = level + 1; i < OPENECS_MENU_DEPTH; i++)
+    // a menu that closes or changes closes its submenus too
+    for (usz i = level; i < OPENECS_MENU_DEPTH; i++)
     {
         WINDOW.menus[i] = (ECSIMenuView){0};
     }
 
     ECSIMenuView *menu = &WINDOW.menus[level];
-    *menu = (ECSIMenuView){0};
     ECSILayout_RequestFrame();
 
     // the panel menu opens in the OS window of the event that opens it, and its submenus open beside it

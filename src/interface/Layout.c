@@ -1822,25 +1822,33 @@ ECSPanel ECSILayout_FindNeighbour(i32 directionX, i32 directionY)
 void ECSILayout_MoveFocus(i32 directionX, i32 directionY)
 {
     ECSIWorkspace *workspace = ECSILayout_GetCurrent();
-    ECSPanel neighbour = ECSILayout_FindNeighbour(directionX, directionY);
     ECSIRoot *root = nullptr;
+    ECSINode *source = workspace == nullptr ? nullptr : ECSILayout_FindGroupInWorkspace(workspace, workspace->focus, &root);
 
-    if (workspace == nullptr || ECSILayout_FindGroupInWorkspace(workspace, workspace->focus, &root) == nullptr)
+    if (source == nullptr)
     {
         return;
     }
 
-    ECSIDrop drop = {.zone = directionX < 0 ? ECSIZone_WindowLeft : directionX > 0 ? ECSIZone_WindowRight
-                                                          : directionY < 0   ? ECSIZone_WindowTop
-                                                                     : ECSIZone_WindowBottom,
-                     .root = root};
+    // into the neighbour's group, or else along that edge of the OS window
+    ECSPanel neighbour = ECSILayout_FindNeighbour(directionX, directionY);
+    ECSIDrop drop = {.root = root};
 
     if (neighbour != nullptr)
     {
-        drop = (ECSIDrop){.zone = ECSIZone_Center, .root = root, .group = ECSILayout_FindGroupInTree(root->tree, neighbour)};
+        drop.zone = ECSIZone_Center;
+        drop.group = ECSILayout_FindGroupInTree(root->tree, neighbour);
+    }
+    else if (directionX != 0)
+    {
+        drop.zone = directionX < 0 ? ECSIZone_WindowLeft : ECSIZone_WindowRight;
+    }
+    else
+    {
+        drop.zone = directionY < 0 ? ECSIZone_WindowTop : ECSIZone_WindowBottom;
     }
 
-    if (ECSILayout_LocksAllow(ECSILayout_FindGroupInTree(root->tree, workspace->focus), &drop))
+    if (ECSILayout_LocksAllow(source, &drop))
     {
         ECSILayout_Move(workspace, workspace->focus, &drop);
     }

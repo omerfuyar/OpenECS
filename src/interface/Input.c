@@ -278,7 +278,6 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
     {
         // the popup that got the press gets the moves, also outside it
         ECSPopup pressed = ECSIInput_PointerPopup();
-        ECSPopup popup = count == 0 ? nullptr : ECSIWindow_PopupAt(event->motion.x, event->motion.y, &x, &y);
 
         if (pressed != nullptr)
         {
@@ -286,6 +285,8 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
             ECSIInput_SendPopupPointer(pressed, ECSPanelEventType_PointerMove, x, y, 0);
             return true;
         }
+
+        ECSPopup popup = count == 0 ? nullptr : ECSIWindow_PopupAt(event->motion.x, event->motion.y, &x, &y);
 
         if (popup != nullptr)
         {
