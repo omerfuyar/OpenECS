@@ -172,6 +172,9 @@ void ECSIWindow_ShowMenu(usz level, SDL_FRect anchor, const char *const *lines, 
 /// @brief Highlights an entry of a shown menu.
 void ECSIWindow_SelectMenuItem(usz level, usz index);
 
+/// @brief Gets the highlighted entry of a shown menu.
+usz ECSIWindow_GetSelectedMenuItem(usz level);
+
 /// @brief Gets where a shown menu's entry is, to open a submenu beside it.
 /// @return The entry's rectangle, in layout units.
 SDL_FRect ECSIWindow_MenuItemRect(usz level, usz index);

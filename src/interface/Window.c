@@ -2573,6 +2573,13 @@ void ECSIWindow_SelectMenuItem(usz level, usz index)
     ECSILayout_RequestFrame();
 }
 
+usz ECSIWindow_GetSelectedMenuItem(usz level)
+{
+    SDL_assert(level < OPENECS_MENU_DEPTH);
+
+    return WINDOW.menus[level].selected;
+}
+
 SDL_FRect ECSIWindow_MenuItemRect(usz level, usz index)
 {
     SDL_assert(level < OPENECS_MENU_DEPTH);

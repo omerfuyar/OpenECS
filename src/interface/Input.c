@@ -972,7 +972,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
         if (row != nullptr)
         {
-            ECSIMenus_Open(row, button->x, button->y, true);
+            ECSIMenus_OpenGroupMenu(row, button->x, button->y);
             break;
         }
 
@@ -980,7 +980,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
         {
             if (button->button == SDL_BUTTON_RIGHT)
             {
-                ECSIMenus_Open(tab, button->x, button->y, false);
+                ECSIMenus_OpenPanelMenu(tab, button->x, button->y);
             }
             else if (button->button == SDL_BUTTON_MIDDLE && !ECSILayout_IsLocked(tab))
             {
@@ -1065,7 +1065,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
         if (clicked != nullptr)
         {
-            ECSIMenus_Open(clicked, button->x, button->y, false);
+            ECSIMenus_OpenPanelMenu(clicked, button->x, button->y);
         }
 
         if (ECSIInput_PointerPanel() != nullptr)
