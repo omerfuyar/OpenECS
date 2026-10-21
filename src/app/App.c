@@ -298,7 +298,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 
     if (APP.test)
     {
-        ECSIApp_CheckStart(ECSITest_Load(arguments->test, &APP.preset, &testPreset), "reading the test", arguments->test);
+        ECSIApp_CheckStart(ECSITest_Load(arguments->test, &testPreset), "reading the test", arguments->test);
     }
 
     if (!APP.test)
@@ -319,7 +319,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     // a test's presets field names the folder that stands for the user's presets
     if (APP.test)
     {
-        APP.presetsFolder = ECSITest_GetPresets() == nullptr ? nullptr : SDL_strdup(ECSITest_GetPresets());
+        APP.presetsFolder = ECSITest_GetPresetsFolder() == nullptr ? nullptr : SDL_strdup(ECSITest_GetPresetsFolder());
     }
     else if (APP.configFolder != nullptr && SDL_asprintf(&APP.presetsFolder, "%s%s", APP.configFolder, OPENECS_PRESETS_FOLDER) < 0)
     {
@@ -393,7 +393,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 
     if (APP.test)
     {
-        sessionsFolder = ECSITest_GetSessions() == nullptr ? nullptr : SDL_strdup(ECSITest_GetSessions());
+        sessionsFolder = ECSITest_GetSessionsFolder() == nullptr ? nullptr : SDL_strdup(ECSITest_GetSessionsFolder());
     }
     else if (dataFolder != nullptr && SDL_asprintf(&sessionsFolder, "%s%s", dataFolder, OPENECS_SESSIONS_FOLDER) < 0)
     {

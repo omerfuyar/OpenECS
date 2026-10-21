@@ -891,10 +891,12 @@ SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info)
     return SHUResult_Ok;
 }
 
-SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession)
+SHUResult ECSISession_Build(ECSValue *retSession)
 {
-    SDL_assert(info != nullptr);
+    SDL_assert(SESSION.info != nullptr);
     SDL_assert(retSession != nullptr);
+
+    const ECSIPresetInfo *info = SESSION.info;
 
     // a copy of the file the session came from, so fields the core does not use are kept
     ECSValue *field = nullptr;
@@ -1042,12 +1044,11 @@ SHUResult ECSSession_ListSessions(ECSValue *retList)
 
 SHUResult ECSSession_Save(const char *path)
 {
-    SDL_assert(SESSION.info != nullptr);
     SDL_assert(path != nullptr);
 
     ECSValue *session = nullptr;
     SHU_ReturnResult(ECSValue_Create(&session));
-    SHUResult result = ECSISession_Build(SESSION.info, session);
+    SHUResult result = ECSISession_Build(session);
     result = result ? result : ECSILua_WriteData(path, session);
 
     ECSValue_Destroy(&session);

@@ -60,11 +60,10 @@ void ECSISession_FreeInfo(ECSIPresetInfo *info);
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the file has no workspaces, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info);
 
-/// @brief Builds a session: the file it came from, with the current workspaces, panels and their saved state.
-/// @param info What the preset or session that started this tool said.
+/// @brief Builds a session: the file that ECSISession_Apply applied, with the current workspaces, panels and their saved state.
 /// @param retSession The value to fill.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSISession_Build(const ECSIPresetInfo *info, ECSValue *retSession);
+SHUWUR SHUResult ECSISession_Build(ECSValue *retSession);
 
 /// @brief Keeps the folders, and registers the core's functions ecs.session.save and ecs.session.open for keys and menus. They ask for the file.
 /// @param folders The folders. The sessions folder is where the dialogs start, or the system chooses if it is nullptr; it is created when a dialog opens.
