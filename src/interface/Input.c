@@ -14,14 +14,26 @@
 
 #pragma region Source Only
 
-/// @brief Start of the names of the functions that switch workspaces; the workspace's number follows.
-#define OPENECS_WORKSPACE_FUNCTION "ecs.workspace.switch"
+/// @brief Starts of the names of the functions that switch workspaces and that move the focused panel to one; the workspace's number follows.
+#define OPENECS_SWITCH_FUNCTION "ecs.workspace.switch"
+#define OPENECS_MOVE_FUNCTION "ecs.layout.moveToWorkspace"
 
 /// @brief Choices of the setting ecs.focus; its value comes from the core's settings file.
 static const char *const OPENECS_FOCUS_CHOICES[] = {"click", "hover", nullptr};
 
-/// @brief Headings of the sections of the list of prefix keys, in the order ECSIInput_SectionOf numbers them.
-static const char *const OPENECS_PREFIX_SECTIONS[] = {"Navigation", "Panel", "Layout", "Session", "More"};
+/// @brief A section of the list of prefix keys, in the order the list shows them.
+typedef enum ECSIPrefixSection
+{
+    ECSIPrefixSection_Navigation = 0,
+    ECSIPrefixSection_Panel,
+    ECSIPrefixSection_Layout,
+    ECSIPrefixSection_Session,
+    ECSIPrefixSection_More,
+    ECSIPrefixSection_Count,
+} ECSIPrefixSection;
+
+/// @brief Headings of the sections of the list of prefix keys, in the order of ECSIPrefixSection.
+static const char *const OPENECS_PREFIX_SECTIONS[ECSIPrefixSection_Count] = {"Navigation", "Panel", "Layout", "Session", "More"};
 
 /// @brief Functions that the list of prefix keys shows on one line when they run on the four arrows: left, right, up and down.
 static const struct
@@ -57,9 +69,9 @@ static struct
     ECSIDialogStepFunction TestStep; // a running test's step while a dialog waits, or nullptr
     ECSIDialogWaitFunction TestWait;
     // an input method, such as fcitx5, may repeat a held key itself: it sends a release and a press with the first press's time, again and again
-    SDL_Keycode releasedKey;  // the key of the last release, and its time
-    Uint64 releasedAt;        //
-    SDL_Keycode imeRepeatKey; // the key that the input method repeats now, or SDLK_UNKNOWN
+    SDL_Keycode releasedKey;          // the key of the last release
+    u64 releasedAt;                   // the time of the last release
+    SDL_Keycode inputMethodRepeatKey; // the key that the input method repeats now, or SDLK_UNKNOWN
     struct
     {
         SDL_Keycode key;
@@ -68,7 +80,7 @@ static struct
 } INPUT = {0};
 
 /// @brief Gives a key's name, as Lua's events give it, such as "Return", in a copy kept until exit; "" if memory runs out.
-static const char *ECSIInput_KeyName(SDL_Keycode key)
+static const char *ECSIInput_GetKeyName(SDL_Keycode key)
 {
     char *name = hmget(INPUT.keyNames, key);
 
@@ -108,7 +120,7 @@ typedef struct ECSIClipboardData
 } ECSIClipboardData;
 
 /// @brief Converts SDL's modifier bits to ECSModifier bits.
-static u32 ECSIInput_Modifiers(SDL_Keymod modifiers)
+static u32 ECSIInput_ConvertModifiers(SDL_Keymod modifiers)
 {
     u32 result = ECSModifier_None;
 
@@ -145,35 +157,44 @@ static void ECSIInput_SendPointer(ECSPanel panel, ECSPanelEventType type, f32 x,
 {
     ECSPanelEvent event = {
         .type = type,
-        .modifiers = ECSIInput_Modifiers(SDL_GetModState()),
+        .modifiers = ECSIInput_ConvertModifiers(SDL_GetModState()),
         .pointer = {.x = x - panel->x, .y = y - panel->y, .button = button},
     };
 
     ECSIPanel_PostEvent(panel, &event);
 }
 
-/// @brief Sends a wheel event to a panel, at a position of its OS window. The amount is turned back if the system flips the wheel, so positive is always away from the user.
-static void ECSIInput_SendWheel(ECSPanel panel, const SDL_MouseWheelEvent *wheel, f32 x, f32 y)
+/// @brief Gets the direction of the wheel: -1 when the system flips it, so the amounts can be turned back, else 1.
+static f32 ECSIInput_GetWheelDirection(const SDL_MouseWheelEvent *wheel)
 {
-    f32 direction = wheel->direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
-    ECSPanelEvent event = {
-        .type = ECSPanelEventType_Wheel,
-        .modifiers = ECSIInput_Modifiers(SDL_GetModState()),
-        .wheel = {.x = x - panel->x, .y = y - panel->y, .amountX = wheel->x * direction, .amountY = wheel->y * direction},
-    };
-
-    ECSIPanel_PostEvent(panel, &event);
+    return wheel->direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
 }
 
-static void ECSIInput_SendKey(ECSPanel panel, ECSPanelEventType type, const SDL_KeyboardEvent *key)
+/// @brief Makes a wheel event at a position in a panel's or a popup's surface. Positive amounts are always away from the user.
+static ECSPanelEvent ECSIInput_MakeWheelEvent(const SDL_MouseWheelEvent *wheel, f32 x, f32 y)
 {
-    ECSPanelEvent event = {
-        .type = type,
-        .modifiers = ECSIInput_Modifiers(key->mod),
-        .key = {.code = key->key, .name = ECSIInput_KeyName(key->key)},
+    f32 direction = ECSIInput_GetWheelDirection(wheel);
+    return (ECSPanelEvent){
+        .type = ECSPanelEventType_Wheel,
+        .modifiers = ECSIInput_ConvertModifiers(SDL_GetModState()),
+        .wheel = {.x = x, .y = y, .amountX = wheel->x * direction, .amountY = wheel->y * direction},
     };
+}
 
-    ECSIPanel_PostEvent(panel, &event);
+/// @brief Makes a key event of a type: KeyDown or KeyUp.
+static ECSPanelEvent ECSIInput_MakeKeyEvent(ECSPanelEventType type, const SDL_KeyboardEvent *key)
+{
+    return (ECSPanelEvent){
+        .type = type,
+        .modifiers = ECSIInput_ConvertModifiers(key->mod),
+        .key = {.code = key->key, .name = ECSIInput_GetKeyName(key->key)},
+    };
+}
+
+/// @brief Checks whether a key is a modifier itself, such as Ctrl or AltGr.
+static bool ECSIInput_IsModifierKey(SDL_Keycode key)
+{
+    return (key >= SDLK_LCTRL && key <= SDLK_RGUI) || key == SDLK_MODE;
 }
 
 /// @brief Asks about the unsaved work of every panel before the program quits.
@@ -184,15 +205,6 @@ static bool ECSIInput_ConfirmQuit(void)
     bool quit = ECSIPanels_ConfirmClose(panels, arrlenu(panels), true);
     arrfree(panels);
     return quit;
-}
-
-/// @brief Moves the keyboard focus to a panel; the layout tells both panels.
-static void ECSIInput_Focus(ECSPanel panel)
-{
-    if (panel != nullptr)
-    {
-        ECSILayout_SetFocus(panel);
-    }
 }
 
 /// @brief Gets the panel that got the pointer press, unless code closed it since.
@@ -227,7 +239,7 @@ static void ECSIInput_SendPopupPointer(ECSPopup popup, ECSPanelEventType type, f
 {
     ECSPanelEvent event = {
         .type = type,
-        .modifiers = ECSIInput_Modifiers(SDL_GetModState()),
+        .modifiers = ECSIInput_ConvertModifiers(SDL_GetModState()),
         .pointer = {.x = x, .y = y, .button = button},
     };
 
@@ -266,7 +278,6 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
     {
         // the popup that got the press gets the moves, also outside it
         ECSPopup pressed = ECSIInput_PointerPopup();
-        ECSPopup popup = count == 0 ? nullptr : ECSIWindow_PopupAt(event->motion.x, event->motion.y, &x, &y);
 
         if (pressed != nullptr)
         {
@@ -274,6 +285,8 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
             ECSIInput_SendPopupPointer(pressed, ECSPanelEventType_PointerMove, x, y, 0);
             return true;
         }
+
+        ECSPopup popup = count == 0 ? nullptr : ECSIWindow_PopupAt(event->motion.x, event->motion.y, &x, &y);
 
         if (popup != nullptr)
         {
@@ -300,15 +313,10 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
     case SDL_EVENT_MOUSE_WHEEL:
     {
         ECSPopup popup = count == 0 ? nullptr : ECSIWindow_PopupAt(event->wheel.mouse_x, event->wheel.mouse_y, &x, &y);
-        f32 direction = event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
-        ECSPanelEvent wheel = {
-            .type = ECSPanelEventType_Wheel,
-            .modifiers = ECSIInput_Modifiers(SDL_GetModState()),
-            .wheel = {.x = x, .y = y, .amountX = event->wheel.x * direction, .amountY = event->wheel.y * direction},
-        };
 
         if (popup != nullptr)
         {
+            ECSPanelEvent wheel = ECSIInput_MakeWheelEvent(&event->wheel, x, y);
             ECSIPopup_PostEvent(popup, &wheel);
         }
 
@@ -320,11 +328,6 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
     case SDL_EVENT_KEY_UP:
     {
         ECSPopup menu = ECSIPopups_GetMenu();
-        ECSPanelEvent key = {
-            .type = event->type == SDL_EVENT_KEY_DOWN ? ECSPanelEventType_KeyDown : ECSPanelEventType_KeyUp,
-            .modifiers = ECSIInput_Modifiers(event->key.mod),
-            .key = {.code = event->key.key, .name = ECSIInput_KeyName(event->key.key)},
-        };
 
         if (menu != nullptr && event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_ESCAPE)
         {
@@ -332,6 +335,7 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
         }
         else if (menu != nullptr)
         {
+            ECSPanelEvent key = ECSIInput_MakeKeyEvent(event->type == SDL_EVENT_KEY_DOWN ? ECSPanelEventType_KeyDown : ECSPanelEventType_KeyUp, &event->key);
             ECSIPopup_PostEvent(menu, &key);
         }
 
@@ -361,7 +365,7 @@ static void ECSIInput_Drop(f32 x, f32 y, const char *type, const ECSValue *value
 
     if (panel != nullptr && ECSIPanel_Accepts(panel, type))
     {
-        ECSIPanel_PostDrop(panel, x - panel->x, y - panel->y, type, value, ECSIInput_Modifiers(SDL_GetModState()));
+        ECSIPanel_PostDrop(panel, x - panel->x, y - panel->y, type, value, ECSIInput_ConvertModifiers(SDL_GetModState()));
     }
     else
     {
@@ -421,23 +425,23 @@ static void ECSIInput_CompleteDrop(f32 x, f32 y)
 }
 
 /// @brief Finds the section of the list of prefix keys that a function is listed in.
-static usz ECSIInput_SectionOf(const char *function)
+static ECSIPrefixSection ECSIInput_SectionOf(const char *function)
 {
     // by the start of their names: Navigation, Layout and Session; the core's other functions act on the panel, and the plugins' are More
     static const struct
     {
         const char *start;
-        usz section;
+        ECSIPrefixSection section;
     } SECTIONS[] = {
-        {"ecs.layout.focus", 0},
-        {"ecs.layout.move", 0},
-        {"ecs.layout.nextTab", 0},
-        {"ecs.workspace.", 0},
-        {"ecs.layout.closeGroup", 2},
-        {"ecs.layout.lock", 2},
-        {"ecs.layout.reset", 2},
-        {"ecs.session.", 3},
-        {"ecs.app.", 3},
+        {"ecs.layout.focus", ECSIPrefixSection_Navigation},
+        {"ecs.layout.move", ECSIPrefixSection_Navigation},
+        {"ecs.layout.nextTab", ECSIPrefixSection_Navigation},
+        {"ecs.workspace.", ECSIPrefixSection_Navigation},
+        {"ecs.layout.closeGroup", ECSIPrefixSection_Layout},
+        {"ecs.layout.lock", ECSIPrefixSection_Layout},
+        {"ecs.layout.reset", ECSIPrefixSection_Layout},
+        {"ecs.session.", ECSIPrefixSection_Session},
+        {"ecs.app.", ECSIPrefixSection_Session},
     };
 
     for (usz i = 0; i < SDL_arraysize(SECTIONS); i++)
@@ -448,12 +452,12 @@ static usz ECSIInput_SectionOf(const char *function)
         }
     }
 
-    return SDL_strncmp(function, "ecs.", 4) == 0 ? 1 : 4;
+    return SDL_strncmp(function, "ecs.", 4) == 0 ? ECSIPrefixSection_Panel : ECSIPrefixSection_More;
 }
 
 /// @brief Finds the prefix key that runs a function with a key and modifiers, and is not listed yet.
 /// @return Its position, or -1.
-static i64 ECSIInput_FindPrefixKey(const char *function, u32 key, u32 modifiers, const bool *listed)
+static i64 ECSIInput_FindPrefixKey(const char *function, u32 key, u32 modifiers, const bool *listedKeys)
 {
     const ECSIKeyBinding *keys = ECSIKeys_GetPrefixKeys();
 
@@ -461,7 +465,7 @@ static i64 ECSIInput_FindPrefixKey(const char *function, u32 key, u32 modifiers,
     {
         const ECSIKeyBinding *binding = &keys[i];
 
-        if (!listed[i] && binding->key == key && binding->modifiers == modifiers && SDL_strcmp(binding->function, function) == 0)
+        if (!listedKeys[i] && binding->key == key && binding->modifiers == modifiers && SDL_strcmp(binding->function, function) == 0)
         {
             return (i64)i;
         }
@@ -472,7 +476,7 @@ static i64 ECSIInput_FindPrefixKey(const char *function, u32 key, u32 modifiers,
 
 /// @brief Folds a prefix key into one line with its family, when the family's four functions run on the four arrows with the same modifiers.
 /// @return The line's key text, such as "Shift+Arrows", made for the list; or nullptr if the key does not fold.
-static char *ECSIInput_FoldArrows(usz index, bool *listed, const char **retDescription)
+static char *ECSIInput_FoldArrows(usz index, bool *listedKeys, const char **retDescription)
 {
     const ECSIKeyBinding *binding = &ECSIKeys_GetPrefixKeys()[index];
     const SDL_Keycode arrows[] = {SDLK_LEFT, SDLK_RIGHT, SDLK_UP, SDLK_DOWN};
@@ -484,7 +488,7 @@ static char *ECSIInput_FoldArrows(usz index, bool *listed, const char **retDescr
 
         for (usz i = 0; i < 4; i++)
         {
-            members[i] = ECSIInput_FindPrefixKey(OPENECS_ARROW_FAMILIES[family].functions[i], arrows[i], binding->modifiers, listed);
+            members[i] = ECSIInput_FindPrefixKey(OPENECS_ARROW_FAMILIES[family].functions[i], arrows[i], binding->modifiers, listedKeys);
             complete = complete && members[i] >= 0;
         }
 
@@ -505,7 +509,7 @@ static char *ECSIInput_FoldArrows(usz index, bool *listed, const char **retDescr
 
         for (usz i = 0; i < 4; i++)
         {
-            listed[members[i]] = true;
+            listedKeys[members[i]] = true;
         }
 
         *retDescription = OPENECS_ARROW_FAMILIES[family].description;
@@ -515,9 +519,10 @@ static char *ECSIInput_FoldArrows(usz index, bool *listed, const char **retDescr
     return nullptr;
 }
 
-/// @brief Folds every key that switches workspaces into one line, from the first workspace's key to the last one's, such as "1...0".
+/// @brief Folds the keys of one workspace function family into one line, from the first workspace's key to the last one's, such as "1...0" or "Shift+1...0".
+/// @param start Start of the family's names; the workspace's number follows.
 /// @return The line's key text, made for the list.
-static char *ECSIInput_FoldWorkspaces(bool *listed)
+static char *ECSIInput_FoldWorkspaces(const char *start, bool *listedKeys)
 {
     const char *firstKey = nullptr;
     const char *lastKey = nullptr;
@@ -530,13 +535,13 @@ static char *ECSIInput_FoldWorkspaces(bool *listed)
     {
         const char *function = keys[i].function;
 
-        if (SDL_strncmp(function, OPENECS_WORKSPACE_FUNCTION, SDL_strlen(OPENECS_WORKSPACE_FUNCTION)) != 0)
+        if (SDL_strncmp(function, start, SDL_strlen(start)) != 0)
         {
             continue;
         }
 
-        i64 number = SDL_strtoll(function + SDL_strlen(OPENECS_WORKSPACE_FUNCTION), nullptr, 10);
-        listed[i] = true;
+        i64 number = SDL_strtoll(function + SDL_strlen(start), nullptr, 10);
+        listedKeys[i] = true;
 
         if (firstKey == nullptr || number < first)
         {
@@ -551,14 +556,17 @@ static char *ECSIInput_FoldWorkspaces(bool *listed)
         }
     }
 
-    char *text = nullptr;
-
     if (first == last)
     {
         return SDL_strdup(firstKey);
     }
 
-    return SDL_asprintf(&text, "%s...%s", firstKey, lastKey) < 0 ? nullptr : text;
+    // the last key leaves out the modifiers it shares with the first: "Shift+1...0"
+    const char *plus = SDL_strrchr(lastKey, '+');
+    usz modifiersLength = plus == nullptr ? 0 : (usz)(plus - lastKey + 1);
+    const char *lastName = SDL_strncmp(firstKey, lastKey, modifiersLength) == 0 ? lastKey + modifiersLength : lastKey;
+    char *text = nullptr;
+    return SDL_asprintf(&text, "%s...%s", firstKey, lastName) < 0 ? nullptr : text;
 }
 
 /// @brief Orders two keys after the prefix by the order of their functions among the core's, then by their key texts. userData is the keys.
@@ -572,10 +580,9 @@ static int SDLCALL ECSIInput_CompareKeys(void *userData, const void *first, cons
     return orderA != orderB ? (orderA < orderB ? -1 : 1) : SDL_strcmp(a->text, b->text);
 }
 
-/// @brief Starts or ends waiting for the key after the prefix, and shows or hides the keys with what they do now, in sections.
-static void ECSIInput_SetPrefix(bool active)
+/// @brief Frees the lines of the list of prefix keys.
+static void ECSIInput_FreePrefixLines(void)
 {
-    INPUT.prefixActive = active;
     arrfree(INPUT.prefixLines);
 
     for (usz i = 0; i < arrlenu(INPUT.prefixTexts); i++)
@@ -584,88 +591,107 @@ static void ECSIInput_SetPrefix(bool active)
     }
 
     arrfree(INPUT.prefixTexts);
-
-    if (active)
-    {
-        const ECSIKeyBinding *keys = ECSIKeys_GetPrefixKeys();
-        ECSPanel focus = ECSILayout_GetFocus();
-        bool *listed = nullptr;
-        arrsetlen(listed, arrlenu(keys));
-        SDL_memset(listed, 0, arrlenu(listed) * sizeof(bool));
-
-        // the keys are listed in the order of the core's functions, whatever order the settings files give them in
-        usz *order = nullptr;
-        arrsetlen(order, arrlenu(keys));
-
-        for (usz i = 0; i < arrlenu(order); i++)
-        {
-            order[i] = i;
-        }
-
-        SDL_qsort_r(order, arrlenu(order), sizeof(usz), ECSIInput_CompareKeys, (void *)keys);
-
-        for (usz section = 0; section < SDL_arraysize(OPENECS_PREFIX_SECTIONS); section++)
-        {
-            // a section without keys has no heading
-            usz start = arrlenu(INPUT.prefixLines);
-            arrput(INPUT.prefixLines, nullptr);
-            arrput(INPUT.prefixLines, OPENECS_PREFIX_SECTIONS[section]);
-
-            for (usz position = 0; position < arrlenu(order); position++)
-            {
-                usz i = order[position];
-                const char *function = keys[i].function;
-
-                if (listed[i] || ECSIInput_SectionOf(function) != section || !ECSIMenus_Offers(function, focus))
-                {
-                    continue;
-                }
-
-                const char *description = nullptr;
-                bool workspace = SDL_strncmp(function, OPENECS_WORKSPACE_FUNCTION, SDL_strlen(OPENECS_WORKSPACE_FUNCTION)) == 0;
-                char *text = workspace ? ECSIInput_FoldWorkspaces(listed) : ECSIInput_FoldArrows(i, listed, &description);
-
-                if (text != nullptr)
-                {
-                    arrput(INPUT.prefixTexts, text);
-                }
-
-                arrput(INPUT.prefixLines, text != nullptr ? text : keys[i].text);
-                arrput(INPUT.prefixLines, workspace ? "Switch to workspace" : description != nullptr ? description
-                                                                                                  : ECSIMenus_LabelOf(function, focus));
-            }
-
-            if (arrlenu(INPUT.prefixLines) == start + 2)
-            {
-                arrsetlen(INPUT.prefixLines, start);
-            }
-        }
-
-        arrfree(listed);
-        arrfree(order);
-        arrput(INPUT.prefixLines, "Escape");
-        arrput(INPUT.prefixLines, "Cancel");
-    }
-
-    ECSIWindow_ShowPrefixKeys(INPUT.prefixLines, arrlenu(INPUT.prefixLines) / 2);
 }
 
-/// @brief Checks the modifiers of a key press against a binding's. AltGr is never part of a binding.
-static bool ECSIInput_ModifiersMatch(u32 modifiers, u32 expected)
+/// @brief Ends waiting for the key after the prefix, and hides the list of keys.
+static void ECSIInput_EndPrefix(void)
 {
-    return (modifiers & ECSModifier_AltGr) == 0 && modifiers == expected;
+    INPUT.prefixActive = false;
+    ECSIInput_FreePrefixLines();
+    ECSIWindow_ShowPrefixKeys(nullptr, 0);
+}
+
+/// @brief Starts waiting for the key after the prefix, and shows the keys with what they do now, in sections.
+static void ECSIInput_StartPrefix(void)
+{
+    INPUT.prefixActive = true;
+    ECSIInput_FreePrefixLines();
+
+    const ECSIKeyBinding *keys = ECSIKeys_GetPrefixKeys();
+    ECSPanel focus = ECSILayout_GetFocus();
+    bool *listedKeys = nullptr;
+    arrsetlen(listedKeys, arrlenu(keys));
+    SDL_memset(listedKeys, 0, arrlenu(listedKeys) * sizeof(bool));
+
+    // the keys are listed in the order of the core's functions, whatever order the settings files give them in
+    usz *order = nullptr;
+    arrsetlen(order, arrlenu(keys));
+
+    for (usz i = 0; i < arrlenu(order); i++)
+    {
+        order[i] = i;
+    }
+
+    SDL_qsort_r(order, arrlenu(order), sizeof(usz), ECSIInput_CompareKeys, (void *)keys);
+
+    for (ECSIPrefixSection section = 0; section < ECSIPrefixSection_Count; section++)
+    {
+        // a section without keys has no heading
+        usz start = arrlenu(INPUT.prefixLines);
+        arrput(INPUT.prefixLines, nullptr);
+        arrput(INPUT.prefixLines, OPENECS_PREFIX_SECTIONS[section]);
+
+        for (usz position = 0; position < arrlenu(order); position++)
+        {
+            usz i = order[position];
+            const char *function = keys[i].function;
+
+            if (listedKeys[i] || ECSIInput_SectionOf(function) != section || !ECSIMenus_Offers(function, focus))
+            {
+                continue;
+            }
+
+            const char *description = nullptr;
+            char *text = nullptr;
+
+            if (SDL_strncmp(function, OPENECS_SWITCH_FUNCTION, SDL_strlen(OPENECS_SWITCH_FUNCTION)) == 0)
+            {
+                text = ECSIInput_FoldWorkspaces(OPENECS_SWITCH_FUNCTION, listedKeys);
+                description = "Switch to workspace";
+            }
+            else if (SDL_strncmp(function, OPENECS_MOVE_FUNCTION, SDL_strlen(OPENECS_MOVE_FUNCTION)) == 0)
+            {
+                text = ECSIInput_FoldWorkspaces(OPENECS_MOVE_FUNCTION, listedKeys);
+                description = "Move panel to workspace";
+            }
+            else
+            {
+                text = ECSIInput_FoldArrows(i, listedKeys, &description);
+            }
+
+            if (text != nullptr)
+            {
+                arrput(INPUT.prefixTexts, text);
+            }
+
+            arrput(INPUT.prefixLines, text != nullptr ? text : keys[i].text);
+            arrput(INPUT.prefixLines, description != nullptr ? description : ECSIMenus_LabelOf(function, focus));
+        }
+
+        if (arrlenu(INPUT.prefixLines) == start + 2)
+        {
+            arrsetlen(INPUT.prefixLines, start);
+        }
+    }
+
+    arrfree(listedKeys);
+    arrfree(order);
+    arrput(INPUT.prefixLines, "Escape");
+    arrput(INPUT.prefixLines, "Cancel");
+
+    ECSIWindow_ShowPrefixKeys(INPUT.prefixLines, arrlenu(INPUT.prefixLines) / 2);
 }
 
 /// @brief Runs the function of the key pressed after the core prefix. Escape cancels.
 static void ECSIInput_RunPrefixKey(SDL_Keycode key, u32 modifiers)
 {
-    ECSIInput_SetPrefix(false);
+    ECSIInput_EndPrefix();
 
     const ECSIKeyBinding *keys = ECSIKeys_GetPrefixKeys();
 
     for (usz i = 0; key != SDLK_ESCAPE && i < arrlenu(keys); i++)
     {
-        if (keys[i].key == key && ECSIInput_ModifiersMatch(modifiers, keys[i].modifiers))
+        if (keys[i].key == key && keys[i].modifiers == modifiers)
         {
             ECSIServices_CallBound(keys[i].function, ECSILayout_GetFocus());
             return;
@@ -790,14 +816,7 @@ void ECSIInput_Terminate(void)
 {
     ECSIPanels_SetAsk(nullptr);
     ECSIInput_ForgetClipboard();
-    arrfree(INPUT.prefixLines);
-
-    for (usz i = 0; i < arrlenu(INPUT.prefixTexts); i++)
-    {
-        SDL_free(INPUT.prefixTexts[i]);
-    }
-
-    arrfree(INPUT.prefixTexts);
+    ECSIInput_FreePrefixLines();
     ECSIInput_EndDataDrag();
     ECSIInput_ForgetDropped();
 
@@ -841,7 +860,7 @@ static bool ECSIInput_IsDoubledRepeat(const SDL_Event *event)
     {
         INPUT.releasedKey = event->key.key;
         INPUT.releasedAt = event->key.timestamp;
-        INPUT.imeRepeatKey = SDLK_UNKNOWN;
+        INPUT.inputMethodRepeatKey = SDLK_UNKNOWN;
         return false;
     }
 
@@ -853,11 +872,11 @@ static bool ECSIInput_IsDoubledRepeat(const SDL_Event *event)
     // a press of the key just released, with the release's own time, is the input method's repeat; a person's new press comes later
     if (!event->key.repeat)
     {
-        INPUT.imeRepeatKey = event->key.key == INPUT.releasedKey && event->key.timestamp == INPUT.releasedAt ? event->key.key : SDLK_UNKNOWN;
+        INPUT.inputMethodRepeatKey = event->key.key == INPUT.releasedKey && event->key.timestamp == INPUT.releasedAt ? event->key.key : SDLK_UNKNOWN;
         return false;
     }
 
-    return INPUT.imeRepeatKey != SDLK_UNKNOWN && event->key.key == INPUT.imeRepeatKey;
+    return INPUT.inputMethodRepeatKey != SDLK_UNKNOWN && event->key.key == INPUT.inputMethodRepeatKey;
 }
 
 bool ECSIInput_Handle(const SDL_Event *event)
@@ -954,7 +973,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
         if (INPUT.prefixActive)
         {
-            ECSIInput_SetPrefix(false);
+            ECSIInput_EndPrefix();
         }
 
         // on a tab or grip, the middle button closes the panel and the right button opens its menu; on the rest of a tab row, the right button opens the group's menu
@@ -963,7 +982,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
         if (row != nullptr)
         {
-            ECSIMenus_Open(row, button->x, button->y, true);
+            ECSIMenus_OpenGroupMenu(row, button->x, button->y);
             break;
         }
 
@@ -971,7 +990,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
         {
             if (button->button == SDL_BUTTON_RIGHT)
             {
-                ECSIMenus_Open(tab, button->x, button->y, false);
+                ECSIMenus_OpenPanelMenu(tab, button->x, button->y);
             }
             else if (button->button == SDL_BUTTON_MIDDLE && !ECSILayout_IsLocked(tab))
             {
@@ -992,7 +1011,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
         if (panel != nullptr)
         {
-            ECSIInput_Focus(panel);
+            ECSILayout_SetFocus(panel);
             INPUT.pointerPanel = panel;
 
             ECSIInput_SendPointer(panel, ECSPanelEventType_PointerDown, x, y, button->button);
@@ -1032,7 +1051,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
         // in hover mode, only real pointer movement over a panel moves focus; dividers and tab rows are outside every panel
         if (INPUT.pointerPanel == nullptr && SDL_strcmp(ECSValue_GetString(ECSSetting_Get("ecs.focus"), ""), "hover") == 0)
         {
-            ECSIInput_Focus(panel);
+            ECSILayout_SetFocus(panel);
         }
 
         ECSIInput_SendPointer(panel, ECSPanelEventType_PointerMove, x, y, 0);
@@ -1056,7 +1075,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
         if (clicked != nullptr)
         {
-            ECSIMenus_Open(clicked, button->x, button->y, false);
+            ECSIMenus_OpenPanelMenu(clicked, button->x, button->y);
         }
 
         if (ECSIInput_PointerPanel() != nullptr)
@@ -1073,9 +1092,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
         const SDL_MouseWheelEvent *wheel = &event->wheel;
 
         // over a tab row, the wheel scrolls the tabs; down and right go toward the last tab
-        f32 direction = wheel->direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
-
-        if (ECSIWindow_ScrollTabs(wheel->mouse_x, wheel->mouse_y, (wheel->x - wheel->y) * direction))
+        if (ECSIWindow_ScrollTabs(wheel->mouse_x, wheel->mouse_y, (wheel->x - wheel->y) * ECSIInput_GetWheelDirection(wheel)))
         {
             break;
         }
@@ -1086,7 +1103,8 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
         if (panel != nullptr)
         {
-            ECSIInput_SendWheel(panel, wheel, x, y);
+            ECSPanelEvent panelWheel = ECSIInput_MakeWheelEvent(wheel, x - panel->x, y - panel->y);
+            ECSIPanel_PostEvent(panel, &panelWheel);
         }
 
         break;
@@ -1096,16 +1114,17 @@ bool ECSIInput_Handle(const SDL_Event *event)
     {
         const SDL_KeyboardEvent *key = &event->key;
 
+        // AltGr is never part of a key combination, so a key pressed with AltGr held matches neither the prefix nor a binding, and goes to the panel as text
+        u32 modifiers = ECSIInput_ConvertModifiers(key->mod);
+
         // a key that the core or a binding uses types no text; only a key the focused panel gets does
         INPUT.swallowText = true;
 
         if (INPUT.prefixActive)
         {
-            bool modifierKey = (key->key >= SDLK_LCTRL && key->key <= SDLK_RGUI) || key->key == SDLK_MODE;
-
-            if (!modifierKey && !key->repeat)
+            if (!ECSIInput_IsModifierKey(key->key) && !key->repeat)
             {
-                ECSIInput_RunPrefixKey(key->key, ECSIInput_Modifiers(key->mod));
+                ECSIInput_RunPrefixKey(key->key, modifiers);
             }
 
             break;
@@ -1123,18 +1142,16 @@ bool ECSIInput_Handle(const SDL_Event *event)
         }
 
         // the prefix is read when a key is pressed, so a changed prefix always wins
-        if (ECSIKeys_IsPrefix(key->key, ECSIInput_Modifiers(key->mod)))
+        if (ECSIKeys_IsPrefix(key->key, modifiers))
         {
-            ECSIInput_SetPrefix(true);
+            ECSIInput_StartPrefix();
             break;
         }
 
         // a binding wins over the focused panel's own handling of the key, except while the panel takes text input: then a key without Ctrl, Alt or Super is the panel's, so typing never runs a binding
         ECSPanel focus = ECSILayout_GetFocus();
-        bool modifierKey = (key->key >= SDLK_LCTRL && key->key <= SDLK_RGUI) || key->key == SDLK_MODE;
-        u32 modifiers = ECSIInput_Modifiers(key->mod);
         bool typing = focus != nullptr && focus->textInput && (modifiers & (ECSModifier_Ctrl | ECSModifier_Alt | ECSModifier_Super)) == 0;
-        const char *function = modifierKey || typing || (modifiers & ECSModifier_AltGr) != 0 ? nullptr : ECSIKeys_Find(key->key, modifiers, focus);
+        const char *function = ECSIInput_IsModifierKey(key->key) || typing ? nullptr : ECSIKeys_Find(key->key, modifiers, focus);
 
         if (function != nullptr)
         {
@@ -1143,7 +1160,8 @@ bool ECSIInput_Handle(const SDL_Event *event)
         else if (focus != nullptr)
         {
             INPUT.swallowText = false;
-            ECSIInput_SendKey(focus, ECSPanelEventType_KeyDown, key);
+            ECSPanelEvent keyDown = ECSIInput_MakeKeyEvent(ECSPanelEventType_KeyDown, key);
+            ECSIPanel_PostEvent(focus, &keyDown);
         }
 
         break;
@@ -1155,7 +1173,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
         if (!INPUT.swallowText && focus != nullptr && focus->textInput && event->text.text != nullptr)
         {
-            ECSIPanel_PostText(focus, event->text.text, ECSIInput_Modifiers(SDL_GetModState()));
+            ECSIPanel_PostText(focus, event->text.text, ECSIInput_ConvertModifiers(SDL_GetModState()));
         }
 
         INPUT.swallowText = false;
@@ -1193,14 +1211,15 @@ bool ECSIInput_Handle(const SDL_Event *event)
         ECSPanel focus = ECSILayout_GetFocus();
 
         // a key with Ctrl, Alt or Super types no text, so text after it is not its own, such as an input method's, which comes without a key press
-        if ((ECSIInput_Modifiers(event->key.mod) & (ECSModifier_Ctrl | ECSModifier_Alt | ECSModifier_Super)) != 0)
+        if ((ECSIInput_ConvertModifiers(event->key.mod) & (ECSModifier_Ctrl | ECSModifier_Alt | ECSModifier_Super)) != 0)
         {
             INPUT.swallowText = false;
         }
 
         if (focus != nullptr && !INPUT.prefixActive)
         {
-            ECSIInput_SendKey(focus, ECSPanelEventType_KeyUp, &event->key);
+            ECSPanelEvent keyUp = ECSIInput_MakeKeyEvent(ECSPanelEventType_KeyUp, &event->key);
+            ECSIPanel_PostEvent(focus, &keyUp);
         }
 
         break;
@@ -1216,7 +1235,7 @@ bool ECSIInput_Handle(const SDL_Event *event)
 void ECSIInput_UpdateTextInput(void)
 {
     ECSPanel focus = ECSILayout_GetFocus();
-    SDL_Window *window = ECSIWindow_OfPanel(focus);
+    SDL_Window *window = ECSIWindow_GetPanelWindow(focus);
     bool on = focus != nullptr && focus->textInput && focus->fault == nullptr;
     SDL_Rect area = {0};
 
@@ -1444,10 +1463,10 @@ static i32 ECSIInput_DialogKey(ECSIDialogView *dialog, const SDL_KeyboardEvent *
 
 /// @brief Handles an event while a message dialog waits.
 /// @param window The SDL id of the dialog's OS window.
-/// @param pressed The button the left button was pressed on, or -1; a click is a press and a release on the same button.
-/// @param kept stb_ds array of the OS windows' events, such as resizes, which the main loop gets after the answer; the rest of the input is for the dialog only, so it is dropped.
+/// @param pressedButton The button the left button was pressed on, or -1; a click is a press and a release on the same button.
+/// @param keptEvents stb_ds array of the OS windows' events, such as resizes, which the main loop gets after the answer; the rest of the input is for the dialog only, so it is dropped.
 /// @return The pressed button, or -1 while the dialog waits.
-static i32 ECSIInput_DialogEvent(ECSIDialogView *dialog, const SDL_Event *event, SDL_WindowID window, i32 *pressed, SDL_Event **kept)
+static i32 ECSIInput_DialogEvent(ECSIDialogView *dialog, const SDL_Event *event, SDL_WindowID window, i32 *pressedButton, SDL_Event **keptEvents)
 {
     i32 last = (i32)dialog->count - 1;
 
@@ -1461,14 +1480,14 @@ static i32 ECSIInput_DialogEvent(ECSIDialogView *dialog, const SDL_Event *event,
         return -1;
 
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        *pressed = event->button.windowID == window && event->button.button == SDL_BUTTON_LEFT ? ECSIWindow_DialogButtonAt(event->button.x, event->button.y) : -1;
+        *pressedButton = event->button.windowID == window && event->button.button == SDL_BUTTON_LEFT ? ECSIWindow_DialogButtonAt(event->button.x, event->button.y) : -1;
         return -1;
 
     case SDL_EVENT_MOUSE_BUTTON_UP:
     {
-        bool click = event->button.windowID == window && event->button.button == SDL_BUTTON_LEFT && *pressed >= 0 && ECSIWindow_DialogButtonAt(event->button.x, event->button.y) == *pressed;
-        i32 button = click ? *pressed : -1;
-        *pressed = -1;
+        bool click = event->button.windowID == window && event->button.button == SDL_BUTTON_LEFT && *pressedButton >= 0 && ECSIWindow_DialogButtonAt(event->button.x, event->button.y) == *pressedButton;
+        i32 button = click ? *pressedButton : -1;
+        *pressedButton = -1;
         return button;
     }
 
@@ -1482,7 +1501,7 @@ static i32 ECSIInput_DialogEvent(ECSIDialogView *dialog, const SDL_Event *event,
     default:
         if (event->type >= SDL_EVENT_WINDOW_FIRST && event->type <= SDL_EVENT_WINDOW_LAST)
         {
-            arrput(*kept, *event);
+            arrput(*keptEvents, *event);
         }
 
         return -1;
@@ -1520,9 +1539,9 @@ i32 ECSIInput_Ask(const char *title, const char *message, const char *const *but
 
     // the core draws the dialog and waits here, as a system dialog would, but needs no other program: on Wayland, SDL's system dialogs need zenity, whose window a compositor may never show
     INPUT.dialog = &dialog;
-    SDL_Event *kept = nullptr; // stb_ds array of the OS windows' events, which the main loop gets after the answer
+    SDL_Event *keptEvents = nullptr; // stb_ds array of the OS windows' events, which the main loop gets after the answer
     i32 answer = -1;
-    i32 pressed = -1;
+    i32 pressedButton = -1;
 
     while (answer < 0)
     {
@@ -1541,19 +1560,19 @@ i32 ECSIInput_Ask(const char *title, const char *message, const char *const *but
 
         for (bool waiting = SDL_WaitEventTimeout(&event, INPUT.TestWait != nullptr ? INPUT.TestWait() : -1); waiting && answer < 0; waiting = SDL_PollEvent(&event))
         {
-            answer = ECSIInput_DialogEvent(&dialog, &event, window, &pressed, &kept);
+            answer = ECSIInput_DialogEvent(&dialog, &event, window, &pressedButton, &keptEvents);
         }
     }
 
     ECSIWindow_ShowDialog(nullptr);
     INPUT.dialog = nullptr;
 
-    for (usz i = 0; i < arrlenu(kept); i++)
+    for (usz i = 0; i < arrlenu(keptEvents); i++)
     {
-        SDL_PushEvent(&kept[i]);
+        SDL_PushEvent(&keptEvents[i]);
     }
 
-    arrfree(kept);
+    arrfree(keptEvents);
     return answer;
 }
 

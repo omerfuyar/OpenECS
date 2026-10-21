@@ -159,15 +159,16 @@ bool ECSIPopup_Draw(ECSPopup popup)
 {
     SDL_assert(popup != nullptr);
 
-    i32 width = (i32)SDL_max(1.0f, SDL_roundf(popup->desc.width));
-    i32 height = (i32)SDL_max(1.0f, SDL_roundf(popup->desc.height));
+    i32 width = ECSIPanel_ToPixels(popup->desc.width);
+    i32 height = ECSIPanel_ToPixels(popup->desc.height);
+    bool resized = popup->pixels == nullptr || popup->pixels->w != width || popup->pixels->h != height;
 
-    if (!popup->needsDraw && popup->pixels != nullptr && popup->pixels->w == width && popup->pixels->h == height)
+    if (!popup->needsDraw && !resized)
     {
         return false;
     }
 
-    if (popup->pixels == nullptr || popup->pixels->w != width || popup->pixels->h != height)
+    if (resized)
     {
         SDL_DestroySurface(popup->pixels);
         popup->pixels = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_ARGB8888);

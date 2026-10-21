@@ -134,7 +134,6 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Layout     | Workspaces and their layout trees: operations, tidying, sizes, focus, closed panels and saving.                                                                |
 |           | Popups     | Popups, the pixels each popup draws, and its events (4.6).                                                                                                     |
 |           | Window     | OS windows and their renderers, frame pacing, and the core's own interface: tab rows, grips, menus, dragging and hit testing. The only module that calls Clay. |
-|           | SystemDrag | A panel's drag between OS windows that the compositor carries, on Wayland (6.10). The only module that calls libwayland-client.                               |
 |           | Keys       | Key combinations, the core prefix and the keys after it, and every key binding (7.3 to 7.5, 7.8).                                                              |
 |           | Menus      | The core's bindable functions, and the panel and group menus that offer them (6.8).                                                                            |
 |           | Input      | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input, the clipboard, dialogs.                                         |
@@ -461,8 +460,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - `ecs.layout.popOut` pops out the focused panel. A panel alone in its OS window, and a panel of a locked group, stay. Code pops a panel out with the zone `ECSZone_Window`, in Lua `"window"`: `ECSLayout_Open(plugin, &panel, "text.editor", NULL, NULL, ECSZone_Window)` or `ECSLayout_Move(panel, NULL, ECSZone_Window)`.
 - Inside a pop-out window, every layout operation works as in the main window: splits, tabs, maximize, dragging and docking along its edges. Panels move between OS windows by dragging or by code.
 - A dragged panel lands in the OS window under the pointer. The core finds it from the windows' places on the screen. Where windows overlap, the one that last opened or got the focus counts as in front, as SDL does not tell the windows' order.
-- On Wayland, an application cannot know where its windows are, and while the button is held only the window that got the press sees the pointer. So once the pointer leaves that window, the core hands the drag to the compositor as a drag and drop of the program's own (`wl_data_device`, in the module SystemDrag). The compositor tells each of the program's windows when the pointer is over it, so the drop is marked there as in any window. Released outside the program's windows, the panel pops out; a panel alone in its OS window stays in it.
-- Where that drag cannot start, as when libwayland-client is missing, a panel dropped outside the window it was dragged from lands where the pointer enters one of the program's windows within 400 ms, and pops out otherwise.
+- On Wayland, an application cannot know where its windows are, and while the button is held only the window that got the press sees the pointer. So a panel dropped outside the window it was dragged from lands where the pointer enters one of the program's windows within 400 ms, and pops out otherwise; a panel alone in its OS window stays in it. The drop place is not marked in the other windows.
 - Each OS window has its own renderer and Clay context. Only the main window's renderer waits for vsync (3.1), so presenting several OS windows does not wait once for each.
 - A pop-out window closes when its last panel leaves it. Its close button closes its panels, after asking about unsaved work (4.5); Cancel keeps the window. Closing the main window quits, after asking about unsaved work; SDL's own quit when the last window closes is off (`SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE`), as it would answer that question.
 - When the main window's last panel leaves it while pop-out windows have panels, the first pop-out window's tree moves into the main window, so the main window is never empty. When the user closes the last panel of the tool, the program quits, and the tool's last session is removed, so the next start opens the preset.
@@ -509,26 +507,27 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The prefix is the setting `ecs.prefix`. It is one key combination, never a whole modifier.
 - The keys after the prefix are the `prefix` tables of the keys tables (7.8). Each layer adds to the keys of the layers below, and `false` removes a key. So presets and the user can add keys that run service functions.
 - While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's functions on the focused panel), Layout (closing a group, locking it and resetting the layout), Session (saving and opening sessions, and quitting) and More (service functions, such as the settings, the panel list and the launcher). Within a section, the keys follow the order of the core's functions below. Like the menus (6.8), the list leaves out what cannot be done now.
-- Keys of one kind share a line. The keys that switch workspaces show the first workspace's key to the last one's: `1...0`. Focus and move show `Arrows` and `Shift+Arrows` when their four functions are on the four arrows with the same modifiers.
+- Keys of one kind share a line. The keys that switch workspaces show the first workspace's key to the last one's: `1...0`, and the keys that move the focused panel to a workspace the same way: `Shift+1...0`. Focus and move show `Arrows` and `Shift+Arrows` when their four functions are on the four arrows with the same modifiers.
 - The prefix and the key after it are the only key sequence the core handles.
 - The core's functions after the prefix, in the order the list shows them. Their keys are in the `prefix` table of the core's settings file (12.1).
 
-  | Function                                            | Action                                                                                                   |
-  | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-  | `ecs.layout.focusLeft` and so on                    | Move focus                                                                                               |
-  | `ecs.layout.moveLeft` and so on                     | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
-  | `ecs.layout.nextTab`                                | Show the next tab                                                                                        |
-  | `ecs.layout.maximize`                               | Maximize or restore                                                                                      |
-  | `ecs.layout.popOut`                                 | Pop out                                                                                                  |
-  | `ecs.layout.close`                                  | Close the panel                                                                                          |
-  | `ecs.layout.closeGroup`                             | Close the group's panels                                                                                 |
-  | `ecs.layout.lock`                                   | Lock or unlock the group                                                                                 |
-  | `ecs.layout.reopen`                                 | Reopen the last closed panel                                                                             |
-  | `ecs.panel.restart`                                 | Restart the failed panel                                                                                 |
-  | `ecs.session.save`                                  | Save the session to a file, which a save dialog asks for (13.4)                                          |
-  | `ecs.session.open`                                  | Open a session or a preset, which an open dialog asks for (13.5)                                         |
-  | `ecs.workspace.switch1` to `ecs.workspace.switch10` | Switch to workspace 1 to 10                                                                              |
-  | `ecs.workspace.menu`                                | Show the menu of workspaces (6.8)                                                                        |
+  | Function                                                        | Action                                                                                                   |
+  | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+  | `ecs.layout.focusLeft` and so on                                | Move focus                                                                                               |
+  | `ecs.layout.moveLeft` and so on                                 | Move the focused panel into the neighbouring group, or along that edge of the OS window if there is none |
+  | `ecs.layout.nextTab`                                            | Show the next tab                                                                                        |
+  | `ecs.layout.maximize`                                           | Maximize or restore                                                                                      |
+  | `ecs.layout.popOut`                                             | Pop out                                                                                                  |
+  | `ecs.layout.close`                                              | Close the panel                                                                                          |
+  | `ecs.layout.closeGroup`                                         | Close the group's panels                                                                                 |
+  | `ecs.layout.lock`                                               | Lock or unlock the group                                                                                 |
+  | `ecs.layout.reopen`                                             | Reopen the last closed panel                                                                             |
+  | `ecs.panel.restart`                                             | Restart the failed panel                                                                                 |
+  | `ecs.session.save`                                              | Save the session to a file, which a save dialog asks for (13.4)                                          |
+  | `ecs.session.open`                                              | Open a session or a preset, which an open dialog asks for (13.5)                                         |
+  | `ecs.workspace.switch1` to `ecs.workspace.switch10`             | Switch to workspace 1 to 10                                                                              |
+  | `ecs.layout.moveToWorkspace1` to `ecs.layout.moveToWorkspace10` | Move the focused panel to workspace 1 to 10                                                              |
+  | `ecs.workspace.menu`                                            | Show the menu of workspaces (6.8)                                                                        |
 
 - Escape after the prefix cancels. It is not a function, so it always works.
 
@@ -1120,7 +1119,6 @@ OpenECS follows the XDG Base Directory specification:
 | libffi                      | core: calls by signature                              |
 | shu                         | core: basic types and results                         |
 | stb (`stb_ds.h`)            | core: dynamic arrays and hash maps                    |
-| libwayland-client           | core on Linux: panel drags on Wayland (6.10)          |
 | SDL3_image                  | not used; the core loads PNG files with `SDL_LoadPNG` |
 | SDL3_mixer, SDL3_net, cgltf | not core; plugins may compile them in (20.1)          |
 
@@ -1128,7 +1126,6 @@ OpenECS follows the XDG Base Directory specification:
 
 - SDL3 and SDL3_ttf are shared libraries shipped next to the executable. On Linux it finds them through an `$ORIGIN` run path; Windows finds a program's DLLs in its own folder. So the core and every plugin share one copy of SDL.
 - Lua, Clay, libffi and stb are linked statically into the executable.
-- libwayland-client is not linked. On Wayland, the core loads it with `SDL_LoadObject` when the first OS window opens, as SDL does, so OpenECS also runs where it is missing. The build uses its headers when they are installed, and leaves the Wayland drag out without them.
 - libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64 and Windows on x86_64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default, and with `OPENECS_CORE` defined, so `OPENECS_EXPORT` exports.
 - Native plugins are shared libraries, built against the plugin header only. On Linux they do not link against the core; their calls to it are resolved when they are loaded. A DLL on Windows cannot call into the executable without its import library, so there the executable writes `lib/libOpenECS.a`, and plugins link it.
@@ -1230,7 +1227,7 @@ OpenECS follows the XDG Base Directory specification:
 
 - OpenECS supports X11 and Wayland, through SDL3.
 - OpenECS runs on x86_64 and aarch64 processors (17.2).
-- On Wayland, a panel dragged out of its window goes on as a drag that the compositor carries, so the program's other windows see it and mark the drop (6.10). Only the position of a new window cannot be chosen.
+- On Wayland, a panel dropped outside its window lands where the pointer enters another of the program's windows, and its drop place is not marked there (6.10). The position of a new window cannot be chosen.
 - Some Wayland desktops draw no window frames; OpenECS draws its own (6.11).
 - Popups are positioned relative to their parent window, which Wayland supports.
 

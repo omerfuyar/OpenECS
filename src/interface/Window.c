@@ -1,6 +1,5 @@
 #include "interface/Window.h"
 
-#include "interface/SystemDrag.h"
 #include "runtime/Settings.h"
 
 #include "SDL3/SDL.h"
@@ -28,8 +27,6 @@
 #define OPENECS_RESIZE_EDGE 6.0f
 /// @brief How long a panel dropped outside its OS window waits for the pointer to enter another one, where the system does not tell where windows are, in nanoseconds.
 #define OPENECS_PENDING_DROP_NANOSECONDS (400 * SDL_NS_PER_MS)
-/// @brief Longest wait of the main loop while the system carries a drag, in milliseconds.
-#define OPENECS_SYSTEM_DRAG_WAIT 8
 /// @brief Most menus open at once: the panel menu and its submenus.
 #define OPENECS_MENU_DEPTH 4
 
@@ -91,11 +88,11 @@ typedef enum ECSIIcon
 } ECSIIcon;
 
 /// @brief A tab drawn in the last frame, so a click can find it.
-typedef struct ECSITabRef
+typedef struct ECSIDrawnTab
 {
     ECSINode *group;
     usz index;
-} ECSITabRef;
+} ECSIDrawnTab;
 
 /// @brief A shown menu. Each line pair is an entry's key text and its label.
 typedef struct ECSIMenuView
@@ -118,7 +115,7 @@ typedef struct ECSIOSWindow
     void *clayMemory;
     f32 width; // in layout units
     f32 height;
-    ECSITabRef *tabs; // stb_ds array of the tabs drawn in its last frame
+    ECSIDrawnTab *tabs; // stb_ds array of the tabs drawn in its last frame
     u64 raised;       // when it last opened or got the focus, counted across the OS windows; the highest is in front
 } ECSIOSWindow;
 
@@ -133,16 +130,17 @@ typedef struct ECSIPopupView
 } ECSIPopupView;
 
 /// @brief The GPU device that every OS window's renderer and every GPU panel shares. An offscreen renderer owns it, so it outlives the OS windows and the plugins, which release their GPU objects first.
-static struct
+typedef struct ECSIGpu
 {
     SDL_Renderer *owner;   // the offscreen GPU renderer that made the device
     SDL_GPUDevice *device; // nullptr without a GPU renderer
-} GPU;
+} ECSIGpu;
 
 static struct
 {
     ECSIOSWindow **windows; // stb_ds array: the main window, then the pop-out windows
-    ECSIOSWindow *event;    // the OS window of the pointer event being handled; positions are in its layout units
+    ECSIGpu gpu;            // kept from ECSIWindow_Terminate to ECSIWindow_DestroyDevice
+    ECSIOSWindow *eventWindow; // the OS window of the pointer event being handled; positions are in its layout units
     ECSPopup eventPopup;    // the popup whose SDL popup window has the pointer event being handled, or nullptr
     bool noPopupWindows;    // the video driver has no popup windows, so popups are drawn inside the OS windows
     ECSIOSWindow *gripWindow;
@@ -152,7 +150,7 @@ static struct
     u32 focusRoot;            // the root of the focused panel in the last frame, so its OS window comes forward when the focus moves to it
     char *title;              // of every OS window
     char *hint;               // what the preset tells a new user, shown after the title in the title bar OpenECS draws, or nullptr
-    TTF_Font *fonts[1];
+    TTF_Font *font;           // the core's font; Clay's renderer takes it as a list of one
 
     i64 framePercent;     // frame rate as a percentage of the refresh rate, from ecs.vsync; 0 for no vsync and no limit
     u64 frameNanoseconds; // shortest time between frames, from the display's refresh rate; 0 for no limit
@@ -175,15 +173,17 @@ static struct
     f32 dragStartY;
     ECSIDrop drop;     // where the dragged panel lands now
     bool dropOutside;  // the pointer is outside every OS window whose place is known, as on Wayland outside the window it was dragged from
-    bool systemDrag;   // the system carries the drag, as on Wayland once the pointer leaves the window it was dragged from (SystemDrag)
     SDL_FRect dropRect; // the highlight of the drop place
 
-    // where the system does not tell where windows are, as on Wayland, a panel released outside its OS window lands where the pointer enters next
-    ECSPanel pendingPanel;   // the released panel, or nullptr
-    bool pendingGroup;       // its whole group was dragged
-    ECSIOSWindow *pendingFrom; // the OS window it was dragged from
-    bool pendingPopOut;        // it pops out if no other OS window takes it; not when it is alone in its OS window already
-    u64 pendingUntil;        // when it pops out instead
+    // on Wayland, which does not tell where windows are, a panel released outside its OS window lands where the pointer enters next
+    struct
+    {
+        ECSPanel panel;       // the released panel, or nullptr
+        bool group;           // its whole group was dragged
+        ECSIOSWindow *from;   // the OS window it was dragged from
+        ECSIDrop drop;        // where it lands if no other OS window takes it: a pop-out, or nowhere when it is alone in its OS window already
+        u64 until;            // when it lands there
+    } pending;
 
     const char *dataType; // type of the data being dragged, or nullptr
     f32 dataX;            // the pointer's position while data is dragged, in dataWindow
@@ -229,36 +229,34 @@ static Clay_Dimensions ECSIWindow_MeasureText(Clay_StringSlice text, Clay_TextEl
 {
     (void)userData;
 
-    TTF_Font *font = WINDOW.fonts[config->fontId];
     int width = 0;
     int height = 0;
-
-    TTF_SetFontSize(font, config->fontSize);
-    TTF_GetStringSize(font, text.chars, (size_t)text.length, &width, &height);
+    TTF_SetFontSize(WINDOW.font, config->fontSize);
+    TTF_GetStringSize(WINDOW.font, text.chars, (size_t)text.length, &width, &height);
 
     return (Clay_Dimensions){(f32)width, (f32)height};
 }
 
 /// @brief Reads the size of an OS window.
-static void ECSIWindow_ReadSize(ECSIOSWindow *os)
+static void ECSIWindow_ReadSize(ECSIOSWindow *osWindow)
 {
     int width = 0;
     int height = 0;
-    SDL_GetWindowSize(os->window, &width, &height);
+    SDL_GetWindowSize(osWindow->window, &width, &height);
 
-    os->width = (f32)width;
-    os->height = (f32)height;
+    osWindow->width = (f32)width;
+    osWindow->height = (f32)height;
 }
 
 /// @brief Gets the root an OS window shows, or nullptr if it shows none now: the main window shows the current workspace's main root, and a pop-out window its own root while its workspace is current.
-static ECSIRoot *ECSIWindow_Root(const ECSIOSWindow *os)
+static ECSIRoot *ECSIWindow_RootOf(const ECSIOSWindow *osWindow)
 {
-    if (os == nullptr)
+    if (osWindow == nullptr)
     {
         return nullptr;
     }
 
-    if (os->rootID == 0)
+    if (osWindow->rootID == 0)
     {
         usz count = 0;
         ECSIRoot *const *roots = ECSILayout_GetRoots(&count);
@@ -266,16 +264,16 @@ static ECSIRoot *ECSIWindow_Root(const ECSIOSWindow *os)
     }
 
     bool shown = false;
-    ECSIRoot *root = ECSILayout_FindRoot(os->rootID, &shown);
+    ECSIRoot *root = ECSILayout_FindRoot(osWindow->rootID, &shown);
     return shown ? root : nullptr;
 }
 
 /// @brief Finds the OS window that shows a root of the current workspace.
-static ECSIOSWindow *ECSIWindow_OfRoot(const ECSIRoot *root)
+static ECSIOSWindow *ECSIWindow_FindByRoot(const ECSIRoot *root)
 {
     for (usz i = 0; root != nullptr && i < arrlenu(WINDOW.windows); i++)
     {
-        if (ECSIWindow_Root(WINDOW.windows[i]) == root)
+        if (ECSIWindow_RootOf(WINDOW.windows[i]) == root)
         {
             return WINDOW.windows[i];
         }
@@ -285,7 +283,7 @@ static ECSIOSWindow *ECSIWindow_OfRoot(const ECSIRoot *root)
 }
 
 /// @brief Finds an OS window by SDL's id; the main window if it is none of them.
-static ECSIOSWindow *ECSIWindow_Find(SDL_WindowID id)
+static ECSIOSWindow *ECSIWindow_FindByID(SDL_WindowID id)
 {
     for (usz i = 0; i < arrlenu(WINDOW.windows); i++)
     {
@@ -299,9 +297,9 @@ static ECSIOSWindow *ECSIWindow_Find(SDL_WindowID id)
 }
 
 /// @brief Checks whether an OS window is shown.
-static bool ECSIWindow_IsShown(const ECSIOSWindow *os)
+static bool ECSIWindow_IsShown(const ECSIOSWindow *osWindow)
 {
-    return (SDL_GetWindowFlags(os->window) & SDL_WINDOW_HIDDEN) == 0 && ECSIWindow_Root(os) != nullptr;
+    return (SDL_GetWindowFlags(osWindow->window) & SDL_WINDOW_HIDDEN) == 0 && ECSIWindow_RootOf(osWindow) != nullptr;
 }
 
 /// @brief Checks whether the windows are on Wayland, which never tells where a window is on the screen, and gives a hidden window no refreshes.
@@ -311,19 +309,14 @@ static bool ECSIWindow_OnWayland(void)
     return driver != nullptr && SDL_strcmp(driver, "wayland") == 0;
 }
 
-static bool ECSIWindow_Contains(f32 x, f32 y, f32 left, f32 top, f32 width, f32 height)
-{
-    return x >= left && y >= top && x < left + width && y < top + height;
-}
-
 /// @brief Gets the height of the title bar that OpenECS draws in its OS windows; 0 when the system draws them.
-static f32 ECSIWindow_TitleHeight(void)
+static f32 ECSIWindow_GetTitleHeight(void)
 {
     return WINDOW.titleBar ? WINDOW.titleBarHeight : 0.0f;
 }
 
 /// @brief Gets the width of a title bar button.
-static f32 ECSIWindow_TitleButtonWidth(void)
+static f32 ECSIWindow_GetTitleButtonWidth(void)
 {
     return WINDOW.titleBarHeight * OPENECS_TITLE_BUTTON_WIDTH;
 }
@@ -359,45 +352,45 @@ static SDL_HitTestResult SDLCALL ECSIWindow_HitTest(SDL_Window *window, const SD
         }
     }
 
-    return y < WINDOW.titleBarHeight && x < (f32)width - 3.0f * ECSIWindow_TitleButtonWidth() ? SDL_HITTEST_DRAGGABLE : SDL_HITTEST_NORMAL;
+    return y < WINDOW.titleBarHeight && x < (f32)width - 3.0f * ECSIWindow_GetTitleButtonWidth() ? SDL_HITTEST_DRAGGABLE : SDL_HITTEST_NORMAL;
 }
 
 /// @brief Lets OpenECS draw an OS window's title bar, or leaves it to the system.
-static void ECSIWindow_ApplyTitleBar(ECSIOSWindow *os)
+static void ECSIWindow_ApplyTitleBar(ECSIOSWindow *osWindow)
 {
-    SDL_SetWindowBordered(os->window, !WINDOW.titleBar);
-    SDL_SetWindowHitTest(os->window, WINDOW.titleBar ? ECSIWindow_HitTest : nullptr, nullptr);
+    SDL_SetWindowBordered(osWindow->window, !WINDOW.titleBar);
+    SDL_SetWindowHitTest(osWindow->window, WINDOW.titleBar ? ECSIWindow_HitTest : nullptr, nullptr);
 }
 
 /// @brief Finds the shown OS window under a point given in the event window's layout units: the event window itself, or another one that the point falls in on the screen.
 /// @param retX Gets the point's position in the found window.
 /// @param retY Gets the point's position in the found window.
 /// @return The OS window, or nullptr if the point is outside every one.
-static ECSIOSWindow *ECSIWindow_Under(f32 x, f32 y, f32 *retX, f32 *retY)
+static ECSIOSWindow *ECSIWindow_FindAt(f32 x, f32 y, f32 *retX, f32 *retY)
 {
-    ECSIOSWindow *event = WINDOW.event;
+    ECSIOSWindow *eventWindow = WINDOW.eventWindow;
     *retX = x;
     *retY = y;
 
     // windows know their places on the screen, except on Wayland, where a point outside the event window falls in none
-    if (event == nullptr || ECSIWindow_OnWayland())
+    if (eventWindow == nullptr || ECSIWindow_OnWayland())
     {
-        return event == nullptr || ECSIWindow_Contains(x, y, 0.0f, 0.0f, event->width, event->height) ? event : nullptr;
+        return eventWindow == nullptr || ECSILayout_Contains((SDL_FRect){0.0f, 0.0f, eventWindow->width, eventWindow->height}, x, y) ? eventWindow : nullptr;
     }
 
     int eventX = 0;
     int eventY = 0;
-    SDL_GetWindowPosition(event->window, &eventX, &eventY);
+    SDL_GetWindowPosition(eventWindow->window, &eventX, &eventY);
     ECSIOSWindow *front = nullptr;
 
     // where windows overlap, the one in front takes the point; SDL does not tell the windows' order, so the one that last opened or got the focus counts as in front
     for (usz i = 0; i < arrlenu(WINDOW.windows); i++)
     {
-        ECSIOSWindow *os = WINDOW.windows[i];
+        ECSIOSWindow *osWindow = WINDOW.windows[i];
         int left = eventX;
         int top = eventY;
 
-        if (!ECSIWindow_IsShown(os) || (os != event && !SDL_GetWindowPosition(os->window, &left, &top)))
+        if (!ECSIWindow_IsShown(osWindow) || (osWindow != eventWindow && !SDL_GetWindowPosition(osWindow->window, &left, &top)))
         {
             continue;
         }
@@ -405,9 +398,9 @@ static ECSIOSWindow *ECSIWindow_Under(f32 x, f32 y, f32 *retX, f32 *retY)
         f32 localX = x + (f32)(eventX - left);
         f32 localY = y + (f32)(eventY - top);
 
-        if (ECSIWindow_Contains(localX, localY, 0.0f, 0.0f, os->width, os->height) && (front == nullptr || os->raised > front->raised))
+        if (ECSILayout_Contains((SDL_FRect){0.0f, 0.0f, osWindow->width, osWindow->height}, localX, localY) && (front == nullptr || osWindow->raised > front->raised))
         {
-            front = os;
+            front = osWindow;
             *retX = localX;
             *retY = localY;
         }
@@ -419,43 +412,48 @@ static ECSIOSWindow *ECSIWindow_Under(f32 x, f32 y, f32 *retX, f32 *retY)
 /// @brief Forgets the nodes the window points to; the layout calls it after the trees change.
 static void ECSIWindow_Forget(void)
 {
+    ECSIWindow_CancelDrag();
     WINDOW.gripGroup = nullptr;
     WINDOW.dragSplit = nullptr;
-    WINDOW.dragPanel = nullptr;
-    WINDOW.dragging = false;
 }
 
 #pragma region Dragging
 
-/// @brief Finds the group whose tab row is at a point of an OS window.
-static ECSINode *ECSIWindow_TabRowGroupAt(const ECSIOSWindow *os, f32 x, f32 y)
+/// @brief Checks whether a point of a group is on its tab row; a group with one panel has none.
+static bool ECSIWindow_IsOnTabRow(const ECSINode *group, f32 y)
 {
-    ECSINode *group = ECSILayout_GroupAt(ECSIWindow_Root(os), x, y);
-    return group != nullptr && arrlenu(group->panels) >= 2 && y < group->y + ECSILayout_GetTabRowHeight() ? group : nullptr;
+    return arrlenu(group->panels) >= 2 && y < group->y + ECSILayout_GetTabRowHeight();
+}
+
+/// @brief Finds the group whose tab row is at a point of an OS window.
+static ECSINode *ECSIWindow_TabRowGroupAt(const ECSIOSWindow *osWindow, f32 x, f32 y)
+{
+    ECSINode *group = ECSILayout_GroupAt(ECSIWindow_RootOf(osWindow), x, y);
+    return group != nullptr && ECSIWindow_IsOnTabRow(group, y) ? group : nullptr;
 }
 
 /// @brief Finds the gap between a group's tabs nearest to a point, from the tabs drawn in the OS window's last frame.
-static ECSIDrop ECSIWindow_FindTabGap(ECSIOSWindow *os, ECSINode *group, f32 x, SDL_FRect *retRect)
+static ECSIDrop ECSIWindow_FindTabGap(ECSIOSWindow *osWindow, ECSINode *group, f32 x, SDL_FRect *retRect)
 {
-    ECSIDrop drop = {.zone = ECSIZone_Tabs, .root = ECSIWindow_Root(os), .group = group, .index = 0};
+    ECSIDrop drop = {.zone = ECSIZone_Tabs, .root = ECSIWindow_RootOf(osWindow), .group = group, .index = 0};
     f32 gapX = group->x;
-    Clay_SetCurrentContext(os->clay);
+    Clay_SetCurrentContext(osWindow->clay);
 
-    for (usz i = 0; i < arrlenu(os->tabs); i++)
+    for (usz i = 0; i < arrlenu(osWindow->tabs); i++)
     {
         Clay_ElementData tab = Clay_GetElementData(CLAY_IDI("Tab", (u32)i));
 
-        if (os->tabs[i].group != group || !tab.found)
+        if (osWindow->tabs[i].group != group || !tab.found)
         {
             continue;
         }
 
         if (x > tab.boundingBox.x + tab.boundingBox.width / 2.0f)
         {
-            drop.index = os->tabs[i].index + 1;
+            drop.index = osWindow->tabs[i].index + 1;
             gapX = tab.boundingBox.x + tab.boundingBox.width;
         }
-        else if (os->tabs[i].index == drop.index)
+        else if (osWindow->tabs[i].index == drop.index)
         {
             gapX = tab.boundingBox.x;
         }
@@ -471,12 +469,12 @@ static ECSIDrop ECSIWindow_FindTabGap(ECSIOSWindow *os, ECSINode *group, f32 x, 
 static ECSIDrop ECSIWindow_FindDrop(f32 x, f32 y, ECSIOSWindow **retWindow, SDL_FRect *retRect)
 {
     *retRect = (SDL_FRect){0};
-    ECSIOSWindow *os = ECSIWindow_Under(x, y, &x, &y);
-    ECSIRoot *root = ECSIWindow_Root(os);
-    *retWindow = os;
+    ECSIOSWindow *osWindow = ECSIWindow_FindAt(x, y, &x, &y);
+    ECSIRoot *root = ECSIWindow_RootOf(osWindow);
+    *retWindow = osWindow;
 
     // outside every OS window, the panel pops out into a new one
-    if (os == nullptr || root == nullptr)
+    if (osWindow == nullptr || root == nullptr)
     {
         *retWindow = nullptr;
         return (ECSIDrop){.zone = ECSIZone_PopOut};
@@ -516,9 +514,9 @@ static ECSIDrop ECSIWindow_FindDrop(f32 x, f32 y, ECSIOSWindow **retWindow, SDL_
     }
 
     // a locked group accepts no dropped panels
-    if (arrlenu(group->panels) >= 2 && y < group->y + ECSILayout_GetTabRowHeight())
+    if (ECSIWindow_IsOnTabRow(group, y))
     {
-        return group->locked ? (ECSIDrop){0} : ECSIWindow_FindTabGap(os, group, x, retRect);
+        return group->locked ? (ECSIDrop){0} : ECSIWindow_FindTabGap(osWindow, group, x, retRect);
     }
 
     // edge bands are a quarter of the panel deep at most, so the centre keeps at least half of it
@@ -598,27 +596,18 @@ static bool ECSIWindow_DropChanges(const ECSIDrop *drop)
     // a gap next to the panel's own tab leaves it where it is
     if (drop->zone == ECSIZone_Tabs)
     {
-        usz index = 0;
-
-        while (source->panels[index] != WINDOW.dragPanel)
-        {
-            index++;
-        }
-
+        usz index = ECSILayout_IndexOf(source, WINDOW.dragPanel);
         return drop->index != index && drop->index != index + 1;
     }
 
     return true;
 }
 
-/// @brief Remembers a press on a panel's tab or grip, or on its group's tab row; the panel or group is dragged once the pointer moves far enough.
-static void ECSIWindow_ArmDrag(ECSPanel panel, bool group, bool grip, f32 x, f32 y)
+/// @brief Remembers a press on a panel's tab or grip, or on its group's tab row; the panel is dragged once the pointer moves far enough. The caller sets what else the press was.
+static void ECSIWindow_ArmDrag(ECSPanel panel, f32 x, f32 y)
 {
+    ECSIWindow_CancelDrag();
     WINDOW.dragPanel = panel;
-    WINDOW.dragGroup = group;
-    WINDOW.dragFromGrip = grip;
-    WINDOW.dragLocked = false;
-    WINDOW.dragging = false;
     WINDOW.dragStartX = x;
     WINDOW.dragStartY = y;
 }
@@ -653,22 +642,22 @@ typedef struct ECSIGripHit
     ECSINode *group;
 } ECSIGripHit;
 
-static void ECSIWindow_FindGripGroup(ECSINode *group, void *userData)
+static void ECSIWindow_HitGrip(ECSINode *group, void *userData)
 {
     ECSIGripHit *hit = userData;
 
-    if (arrlenu(group->panels) == 1 && ECSIWindow_Contains(hit->x, hit->y, group->x, group->y, group->width, WINDOW.gripZone))
+    if (arrlenu(group->panels) == 1 && ECSILayout_Contains((SDL_FRect){group->x, group->y, group->width, WINDOW.gripZone}, hit->x, hit->y))
     {
         hit->group = group;
     }
 }
 
 /// @brief Checks whether a point is on an element that Clay laid out in an OS window's last frame.
-static bool ECSIWindow_OnElement(const ECSIOSWindow *os, Clay_ElementId id, f32 x, f32 y)
+static bool ECSIWindow_OnElement(const ECSIOSWindow *osWindow, Clay_ElementId id, f32 x, f32 y)
 {
-    Clay_SetCurrentContext(os->clay);
+    Clay_SetCurrentContext(osWindow->clay);
     Clay_ElementData element = Clay_GetElementData(id);
-    return element.found && ECSIWindow_Contains(x, y, element.boundingBox.x, element.boundingBox.y, element.boundingBox.width, element.boundingBox.height);
+    return element.found && ECSILayout_Contains((SDL_FRect){element.boundingBox.x, element.boundingBox.y, element.boundingBox.width, element.boundingBox.height}, x, y);
 }
 
 /// @brief Declares an icon for Clay, the size of the core's font, inside the open element.
@@ -707,7 +696,7 @@ static void ECSIWindow_DeclareIcon(ECSIIcon icon, Clay_Color color)
 }
 
 /// @brief Gets the width of the marks that show a group is locked or maximized, with the gap before each.
-static f32 ECSIWindow_MarksWidth(const ECSINode *group, const ECSIRoot *root)
+static f32 ECSIWindow_GetMarksWidth(const ECSINode *group, const ECSIRoot *root)
 {
     usz marks = (group->locked ? 1u : 0u) + (root != nullptr && root->maximized == group ? 1u : 0u);
     return (f32)marks * (SDL_roundf(WINDOW.fontSize * OPENECS_ICON_SCALE) + OPENECS_MENU_ITEM_PADDING);
@@ -728,15 +717,15 @@ static void ECSIWindow_DeclareMarks(const ECSINode *group, const ECSIRoot *root)
 }
 
 /// @brief Declares the title bar of an OS window for Clay: the tool's name, and buttons that minimize, maximize or restore, and close the window.
-static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *os)
+static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *osWindow)
 {
-    f32 buttonWidth = ECSIWindow_TitleButtonWidth();
-    bool maximized = (SDL_GetWindowFlags(os->window) & SDL_WINDOW_MAXIMIZED) != 0;
+    f32 buttonWidth = ECSIWindow_GetTitleButtonWidth();
+    bool maximized = (SDL_GetWindowFlags(osWindow->window) & SDL_WINDOW_MAXIMIZED) != 0;
     Clay_Color color = WINDOW.colors[ECSIColor_TextDim];
 
     CLAY(CLAY_ID("TitleBar"), {
                                   .layout = {
-                                      .sizing = {CLAY_SIZING_FIXED(os->width), CLAY_SIZING_FIXED(WINDOW.titleBarHeight)},
+                                      .sizing = {CLAY_SIZING_FIXED(osWindow->width), CLAY_SIZING_FIXED(WINDOW.titleBarHeight)},
                                       .padding = {12, 0, 0, 0},
                                       .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                                   },
@@ -775,7 +764,7 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *os)
 /// @brief Declares a group's tab row, or its placeholder text, for Clay. userData is the OS window.
 static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
 {
-    ECSIOSWindow *os = userData;
+    ECSIOSWindow *osWindow = userData;
 
     if (arrlenu(group->panels) == 0)
     {
@@ -797,7 +786,7 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
         {
             for (usz i = 0; i < arrlenu(group->panels); i++)
             {
-                CLAY(CLAY_IDI("Tab", (u32)arrlenu(os->tabs)), {
+                CLAY(CLAY_IDI("Tab", (u32)arrlenu(osWindow->tabs)), {
                                                                      .layout = {
                                                                          .sizing = {CLAY_SIZING_FIT(0), CLAY_SIZING_GROW(0)},
                                                                          .padding = {12, 12, 0, 0},
@@ -822,20 +811,20 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
                     // panels of a locked group cannot be closed by the user
                     if (!group->locked)
                     {
-                        CLAY(CLAY_IDI("TabClose", (u32)arrlenu(os->tabs)), {.layout = {.padding = {8, 0, 0, 0}}})
+                        CLAY(CLAY_IDI("TabClose", (u32)arrlenu(osWindow->tabs)), {.layout = {.padding = {8, 0, 0, 0}}})
                         {
                             CLAY_TEXT(CLAY_STRING("\u00D7"), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                         }
                     }
                 }
 
-                arrput(os->tabs, ((ECSITabRef){group, i}));
+                arrput(osWindow->tabs, ((ECSIDrawnTab){group, i}));
             }
         }
 
         // a locked or maximized group shows its marks at the end of its tab row
-        ECSIRoot *root = ECSIWindow_Root(os);
-        f32 marksWidth = ECSIWindow_MarksWidth(group, root);
+        ECSIRoot *root = ECSIWindow_RootOf(osWindow);
+        f32 marksWidth = ECSIWindow_GetMarksWidth(group, root);
 
         if (marksWidth > 0.0f)
         {
@@ -884,24 +873,24 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
 }
 
 /// @brief Measures each tab row of an OS window from the tabs Clay just laid out, keeps its scroll inside it, and scrolls a newly shown tab into view.
-static void ECSIWindow_FitTabs(ECSIOSWindow *os)
+static void ECSIWindow_FitTabs(ECSIOSWindow *osWindow)
 {
-    Clay_SetCurrentContext(os->clay);
+    Clay_SetCurrentContext(osWindow->clay);
 
-    for (usz i = 0; i < arrlenu(os->tabs);)
+    for (usz i = 0; i < arrlenu(osWindow->tabs);)
     {
         // the tabs of one group are next to each other in the list
-        ECSINode *group = os->tabs[i].group;
+        ECSINode *group = osWindow->tabs[i].group;
         f32 left = 0.0f;
         f32 right = 0.0f;
         Clay_BoundingBox shown = {0};
 
-        for (; i < arrlenu(os->tabs) && os->tabs[i].group == group; i++)
+        for (; i < arrlenu(osWindow->tabs) && osWindow->tabs[i].group == group; i++)
         {
             Clay_ElementData tab = Clay_GetElementData(CLAY_IDI("Tab", (u32)i));
-            left = os->tabs[i].index == 0 ? tab.boundingBox.x : left;
+            left = osWindow->tabs[i].index == 0 ? tab.boundingBox.x : left;
             right = tab.boundingBox.x + tab.boundingBox.width;
-            shown = os->tabs[i].index == group->shown ? tab.boundingBox : shown;
+            shown = osWindow->tabs[i].index == group->shown ? tab.boundingBox : shown;
         }
 
         group->tabsWidth = right - left;
@@ -927,7 +916,7 @@ static void ECSIWindow_FitTabs(ECSIOSWindow *os)
 /// @brief Marks a visible group's shown panel if it accepts the dragged data, and fills it if the pointer is over it. userData is the OS window.
 static void ECSIWindow_DeclareDataTarget(ECSINode *group, void *userData)
 {
-    const ECSIOSWindow *os = userData;
+    const ECSIOSWindow *osWindow = userData;
 
     if (arrlenu(group->panels) == 0)
     {
@@ -941,7 +930,8 @@ static void ECSIWindow_DeclareDataTarget(ECSINode *group, void *userData)
         return;
     }
 
-    bool under = os == WINDOW.dataWindow && WINDOW.dataX >= panel->x && WINDOW.dataX < panel->x + panel->width && WINDOW.dataY >= panel->y && WINDOW.dataY < panel->y + panel->height;
+    SDL_FRect rect = {panel->x, panel->y, panel->width, panel->height};
+    bool under = osWindow == WINDOW.dataWindow && ECSILayout_Contains(rect, WINDOW.dataX, WINDOW.dataY);
 
     CLAY_AUTO_ID({
         .layout = {.sizing = {CLAY_SIZING_FIXED(panel->width), CLAY_SIZING_FIXED(panel->height)}},
@@ -953,17 +943,16 @@ static void ECSIWindow_DeclareDataTarget(ECSINode *group, void *userData)
     }
 }
 
-/// @brief Declares the core's own interface in an OS window for Clay and returns what to draw.
 /// @brief Declares the message dialog: a shade over the whole OS window, and in its middle a box with the title, the message and a row of buttons.
-static void ECSIWindow_DeclareDialog(const ECSIOSWindow *os)
+static void ECSIWindow_DeclareDialog(const ECSIOSWindow *osWindow)
 {
     const ECSIDialogView *dialog = WINDOW.dialog;
-    f32 width = SDL_max(1.0f, SDL_min(OPENECS_DIALOG_WIDTH, os->width - 2.0f * OPENECS_DIALOG_MARGIN));
+    f32 width = SDL_max(1.0f, SDL_min(OPENECS_DIALOG_WIDTH, osWindow->width - 2.0f * OPENECS_DIALOG_MARGIN));
     Clay_Color shade = WINDOW.colors[ECSIColor_Background];
     shade.a = 176.0f;
 
     CLAY(CLAY_ID("DialogShade"), {
-                                     .layout = {.sizing = {CLAY_SIZING_FIXED(os->width), CLAY_SIZING_FIXED(os->height)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
+                                     .layout = {.sizing = {CLAY_SIZING_FIXED(osWindow->width), CLAY_SIZING_FIXED(osWindow->height)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
                                      .backgroundColor = shade,
                                      .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .zIndex = 20},
                                  })
@@ -1005,165 +994,196 @@ static void ECSIWindow_DeclareDialog(const ECSIOSWindow *os)
     }
 }
 
-static Clay_RenderCommandArray ECSIWindow_DeclareInterface(ECSIOSWindow *os, const ECSIRoot *root)
+/// @brief Declares the focus border around the focused panel.
+static void ECSIWindow_DeclareFocusBorder(ECSPanel focus)
 {
-    Clay_SetCurrentContext(os->clay);
-    Clay_SetLayoutDimensions((Clay_Dimensions){os->width, os->height});
+    CLAY_AUTO_ID({
+        .layout = {.sizing = {CLAY_SIZING_FIXED(focus->width), CLAY_SIZING_FIXED(focus->height)}},
+        .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {2, 2, 2, 2, 0}},
+        .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {focus->x, focus->y}, .zIndex = 1, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
+    })
+    {
+    }
+}
+
+/// @brief Declares the grip of a lone group: the panel's title, centred on its top edge, and whether its group is locked or maximized.
+static void ECSIWindow_DeclareGrip(ECSINode *group, const ECSIRoot *root)
+{
+    const char *title = group->panels[0]->title;
+    int titleWidth = 0;
+    TTF_SetFontSize(WINDOW.font, WINDOW.fontSize);
+    TTF_GetStringSize(WINDOW.font, title, 0, &titleWidth, nullptr);
+    f32 width = SDL_min((f32)titleWidth + ECSIWindow_GetMarksWidth(group, root) + 2.0f * OPENECS_MENU_ITEM_PADDING, group->width);
+
+    CLAY(CLAY_ID("Grip"), {
+                              .layout = {
+                                  .sizing = {CLAY_SIZING_FIXED(width), CLAY_SIZING_FIXED(WINDOW.gripHeight)},
+                                  .padding = {(u16)OPENECS_MENU_ITEM_PADDING, (u16)OPENECS_MENU_ITEM_PADDING, 0, 0},
+                                  .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
+                                  .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                              },
+                              .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
+                              .cornerRadius = {0, 0, 6, 6},
+                              .border = {.color = WINDOW.colors[ECSIColor_TextDim], .width = {1, 1, 0, 1, 0}},
+                              .clip = {.horizontal = true},
+                              .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + (group->width - width) / 2.0f, group->y}, .zIndex = 2},
+                          })
+    {
+        CLAY_TEXT(ECSIWindow_ClayText(title), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+
+        ECSIWindow_DeclareMarks(group, root);
+    }
+}
+
+/// @brief Declares the highlight of the place where the dragged panel lands.
+static void ECSIWindow_DeclareDropMark(void)
+{
+    SDL_FRect rect = WINDOW.dropRect;
+
+    CLAY_AUTO_ID({
+        .layout = {.sizing = {CLAY_SIZING_FIXED(rect.w), CLAY_SIZING_FIXED(rect.h)}},
+        .backgroundColor = WINDOW.colors[ECSIColor_Drop],
+        .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {2, 2, 2, 2, 0}},
+        .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = 4, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
+    })
+    {
+    }
+}
+
+/// @brief Declares the open menus: the panel menu, then its submenus over it.
+static void ECSIWindow_DeclareMenus(void)
+{
+    for (usz level = 0; level < OPENECS_MENU_DEPTH && WINDOW.menus[level].lines != nullptr; level++)
+    {
+        const ECSIMenuView *menu = &WINDOW.menus[level];
+        SDL_FRect rect = menu->rect;
+
+        CLAY(CLAY_IDI("Menu", (u32)level), {
+                                               .layout = {
+                                                   .sizing = {CLAY_SIZING_FIXED(rect.w), CLAY_SIZING_FIXED(rect.h)},
+                                                   .padding = CLAY_PADDING_ALL((u16)OPENECS_MENU_PADDING),
+                                                   .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                                               },
+                                               .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
+                                               .cornerRadius = CLAY_CORNER_RADIUS(6),
+                                               .border = {.color = WINDOW.colors[ECSIColor_TextDim], .width = {1, 1, 1, 1, 0}},
+                                               .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = (i16)(5 + level)},
+                                           })
+        {
+            // each entry has the height that ECSIWindow_MenuItemAt counts with
+            for (usz i = 0; i < menu->count; i++)
+            {
+                CLAY_AUTO_ID({
+                    .layout = {
+                        .sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(menu->itemHeight)},
+                        .padding = {(u16)OPENECS_MENU_ITEM_PADDING, (u16)OPENECS_MENU_ITEM_PADDING, 0, 0},
+                        .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
+                        .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                    },
+                    .backgroundColor = i == menu->selected ? WINDOW.colors[ECSIColor_Selected] : (Clay_Color){0},
+                    .cornerRadius = CLAY_CORNER_RADIUS(4),
+                })
+                {
+                    CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                    CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}}}) {}
+                    CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                }
+            }
+        }
+    }
+}
+
+/// @brief Declares the list of keys after the prefix: each key with what it does, under the headings of its sections.
+static void ECSIWindow_DeclarePrefixKeys(void)
+{
+    CLAY_AUTO_ID({
+        .layout = {.padding = CLAY_PADDING_ALL(14), .childGap = 4, .layoutDirection = CLAY_TOP_TO_BOTTOM},
+        .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
+        .cornerRadius = CLAY_CORNER_RADIUS(6),
+        .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {1, 1, 1, 1, 0}},
+        .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {24.0f, 24.0f}, .zIndex = 3},
+    })
+    {
+        for (usz i = 0; i < WINDOW.prefixLineCount; i++)
+        {
+            // a line without a key is a heading
+            if (WINDOW.prefixLines[2 * i] == nullptr)
+            {
+                CLAY_AUTO_ID({.layout = {.padding = {0, 0, i == 0 ? 0 : 6, 0}}})
+                {
+                    CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize}));
+                }
+
+                continue;
+            }
+
+            CLAY_AUTO_ID({.layout = {.layoutDirection = CLAY_LEFT_TO_RIGHT}})
+            {
+                CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(OPENECS_PREFIX_KEY_COLUMN), CLAY_SIZING_FIT(0)}}})
+                {
+                    CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Accent], .fontSize = (u16)WINDOW.fontSize}));
+                }
+
+                CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize}));
+            }
+        }
+    }
+}
+
+/// @brief Declares the core's own interface in an OS window for Clay and returns what to draw. The focus border, the list of prefix keys and the menus show in one OS window each.
+static Clay_RenderCommandArray ECSIWindow_DeclareInterface(ECSIOSWindow *osWindow, const ECSIRoot *root)
+{
+    Clay_SetCurrentContext(osWindow->clay);
+    Clay_SetLayoutDimensions((Clay_Dimensions){osWindow->width, osWindow->height});
     Clay_BeginLayout();
 
-    // the focus border, the list of prefix keys and the menus show in one OS window each
     ECSPanel focus = ECSILayout_GetFocus();
     ECSIRoot *focusRoot = ECSILayout_RootOf(focus);
-    bool focusWindow = focusRoot == root || (focusRoot == nullptr && os->rootID == 0);
+    bool focusWindow = focusRoot == root || (focusRoot == nullptr && osWindow->rootID == 0);
 
-    arrfree(os->tabs);
+    arrfree(osWindow->tabs);
     CLAY(CLAY_ID("Root"), {.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0)}}})
     {
         if (WINDOW.titleBar)
         {
-            ECSIWindow_DeclareTitleBar(os);
+            ECSIWindow_DeclareTitleBar(osWindow);
         }
 
-        ECSILayout_ForEachGroup(root, ECSIWindow_DeclareGroup, os);
+        ECSILayout_ForEachGroup(root, ECSIWindow_DeclareGroup, osWindow);
 
         if (focus != nullptr && focusWindow)
         {
-            CLAY_AUTO_ID({
-                .layout = {.sizing = {CLAY_SIZING_FIXED(focus->width), CLAY_SIZING_FIXED(focus->height)}},
-                .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {2, 2, 2, 2, 0}},
-                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {focus->x, focus->y}, .zIndex = 1, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
-            })
-            {
-            }
+            ECSIWindow_DeclareFocusBorder(focus);
         }
 
-        // the grip shows the panel's title, centred on its top edge, and whether its group is locked or maximized
-        if (WINDOW.gripGroup != nullptr && WINDOW.gripWindow == os)
+        if (WINDOW.gripGroup != nullptr && WINDOW.gripWindow == osWindow)
         {
-            ECSINode *group = WINDOW.gripGroup;
-            const char *title = group->panels[0]->title;
-            int titleWidth = 0;
-            TTF_SetFontSize(WINDOW.fonts[0], WINDOW.fontSize);
-            TTF_GetStringSize(WINDOW.fonts[0], title, 0, &titleWidth, nullptr);
-            f32 width = SDL_min((f32)titleWidth + ECSIWindow_MarksWidth(group, root) + 2.0f * OPENECS_MENU_ITEM_PADDING, group->width);
-
-            CLAY(CLAY_ID("Grip"), {
-                                      .layout = {
-                                          .sizing = {CLAY_SIZING_FIXED(width), CLAY_SIZING_FIXED(WINDOW.gripHeight)},
-                                          .padding = {(u16)OPENECS_MENU_ITEM_PADDING, (u16)OPENECS_MENU_ITEM_PADDING, 0, 0},
-                                          .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
-                                          .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                                      },
-                                      .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
-                                      .cornerRadius = {0, 0, 6, 6},
-                                      .border = {.color = WINDOW.colors[ECSIColor_TextDim], .width = {1, 1, 0, 1, 0}},
-                                      .clip = {.horizontal = true},
-                                      .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + (group->width - width) / 2.0f, group->y}, .zIndex = 2},
-                                  })
-            {
-                CLAY_TEXT(ECSIWindow_ClayText(title), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
-
-                ECSIWindow_DeclareMarks(group, root);
-            }
+            ECSIWindow_DeclareGrip(WINDOW.gripGroup, root);
         }
 
-        if (WINDOW.dragging && WINDOW.drop.zone != ECSIZone_None && WINDOW.dropWindow == os)
+        if (WINDOW.dragging && WINDOW.drop.zone != ECSIZone_None && WINDOW.dropWindow == osWindow)
         {
-            SDL_FRect rect = WINDOW.dropRect;
-
-            CLAY_AUTO_ID({
-                .layout = {.sizing = {CLAY_SIZING_FIXED(rect.w), CLAY_SIZING_FIXED(rect.h)}},
-                .backgroundColor = WINDOW.colors[ECSIColor_Drop],
-                .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {2, 2, 2, 2, 0}},
-                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = 4, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
-            })
-            {
-            }
+            ECSIWindow_DeclareDropMark();
         }
 
         if (WINDOW.dataType != nullptr)
         {
-            ECSILayout_ForEachGroup(root, ECSIWindow_DeclareDataTarget, os);
+            ECSILayout_ForEachGroup(root, ECSIWindow_DeclareDataTarget, osWindow);
         }
 
-        for (usz level = 0; WINDOW.menuWindow == os && level < OPENECS_MENU_DEPTH && WINDOW.menus[level].lines != nullptr; level++)
+        if (WINDOW.menuWindow == osWindow)
         {
-            const ECSIMenuView *menu = &WINDOW.menus[level];
-            SDL_FRect rect = menu->rect;
-
-            CLAY(CLAY_IDI("Menu", (u32)level), {
-                                                   .layout = {
-                                                       .sizing = {CLAY_SIZING_FIXED(rect.w), CLAY_SIZING_FIXED(rect.h)},
-                                                       .padding = CLAY_PADDING_ALL((u16)OPENECS_MENU_PADDING),
-                                                       .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                                                   },
-                                                   .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
-                                                   .cornerRadius = CLAY_CORNER_RADIUS(6),
-                                                   .border = {.color = WINDOW.colors[ECSIColor_TextDim], .width = {1, 1, 1, 1, 0}},
-                                                   .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = (i16)(5 + level)},
-                                               })
-            {
-                // each entry has the height that ECSIWindow_MenuItemAt counts with
-                for (usz i = 0; i < menu->count; i++)
-                {
-                    CLAY_AUTO_ID({
-                        .layout = {
-                            .sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(menu->itemHeight)},
-                            .padding = {(u16)OPENECS_MENU_ITEM_PADDING, (u16)OPENECS_MENU_ITEM_PADDING, 0, 0},
-                            .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
-                            .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
-                        },
-                        .backgroundColor = i == menu->selected ? WINDOW.colors[ECSIColor_Selected] : (Clay_Color){0},
-                        .cornerRadius = CLAY_CORNER_RADIUS(4),
-                    })
-                    {
-                        CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
-                        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}}}) {}
-                        CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
-                    }
-                }
-            }
+            ECSIWindow_DeclareMenus();
         }
 
-        if (WINDOW.dialog != nullptr && WINDOW.dialogWindow == os)
+        if (WINDOW.dialog != nullptr && WINDOW.dialogWindow == osWindow)
         {
-            ECSIWindow_DeclareDialog(os);
+            ECSIWindow_DeclareDialog(osWindow);
         }
 
         if (WINDOW.prefixLines != nullptr && focusWindow)
         {
-            CLAY_AUTO_ID({
-                .layout = {.padding = CLAY_PADDING_ALL(14), .childGap = 4, .layoutDirection = CLAY_TOP_TO_BOTTOM},
-                .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
-                .cornerRadius = CLAY_CORNER_RADIUS(6),
-                .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {1, 1, 1, 1, 0}},
-                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {24.0f, 24.0f}, .zIndex = 3},
-            })
-            {
-                for (usz i = 0; i < WINDOW.prefixLineCount; i++)
-                {
-                    // a line without a key is a heading
-                    if (WINDOW.prefixLines[2 * i] == nullptr)
-                    {
-                        CLAY_AUTO_ID({.layout = {.padding = {0, 0, i == 0 ? 0 : 6, 0}}})
-                        {
-                            CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize}));
-                        }
-
-                        continue;
-                    }
-
-                    CLAY_AUTO_ID({.layout = {.layoutDirection = CLAY_LEFT_TO_RIGHT}})
-                    {
-                        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(OPENECS_PREFIX_KEY_COLUMN), CLAY_SIZING_FIT(0)}}})
-                        {
-                            CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Accent], .fontSize = (u16)WINDOW.fontSize}));
-                        }
-
-                        CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize}));
-                    }
-                }
-            }
+            ECSIWindow_DeclarePrefixKeys();
         }
     }
 
@@ -1191,13 +1211,12 @@ static void ECSIWindow_DrawGroup(ECSINode *group, void *userData)
     }
 }
 
+/// @brief Puts a group's shown panel on screen. userData is the OS window's renderer.
 static void ECSIWindow_ShowGroup(ECSINode *group, void *userData)
 {
-    ECSIDrawContext *context = userData;
-
     if (arrlenu(group->panels) > 0)
     {
-        ECSIPanel_Show(group->panels[group->shown], context->renderer);
+        ECSIPanel_Show(group->panels[group->shown], userData);
     }
 }
 
@@ -1208,34 +1227,34 @@ static void ECSIWindow_ShowGroup(ECSINode *group, void *userData)
 static void ECSIWindow_ReleasePopup(ECSPopup popup);
 
 /// @brief Closes an OS window and frees what it holds. The window pointers that named it name the main window instead.
-static void ECSIWindow_CloseOS(ECSIOSWindow *os)
+static void ECSIWindow_CloseOS(ECSIOSWindow *osWindow)
 {
-    ECSIOSWindow *main = arrlenu(WINDOW.windows) > 0 && WINDOW.windows[0] != os ? WINDOW.windows[0] : nullptr;
-    ECSIOSWindow **pointers[] = {&WINDOW.event, &WINDOW.gripWindow, &WINDOW.dropWindow, &WINDOW.dataWindow, &WINDOW.menuWindow, &WINDOW.pendingFrom, &WINDOW.dialogWindow};
-    WINDOW.gripGroup = WINDOW.gripWindow == os ? nullptr : WINDOW.gripGroup;
+    ECSIOSWindow *main = arrlenu(WINDOW.windows) > 0 && WINDOW.windows[0] != osWindow ? WINDOW.windows[0] : nullptr;
+    ECSIOSWindow **pointers[] = {&WINDOW.eventWindow, &WINDOW.gripWindow, &WINDOW.dropWindow, &WINDOW.dataWindow, &WINDOW.menuWindow, &WINDOW.pending.from, &WINDOW.dialogWindow};
+    WINDOW.gripGroup = WINDOW.gripWindow == osWindow ? nullptr : WINDOW.gripGroup;
 
     for (usz i = 0; i < SDL_arraysize(pointers); i++)
     {
-        *pointers[i] = *pointers[i] == os ? main : *pointers[i];
+        *pointers[i] = *pointers[i] == osWindow ? main : *pointers[i];
     }
-    arrfree(os->tabs);
+    arrfree(osWindow->tabs);
 
     // Clay keeps the context it used last; one in freed memory must never be current
-    if (Clay_GetCurrentContext() == os->clay)
+    if (Clay_GetCurrentContext() == osWindow->clay)
     {
         Clay_SetCurrentContext(main != nullptr ? main->clay : nullptr);
     }
 
-    SDL_free(os->clayMemory);
+    SDL_free(osWindow->clayMemory);
 
     // the renderer frees the textures made with it, so the panels and popups shown in this window must not keep them
-    if (os->renderer != nullptr)
+    if (osWindow->renderer != nullptr)
     {
         ECSPanel *panels = ECSILayout_GetPanels();
 
         for (usz i = 0; i < arrlenu(panels); i++)
         {
-            if (panels[i]->texture != nullptr && SDL_GetRendererFromTexture(panels[i]->texture) == os->renderer)
+            if (panels[i]->texture != nullptr && SDL_GetRendererFromTexture(panels[i]->texture) == osWindow->renderer)
             {
                 ECSIPanel_ReleaseTexture(panels[i]);
             }
@@ -1250,51 +1269,56 @@ static void ECSIWindow_CloseOS(ECSIOSWindow *os)
 
     for (usz i = 0; i < count; i++)
     {
-        ECSIPopupView *view = popups[i]->window;
+        ECSIPopupView *view = popups[i]->view;
 
-        if (view != nullptr && (view->rootID == os->rootID || (view->texture != nullptr && SDL_GetRendererFromTexture(view->texture) == os->renderer)))
+        if (view != nullptr && (view->rootID == osWindow->rootID || (view->texture != nullptr && SDL_GetRendererFromTexture(view->texture) == osWindow->renderer)))
         {
             ECSIWindow_ReleasePopup(popups[i]);
         }
     }
 
-    if (os->clayRenderer.textEngine != nullptr)
+    if (osWindow->clayRenderer.textEngine != nullptr)
     {
-        TTF_DestroyRendererTextEngine(os->clayRenderer.textEngine);
+        TTF_DestroyRendererTextEngine(osWindow->clayRenderer.textEngine);
     }
 
-    if (os->renderer != nullptr)
+    if (osWindow->renderer != nullptr)
     {
-        SDL_DestroyRenderer(os->renderer);
+        SDL_DestroyRenderer(osWindow->renderer);
     }
 
-    if (os->window != nullptr)
+    if (osWindow->window != nullptr)
     {
-        SDL_DestroyWindow(os->window);
+        SDL_DestroyWindow(osWindow->window);
     }
 
-    SDL_free(os);
+    SDL_free(osWindow);
+}
+
+/// @brief Creates the GPU device that every renderer and GPU panel shares, once. It comes from an offscreen renderer, which sets it up as SDL's GPU renderer needs it.
+static void ECSIWindow_CreateDevice(void)
+{
+    if (WINDOW.gpu.owner != nullptr)
+    {
+        return;
+    }
+
+    WINDOW.gpu.owner = SDL_CreateGPURenderer(nullptr, nullptr);
+    WINDOW.gpu.device = WINDOW.gpu.owner == nullptr ? nullptr : SDL_GetGPURendererDevice(WINDOW.gpu.owner);
+
+    if (WINDOW.gpu.device == nullptr)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "No GPU device (%s); GPU panels show placeholders.", SDL_GetError());
+    }
 }
 
 /// @brief Creates a window's renderer: a GPU renderer on the shared GPU device, so all windows share one device; else SDL's default renderer.
 /// The device stays without a window's GPU renderer, as when the GPU cannot present to the window: GPU panels draw on it, and that window shows copies (DESIGN 5.3).
-static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window, bool main)
+static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window)
 {
-    // the device comes from an offscreen renderer, which sets it up as SDL's GPU renderer needs it
-    if (main && GPU.owner == nullptr)
-    {
-        GPU.owner = SDL_CreateGPURenderer(nullptr, nullptr);
-        GPU.device = GPU.owner == nullptr ? nullptr : SDL_GetGPURendererDevice(GPU.owner);
+    SDL_Renderer *renderer = WINDOW.gpu.device != nullptr ? SDL_CreateGPURenderer(WINDOW.gpu.device, window) : nullptr;
 
-        if (GPU.device == nullptr)
-        {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "No GPU device (%s); GPU panels show placeholders.", SDL_GetError());
-        }
-    }
-
-    SDL_Renderer *renderer = GPU.device != nullptr ? SDL_CreateGPURenderer(GPU.device, window) : nullptr;
-
-    if (renderer == nullptr && GPU.device != nullptr)
+    if (renderer == nullptr && WINDOW.gpu.device != nullptr)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The GPU cannot present to a window (%s); it uses SDL's default renderer, and shows copies of GPU panels.", SDL_GetError());
     }
@@ -1308,64 +1332,64 @@ static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window, bool main)
 /// @return The window, or nullptr if it cannot be opened.
 static ECSIOSWindow *ECSIWindow_OpenOS(u32 rootID, i32 width, i32 height, SDL_WindowFlags flags)
 {
-    ECSIOSWindow *os = SDL_calloc(1, sizeof(ECSIOSWindow));
+    ECSIOSWindow *osWindow = SDL_calloc(1, sizeof(ECSIOSWindow));
 
-    if (os == nullptr)
+    if (osWindow == nullptr)
     {
         return nullptr;
     }
 
-    os->rootID = rootID;
-    os->raised = ++WINDOW.raises;
-    os->window = SDL_CreateWindow(WINDOW.title, width, height, SDL_WINDOW_RESIZABLE | (WINDOW.titleBar ? SDL_WINDOW_BORDERLESS : 0) | flags);
+    osWindow->rootID = rootID;
+    osWindow->raised = ++WINDOW.raises;
+    osWindow->window = SDL_CreateWindow(WINDOW.title, width, height, SDL_WINDOW_RESIZABLE | (WINDOW.titleBar ? SDL_WINDOW_BORDERLESS : 0) | flags);
 
-    if (os->window == nullptr)
+    if (osWindow->window == nullptr)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot open a window: %s", SDL_GetError());
-        ECSIWindow_CloseOS(os);
+        ECSIWindow_CloseOS(osWindow);
         return nullptr;
     }
 
-    ECSIWindow_ApplyTitleBar(os);
+    ECSIWindow_ApplyTitleBar(osWindow);
 
-    os->renderer = ECSIWindow_CreateRenderer(os->window, rootID == 0);
+    osWindow->renderer = ECSIWindow_CreateRenderer(osWindow->window);
 
-    if (os->renderer == nullptr)
+    if (osWindow->renderer == nullptr)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot create a renderer: %s", SDL_GetError());
-        ECSIWindow_CloseOS(os);
+        ECSIWindow_CloseOS(osWindow);
         return nullptr;
     }
 
-    os->clayRenderer = (Clay_SDL3RendererData){
-        .renderer = os->renderer,
-        .textEngine = TTF_CreateRendererTextEngine(os->renderer),
-        .fonts = WINDOW.fonts,
+    osWindow->clayRenderer = (Clay_SDL3RendererData){
+        .renderer = osWindow->renderer,
+        .textEngine = TTF_CreateRendererTextEngine(osWindow->renderer),
+        .fonts = &WINDOW.font,
     };
 
     u32 claySize = Clay_MinMemorySize();
-    os->clayMemory = os->clayRenderer.textEngine == nullptr ? nullptr : SDL_malloc(claySize);
+    osWindow->clayMemory = osWindow->clayRenderer.textEngine == nullptr ? nullptr : SDL_malloc(claySize);
 
-    if (os->clayMemory == nullptr)
+    if (osWindow->clayMemory == nullptr)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot create a text engine: %s", SDL_GetError());
-        ECSIWindow_CloseOS(os);
+        ECSIWindow_CloseOS(osWindow);
         return nullptr;
     }
 
-    ECSIWindow_ReadSize(os);
-    Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(claySize, os->clayMemory);
-    os->clay = Clay_Initialize(arena, (Clay_Dimensions){os->width, os->height}, (Clay_ErrorHandler){ECSIWindow_ClayError, nullptr});
+    ECSIWindow_ReadSize(osWindow);
+    Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(claySize, osWindow->clayMemory);
+    osWindow->clay = Clay_Initialize(arena, (Clay_Dimensions){osWindow->width, osWindow->height}, (Clay_ErrorHandler){ECSIWindow_ClayError, nullptr});
     Clay_SetMeasureTextFunction(ECSIWindow_MeasureText, nullptr);
 
     // only the main window waits for the display, so presenting several windows does not wait once for each
     if (rootID != 0)
     {
-        SDL_SetRenderVSync(os->renderer, SDL_RENDERER_VSYNC_DISABLED);
+        SDL_SetRenderVSync(osWindow->renderer, SDL_RENDERER_VSYNC_DISABLED);
     }
 
-    arrput(WINDOW.windows, os);
-    return os;
+    arrput(WINDOW.windows, osWindow);
+    return osWindow;
 }
 
 /// @brief Loads the core's font and opens the main OS window.
@@ -1386,9 +1410,9 @@ static SHUResult ECSIWindow_Open(const char *title)
         return SHUResult_ErrAllocation;
     }
 
-    WINDOW.fonts[0] = TTF_OpenFont(fontPath, WINDOW.fontSize);
+    WINDOW.font = TTF_OpenFont(fontPath, WINDOW.fontSize);
 
-    if (WINDOW.fonts[0] == nullptr)
+    if (WINDOW.font == nullptr)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot load the font '%s': %s", fontPath, SDL_GetError());
         SDL_free(fontPath);
@@ -1403,14 +1427,12 @@ static SHUResult ECSIWindow_Open(const char *title)
         return SHUResult_ErrAllocation;
     }
 
+    ECSIWindow_CreateDevice();
     i64 width = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.windowWidth"), 0), 1, SDL_MAX_SINT32);
     i64 height = SDL_clamp(ECSValue_GetInteger(ECSSetting_Get("ecs.windowHeight"), 0), 1, SDL_MAX_SINT32);
-    WINDOW.event = ECSIWindow_OpenOS(0, (i32)width, (i32)height, 0);
-    WINDOW.menuWindow = WINDOW.event;
-
-    // a drag that the system carries continues a press, which it must have seen
-    ECSISystemDrag_Prepare();
-    return WINDOW.event == nullptr ? SHUResult_ErrInternal : SHUResult_Ok;
+    WINDOW.eventWindow = ECSIWindow_OpenOS(0, (i32)width, (i32)height, 0);
+    WINDOW.menuWindow = WINDOW.eventWindow;
+    return WINDOW.eventWindow == nullptr ? SHUResult_ErrInternal : SHUResult_Ok;
 }
 
 /// @brief Matches the OS windows to the current workspace's roots: a new pop-out root gets its OS window at the pointer, a gone one's window closes, and the windows of other workspaces hide. Each shown root gets its window's size.
@@ -1418,25 +1440,25 @@ static void ECSIWindow_Sync(void)
 {
     for (usz i = 1; i < arrlenu(WINDOW.windows);)
     {
-        ECSIOSWindow *os = WINDOW.windows[i];
+        ECSIOSWindow *osWindow = WINDOW.windows[i];
         bool shown = false;
 
-        if (ECSILayout_FindRoot(os->rootID, &shown) == nullptr)
+        if (ECSILayout_FindRoot(osWindow->rootID, &shown) == nullptr)
         {
             arrdel(WINDOW.windows, i);
-            ECSIWindow_CloseOS(os);
+            ECSIWindow_CloseOS(osWindow);
             continue;
         }
 
-        bool hidden = (SDL_GetWindowFlags(os->window) & SDL_WINDOW_HIDDEN) != 0;
+        bool hidden = (SDL_GetWindowFlags(osWindow->window) & SDL_WINDOW_HIDDEN) != 0;
 
         if (shown && hidden)
         {
-            SDL_ShowWindow(os->window);
+            SDL_ShowWindow(osWindow->window);
         }
         else if (!shown && !hidden)
         {
-            SDL_HideWindow(os->window);
+            SDL_HideWindow(osWindow->window);
         }
 
         i++;
@@ -1447,41 +1469,41 @@ static void ECSIWindow_Sync(void)
 
     for (usz i = 1; i < count; i++)
     {
-        if (ECSIWindow_OfRoot(roots[i]) != nullptr)
+        if (ECSIWindow_FindByRoot(roots[i]) != nullptr)
         {
             continue;
         }
 
-        ECSIOSWindow *os = ECSIWindow_OpenOS(roots[i]->id, (i32)SDL_max(1.0f, roots[i]->width), (i32)SDL_max(1.0f, roots[i]->height + ECSIWindow_TitleHeight()), SDL_WINDOW_HIDDEN);
+        ECSIOSWindow *osWindow = ECSIWindow_OpenOS(roots[i]->id, (i32)SDL_max(1.0f, roots[i]->width), (i32)SDL_max(1.0f, roots[i]->height + ECSIWindow_GetTitleHeight()), SDL_WINDOW_HIDDEN);
 
-        if (os != nullptr)
+        if (osWindow != nullptr)
         {
             // it opens at the pointer; on Wayland, the compositor places it
             f32 x = 0.0f;
             f32 y = 0.0f;
             SDL_GetGlobalMouseState(&x, &y);
-            SDL_SetWindowPosition(os->window, (int)x, (int)y);
-            SDL_ShowWindow(os->window);
+            SDL_SetWindowPosition(osWindow->window, (int)x, (int)y);
+            SDL_ShowWindow(osWindow->window);
         }
     }
 
     for (usz i = 0; i < arrlenu(WINDOW.windows); i++)
     {
-        ECSIOSWindow *os = WINDOW.windows[i];
-        ECSIRoot *root = ECSIWindow_Root(os);
-        ECSIWindow_ReadSize(os);
+        ECSIOSWindow *osWindow = WINDOW.windows[i];
+        ECSIRoot *root = ECSIWindow_RootOf(osWindow);
+        ECSIWindow_ReadSize(osWindow);
 
         if (root != nullptr)
         {
-            f32 title = SDL_min(ECSIWindow_TitleHeight(), os->height);
-            ECSILayout_SetRootArea(root, title, os->width, os->height - title);
+            f32 title = SDL_min(ECSIWindow_GetTitleHeight(), osWindow->height);
+            ECSILayout_SetRootArea(root, title, osWindow->width, osWindow->height - title);
         }
     }
 
     // the OS window of the focused panel comes forward when the focus moves into it
     ECSIRoot *focusRoot = ECSILayout_RootOf(ECSILayout_GetFocus());
     u32 focusID = focusRoot == nullptr ? 0 : focusRoot->id;
-    ECSIOSWindow *focusWindow = ECSIWindow_OfRoot(focusRoot);
+    ECSIOSWindow *focusWindow = ECSIWindow_FindByRoot(focusRoot);
 
     if (focusID != WINDOW.focusRoot && focusWindow != nullptr && (SDL_GetWindowFlags(focusWindow->window) & SDL_WINDOW_INPUT_FOCUS) == 0)
     {
@@ -1496,7 +1518,7 @@ static void ECSIWindow_Sync(void)
 /// @brief Frees what a popup is shown with; the Popups module calls it before it frees the popup.
 static void ECSIWindow_ReleasePopup(ECSPopup popup)
 {
-    ECSIPopupView *view = popup->window;
+    ECSIPopupView *view = popup->view;
 
     if (view == nullptr)
     {
@@ -1521,33 +1543,27 @@ static void ECSIWindow_ReleasePopup(ECSPopup popup)
     }
 
     SDL_free(view);
-    popup->window = nullptr;
+    popup->view = nullptr;
 }
 
-/// @brief Finds where a popup shows in its panel's OS window: below its anchor, or above it if there is no room below. Drawn inside the OS window, it is also kept inside it.
-static SDL_FRect ECSIWindow_PlacePopup(ECSPopup popup, const ECSIOSWindow *os, bool inside)
+/// @brief Finds where a popup shows in its panel's OS window: below its anchor, or above it if there is no room below.
+static SDL_FRect ECSIWindow_PlacePopup(ECSPopup popup, const ECSIOSWindow *osWindow)
 {
     ECSPanel panel = popup->panel;
     const ECSPopupDesc *desc = &popup->desc;
     SDL_FRect rect = {panel->x + desc->anchorX, panel->y + desc->anchorY + desc->anchorHeight, desc->width, desc->height};
     f32 above = panel->y + desc->anchorY - desc->height;
 
-    if (rect.y + rect.h > os->height && above >= 0.0f)
+    if (rect.y + rect.h > osWindow->height && above >= 0.0f)
     {
         rect.y = above;
-    }
-
-    if (inside)
-    {
-        rect.x = SDL_max(0.0f, SDL_min(rect.x, os->width - rect.w));
-        rect.y = SDL_max(0.0f, SDL_min(rect.y, os->height - rect.h));
     }
 
     return rect;
 }
 
 /// @brief Makes how a popup is shown: an SDL popup window with its renderer, or nothing more when the video driver has none.
-static ECSIPopupView *ECSIWindow_MakePopupView(ECSPopup popup, const ECSIOSWindow *os, SDL_FRect rect)
+static ECSIPopupView *ECSIWindow_MakePopupView(ECSPopup popup, const ECSIOSWindow *osWindow, SDL_FRect rect)
 {
     ECSIPopupView *view = SDL_calloc(1, sizeof(ECSIPopupView));
 
@@ -1556,8 +1572,8 @@ static ECSIPopupView *ECSIWindow_MakePopupView(ECSPopup popup, const ECSIOSWindo
         return nullptr;
     }
 
-    view->rootID = os->rootID;
-    popup->window = view;
+    view->rootID = osWindow->rootID;
+    popup->view = view;
 
     if (WINDOW.noPopupWindows)
     {
@@ -1565,8 +1581,8 @@ static ECSIPopupView *ECSIWindow_MakePopupView(ECSPopup popup, const ECSIOSWindo
     }
 
     SDL_WindowFlags flags = popup->desc.kind == ECSPopupKind_Menu ? SDL_WINDOW_POPUP_MENU : SDL_WINDOW_TOOLTIP;
-    view->window = SDL_CreatePopupWindow(os->window, (int)rect.x, (int)rect.y, (int)rect.w, (int)rect.h, flags | SDL_WINDOW_TRANSPARENT);
-    view->renderer = view->window == nullptr ? nullptr : ECSIWindow_CreateRenderer(view->window, false);
+    view->window = SDL_CreatePopupWindow(osWindow->window, (int)rect.x, (int)rect.y, (int)rect.w, (int)rect.h, flags | SDL_WINDOW_TRANSPARENT);
+    view->renderer = view->window == nullptr ? nullptr : ECSIWindow_CreateRenderer(view->window);
 
     // a driver without popup windows, such as the offscreen driver, gets them drawn inside the OS windows from now on
     if (view->renderer == nullptr)
@@ -1603,27 +1619,34 @@ static void ECSIWindow_UpdatePopups(void)
         }
 
         ECSPopup popup = popups[i];
-        ECSIOSWindow *os = ECSIWindow_OfRoot(ECSILayout_RootOf(popup->panel));
-        ECSIPopupView *view = popup->window;
+        ECSIOSWindow *osWindow = ECSIWindow_FindByRoot(ECSILayout_RootOf(popup->panel));
+        ECSIPopupView *view = popup->view;
 
-        if (os == nullptr)
+        if (osWindow == nullptr)
         {
             continue;
         }
 
         // a popup whose panel moved to another OS window is shown there anew
-        if (view != nullptr && view->rootID != os->rootID)
+        if (view != nullptr && view->rootID != osWindow->rootID)
         {
             ECSIWindow_ReleasePopup(popup);
             view = nullptr;
         }
 
-        SDL_FRect rect = ECSIWindow_PlacePopup(popup, os, view == nullptr ? WINDOW.noPopupWindows : view->window == nullptr);
-        view = view != nullptr ? view : ECSIWindow_MakePopupView(popup, os, rect);
+        SDL_FRect rect = ECSIWindow_PlacePopup(popup, osWindow);
+        view = view != nullptr ? view : ECSIWindow_MakePopupView(popup, osWindow, rect);
 
         if (view == nullptr)
         {
             continue;
+        }
+
+        // drawn inside the OS window, it is also kept inside it
+        if (view->window == nullptr)
+        {
+            rect.x = SDL_max(0.0f, SDL_min(rect.x, osWindow->width - rect.w));
+            rect.y = SDL_max(0.0f, SDL_min(rect.y, osWindow->height - rect.h));
         }
 
         if (view->window != nullptr && (rect.x != view->rect.x || rect.y != view->rect.y || rect.w != view->rect.w || rect.h != view->rect.h))
@@ -1633,7 +1656,7 @@ static void ECSIWindow_UpdatePopups(void)
         }
 
         view->rect = rect;
-        SDL_Renderer *renderer = view->renderer != nullptr ? view->renderer : os->renderer;
+        SDL_Renderer *renderer = view->renderer != nullptr ? view->renderer : osWindow->renderer;
         bool drawn = ECSIPopup_Draw(popup);
         SDL_Surface *pixels = popup->pixels;
 
@@ -1664,18 +1687,18 @@ static void ECSIWindow_UpdatePopups(void)
 }
 
 /// @brief Draws the popups that are drawn inside an OS window, over everything else, the oldest first.
-static void ECSIWindow_ShowPopupsIn(const ECSIOSWindow *os)
+static void ECSIWindow_ShowPopupsIn(const ECSIOSWindow *osWindow)
 {
     usz count = 0;
     ECSPopup *popups = ECSIPopups_GetOpen(&count);
 
     for (usz i = 0; i < count; i++)
     {
-        ECSIPopupView *view = popups[i]->window;
+        ECSIPopupView *view = popups[i]->view;
 
-        if (view != nullptr && view->window == nullptr && view->texture != nullptr && view->rootID == os->rootID && ECSIWindow_OfRoot(ECSILayout_RootOf(popups[i]->panel)) == os)
+        if (view != nullptr && view->window == nullptr && view->texture != nullptr && view->rootID == osWindow->rootID && ECSIWindow_FindByRoot(ECSILayout_RootOf(popups[i]->panel)) == osWindow)
         {
-            SDL_RenderTexture(os->renderer, view->texture, nullptr, &view->rect);
+            SDL_RenderTexture(osWindow->renderer, view->texture, nullptr, &view->rect);
         }
     }
 }
@@ -1688,7 +1711,7 @@ static void ECSIWindow_PresentPopups(void)
 
     for (usz i = 0; i < count; i++)
     {
-        ECSIPopupView *view = popups[i]->window;
+        ECSIPopupView *view = popups[i]->view;
 
         if (view != nullptr && view->renderer != nullptr)
         {
@@ -1722,7 +1745,7 @@ static f32 ECSIWindow_ReadNumber(const char *name)
 }
 
 /// @brief Reads the window's settings, except ecs.vsync and the ones read when the window opens.
-static void ECSIWindow_Read(void)
+static void ECSIWindow_ReadSettings(void)
 {
     for (usz i = 0; i < ECSIColor_Count; i++)
     {
@@ -1751,10 +1774,10 @@ static void ECSIWindow_Read(void)
 }
 
 /// @brief The Changed function of the window's settings.
-static void ECSIWindow_ReadSettings(void *data)
+static void ECSIWindow_SettingsChanged(void *data)
 {
     (void)data;
-    ECSIWindow_Read();
+    ECSIWindow_ReadSettings();
     ECSILayout_RequestFrame();
 }
 
@@ -1787,32 +1810,28 @@ static void ECSIWindow_ReadVsync(void *data)
     }
 }
 
-/// @brief Draws a frame of an OS window without presenting it. The layout is updated before.
-static void ECSIWindow_DrawFrame(ECSIOSWindow *os, u64 nowTicks)
+/// @brief Puts an OS window's picture together from what is drawn already, without presenting it: the background, the panels' pixels, the core's interface, then the popups drawn inside the window.
+static void ECSIWindow_Compose(ECSIOSWindow *osWindow, const ECSIRoot *root, Clay_RenderCommandArray commands)
 {
-    ECSIRoot *root = ECSIWindow_Root(os);
-    ECSIDrawContext context = {os->renderer, nowTicks};
+    Clay_Color background = WINDOW.colors[ECSIColor_Background];
+    SDL_SetRenderDrawColor(osWindow->renderer, (u8)background.r, (u8)background.g, (u8)background.b, (u8)background.a);
+    SDL_RenderClear(osWindow->renderer);
+    ECSILayout_ForEachGroup(root, ECSIWindow_ShowGroup, osWindow->renderer);
+    SDL_Clay_RenderClayCommands(&osWindow->clayRenderer, &commands);
+    ECSIWindow_ShowPopupsIn(osWindow);
+}
+
+/// @brief Draws a frame of an OS window without presenting it. The layout is updated before.
+static void ECSIWindow_DrawFrame(ECSIOSWindow *osWindow, u64 nowTicks)
+{
+    ECSIRoot *root = ECSIWindow_RootOf(osWindow);
+    ECSIDrawContext context = {osWindow->renderer, nowTicks};
 
     // the interface's commands point to the panels' titles, so panels draw first; their Draw may change a title
-    if (root != nullptr)
-    {
-        ECSILayout_ForEachGroup(root, ECSIWindow_DrawGroup, &context);
-    }
-
-    Clay_RenderCommandArray commands = ECSIWindow_DeclareInterface(os, root);
-    ECSIWindow_FitTabs(os);
-
-    Clay_Color background = WINDOW.colors[ECSIColor_Background];
-    SDL_SetRenderDrawColor(os->renderer, (u8)background.r, (u8)background.g, (u8)background.b, (u8)background.a);
-    SDL_RenderClear(os->renderer);
-
-    if (root != nullptr)
-    {
-        ECSILayout_ForEachGroup(root, ECSIWindow_ShowGroup, &context);
-    }
-
-    SDL_Clay_RenderClayCommands(&os->clayRenderer, &commands);
-    ECSIWindow_ShowPopupsIn(os);
+    ECSILayout_ForEachGroup(root, ECSIWindow_DrawGroup, &context);
+    Clay_RenderCommandArray commands = ECSIWindow_DeclareInterface(osWindow, root);
+    ECSIWindow_FitTabs(osWindow);
+    ECSIWindow_Compose(osWindow, root, commands);
 }
 
 /// @brief Updates the layout and draws a frame of every shown OS window, without presenting them.
@@ -1866,11 +1885,11 @@ SHUResult ECSIWindow_Initialize(const char *title)
     for (usz i = 0; i < SDL_arraysize(OPENECS_WINDOW_SETTINGS); i++)
     {
         ECSSettingDesc desc = OPENECS_WINDOW_SETTINGS[i];
-        desc.Changed = ECSIWindow_ReadSettings;
+        desc.Changed = ECSIWindow_SettingsChanged;
         SHU_ReturnResult(ECSISettings_DeclareCore(&desc));
     }
 
-    ECSIWindow_Read();
+    ECSIWindow_ReadSettings();
 
     SHU_ReturnResult(ECSIWindow_Open(title), ECSIWindow_Terminate(););
 
@@ -1902,8 +1921,6 @@ SHUResult ECSIWindow_Initialize(const char *title)
 
 void ECSIWindow_Terminate(void)
 {
-    ECSISystemDrag_Terminate();
-    WINDOW.systemDrag = false;
     ECSILayout_SetForget(nullptr);
     ECSIPopups_SetRelease(nullptr);
 
@@ -1920,9 +1937,9 @@ void ECSIWindow_Terminate(void)
         SDL_DestroyCursor(WINDOW.cursors[i]);
     }
 
-    if (WINDOW.fonts[0] != nullptr)
+    if (WINDOW.font != nullptr)
     {
-        TTF_CloseFont(WINDOW.fonts[0]);
+        TTF_CloseFont(WINDOW.font);
     }
 
     if (TTF_WasInit() > 0)
@@ -1932,22 +1949,26 @@ void ECSIWindow_Terminate(void)
 
     SDL_free(WINDOW.title);
     SDL_free(WINDOW.hint);
+
+    // the GPU device outlives the OS windows, as the plugins may still hold its objects
+    ECSIGpu gpu = WINDOW.gpu;
     SDL_zero(WINDOW);
+    WINDOW.gpu = gpu;
 }
 
 void *ECSGpu_GetDevice(void)
 {
-    return GPU.device;
+    return WINDOW.gpu.device;
 }
 
 void ECSIWindow_DestroyDevice(void)
 {
-    if (GPU.owner != nullptr)
+    if (WINDOW.gpu.owner != nullptr)
     {
-        SDL_DestroyRenderer(GPU.owner);
+        SDL_DestroyRenderer(WINDOW.gpu.owner);
     }
 
-    SDL_zero(GPU);
+    SDL_zero(WINDOW.gpu);
 }
 
 SDL_Window *ECSIWindow_GetMain(void)
@@ -1955,14 +1976,20 @@ SDL_Window *ECSIWindow_GetMain(void)
     return arrlenu(WINDOW.windows) > 0 ? WINDOW.windows[0]->window : nullptr;
 }
 
+/// @brief Finds the OS window of the current workspace with a number: 1 for the main window, then the pop-out windows in the order of ECSILayout_GetRoots.
+static ECSIOSWindow *ECSIWindow_FindByNumber(usz number)
+{
+    usz count = 0;
+    ECSIRoot *const *roots = ECSILayout_GetRoots(&count);
+    return number >= 1 && number <= count ? ECSIWindow_FindByRoot(roots[number - 1]) : nullptr;
+}
+
 SDL_Window *ECSIWindow_Get(usz number)
 {
     // the windows are synced first, so a root made since the last frame has its window
     ECSIWindow_Sync();
-    usz count = 0;
-    ECSIRoot *const *roots = ECSILayout_GetRoots(&count);
-    ECSIOSWindow *os = number >= 1 && number <= count ? ECSIWindow_OfRoot(roots[number - 1]) : nullptr;
-    return os == nullptr ? nullptr : os->window;
+    ECSIOSWindow *osWindow = ECSIWindow_FindByNumber(number);
+    return osWindow == nullptr ? nullptr : osWindow->window;
 }
 
 usz ECSIWindow_NumberOf(ECSPanel panel)
@@ -1982,37 +2009,37 @@ usz ECSIWindow_NumberOf(ECSPanel panel)
     return 0;
 }
 
-SDL_Window *ECSIWindow_OfPanel(ECSPanel panel)
+SDL_Window *ECSIWindow_GetPanelWindow(ECSPanel panel)
 {
-    ECSIOSWindow *os = ECSIWindow_OfRoot(ECSILayout_RootOf(panel));
-    return os != nullptr ? os->window : ECSIWindow_GetMain();
+    ECSIOSWindow *osWindow = ECSIWindow_FindByRoot(ECSILayout_RootOf(panel));
+    return osWindow != nullptr ? osWindow->window : ECSIWindow_GetMain();
 }
 
 ECSIRoot *ECSIWindow_GetRoot(SDL_WindowID id, bool *retMain)
 {
-    ECSIOSWindow *os = ECSIWindow_Find(id);
+    ECSIOSWindow *osWindow = ECSIWindow_FindByID(id);
 
     if (retMain != nullptr)
     {
-        *retMain = os == nullptr || os->rootID == 0;
+        *retMain = osWindow == nullptr || osWindow->rootID == 0;
     }
 
-    return ECSIWindow_Root(os);
+    return ECSIWindow_RootOf(osWindow);
 }
 
 void ECSIWindow_Focused(SDL_WindowID id)
 {
-    ECSIOSWindow *os = ECSIWindow_Find(id);
+    ECSIOSWindow *osWindow = ECSIWindow_FindByID(id);
 
-    if (os != nullptr)
+    if (osWindow != nullptr)
     {
-        os->raised = ++WINDOW.raises;
+        osWindow->raised = ++WINDOW.raises;
     }
 }
 
 void ECSIWindow_SetEventWindow(SDL_WindowID id)
 {
-    WINDOW.event = ECSIWindow_Find(id);
+    WINDOW.eventWindow = ECSIWindow_FindByID(id);
     WINDOW.eventPopup = nullptr;
 
     // an SDL popup window's events go to its popup, with positions in it
@@ -2021,7 +2048,7 @@ void ECSIWindow_SetEventWindow(SDL_WindowID id)
 
     for (usz i = 0; i < count; i++)
     {
-        ECSIPopupView *view = popups[i]->window;
+        ECSIPopupView *view = popups[i]->view;
 
         if (view != nullptr && view->window != nullptr && SDL_GetWindowID(view->window) == id)
         {
@@ -2049,10 +2076,10 @@ ECSPopup ECSIWindow_PopupAt(f32 x, f32 y, f32 *retX, f32 *retY)
 
     for (usz i = count; i > 0; i--)
     {
-        ECSIPopupView *view = popups[i - 1]->window;
+        ECSIPopupView *view = popups[i - 1]->view;
 
-        if (view != nullptr && view->window == nullptr && WINDOW.event != nullptr && view->rootID == WINDOW.event->rootID &&
-            ECSIWindow_Contains(x, y, view->rect.x, view->rect.y, view->rect.w, view->rect.h))
+        if (view != nullptr && view->window == nullptr && WINDOW.eventWindow != nullptr && view->rootID == WINDOW.eventWindow->rootID &&
+            ECSILayout_Contains(view->rect, x, y))
         {
             *retX = x - view->rect.x;
             *retY = y - view->rect.y;
@@ -2070,7 +2097,7 @@ void ECSIWindow_ToPopup(ECSPopup popup, f32 x, f32 y, f32 *retX, f32 *retY)
     SDL_assert(retY != nullptr);
 
     // an SDL popup window's own events are in its positions already
-    ECSIPopupView *view = popup->window;
+    ECSIPopupView *view = popup->view;
     bool inside = view != nullptr && view->window == nullptr && popup != WINDOW.eventPopup;
     *retX = inside ? x - view->rect.x : x;
     *retY = inside ? y - view->rect.y : y;
@@ -2082,7 +2109,7 @@ bool ECSIWindow_PopupRect(ECSPopup popup, SDL_FRect *retRect, usz *retWindow)
     SDL_assert(retRect != nullptr);
     SDL_assert(retWindow != nullptr);
 
-    ECSIPopupView *view = popup->window;
+    ECSIPopupView *view = popup->view;
 
     if (view == nullptr)
     {
@@ -2104,11 +2131,11 @@ SDL_Window *ECSIWindow_PopupWindowAt(SDL_Window *window, f32 x, f32 y, SDL_FRect
     // the newest popup on top
     for (usz i = count; i > 0; i--)
     {
-        ECSIPopupView *view = popups[i - 1]->window;
+        ECSIPopupView *view = popups[i - 1]->view;
 
         if (view != nullptr && view->window != nullptr && SDL_GetWindowParent(view->window) == window &&
             (SDL_GetWindowFlags(view->window) & SDL_WINDOW_HIDDEN) == 0 &&
-            ECSIWindow_Contains(x, y, view->rect.x, view->rect.y, view->rect.w, view->rect.h))
+            ECSILayout_Contains(view->rect, x, y))
         {
             *retRect = view->rect;
             return view->window;
@@ -2123,18 +2150,23 @@ ECSPanel ECSIWindow_PanelAt(f32 x, f32 y, f32 *retX, f32 *retY)
     SDL_assert(retX != nullptr);
     SDL_assert(retY != nullptr);
 
-    ECSIOSWindow *os = ECSIWindow_Under(x, y, retX, retY);
-    return ECSILayout_PanelAt(ECSIWindow_Root(os), *retX, *retY);
+    ECSIOSWindow *osWindow = ECSIWindow_FindAt(x, y, retX, retY);
+    return ECSILayout_PanelAt(ECSIWindow_RootOf(osWindow), *retX, *retY);
 }
 
-/// @brief Gets how long the main loop may wait for the next frame, in milliseconds: 0 when one is due, -1 when none is wanted.
-static i32 ECSIWindow_NextFrameWait(void)
+/// @brief Gets the milliseconds until a time, rounded up; 0 once it has come.
+static i32 ECSIWindow_MillisecondsUntil(u64 ticks)
+{
+    u64 now = SDL_GetTicksNS();
+    return now >= ticks ? 0 : (i32)((ticks - now + SDL_NS_PER_MS - 1) / SDL_NS_PER_MS);
+}
+
+i32 ECSIWindow_GetFrameWait(void)
 {
     // a panel waiting to land wakes the loop when its wait ends
-    if (WINDOW.pendingPanel != nullptr)
+    if (WINDOW.pending.panel != nullptr)
     {
-        u64 now = SDL_GetTicksNS();
-        return now >= WINDOW.pendingUntil ? 0 : (i32)((WINDOW.pendingUntil - now + SDL_NS_PER_MS - 1) / SDL_NS_PER_MS);
+        return ECSIWindow_MillisecondsUntil(WINDOW.pending.until);
     }
 
     // windows that cannot be seen are not drawn; showing one again asks for a frame
@@ -2150,32 +2182,16 @@ static i32 ECSIWindow_NextFrameWait(void)
         return -1;
     }
 
-    u64 next = WINDOW.lastFrameTicks + WINDOW.frameNanoseconds;
-    u64 now = SDL_GetTicksNS();
-    return now >= next ? 0 : (i32)((next - now + SDL_NS_PER_MS - 1) / SDL_NS_PER_MS);
-}
-
-i32 ECSIWindow_GetFrameWait(void)
-{
-    i32 wait = ECSIWindow_NextFrameWait();
-
-    // while the system carries a drag, its news come apart from SDL's events, so the loop looks for them often
-    return WINDOW.systemDrag && (wait < 0 || wait > OPENECS_SYSTEM_DRAG_WAIT) ? OPENECS_SYSTEM_DRAG_WAIT : wait;
+    return ECSIWindow_MillisecondsUntil(WINDOW.lastFrameTicks + WINDOW.frameNanoseconds);
 }
 
 void ECSIWindow_Render(u64 nowTicks)
 {
     // a panel that no other OS window took pops out
-    if (WINDOW.pendingPanel != nullptr && nowTicks >= WINDOW.pendingUntil)
+    if (WINDOW.pending.panel != nullptr && nowTicks >= WINDOW.pending.until)
     {
-        ECSPanel panel = WINDOW.pendingPanel;
-        WINDOW.pendingPanel = nullptr;
-        ECSIDrop drop = {.zone = ECSIZone_PopOut};
-
-        if (WINDOW.pendingPopOut && ECSILayout_HasPanel(panel))
-        {
-            ECSILayout_Drop(panel, WINDOW.pendingGroup, &drop);
-        }
+        ECSILayout_Drop(WINDOW.pending.panel, WINDOW.pending.group, &WINDOW.pending.drop);
+        WINDOW.pending.panel = nullptr;
     }
 
     ECSIWindow_DrawFrames(nowTicks);
@@ -2187,16 +2203,14 @@ void ECSIWindow_Render(u64 nowTicks)
 static SDL_Surface *ECSIWindow_ReadFrame(usz number, f32 *retScale)
 {
     ECSIWindow_DrawFrames(SDL_GetTicksNS());
-    usz count = 0;
-    ECSIRoot *const *roots = ECSILayout_GetRoots(&count);
-    ECSIOSWindow *os = number >= 1 && number <= count ? ECSIWindow_OfRoot(roots[number - 1]) : nullptr;
+    ECSIOSWindow *osWindow = ECSIWindow_FindByNumber(number);
 
     if (retScale != nullptr)
     {
-        *retScale = os == nullptr ? 1.0f : SDL_GetWindowPixelDensity(os->window);
+        *retScale = osWindow == nullptr ? 1.0f : SDL_GetWindowPixelDensity(osWindow->window);
     }
 
-    return os == nullptr ? nullptr : SDL_RenderReadPixels(os->renderer, nullptr);
+    return osWindow == nullptr ? nullptr : SDL_RenderReadPixels(osWindow->renderer, nullptr);
 }
 
 SHUResult ECSIWindow_Screenshot(const char *path, usz number)
@@ -2241,67 +2255,59 @@ SHUResult ECSIWindow_ReadPixel(usz number, f32 x, f32 y, ECSColor *retColor)
 
 bool ECSIWindow_PointerDown(f32 x, f32 y)
 {
-    ECSIOSWindow *os = WINDOW.event;
-
-    // a press while the system carries a drag ends it where it is, as the release was missed
-    if (WINDOW.systemDrag)
-    {
-        ECSISystemDrag_Cancel();
-        WINDOW.systemDrag = false;
-        ECSIWindow_CancelDrag();
-    }
+    ECSIOSWindow *osWindow = WINDOW.eventWindow;
 
     // the title bar's buttons, from the right: close, maximize or restore, and minimize; the rest of it moves the window, which the system does
     if (WINDOW.titleBar && y < WINDOW.titleBarHeight)
     {
-        f32 button = (os->width - x) / ECSIWindow_TitleButtonWidth();
+        f32 button = (osWindow->width - x) / ECSIWindow_GetTitleButtonWidth();
 
         if (button < 1.0f)
         {
-            SDL_Event close = {.window = {.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED, .windowID = SDL_GetWindowID(os->window), .timestamp = SDL_GetTicksNS()}};
+            SDL_Event close = {.window = {.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED, .windowID = SDL_GetWindowID(osWindow->window), .timestamp = SDL_GetTicksNS()}};
             SDL_PushEvent(&close);
         }
-        else if (button < 2.0f && (SDL_GetWindowFlags(os->window) & SDL_WINDOW_MAXIMIZED) != 0)
+        else if (button < 2.0f && (SDL_GetWindowFlags(osWindow->window) & SDL_WINDOW_MAXIMIZED) != 0)
         {
-            SDL_RestoreWindow(os->window);
+            SDL_RestoreWindow(osWindow->window);
         }
         else if (button < 2.0f)
         {
-            SDL_MaximizeWindow(os->window);
+            SDL_MaximizeWindow(osWindow->window);
         }
         else if (button < 3.0f)
         {
-            SDL_MinimizeWindow(os->window);
+            SDL_MinimizeWindow(osWindow->window);
         }
 
         return true;
     }
 
-    if (ECSILayout_DividerAt(ECSIWindow_Root(os), x, y, &WINDOW.dragSplit, &WINDOW.dragDivider))
+    if (ECSILayout_DividerAt(ECSIWindow_RootOf(osWindow), x, y, &WINDOW.dragSplit, &WINDOW.dragDivider))
     {
         return true;
     }
 
-    for (usz i = 0; i < arrlenu(os->tabs); i++)
+    for (usz i = 0; i < arrlenu(osWindow->tabs); i++)
     {
-        ECSINode *group = os->tabs[i].group;
-        ECSPanel panel = group->panels[os->tabs[i].index];
+        ECSINode *group = osWindow->tabs[i].group;
+        ECSPanel panel = group->panels[osWindow->tabs[i].index];
 
         // closing may ask about unsaved work; the tabs of the last frame are not used after it
-        if (ECSIWindow_OnElement(os, CLAY_IDI("TabClose", (u32)i), x, y))
+        if (ECSIWindow_OnElement(osWindow, CLAY_IDI("TabClose", (u32)i), x, y))
         {
             ECSLayout_Close(panel);
             return true;
         }
 
-        if (ECSIWindow_OnElement(os, CLAY_IDI("Tab", (u32)i), x, y))
+        if (ECSIWindow_OnElement(osWindow, CLAY_IDI("Tab", (u32)i), x, y))
         {
-            ECSILayout_ShowTab(panel);
+            ECSLayout_Focus(panel);
 
             // a locked panel cannot be dragged, but its tab still shows it
             if (!group->locked)
             {
-                ECSIWindow_ArmDrag(panel, false, false, x, y);
+                ECSIWindow_ArmDrag(panel, x, y);
             }
 
             return true;
@@ -2309,7 +2315,7 @@ bool ECSIWindow_PointerDown(f32 x, f32 y)
     }
 
     // the empty part of a tab row drags the whole group
-    ECSINode *group = ECSIWindow_TabRowGroupAt(os, x, y);
+    ECSINode *group = ECSIWindow_TabRowGroupAt(osWindow, x, y);
 
     if (group != nullptr)
     {
@@ -2317,48 +2323,23 @@ bool ECSIWindow_PointerDown(f32 x, f32 y)
 
         if (!group->locked)
         {
-            ECSIWindow_ArmDrag(group->panels[group->shown], true, false, x, y);
+            ECSIWindow_ArmDrag(group->panels[group->shown], x, y);
+            WINDOW.dragGroup = true;
         }
 
         return true;
     }
 
     // a locked group's grip only opens the menu
-    if (WINDOW.gripGroup != nullptr && WINDOW.gripWindow == os && ECSIWindow_OnElement(os, CLAY_ID("Grip"), x, y))
+    if (WINDOW.gripGroup != nullptr && WINDOW.gripWindow == osWindow && ECSIWindow_OnElement(osWindow, CLAY_ID("Grip"), x, y))
     {
-        ECSIWindow_ArmDrag(WINDOW.gripGroup->panels[0], false, true, x, y);
+        ECSIWindow_ArmDrag(WINDOW.gripGroup->panels[0], x, y);
+        WINDOW.dragFromGrip = true;
         WINDOW.dragLocked = WINDOW.gripGroup->locked;
         return true;
     }
 
     return false;
-}
-
-/// @brief Ends a press on a tab, a grip or a divider when the button is released: a dragged panel lands, and a grip that was not dragged is clicked.
-/// @return The panel whose grip was clicked, or nullptr.
-static ECSPanel ECSIWindow_Release(void)
-{
-    ECSPanel clicked = WINDOW.dragFromGrip && !WINDOW.dragging ? WINDOW.dragPanel : nullptr;
-
-    // released outside every OS window it knows the place of, the panel waits briefly for the pointer to enter another one;
-    // so does a panel alone in its OS window, which has nowhere to pop out to
-    if (WINDOW.dragging && WINDOW.dropOutside && ECSIWindow_OnWayland())
-    {
-        WINDOW.pendingPanel = WINDOW.dragPanel;
-        WINDOW.pendingGroup = WINDOW.dragGroup;
-        WINDOW.pendingPopOut = WINDOW.drop.zone == ECSIZone_PopOut;
-        WINDOW.pendingFrom = WINDOW.event;
-        WINDOW.pendingUntil = SDL_GetTicksNS() + OPENECS_PENDING_DROP_NANOSECONDS;
-    }
-    else if (WINDOW.dragging)
-    {
-        ECSILayout_Drop(WINDOW.dragPanel, WINDOW.dragGroup, &WINDOW.drop);
-    }
-
-    ECSIWindow_CancelDrag();
-    WINDOW.dragSplit = nullptr;
-    ECSIWindow_SetCursor(SDL_SYSTEM_CURSOR_DEFAULT);
-    return clicked;
 }
 
 /// @brief Finds where the dragged panel lands with the pointer at a point of the event window, and marks it. A drop that changes nothing is not marked.
@@ -2370,70 +2351,29 @@ static void ECSIWindow_FindDragDrop(f32 x, f32 y)
     ECSILayout_RequestFrame();
 }
 
-/// @brief The pointer moved during a drag that the system carries: over one of the program's OS windows, or outside them.
-static void ECSIWindow_SystemDragMove(SDL_Window *window, f32 x, f32 y)
-{
-    if (!WINDOW.dragging || WINDOW.dragPanel == nullptr)
-    {
-        return;
-    }
-
-    ECSIOSWindow *os = window == nullptr ? nullptr : ECSIWindow_Find(SDL_GetWindowID(window));
-
-    if (os != nullptr)
-    {
-        WINDOW.event = os;
-        ECSIWindow_FindDragDrop(x, y);
-        return;
-    }
-
-    // outside the program's windows, or over a popup, the panel pops out
-    WINDOW.drop = (ECSIDrop){.zone = ECSIZone_PopOut};
-    WINDOW.dropWindow = nullptr;
-    WINDOW.dropRect = (SDL_FRect){0};
-    WINDOW.dropOutside = true;
-    WINDOW.drop = ECSIWindow_DropChanges(&WINDOW.drop) ? WINDOW.drop : (ECSIDrop){0};
-    ECSILayout_RequestFrame();
-}
-
-/// @brief A drag that the system carries ended: the panel lands where the pointer was last.
-static void ECSIWindow_SystemDragEnd(bool carried)
-{
-    WINDOW.systemDrag = false;
-
-    // a drag that the compositor did not take ends as the release of any drag does
-    if (!carried)
-    {
-        ECSIWindow_Release();
-        return;
-    }
-
-    if (WINDOW.dragging && WINDOW.drop.zone != ECSIZone_None && ECSILayout_HasPanel(WINDOW.dragPanel))
-    {
-        ECSILayout_Drop(WINDOW.dragPanel, WINDOW.dragGroup, &WINDOW.drop);
-    }
-
-    ECSIWindow_CancelDrag();
-    ECSIWindow_SetCursor(SDL_SYSTEM_CURSOR_DEFAULT);
-}
-
 bool ECSIWindow_PointerMove(f32 x, f32 y)
 {
     // a panel released outside its OS window lands where the pointer enters another one
-    if (WINDOW.pendingPanel != nullptr && WINDOW.event != WINDOW.pendingFrom)
+    if (WINDOW.pending.panel != nullptr && WINDOW.eventWindow != WINDOW.pending.from)
     {
-        ECSPanel panel = WINDOW.pendingPanel;
-        WINDOW.pendingPanel = nullptr;
         SDL_FRect rect = {0};
-        ECSIOSWindow *os = nullptr;
-        ECSIDrop drop = ECSIWindow_FindDrop(x, y, &os, &rect);
+        ECSIOSWindow *osWindow = nullptr;
+        ECSIDrop drop = ECSIWindow_FindDrop(x, y, &osWindow, &rect);
+        ECSILayout_Drop(WINDOW.pending.panel, WINDOW.pending.group, &drop);
+        WINDOW.pending.panel = nullptr;
+        return true;
+    }
 
-        if (ECSILayout_HasPanel(panel))
+    // a press on a tab or grip becomes a drag once the pointer moves far enough; a locked grip is never dragged, and pulling it is not a click
+    if (WINDOW.dragPanel != nullptr && !WINDOW.dragging && SDL_fabsf(x - WINDOW.dragStartX) + SDL_fabsf(y - WINDOW.dragStartY) >= WINDOW.dragThreshold)
+    {
+        if (WINDOW.dragLocked)
         {
-            ECSILayout_Drop(panel, WINDOW.pendingGroup, &drop);
+            ECSIWindow_CancelDrag();
+            return true;
         }
 
-        return true;
+        WINDOW.dragging = true;
     }
 
     // the pointer shows a divider can be dragged, and while a panel is dragged
@@ -2442,7 +2382,7 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
 
     if (split == nullptr && WINDOW.dragPanel == nullptr)
     {
-        ECSILayout_DividerAt(ECSIWindow_Root(WINDOW.event), x, y, &split, &divider);
+        ECSILayout_DividerAt(ECSIWindow_RootOf(WINDOW.eventWindow), x, y, &split, &divider);
     }
 
     ECSIWindow_SetCursor(split != nullptr ? (split->vertical ? SDL_SYSTEM_CURSOR_NS_RESIZE : SDL_SYSTEM_CURSOR_EW_RESIZE)
@@ -2457,44 +2397,21 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
 
     if (WINDOW.dragPanel != nullptr)
     {
-        bool wasDragging = WINDOW.dragging;
-        bool moved = SDL_fabsf(x - WINDOW.dragStartX) + SDL_fabsf(y - WINDOW.dragStartY) >= WINDOW.dragThreshold;
-
-        // a locked grip is never dragged, and pulling it is not a click
-        if (moved && WINDOW.dragLocked)
-        {
-            ECSIWindow_CancelDrag();
-            return true;
-        }
-
-        WINDOW.dragging = WINDOW.dragging || moved;
-
         if (WINDOW.dragging)
         {
             ECSIWindow_FindDragDrop(x, y);
-
-            // on Wayland, the drag goes on as one the compositor carries once the pointer leaves the window, so the other windows see the pointer and mark the drop
-            if (WINDOW.dropOutside && ECSIWindow_OnWayland() && !WINDOW.systemDrag)
-            {
-                WINDOW.systemDrag = ECSISystemDrag_Start(WINDOW.event->window, ECSIWindow_SystemDragMove, ECSIWindow_SystemDragEnd);
-            }
-        }
-
-        if (WINDOW.dragging && !wasDragging)
-        {
-            ECSIWindow_SetCursor(SDL_SYSTEM_CURSOR_MOVE);
         }
 
         return true;
     }
 
     ECSIGripHit hit = {x, y, nullptr};
-    ECSILayout_ForEachGroup(ECSIWindow_Root(WINDOW.event), ECSIWindow_FindGripGroup, &hit);
+    ECSILayout_ForEachGroup(ECSIWindow_RootOf(WINDOW.eventWindow), ECSIWindow_HitGrip, &hit);
 
-    if (hit.group != WINDOW.gripGroup || WINDOW.gripWindow != WINDOW.event)
+    if (hit.group != WINDOW.gripGroup || WINDOW.gripWindow != WINDOW.eventWindow)
     {
         WINDOW.gripGroup = hit.group;
-        WINDOW.gripWindow = WINDOW.event;
+        WINDOW.gripWindow = WINDOW.eventWindow;
         ECSILayout_RequestFrame();
     }
 
@@ -2503,8 +2420,26 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
 
 ECSPanel ECSIWindow_PointerUp(void)
 {
-    // when the system takes the drag, SDL releases the button; the drag goes on until the system ends it
-    return WINDOW.systemDrag ? nullptr : ECSIWindow_Release();
+    ECSPanel clicked = WINDOW.dragFromGrip && !WINDOW.dragging ? WINDOW.dragPanel : nullptr;
+
+    // on Wayland, a panel released outside the OS window it was dragged from waits briefly for the pointer to enter another one
+    if (WINDOW.dragging && WINDOW.dropOutside && ECSIWindow_OnWayland())
+    {
+        WINDOW.pending.panel = WINDOW.dragPanel;
+        WINDOW.pending.group = WINDOW.dragGroup;
+        WINDOW.pending.from = WINDOW.eventWindow;
+        WINDOW.pending.drop = WINDOW.drop;
+        WINDOW.pending.until = SDL_GetTicksNS() + OPENECS_PENDING_DROP_NANOSECONDS;
+    }
+    else if (WINDOW.dragging)
+    {
+        ECSILayout_Drop(WINDOW.dragPanel, WINDOW.dragGroup, &WINDOW.drop);
+    }
+
+    ECSIWindow_CancelDrag();
+    WINDOW.dragSplit = nullptr;
+    ECSIWindow_SetCursor(SDL_SYSTEM_CURSOR_DEFAULT);
+    return clicked;
 }
 
 bool ECSIWindow_CancelDrag(void)
@@ -2527,17 +2462,17 @@ bool ECSIWindow_CancelDrag(void)
 
 ECSPanel ECSIWindow_TabAt(f32 x, f32 y)
 {
-    ECSIOSWindow *os = WINDOW.event;
+    ECSIOSWindow *osWindow = WINDOW.eventWindow;
 
-    for (usz i = 0; i < arrlenu(os->tabs); i++)
+    for (usz i = 0; i < arrlenu(osWindow->tabs); i++)
     {
-        if (ECSIWindow_OnElement(os, CLAY_IDI("Tab", (u32)i), x, y))
+        if (ECSIWindow_OnElement(osWindow, CLAY_IDI("Tab", (u32)i), x, y))
         {
-            return os->tabs[i].group->panels[os->tabs[i].index];
+            return osWindow->tabs[i].group->panels[osWindow->tabs[i].index];
         }
     }
 
-    if (WINDOW.gripGroup != nullptr && WINDOW.gripWindow == os && ECSIWindow_OnElement(os, CLAY_ID("Grip"), x, y))
+    if (WINDOW.gripGroup != nullptr && WINDOW.gripWindow == osWindow && ECSIWindow_OnElement(osWindow, CLAY_ID("Grip"), x, y))
     {
         return WINDOW.gripGroup->panels[0];
     }
@@ -2547,13 +2482,13 @@ ECSPanel ECSIWindow_TabAt(f32 x, f32 y)
 
 ECSPanel ECSIWindow_TabRowAt(f32 x, f32 y)
 {
-    ECSINode *group = ECSIWindow_TabRowGroupAt(WINDOW.event, x, y);
+    ECSINode *group = ECSIWindow_TabRowGroupAt(WINDOW.eventWindow, x, y);
     return group == nullptr ? nullptr : group->panels[group->shown];
 }
 
 bool ECSIWindow_ScrollTabs(f32 x, f32 y, f32 steps)
 {
-    ECSINode *group = ECSIWindow_TabRowGroupAt(WINDOW.event, x, y);
+    ECSINode *group = ECSIWindow_TabRowGroupAt(WINDOW.eventWindow, x, y);
 
     if (group == nullptr)
     {
@@ -2569,20 +2504,19 @@ void ECSIWindow_ShowMenu(usz level, SDL_FRect anchor, const char *const *lines, 
 {
     SDL_assert(level < OPENECS_MENU_DEPTH);
 
-    // a menu that closes or changes closes its submenus
-    for (usz i = level + 1; i < OPENECS_MENU_DEPTH; i++)
+    // a menu that closes or changes closes its submenus too
+    for (usz i = level; i < OPENECS_MENU_DEPTH; i++)
     {
         WINDOW.menus[i] = (ECSIMenuView){0};
     }
 
     ECSIMenuView *menu = &WINDOW.menus[level];
-    *menu = (ECSIMenuView){0};
     ECSILayout_RequestFrame();
 
     // the panel menu opens in the OS window of the event that opens it, and its submenus open beside it
     if (level == 0)
     {
-        WINDOW.menuWindow = WINDOW.event;
+        WINDOW.menuWindow = WINDOW.eventWindow;
     }
 
     f32 windowWidth = WINDOW.menuWindow->width;
@@ -2597,7 +2531,7 @@ void ECSIWindow_ShowMenu(usz level, SDL_FRect anchor, const char *const *lines, 
     menu->count = count;
 
     // the menu's size is measured here, so it can be kept inside the OS window
-    TTF_Font *font = WINDOW.fonts[0];
+    TTF_Font *font = WINDOW.font;
     TTF_SetFontSize(font, WINDOW.fontSize);
     f32 width = 0.0f;
 
@@ -2633,6 +2567,13 @@ void ECSIWindow_SelectMenuItem(usz level, usz index)
     ECSILayout_RequestFrame();
 }
 
+usz ECSIWindow_GetSelectedMenuItem(usz level)
+{
+    SDL_assert(level < OPENECS_MENU_DEPTH);
+
+    return WINDOW.menus[level].selected;
+}
+
 SDL_FRect ECSIWindow_MenuItemRect(usz level, usz index)
 {
     SDL_assert(level < OPENECS_MENU_DEPTH);
@@ -2652,7 +2593,7 @@ bool ECSIWindow_MenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex)
     SDL_assert(retIndex != nullptr);
 
     // a point in another OS window is on no menu
-    if (WINDOW.event != WINDOW.menuWindow)
+    if (WINDOW.eventWindow != WINDOW.menuWindow)
     {
         return false;
     }
@@ -2664,7 +2605,7 @@ bool ECSIWindow_MenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex)
         {
             SDL_FRect item = ECSIWindow_MenuItemRect(level - 1, i);
 
-            if (ECSIWindow_Contains(x, y, item.x, item.y, item.w, item.h))
+            if (ECSILayout_Contains(item, x, y))
             {
                 *retLevel = level - 1;
                 *retIndex = i;
@@ -2678,16 +2619,14 @@ bool ECSIWindow_MenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex)
 
 bool ECSIWindow_MenuContains(f32 x, f32 y)
 {
-    if (WINDOW.event != WINDOW.menuWindow)
+    if (WINDOW.eventWindow != WINDOW.menuWindow)
     {
         return false;
     }
 
     for (usz level = 0; level < OPENECS_MENU_DEPTH; level++)
     {
-        const SDL_FRect *rect = &WINDOW.menus[level].rect;
-
-        if (WINDOW.menus[level].lines != nullptr && ECSIWindow_Contains(x, y, rect->x, rect->y, rect->w, rect->h))
+        if (WINDOW.menus[level].lines != nullptr && ECSILayout_Contains(WINDOW.menus[level].rect, x, y))
         {
             return true;
         }
@@ -2699,7 +2638,7 @@ bool ECSIWindow_MenuContains(f32 x, f32 y)
 void ECSIWindow_ShowDataDrag(const char *type, f32 x, f32 y)
 {
     WINDOW.dataType = type;
-    WINDOW.dataWindow = type == nullptr ? nullptr : ECSIWindow_Under(x, y, &WINDOW.dataX, &WINDOW.dataY);
+    WINDOW.dataWindow = type == nullptr ? nullptr : ECSIWindow_FindAt(x, y, &WINDOW.dataX, &WINDOW.dataY);
     ECSILayout_RequestFrame();
 }
 
@@ -2722,46 +2661,33 @@ SDL_WindowID ECSIWindow_ShowDialog(const ECSIDialogView *dialog)
     }
 
     // the dialog shows over the OS window of the event that asks, such as a pop-out window's close button, and comes forward
-    ECSIOSWindow *os = WINDOW.event != nullptr && ECSIWindow_IsShown(WINDOW.event) ? WINDOW.event : arrlenu(WINDOW.windows) > 0 ? WINDOW.windows[0] : nullptr;
+    ECSIOSWindow *osWindow = WINDOW.eventWindow != nullptr && ECSIWindow_IsShown(WINDOW.eventWindow) ? WINDOW.eventWindow : arrlenu(WINDOW.windows) > 0 ? WINDOW.windows[0] : nullptr;
 
-    if (os == nullptr)
+    if (osWindow == nullptr)
     {
         WINDOW.dialog = nullptr;
         return 0;
     }
 
-    WINDOW.dialogWindow = os;
-    SDL_RaiseWindow(os->window);
-    return SDL_GetWindowID(os->window);
+    WINDOW.dialogWindow = osWindow;
+    SDL_RaiseWindow(osWindow->window);
+    return SDL_GetWindowID(osWindow->window);
 }
 
 void ECSIWindow_RenderDialog(void)
 {
-    ECSIOSWindow *os = WINDOW.dialogWindow;
+    ECSIOSWindow *osWindow = WINDOW.dialogWindow;
 
-    if (WINDOW.dialog == nullptr || os == nullptr)
+    if (WINDOW.dialog == nullptr || osWindow == nullptr)
     {
         return;
     }
 
     // the panels show the pixels of their last frame, and the core's interface is laid out again with the dialog over it
-    ECSIWindow_ReadSize(os);
-    ECSIRoot *root = ECSIWindow_Root(os);
-    ECSIDrawContext context = {os->renderer, SDL_GetTicksNS()};
-    Clay_RenderCommandArray commands = ECSIWindow_DeclareInterface(os, root);
-
-    Clay_Color background = WINDOW.colors[ECSIColor_Background];
-    SDL_SetRenderDrawColor(os->renderer, (u8)background.r, (u8)background.g, (u8)background.b, (u8)background.a);
-    SDL_RenderClear(os->renderer);
-
-    if (root != nullptr)
-    {
-        ECSILayout_ForEachGroup(root, ECSIWindow_ShowGroup, &context);
-    }
-
-    SDL_Clay_RenderClayCommands(&os->clayRenderer, &commands);
-    ECSIWindow_ShowPopupsIn(os);
-    SDL_RenderPresent(os->renderer);
+    ECSIWindow_ReadSize(osWindow);
+    ECSIRoot *root = ECSIWindow_RootOf(osWindow);
+    ECSIWindow_Compose(osWindow, root, ECSIWindow_DeclareInterface(osWindow, root));
+    SDL_RenderPresent(osWindow->renderer);
 }
 
 i32 ECSIWindow_DialogButtonAt(f32 x, f32 y)
