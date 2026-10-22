@@ -23,7 +23,7 @@ See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples 
 
 ## Usage
 
-Download the archive for your system from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it and run `OpenECS` in it. The Linux build needs glibc 2.38 or later, such as Ubuntu 24.04 or Fedora 39. The Windows build needs Windows 10 or later, and opens no console window: its log is `%APPDATA%\openecs\openecs.log`, and started from a terminal, it writes there too. Its `lib/` folder holds the import libraries that a C plugin links on Windows.
+Download the archive for your system from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it and run `OpenECS` in it. The Linux build needs glibc 2.38 or later, such as Ubuntu 24.04 or Fedora 39. The Windows build needs Windows 10 or later, and opens no console window: its log is `%APPDATA%\OpenECS\OpenECS.log`, and started from a terminal, it writes there too. Its `lib/` folder holds the import libraries that a C plugin links on Windows.
 
 ### Command line
 
@@ -37,7 +37,6 @@ Options:
   -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file
   -s, --session FILE      Open a saved session
   -f, --fresh             Start from the preset, not from the tool's last session
-  -l, --log-input         Log each key and text event as the system gives it !!! todo remove this !!!
   -t, --test FILE         Run a test; Debug builds only
   -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit
   -v, --version           Print the version and exit
