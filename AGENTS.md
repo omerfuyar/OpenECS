@@ -15,21 +15,21 @@ This is the only file written for agents. Everything else is written for humans.
 
 Before you propose or change anything, read the Contents of OVERVIEW.md and DESIGN.md, then every section the task touches. Read DESIGN.md section 1 before you write code.
 
-| Path            | What it holds                                                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `include/`      | Headers: the plugin header and the core's module headers, and `ecs.lua` for editors (DESIGN.md, sections 1.5 and 9.6). |
-| `src/`          | The core's source files.                                                                                               |
-| `std/`          | Submodule: OpenECS-std, the standard plugins and first-party presets (DESIGN.md, sections 17.7 and 20).                |
-| `examples/`     | Submodule: OpenECS-examples, examples for plugin authors (DESIGN.md, sections 17.6 and 17.7).                          |
-| `dependencies/` | Third-party git submodules.                                                                                            |
-| `resources/`    | Files the program loads at run time.                                                                                   |
-| `docs/`         | Screenshots that README.md shows.                                                                                      |
-| `shuild.c`      | The build script (see README.md).                                                                                      |
-| `.github/`      | Checks, release workflow and their scripts, rulesets and release descriptions (DESIGN.md, section 19).                 |
-| `.clang-format` | How clang-format formats the C code (DESIGN.md, section 1.6).                                                          |
-| `.clang-tidy`   | What clang-tidy checks in the C code: names (DESIGN.md, section 1.2) and common bugs.                                  |
-| `.claude/`      | Claude Code's settings: it formats each C file it edits, and never edits `dependencies/`.                              |
-| `LICENSE.md`    | OpenECS's license, zlib.                                                                                               |
+| Path            | What it holds                                                                                                                                                                                                                       |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `include/`      | Headers: the plugin header and the core's module headers, and `ecs.lua` for editors (DESIGN.md, sections 1.5 and 9.6).                                                                                                              |
+| `src/`          | The core's source files.                                                                                                                                                                                                            |
+| `std/`          | Submodule: OpenECS-std, the standard plugins and first-party presets (DESIGN.md, sections 17.7 and 20).                                                                                                                             |
+| `examples/`     | Submodule: OpenECS-examples, examples for plugin authors (DESIGN.md, sections 17.6 and 17.7).                                                                                                                                       |
+| `dependencies/` | Third-party git submodules.                                                                                                                                                                                                         |
+| `resources/`    | Files the program loads at run time.                                                                                                                                                                                                |
+| `docs/`         | Screenshots that README.md shows.                                                                                                                                                                                                   |
+| `shuild.c`      | The build script (see README.md).                                                                                                                                                                                                   |
+| `.github/`      | Checks, release workflow and their scripts, rulesets and release descriptions (DESIGN.md, section 19).                                                                                                                              |
+| `.clang-format` | How clang-format formats the C code (DESIGN.md, section 1.6).                                                                                                                                                                       |
+| `.clang-tidy`   | What clang-tidy checks in the C code: names (DESIGN.md, section 1.2) and common bugs.                                                                                                                                               |
+| `.claude/`      | Claude Code's settings, skills and notes: it formats each C file it edits and never edits `dependencies/`; `skills/` holds procedures such as releases, and `notes.md` why the tools are set up as they are, and the owner's notes. |
+| `LICENSE.md`    | OpenECS's license, zlib.                                                                                                                                                                                                            |
 
 ## Current stage
 
