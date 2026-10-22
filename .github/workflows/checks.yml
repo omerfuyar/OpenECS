@@ -46,11 +46,11 @@ jobs:
         run: .github/scripts/build.sh D
 
       - name: Run the examples' tests with the sanitizers
-        run: .github/scripts/test.sh build/Debug/bin/OpenECS
+        run: .github/scripts/test.sh
 
       # on Wayland, popups and pop-out windows are windows of their own, which the offscreen driver does not have
       - name: Run the examples' tests on Wayland
-        run: .github/scripts/test-wayland.sh build/Debug/bin/OpenECS
+        run: .github/scripts/test-wayland.sh
 
       - name: Write and compile the definition files
         run: .github/scripts/definitions.sh build/Debug/bin/OpenECS
@@ -130,7 +130,7 @@ jobs:
         run: .github/scripts/build.sh D
 
       - name: Run the examples' tests
-        run: .github/scripts/test.sh build/Debug/bin/OpenECS.exe
+        run: .github/scripts/test.sh
 
       - name: Write and compile the definition files
         run: .github/scripts/definitions.sh build/Debug/bin/OpenECS.exe

@@ -22,7 +22,7 @@ rm -f "$executable"
 mkdir -p build
 # the flags are shuild's SHUILD_BUILD, which shuild uses when it builds itself again
 "$compiler" shuild.c -o "shuild.ignore$extension" -O3 -Wno-format-truncation
-# shuild stops with the exit code of a command that failed
+# shuild stops with exit code 1 when a command fails
 # shellcheck disable=SC2086
 if ! "./shuild.ignore$extension" $flags -c "$compiler" > build/shuild.log 2>&1; then
     tail -n 40 build/shuild.log
