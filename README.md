@@ -1,81 +1,23 @@
 # OpenECS
 
-OpenECS (Editor Composition System, I started it as an Entity Component System engine and somehow got here) is the empty shell of an editor style application, written in C. It provides panels that can be split, grouped into tabs, docked, maximized and moved into their own windows, and workspaces that hold them. It also provides plugins in C and Lua, keybindings, settings, saving and restoring sessions, and operating-system features such as the clipboard, drag and drop and dialogs. It runs on Linux, and builds and runs on Windows.
+OpenECS (Editor Composition System, I started it as an Entity Component System engine and somehow got here) is the empty shell of an editor style application, written in C. It provides panels that can be split, grouped into tabs, docked, maximized and moved into their own windows, and workspaces that hold them. It also provides plugins in C and Lua, keybindings, settings, saving and restoring sessions, and operating-system features such as the clipboard, drag and drop and dialogs. It builds and runs on Linux & Windows, I don't have a Mac, so that will not be close for sure.
 
-OpenECS does nothing specific to any job. Plugins decide what each panel shows and does, and a preset names the plugins and the arrangement of a tool. So the same executable becomes a text editor, a paint program, a log viewer etc.
+OpenECS does nothing specific to any domain. Plugins decide what each panel shows and does. A preset names plugins to be used and arrangement of a tool. So the same executable becomes a text editor, a paint program, a log viewer etc.
 
-Anyone who needs a frontend for their backend (like a game engine and its editor) or wants to build tools that can be used for simple tasks (like a media player or something).
+Anyone who needs a frontend for their backend (like a game engine and/or its editor) or wants to build tools (like a media player, 3D modeller or something) can give this program a chance.
 
-The [standard plugins](https://github.com/omerfuyar/OpenECS-std) give plugins user interfaces, text grids, images, sound, networking, 3D models and files, so a panel starts from more than pixels.
+The [standard plugins](https://github.com/omerfuyar/OpenECS-std) give plugins for UI, networking, maths, etc. So a panel starts from more than just a frame buffer.
 
-## Quick start
+## Template and examples for OpenECS
 
-1. Download the archive from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it, and run:
+Apparently, there will be no presets to start with in this repo. You can use [OpenECS-template](https://github.com/omerfuyar/OpenECS-template) to build your own. See the repo for more detail.
 
-   ``` shell
-   ./OpenECS
-   ```
-
-   On Windows, unpack the zip file and open `OpenECS.exe`.
-
-2. Make your own tool from [OpenECS-template](https://github.com/omerfuyar/OpenECS-template): press "Use this template" on GitHub. It holds a preset with a plugin, and a guide that goes through each part. A Lua plugin is a folder with a manifest and an init script:
-
-   ``` lua
-   -- myplugin/manifest.lua: what the plugin is, read before its code runs
-   return {
-     name = "myplugin", -- the folder's name
-     version = "0.1.0",
-     api = 1,
-     type = "lua",      -- its code starts in init.lua
-     depends = { draw = "0.1" },
-   }
-   ```
-
-   ``` lua
-   -- myplugin/init.lua
-   local ecs = require("ecs")
-   local draw = require("draw")
-
-   ecs.panel.registerType({
-     name = "hello", -- the panel type myplugin.hello
-     title = "Hello",
-     create = function() return {} end,
-     draw = function(_, surface)
-       surface:fill(0, 0, surface.width, surface.height, "background")
-       draw.text(surface, draw.font("ui"), "Hello from my plugin", 16, 16, 20, "text")
-     end,
-   })
-   ```
-
-   A preset names the tool, its plugins, and where their panels go:
-
-   ``` lua
-   -- preset.lua, beside the folder myplugin/
-   return {
-     format = 1,
-     name = "mytool",
-     version = "0.1.0",
-     app = { id = "org.example.MyTool", name = "My tool" },
-     depends = { myplugin = "0.1" },
-     pluginsDir = ".", -- plugins are looked for in this folder first
-     workspaces = {
-       { name = "Main", windows = { { panels = { { type = "myplugin.hello" } } } } },
-     },
-   }
-   ```
-
-3. Run your tool with its preset, `./OpenECS --fresh --preset path/to/preset.lua`. Press Alt+W to see all core key binds. `.` to see the panel types of the tool and open one. `,` for the settings. `/` for the launcher, to go to another tool.
-
-See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples from simple to more complex structures.
-
-## Status
-
-OpenECS is young. It works and you can build on it, but until 1.0 a minor release may change the plugin interface; each release says what changed and how to update. Releases are built for Linux and Windows on x86_64; macOS and arm architectures are planned. Questions, ideas and the plugins you build are welcome in [Discussions](https://github.com/omerfuyar/OpenECS/discussions). Or post to [Issues](https://github.com/omerfuyar/OpenECS/issues) if you have any reports or problems.
+See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples from simple to more complex preset structures.
 
 ## Documents
 
 - [OVERVIEW.md](OVERVIEW.md): what OpenECS is, its scope, and its product decisions.
-- [DESIGN.md](DESIGN.md): how OpenECS is built.
+- [DESIGN.md](DESIGN.md): how OpenECS is built technically.
 - [TODO.md](TODO.md): open questions and pending work.
 - [AGENTS.md](AGENTS.md): instructions for AI agents working in this repository.
 
@@ -95,7 +37,7 @@ Options:
   -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file
   -s, --session FILE      Open a saved session
   -f, --fresh             Start from the preset, not from the tool's last session
-  -l, --log-input         Log each key and text event as the system gives it
+  -l, --log-input         Log each key and text event as the system gives it !!! todo remove this !!!
   -t, --test FILE         Run a test; Debug builds only
   -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit
   -v, --version           Print the version and exit
@@ -104,14 +46,15 @@ Options:
 
 ### Examples
 
-The `examples/` folder shows how to write plugins, one part at a time: from `1_hello` to `12_sketch` the plugin interface, then the standard plugins. Its [README](https://github.com/omerfuyar/OpenECS-examples) says how to read and run them:
+!!! todo change example format, make it core examples start with 'c' like c1_hello, std examples 's' like s1_media.
+The `examples/` folder shows how to write plugins, from simple to more advanced. `1_hello` to `12_sketch` the plugin interface, then the standard plugins. Its [README](https://github.com/omerfuyar/OpenECS-examples) says how to read and run them:
 
 ``` shell
 ./OpenECS --fresh --preset examples/1_hello/preset.lua
 ```
 
-| `3_ui`: controls of the ui plugin | `22_gpu_model`: a glTF model with its own shaders |
-| --- | --- |
+| `3_ui`: controls of the ui plugin                                                                                                                   | `22_gpu_model`: a glTF model with its own shaders                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | ![The controls of 3_ui: a button, tabs, a checkbox, a switch, a slider, a selector, a dropdown, a number field and a list](docs/screenshots/ui.png) | ![The torus of 22_gpu_model, lit and shaded on the GPU](docs/screenshots/gpu-model.png) |
 
 ### Writing plugins
@@ -148,7 +91,7 @@ git clone https://github.com/omerfuyar/OpenECS
 git submodule update --init --recursive
 ```
 
-### Dependent Packages
+### Development Dependencies
 
 #### Linux
 

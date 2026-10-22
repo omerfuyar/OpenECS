@@ -1476,7 +1476,7 @@ static int ECSIBindings_PanelRegisterType(lua_State *state)
     lua_pushvalue(state, 1);
     type->table = luaL_ref(state, LUA_REGISTRYINDEX);
     type->plugin = plugin;
-    SHUResult result = ECSIPanel_TypeRegister(plugin, &desc, type);
+    SHUResult result = ECSIPanelType_Register(plugin, &desc, type);
 
     // an invalid registration is reported and returned; the plugin continues
     if (result)

@@ -15,7 +15,7 @@ struct ECSIPopup
     bool needsDraw;
     bool closed;   // out of the list of open popups, waiting for its Closed function and ECSIPopups_DestroyClosed; it gets no more events
     bool released; // its Closed function has run, so ECSIPopups_DestroyClosed frees it
-    void *window;  // what the window shows it with, or nullptr
+    void *view;    // how the window shows it, or nullptr
 };
 
 /// @brief Function that frees what the window shows a popup with, before the popup is freed.

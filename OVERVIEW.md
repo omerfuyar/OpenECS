@@ -257,7 +257,7 @@ A key press that triggers a binding types no text. While the focused panel takes
 
 ### 7.4 The core's keys
 
-The core reserves one key combination, the **core prefix**. After it, one more key chooses a core action: arrows move focus, Shift+arrows move the panel, numbers switch workspace, and so on. While the core waits for that key, it shows the available keys; Escape cancels.
+The core reserves one key combination, the **core prefix**. After it, one more key chooses a core action: arrows move focus, Shift+arrows move the panel, numbers switch workspace, Shift+numbers move the panel to a workspace, and so on. While the core waits for that key, it shows the available keys; Escape cancels.
 
 So the core takes only one combination away from plugins. tmux's prefix key, Vim's Ctrl+W window commands and VS Code's Ctrl+K chords work the same way. The prefix is checked when the key is pressed, so it always wins, even if it is changed while OpenECS runs. The prefix is a setting, and the user can also bind core actions to direct keys.
 

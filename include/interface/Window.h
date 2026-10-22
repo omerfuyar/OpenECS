@@ -35,7 +35,7 @@ usz ECSIWindow_NumberOf(ECSPanel panel);
 
 /// @brief Gets the OS window that shows a panel, for its text input.
 /// @return The window, or the main window if the panel is not shown.
-SDL_Window *ECSIWindow_OfPanel(ECSPanel panel);
+SDL_Window *ECSIWindow_GetPanelWindow(ECSPanel panel);
 
 /// @brief Gets the root that an OS window shows.
 /// @param id SDL's id of the window.
@@ -171,6 +171,9 @@ void ECSIWindow_ShowMenu(usz level, SDL_FRect anchor, const char *const *lines, 
 
 /// @brief Highlights an entry of a shown menu.
 void ECSIWindow_SelectMenuItem(usz level, usz index);
+
+/// @brief Gets the highlighted entry of a shown menu.
+usz ECSIWindow_GetSelectedMenuItem(usz level);
 
 /// @brief Gets where a shown menu's entry is, to open a submenu beside it.
 /// @return The entry's rectangle, in layout units.
