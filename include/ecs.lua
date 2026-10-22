@@ -8,7 +8,20 @@
 -- Every other function takes full names.
 
 ---A colour: "#RRGGBB", "#RRGGBBAA" with opacity, or the name of a colour of the theme, such as "text" for the setting ecs.colorText.
----@alias ecs.Color string
+---The names are the core's colour settings, ecs.color and the name with a capital first letter.
+---@alias ecs.Color
+---| "background" # ecs.colorBackground: between panels
+---| "tabRow" # ecs.colorTabRow: tab rows
+---| "tab" # ecs.colorTab: tabs
+---| "tabShown" # ecs.colorTabShown: the shown tab
+---| "text" # ecs.colorText: text
+---| "textDim" # ecs.colorTextDim: dim text
+---| "accent" # ecs.colorAccent: the focus border, keys and highlights
+---| "placeholder" # ecs.colorPlaceholder: a placeholder panel
+---| "overlay" # ecs.colorOverlay: menus, grips and the list of prefix keys
+---| "drop" # ecs.colorDrop: the place where a dragged panel lands
+---| "selected" # ecs.colorSelected: the selected menu entry
+---| string
 
 ---@class ecs
 local ecs = {}

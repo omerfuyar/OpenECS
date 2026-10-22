@@ -1636,7 +1636,7 @@ static void ECSIDefinition_AddLuaFunction(ECSIText *text, const ECSISignature *s
 /// @brief Adds a parameter's type for LuaLS.
 static void ECSIDefinition_AddLuaType(ECSIText *text, ECSIParameter parameter)
 {
-    static const char *const types[ECSIParameterType_Count] = {"nil", "boolean", "integer", "integer", "number", "number", "string", "string", "string", "any", "userdata", "function"};
+    static const char *const types[ECSIParameterType_Count] = {"nil", "boolean", "integer", "integer", "number", "number", "ecs.Color", "string", "string", "any", "userdata", "function"};
 
     if (parameter.type == ECSIParameterType_Callback)
     {
