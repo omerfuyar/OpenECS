@@ -824,7 +824,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 
 ### 10.10 Definition files
 
-- `openecs --definitions FOLDER` loads every plugin it finds, without a display, writes two definition files for each, and exits. Nothing is opened or saved. With `--preset`, it loads that preset's plugins only.
+- `OpenECS --definitions FOLDER` loads every plugin it finds, without a display, writes two definition files for each, and exits. Nothing is opened or saved. With `--preset`, it loads that preset's plugins only.
 - The build writes the definitions of the plugins it built into `build/<type>/definitions/`, after the standard plugins and before the examples, so an example's C plugin includes their headers, such as `ui.h`. It also writes a `.luarc.json` in OpenECS, `std/` and `examples/` that names them and `include/`, so editors complete `require("ui")` there with no setup. A release's archive holds the standard plugins' definition files in its `include/`, beside `ecs.lua`, so plugin authors get them with `include/` alone.
 - `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, with what each parameter and result is (10.1), so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`. Each handle type of the plugin is a class there, with its methods, so an editor completes `connection:send` too.
 - `NAME.h` is a C header. Its structure is named after the plugin in PascalCase, such as `SketchCFunctions` for `sketch_c`, and has one typed function pointer for each function, with its description and what each parameter and the result are. `SketchCFunctions_Get(plugin, &functions)` looks them all up with their signatures.
@@ -905,7 +905,7 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 The user's settings file is `settings.lua` in the configuration folder (16). The part for one tool is keyed by the tool's app id and wins over the general part of the same file. A field whose name has a dot is a setting.
 
 ```lua
--- ~/.config/openecs/settings.lua
+-- ~/.config/OpenECS/settings.lua
 return {
   ["ecs.focus"] = "hover",
   keys = { ["Ctrl+Alt+T"] = "terminal.open", prefix = { Q = false } }, -- keys for every tool (7.8)
@@ -1002,13 +1002,13 @@ The core converts only layout data.
 - `ECSSession_OpenPreset(nameOrPath)`, and in Lua `ecs.session.openPreset(nameOrPath)`, open a preset's tool in place of the current one. The name is looked up as `--preset` looks it up (13.6). The tool starts as at a start from the desktop: from its last session if `ecs.keepSession` is on and it has one (13.4).
 - A file without a list of workspaces is reported, and nothing changes.
 - The core asks about unsaved work (4.5). When the dialog cannot be shown, the work is kept and nothing is opened.
-- When the current pass of the main loop ends, OpenECS shuts down from step 2 of 2.4, so the tool's last session is saved if `ecs.keepSession` is on. Then the program replaces itself with `openecs --session FILE`, or `openecs --preset FILE` for a preset. So the identity, plugins and settings of the new tool apply as at a start.
+- When the current pass of the main loop ends, OpenECS shuts down from step 2 of 2.4, so the tool's last session is saved if `ecs.keepSession` is on. Then the program replaces itself with `OpenECS --session FILE`, or `OpenECS --preset FILE` for a preset. So the identity, plugins and settings of the new tool apply as at a start.
 - A test cannot open a session or a preset (17.5).
 
 ### 13.6 Command line
 
 ```
-openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-l|--log-input] [-t|--test FILE] [-d|--definitions FOLDER] [-v|--version] [-h|--help] [FILE...]
+OpenECS [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-l|--log-input] [-t|--test FILE] [-d|--definitions FOLDER] [-v|--version] [-h|--help] [FILE...]
 ```
 
 - `--version` prints the version of OpenECS (19.1) and of the plugin API, and exits.
@@ -1022,7 +1022,7 @@ openecs [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-l|--log-input
 - A preset's name is looked up in the user's presets, then in the first-party presets (16). A name that has a `/` or ends with `.lua` is a path.
 - A session's identity wins over the preset's, so the session is saved again as the last session of its own tool, if `ecs.keepSession` is on.
 - Files are passed to the function that the preset or session names in `open`. Its signature is `void(string)`. It is called once for each file, in order, once the session is built (2.3). Without an `open` function, the files are reported and not opened.
-- A tool's `.desktop` file runs, for example, `openecs --preset paint %F`.
+- A tool's `.desktop` file runs, for example, `OpenECS --preset paint %F`.
 
 ### 13.7 Lists of presets and sessions
 
@@ -1095,18 +1095,18 @@ OpenECS follows the XDG Base Directory specification:
 
 | What                            | Where                                                                     |
 | ------------------------------- | ------------------------------------------------------------------------- |
-| The user's settings             | `$XDG_CONFIG_HOME/openecs/settings.lua` (default `~/.config`)             |
-| The user's presets              | `$XDG_CONFIG_HOME/openecs/presets/`                                       |
-| The user's plugins              | `$XDG_DATA_HOME/openecs/plugins/` (default `~/.local/share`)              |
-| Saved sessions (default folder) | `$XDG_DATA_HOME/openecs/sessions/`                                        |
-| A tool's last session           | `$XDG_STATE_HOME/openecs/<app id>/session.lua` (default `~/.local/state`) |
-| The log                         | `$XDG_STATE_HOME/openecs/openecs.log`                                     |
+| The user's settings             | `$XDG_CONFIG_HOME/OpenECS/settings.lua` (default `~/.config`)             |
+| The user's presets              | `$XDG_CONFIG_HOME/OpenECS/presets/`                                       |
+| The user's plugins              | `$XDG_DATA_HOME/OpenECS/plugins/` (default `~/.local/share`)              |
+| Saved sessions (default folder) | `$XDG_DATA_HOME/OpenECS/sessions/`                                        |
+| A tool's last session           | `$XDG_STATE_HOME/OpenECS/<app id>/session.lua` (default `~/.local/state`) |
+| The log                         | `$XDG_STATE_HOME/OpenECS/OpenECS.log`                                     |
 | First-party plugins and presets | `plugins/` and `presets/` next to the executable                          |
 | Examples                        | `examples/` next to the executable                                        |
 | The core's settings             | `resources/settings.lua` next to the executable                           |
 
-- The data folders come from `SDL_GetPrefPath`, which follows `XDG_DATA_HOME`. SDL has no function for the configuration and state folders, so the core reads `XDG_CONFIG_HOME` and `XDG_STATE_HOME` itself.
-- On Windows, every one of these folders is SDL's pref path, `%APPDATA%\openecs\`, as Windows has no XDG folders. What they hold has different names, so they share it.
+- On Linux, the core reads `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` itself, as SDL has no function for the configuration and state folders.
+- On Windows, every one of these folders is SDL's pref path, `%APPDATA%\OpenECS\`, as Windows has no XDG folders. What they hold has different names, so they share it.
 
 ## 17. Build and dependencies
 
@@ -1152,7 +1152,7 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.5 Tests
 
-- The examples are the tests (17.6). A test is a Lua file of an example whose name starts with `test`. Debug builds run it with `openecs --test FILE`; other builds refuse the option.
+- The examples are the tests (17.6). A test is a Lua file of an example whose name starts with `test`. Debug builds run it with `OpenECS --test FILE`; other builds refuse the option.
 - The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `launcher` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.6), `presets` and `sessions`, folders relative to the test file that stand for the user's presets and the saved sessions (16), and `run`, a function that gets the `test` table.
 - The examples teach plugin authors and check that the core and the standard plugins work, with one set of files. A feature of the core or of a standard plugin is checked by the test of the example that shows it.
 - Tests run from the build's copy of the examples, `bin/examples/`, so a test reads the build's copies of the plugin header, `ecs.lua` and the core's settings file.
@@ -1238,7 +1238,7 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 19.1 Versions
 
-- OpenECS uses semantic versioning. Its version is `OPENECS_VERSION` in `OpenECS.h`, and `openecs --version` prints it (13.6).
+- OpenECS uses semantic versioning. Its version is `OPENECS_VERSION` in `OpenECS.h`, and `OpenECS --version` prints it (13.6).
 - From 1.0.0, a major release breaks something that worked: the plugin interface, the `ecs` module, the names of the core's functions, settings and events, or the files that presets, sessions and settings are read from. A minor release only adds. A patch release only fixes.
 - Before 1.0.0, a minor release may also break those things, and a patch release only fixes.
 - Between releases, `OPENECS_VERSION` is the next release with `-dev`, such as `0.2.0-dev`. A release candidate ends with `-rc.1`, `-rc.2` and so on.
