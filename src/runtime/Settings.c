@@ -48,19 +48,12 @@ static const char *const OPENECS_SETTINGS_LAYER_NAMES[ECSISettingsLayer_Count] =
 /// @brief Names of the setting types, for explanations, in the order of ECSSettingType.
 static const char *const OPENECS_SETTING_TYPE_NAMES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", "color"};
 
-/// @brief Copies every field of a table into another, while its fields are walked.
-typedef struct ECSISettingsFileCopier
+/// @brief Copies fields of a table into another, while its fields are walked.
+typedef struct ECSISettingsCopier
 {
     ECSValue *target;
     SHUResult result;
-} ECSISettingsFileCopier;
-
-/// @brief Collects what a user file says, while its fields are walked.
-typedef struct ECSISettingsFileReader
-{
-    ECSValue *layer;
-    SHUResult result;
-} ECSISettingsFileReader;
+} ECSISettingsCopier;
 
 static struct
 {
@@ -90,8 +83,7 @@ static bool ECSISetting_Check(const ECSISetting *setting, const ECSValue *value)
     case ECSSettingType_Bool:
         return type == ECSValueType_Bool;
     case ECSSettingType_Integer:
-        // a number without a fraction reads the same with any fallback
-        return ECSValue_GetInteger(value, 0) == ECSValue_GetInteger(value, 1);
+        return ECSIValue_IsInteger(value);
     case ECSSettingType_Number:
         return type == ECSValueType_Integer || type == ECSValueType_Number;
     case ECSSettingType_String:
@@ -100,12 +92,12 @@ static bool ECSISetting_Check(const ECSISetting *setting, const ECSValue *value)
     {
         u32 key = 0;
         u32 modifiers = 0;
-        return type == ECSValueType_String && ECSISettings_ParseKey(ECSValue_GetString(value, ""), false, &key, &modifiers) == SHUResult_Ok;
+        return type == ECSValueType_String && ECSISettings_ParseKey(ECSValue_GetString(value, ""), &key, &modifiers) == SHUResult_Ok;
     }
     case ECSSettingType_Color:
     {
         u32 color = 0;
-        return type == ECSValueType_String && ECSISettings_ParseColor(ECSValue_GetString(value, ""), &color);
+        return type == ECSValueType_String && ECSIColor_ParseHex(ECSValue_GetString(value, ""), &color);
     }
     case ECSSettingType_Choice:
         for (usz i = 0; type == ECSValueType_String && i < arrlenu(setting->choices); i++)
@@ -126,14 +118,14 @@ static bool ECSISetting_Check(const ECSISetting *setting, const ECSValue *value)
 }
 
 /// @brief Writes a choice setting's choices for a message, after a space; nothing for other settings.
-static void ECSISetting_WriteChoices(const ECSISetting *setting, SHUSlice text)
+static void ECSISetting_WriteChoices(const ECSISetting *setting, SHUSlice retText)
 {
-    SDL_strlcpy(text.data, "", text.size);
+    SDL_strlcpy(retText.data, "", retText.size);
 
     for (usz i = 0; i < arrlenu(setting->choices); i++)
     {
-        SDL_strlcat(text.data, i == 0 ? " " : ", ", text.size);
-        SDL_strlcat(text.data, setting->choices[i], text.size);
+        SDL_strlcat(retText.data, i == 0 ? " " : ", ", retText.size);
+        SDL_strlcat(retText.data, setting->choices[i], retText.size);
     }
 }
 
@@ -306,24 +298,9 @@ static SHUResult ECSISettings_Declare(ECSPlugin owner, const ECSSettingDesc *des
     return SHUResult_Ok;
 }
 
-/// @brief Copies a field of a user file into its layer if its name is a setting's: plugin or core name, a dot, local name.
-static void ECSISettings_ReadField(const char *name, const ECSValue *field, void *userData)
-{
-    ECSISettingsFileReader *reader = userData;
-    ECSValue *copy = nullptr;
-
-    if (reader->result || SDL_strchr(name, '.') == nullptr)
-    {
-        return;
-    }
-
-    reader->result = ECSValue_SetTableField(reader->layer, name, &copy);
-    reader->result = reader->result ? reader->result : ECSIValue_Copy(copy, field);
-}
-
 static void ECSISettings_CopyField(const char *name, const ECSValue *field, void *userData)
 {
-    ECSISettingsFileCopier *copier = userData;
+    ECSISettingsCopier *copier = userData;
     ECSValue *copy = nullptr;
 
     if (!copier->result)
@@ -331,6 +308,38 @@ static void ECSISettings_CopyField(const char *name, const ECSValue *field, void
         copier->result = ECSValue_SetTableField(copier->target, name, &copy);
         copier->result = copier->result ? copier->result : ECSIValue_Copy(copy, field);
     }
+}
+
+/// @brief Copies a field of a settings file if its name is a setting's: plugin or core name, a dot, local name.
+static void ECSISettings_CopySetting(const char *name, const ECSValue *field, void *userData)
+{
+    if (SDL_strchr(name, '.') != nullptr)
+    {
+        ECSISettings_CopyField(name, field, userData);
+    }
+}
+
+/// @brief Copies the settings of a part of a settings file into a layer: the whole file, or its part for this tool.
+static SHUResult ECSISettings_CopySettings(ECSISettingsLayer layer, const ECSValue *part)
+{
+    ECSISettingsCopier copier = {.target = SETTINGS.layers[layer], .result = SHUResult_Ok};
+    ECSIValue_TableForEachField(part, ECSISettings_CopySetting, &copier);
+    return copier.result;
+}
+
+/// @brief Makes a layer an empty table.
+static SHUResult ECSISettings_ClearLayer(ECSISettingsLayer layer)
+{
+    ECSValue_Destroy(&SETTINGS.layers[layer]);
+    SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[layer]));
+    ECSValue_SetTable(SETTINGS.layers[layer]);
+    return SHUResult_Ok;
+}
+
+/// @brief Gets the part of a user file for this tool.
+static const ECSValue *ECSISettings_GetToolPart(const ECSValue *file)
+{
+    return ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appID);
 }
 
 /// @brief Adds the plugins that a part of a user file names.
@@ -353,24 +362,18 @@ static SHUResult ECSISettings_ReadPlugins(const ECSValue *part)
     return SHUResult_Ok;
 }
 
-/// @brief Builds a user file's layer: the part for every tool, then the part for this tool, which wins.
+/// @brief Builds a user file's layer: the settings for every tool, then those for this tool, which win.
 static SHUResult ECSISettings_BuildLayer(ECSISettingsLayer layer, const ECSValue *file)
 {
-    ECSValue_Destroy(&SETTINGS.layers[layer]);
-    SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[layer]));
-    ECSValue_SetTable(SETTINGS.layers[layer]);
-
-    const ECSValue *tool = ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appID);
-    ECSISettingsFileReader reader = {.layer = SETTINGS.layers[layer], .result = SHUResult_Ok};
-    ECSIValue_TableForEachField(file, ECSISettings_ReadField, &reader);
-    ECSIValue_TableForEachField(tool, ECSISettings_ReadField, &reader);
-    return reader.result;
+    SHU_ReturnResult(ECSISettings_ClearLayer(layer));
+    SHU_ReturnResult(ECSISettings_CopySettings(layer, file));
+    return ECSISettings_CopySettings(layer, ECSISettings_GetToolPart(file));
 }
 
 /// @brief Merges a field of a keys table into another keys table, while its fields are walked: a table of keys, such as prefix, merges field by field, and anything else replaces the field.
 static void ECSISettings_MergeKey(const char *name, const ECSValue *field, void *userData)
 {
-    ECSISettingsFileCopier *copier = userData;
+    ECSISettingsCopier *copier = userData;
     ECSValue *target = (ECSValue *)ECSValue_GetTableField(copier->target, name);
 
     if (copier->result)
@@ -380,7 +383,7 @@ static void ECSISettings_MergeKey(const char *name, const ECSValue *field, void 
 
     if (ECSValue_GetType(field) == ECSValueType_Table && ECSValue_GetType(target) == ECSValueType_Table)
     {
-        ECSISettingsFileCopier inner = {.target = target, .result = SHUResult_Ok};
+        ECSISettingsCopier inner = {.target = target, .result = SHUResult_Ok};
         ECSIValue_TableForEachField(field, ECSISettings_CopyField, &inner);
         copier->result = inner.result;
         return;
@@ -400,7 +403,7 @@ static SHUResult ECSISettings_ReadThemes(const ECSValue *part)
         ECSValue_SetTable(SETTINGS.themes);
     }
 
-    ECSISettingsFileCopier copier = {.target = SETTINGS.themes, .result = SHUResult_Ok};
+    ECSISettingsCopier copier = {.target = SETTINGS.themes, .result = SHUResult_Ok};
     ECSIValue_TableForEachField(themes, ECSISettings_MergeKey, &copier);
     return copier.result;
 }
@@ -414,9 +417,18 @@ static SHUResult ECSISettings_ReadKeys(ECSISettingsLayer layer, const ECSValue *
         ECSValue_SetTable(SETTINGS.keys[layer]);
     }
 
-    ECSISettingsFileCopier copier = {.target = SETTINGS.keys[layer], .result = SHUResult_Ok};
+    ECSISettingsCopier copier = {.target = SETTINGS.keys[layer], .result = SHUResult_Ok};
     ECSIValue_TableForEachField(ECSValue_GetTableField(part, "keys"), ECSISettings_MergeKey, &copier);
     return copier.result;
+}
+
+/// @brief Reads a part of a settings file, the whole file or its part for this tool: its settings go into a layer, its keys into the layer's keys, and its plugins and themes add to the others.
+static SHUResult ECSISettings_ReadPart(ECSISettingsLayer layer, const ECSValue *part)
+{
+    SHU_ReturnResult(ECSISettings_CopySettings(layer, part));
+    SHU_ReturnResult(ECSISettings_ReadKeys(layer, part));
+    SHU_ReturnResult(ECSISettings_ReadPlugins(part));
+    return ECSISettings_ReadThemes(part);
 }
 
 /// @brief Reads a user file into its layer and adds the plugins it names. A missing file, or one that cannot be read, gives an empty table.
@@ -444,14 +456,10 @@ static SHUResult ECSISettings_ReadFile(ECSISettingsLayer layer, const char *fold
         ECSValue_SetTable(file);
     }
 
-    result = result ? result : ECSISettings_BuildLayer(layer, file);
-    result = result ? result : ECSISettings_ReadKeys(layer, file);
-    result = result ? result : ECSISettings_ReadKeys(layer, ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appID));
-
-    result = result ? result : ECSISettings_ReadPlugins(file);
-    result = result ? result : ECSISettings_ReadPlugins(ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appID));
-    result = result ? result : ECSISettings_ReadThemes(file);
-    result = result ? result : ECSISettings_ReadThemes(ECSValue_GetTableField(ECSValue_GetTableField(file, "tools"), SETTINGS.appID));
+    // the part for this tool comes second, so it wins
+    result = result ? result : ECSISettings_ClearLayer(layer);
+    result = result ? result : ECSISettings_ReadPart(layer, file);
+    result = result ? result : ECSISettings_ReadPart(layer, ECSISettings_GetToolPart(file));
 
     if (retFile != nullptr && !result)
     {
@@ -506,33 +514,26 @@ SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *presetSe
     SDL_assert(presetPath != nullptr);
     SDL_assert(appID != nullptr);
 
-    // the core's settings file is required: the core's settings have no other values
-    ECSValue *coreFile = nullptr;
-    SHU_ReturnResult(ECSValue_Create(&coreFile));
-    SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[ECSISettingsLayer_Core]), ECSValue_Destroy(&coreFile););
-    ECSValue_SetTable(SETTINGS.layers[ECSISettingsLayer_Core]);
+    SETTINGS.appID = SDL_strdup(appID);
     SETTINGS.paths[ECSISettingsLayer_Core] = SDL_strdup(corePath);
 
-    SHU_ReturnResult(ECSValue_Create(&SETTINGS.plugins), ECSValue_Destroy(&coreFile););
-    ECSValue_SetTable(SETTINGS.plugins);
-
-    // like a user file, the core's file may name plugins that every tool loads
-    ECSISettingsFileReader reader = {.layer = SETTINGS.layers[ECSISettingsLayer_Core], .result = SHUResult_Ok};
-    reader.result = SETTINGS.paths[ECSISettingsLayer_Core] == nullptr ? SHUResult_ErrAllocation : ECSILua_ReadData(corePath, coreFile);
-    ECSIValue_TableForEachField(reader.result ? nullptr : coreFile, ECSISettings_ReadField, &reader);
-    reader.result = reader.result ? reader.result : ECSISettings_ReadPlugins(coreFile);
-    reader.result = reader.result ? reader.result : ECSISettings_ReadKeys(ECSISettingsLayer_Core, coreFile);
-    reader.result = reader.result ? reader.result : ECSISettings_ReadThemes(coreFile);
-    ECSValue_Destroy(&coreFile);
-    SHU_ReturnResult(reader.result);
-
-    SHU_ReturnResult(ECSISettings_SetPreset(presetSettings, presetPath));
-    SETTINGS.appID = SDL_strdup(appID);
-
-    if (SETTINGS.appID == nullptr)
+    if (SETTINGS.appID == nullptr || SETTINGS.paths[ECSISettingsLayer_Core] == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
+
+    SHU_ReturnResult(ECSValue_Create(&SETTINGS.plugins));
+    ECSValue_SetTable(SETTINGS.plugins);
+
+    // the core's settings file is required: the core's settings have no other values; like a user file, it may name plugins that every tool loads
+    ECSValue *coreFile = nullptr;
+    SHUResult result = ECSValue_Create(&coreFile);
+    result = result ? result : ECSILua_ReadData(corePath, coreFile);
+    result = result ? result : ECSISettings_ClearLayer(ECSISettingsLayer_Core);
+    result = result ? result : ECSISettings_ReadPart(ECSISettingsLayer_Core, coreFile);
+    ECSValue_Destroy(&coreFile);
+    SHU_ReturnResult(result);
+    SHU_ReturnResult(ECSISettings_SetPreset(presetSettings, presetPath));
 
     if (configFolder == nullptr)
     {
@@ -555,7 +556,7 @@ SHUResult ECSISettings_SetPreset(const ECSValue *presetSettings, const char *pre
     return SETTINGS.paths[ECSISettingsLayer_Preset] == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
 }
 
-SHUResult ECSISettings_ParseKey(const char *text, bool report, u32 *retKey, u32 *retModifiers)
+SHUResult ECSISettings_ParseKey(const char *text, u32 *retKey, u32 *retModifiers)
 {
     SDL_assert(text != nullptr);
     SDL_assert(retKey != nullptr);
@@ -592,20 +593,10 @@ SHUResult ECSISettings_ParseKey(const char *text, bool report, u32 *retKey, u32 
     // a word before a + that is not a modifier, as in "Ctlr+A", names no key, so the text is not valid
     *retKey = SDL_GetKeyFromName(key);
 
-    if (*retKey == SDLK_UNKNOWN)
-    {
-        if (report)
-        {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a key combination.", text);
-        }
-
-        return SHUResult_ErrBadData;
-    }
-
-    return SHUResult_Ok;
+    return *retKey == SDLK_UNKNOWN ? SHUResult_ErrBadData : SHUResult_Ok;
 }
 
-bool ECSISettings_ParseColor(const char *text, u32 *retColor)
+bool ECSIColor_ParseHex(const char *text, u32 *retColor)
 {
     SDL_assert(text != nullptr);
     SDL_assert(retColor != nullptr);
@@ -639,15 +630,21 @@ bool ECSISettings_ParseColor(const char *text, u32 *retColor)
 void ECSISettings_ApplyTheme(void)
 {
     // ecs.theme comes from the layers above the defaults, as its value in effect does, or else from the core's settings file
+    const ECSISettingsLayer layers[] = {ECSISettingsLayer_User, ECSISettingsLayer_Preset, ECSISettingsLayer_Core};
     const char *chosen = nullptr;
 
-    for (i32 layer = ECSISettingsLayer_User; layer >= ECSISettingsLayer_Core && chosen == nullptr; layer--)
+    for (usz i = 0; i < SDL_arraysize(layers) && chosen == nullptr; i++)
     {
-        chosen = layer == ECSISettingsLayer_Theme || layer == ECSISettingsLayer_Plugin ? nullptr : ECSValue_GetString(ECSValue_GetTableField(SETTINGS.layers[layer], "ecs.theme"), nullptr);
+        chosen = ECSValue_GetString(ECSValue_GetTableField(SETTINGS.layers[layers[i]], "ecs.theme"), nullptr);
     }
 
-    const char *name = chosen != nullptr && (SDL_strcmp(chosen, "dark") == 0 || SDL_strcmp(chosen, "light") == 0) ? chosen : SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT ? "light"
-                                                                                                                                                                         : OPENECS_SETTINGS_DEFAULT_THEME;
+    // "system", or anything else, follows the system's theme
+    const char *name = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT ? "light" : OPENECS_SETTINGS_DEFAULT_THEME;
+
+    if (chosen != nullptr && (SDL_strcmp(chosen, "dark") == 0 || SDL_strcmp(chosen, "light") == 0))
+    {
+        name = chosen;
+    }
 
     if (SETTINGS.theme != nullptr && SDL_strcmp(SETTINGS.theme, name) == 0)
     {
@@ -664,17 +661,6 @@ void ECSISettings_ApplyTheme(void)
         return;
     }
 
-    // the settings whose value came from the old theme, or comes from the new one, may have changed
-    ECSISetting **themed = nullptr;
-
-    for (usz i = 0; i < shlenu(SETTINGS.settings); i++)
-    {
-        if (SETTINGS.settings[i].value->layer == ECSISettingsLayer_Theme)
-        {
-            arrput(themed, SETTINGS.settings[i].value);
-        }
-    }
-
     ECSValue_Destroy(&SETTINGS.layers[ECSISettingsLayer_Theme]);
     SETTINGS.layers[ECSISettingsLayer_Theme] = layer;
     SDL_free(SETTINGS.paths[ECSISettingsLayer_Theme]);
@@ -682,34 +668,18 @@ void ECSISettings_ApplyTheme(void)
     SDL_free(SETTINGS.theme);
     SETTINGS.theme = copy;
 
+    // the settings whose value came from the old theme, or comes from the new one, may have changed
     for (usz i = 0; i < shlenu(SETTINGS.settings); i++)
     {
         ECSISetting *setting = SETTINGS.settings[i].value;
+        bool wasThemed = setting->layer == ECSISettingsLayer_Theme;
         ECSISetting_Resolve(setting);
 
-        if (setting->layer == ECSISettingsLayer_Theme)
+        if (wasThemed || setting->layer == ECSISettingsLayer_Theme)
         {
-            arrput(themed, setting);
+            arrput(SETTINGS.changed, setting);
         }
     }
-
-    // a setting is told once, also when both themes set it
-    for (usz i = 0; i < arrlenu(themed); i++)
-    {
-        bool told = false;
-
-        for (usz j = 0; j < i && !told; j++)
-        {
-            told = themed[j] == themed[i];
-        }
-
-        if (!told)
-        {
-            arrput(SETTINGS.changed, themed[i]);
-        }
-    }
-
-    arrfree(themed);
     SDL_Log("The theme is '%s'.", name);
 }
 
@@ -720,7 +690,7 @@ bool ECSColor_Parse(const char *text, ECSColor *retColor)
 
     if (text[0] == '#')
     {
-        return ECSISettings_ParseColor(text, retColor);
+        return ECSIColor_ParseHex(text, retColor);
     }
 
     // a colour of the theme is the core's colour setting of that name: "textDim" is ecs.colorTextDim
@@ -732,12 +702,12 @@ bool ECSColor_Parse(const char *text, ECSColor *retColor)
     }
 
     ECSISetting *setting = ECSISettings_Find(name);
-    return setting != nullptr && setting->type == ECSSettingType_Color && ECSISettings_ParseColor(ECSValue_GetString(setting->value, ""), retColor);
+    return setting != nullptr && setting->type == ECSSettingType_Color && ECSIColor_ParseHex(ECSValue_GetString(setting->value, ""), retColor);
 }
 
-void ECSIColor_Format(ECSColor color, char text[OPENECS_COLOR_TEXT_SIZE])
+void ECSIColor_Format(ECSColor color, char retText[OPENECS_COLOR_TEXT_SIZE])
 {
-    SDL_snprintf(text, OPENECS_COLOR_TEXT_SIZE, "#%02X%02X%02X%02X", (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF, color >> 24);
+    SDL_snprintf(retText, OPENECS_COLOR_TEXT_SIZE, "#%02X%02X%02X%02X", (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF, color >> 24);
 }
 
 ECSColor ECSIColor_Premultiply(ECSColor color)
@@ -821,14 +791,6 @@ SHUResult ECSISettings_DeclareCore(const ECSSettingDesc *desc)
     return ECSISettings_Declare(nullptr, desc, value);
 }
 
-const ECSValue *ECSISettings_GetDefault(const char *name)
-{
-    SDL_assert(name != nullptr);
-
-    ECSISetting *setting = ECSISettings_Find(name);
-    return setting == nullptr ? nullptr : setting->defaultValue;
-}
-
 void ECSISettings_RemovePlugin(ECSPlugin plugin)
 {
     SDL_assert(plugin != nullptr);
@@ -860,24 +822,6 @@ const ECSValue *ECSISettings_GetKeys(ECSISettingsLayer layer)
     SDL_assert(layer < ECSISettingsLayer_Count);
 
     return SETTINGS.keys[layer];
-}
-
-bool ECSISettings_Describe(const char *name, ECSPlugin *retOwner, ECSSettingType *retType, ECSISettingsLayer *retLayer)
-{
-    SDL_assert(name != nullptr);
-    SDL_assert(retOwner != nullptr && retType != nullptr && retLayer != nullptr);
-
-    ECSISetting *setting = ECSISettings_Find(name);
-
-    if (setting == nullptr)
-    {
-        return false;
-    }
-
-    *retOwner = setting->owner;
-    *retType = setting->type;
-    *retLayer = setting->layer;
-    return true;
 }
 
 void ECSISettings_DeliverChanges(void)
@@ -934,7 +878,7 @@ SHUResult ECSISettings_DeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *des
     SDL_assert(desc != nullptr);
 
     // the description gives the local name, and the setting is known by its full name
-    char *name = ECSIPlugin_FullName(plugin, desc->name);
+    char *name = ECSIPlugin_MakeFullName(plugin, desc->name);
 
     if (name == nullptr)
     {

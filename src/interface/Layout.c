@@ -2041,6 +2041,14 @@ ECSPanel *ECSILayout_GetPanels(void)
     return panels;
 }
 
+bool ECSILayout_ConfirmCloseAll(bool quitting)
+{
+    ECSPanel *panels = ECSILayout_GetPanels();
+    bool confirmed = ECSIPanels_ConfirmClose(panels, arrlenu(panels), quitting);
+    arrfree(panels);
+    return confirmed;
+}
+
 SHUResult ECSILayout_Save(ECSValue *retWorkspaces, usz *retCurrent)
 {
     SDL_assert(retWorkspaces != nullptr);

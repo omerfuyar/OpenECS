@@ -84,7 +84,7 @@ static struct
 {
     const ECSIPresetInfo *info; // the preset or session in use, which saved sessions are written from
     char *presets;              // the user's presets, or nullptr
-    char *folder;               // the saved sessions, where the dialogs that ask for session files start, or nullptr
+    char *sessions;             // the saved sessions, where the dialogs that ask for session files start, or nullptr
     char *state;                // the state folder, or nullptr
     char *origin;               // the preset, or the session the command line named, that ecs.layout.reset builds the layout from
     bool canOpen;               // false during a test
@@ -324,7 +324,7 @@ static bool ECSISession_Check(const char *path, const ECSValue *file)
 }
 
 /// @brief Reads a number field that the check made sure is not negative.
-static f32 ECSISession_GetSize(const ECSValue *node, const char *name, f32 fallback)
+static f32 ECSISession_GetNumber(const ECSValue *node, const char *name, f32 fallback)
 {
     return (f32)ECSValue_GetNumber(ECSValue_GetTableField(node, name), fallback);
 }
@@ -369,7 +369,7 @@ static SHUResult ECSISession_ReadNode(ECSISessionReader *reader, const ECSValue 
 
             if (child != nullptr)
             {
-                ECSILayout_SplitAdd(*retNode, child, ECSISession_GetSize(savedChild, "size", 0.0f), ECSISession_GetSize(savedChild, "share", 1.0f));
+                ECSILayout_SplitAdd(*retNode, child, ECSISession_GetNumber(savedChild, "size", 0.0f), ECSISession_GetNumber(savedChild, "share", 1.0f));
             }
 
             ECSISession_Leave(reader, length);
@@ -427,8 +427,8 @@ static SHUResult ECSISession_ReadWorkspace(ECSISessionReader *reader, const ECSV
         // a pop-out window opens with the size it had
         if (i > 0)
         {
-            roots[i].width = ECSISession_GetSize(tree, "width", OPENECS_SESSION_POP_OUT_SIZE);
-            roots[i].height = ECSISession_GetSize(tree, "height", OPENECS_SESSION_POP_OUT_SIZE);
+            roots[i].width = ECSISession_GetNumber(tree, "width", OPENECS_SESSION_POP_OUT_SIZE);
+            roots[i].height = ECSISession_GetNumber(tree, "height", OPENECS_SESSION_POP_OUT_SIZE);
         }
 
         ECSISession_Leave(reader, length);
@@ -474,7 +474,7 @@ static SHUResult ECSISession_ReadWorkspaces(const char *path, const ECSValue *fi
 }
 
 /// @brief Gets the position of the workspace a preset or session shows first, starting at 0.
-static usz ECSISession_CurrentWorkspace(const ECSValue *file)
+static usz ECSISession_GetCurrentWorkspace(const ECSValue *file)
 {
     return (usz)SDL_max(1, ECSValue_GetInteger(ECSValue_GetTableField(file, "currentWorkspace"), 1)) - 1;
 }
@@ -482,9 +482,7 @@ static usz ECSISession_CurrentWorkspace(const ECSValue *file)
 /// @brief Builds every workspace again from the file the tool started from, once the user has been asked about unsaved work. The plugins keep running, with their state.
 static void ECSISession_ResetBound(void)
 {
-    ECSPanel *panels = ECSILayout_GetPanels();
-    bool confirmed = ECSIPanels_ConfirmClose(panels, arrlenu(panels), false);
-    arrfree(panels);
+    bool confirmed = ECSILayout_ConfirmCloseAll(false);
 
     // the file is read again, so a preset changed since the start is used
     ECSIPresetInfo info = {0};
@@ -503,7 +501,7 @@ static void ECSISession_ResetBound(void)
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The layout cannot be built again from '%s'.", SESSION.origin);
     }
 
-    ECSILayout_ShowFirst(ECSISession_CurrentWorkspace(info.file));
+    ECSILayout_ShowFirst(ECSISession_GetCurrentWorkspace(info.file));
     ECSISession_FreeInfo(&info);
     SDL_Log("The layout is built again from '%s'.", SESSION.origin);
 }
@@ -557,20 +555,20 @@ static bool ECSISession_CanOpen(void)
 /// @brief Shows a dialog of saved sessions, which starts in the sessions folder. A save dialog suggests a file named after the preset, so a new file is made by pressing Save.
 static SHUResult ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunction Done)
 {
-    if (SESSION.folder != nullptr && !SDL_CreateDirectory(SESSION.folder))
+    if (SESSION.sessions != nullptr && !SDL_CreateDirectory(SESSION.sessions))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot make the sessions folder '%s': %s", SESSION.folder, SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Cannot make the sessions folder '%s': %s", SESSION.sessions, SDL_GetError());
     }
 
     char *location = nullptr;
 
-    if (type == ECSDialogType_SaveFile && SESSION.folder != nullptr && SDL_asprintf(&location, "%s%s.lua", SESSION.folder, SESSION.info->name != nullptr ? SESSION.info->name : "session") < 0)
+    if (type == ECSDialogType_SaveFile && SESSION.sessions != nullptr && SDL_asprintf(&location, "%s%s.lua", SESSION.sessions, SESSION.info->name != nullptr ? SESSION.info->name : "session") < 0)
     {
         location = nullptr;
     }
 
     ECSDialogFilter filter = {"OpenECS sessions", "lua"};
-    ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = location != nullptr ? location : SESSION.folder, .Done = Done};
+    ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = location != nullptr ? location : SESSION.sessions, .Done = Done};
     SHUResult result = ECSIInput_ShowDialog(nullptr, &desc);
     SDL_free(location);
     return result;
@@ -640,7 +638,7 @@ static int ECSISession_CompareFiles(const void *a, const void *b)
 }
 
 /// @brief Sets a field of a list entry to a text.
-static SHUResult ECSISession_SetText(ECSValue *entry, const char *name, const char *text)
+static SHUResult ECSISession_SetStringField(ECSValue *entry, const char *name, const char *text)
 {
     ECSValue *field = nullptr;
     SHU_ReturnResult(ECSValue_SetTableField(entry, name, &field));
@@ -648,7 +646,7 @@ static SHUResult ECSISession_SetText(ECSValue *entry, const char *name, const ch
 }
 
 /// @brief Sets a field of a list entry to the time a file was written, in seconds since 1970. A missing file sets nothing.
-static SHUResult ECSISession_SetTime(ECSValue *entry, const char *name, const char *path)
+static SHUResult ECSISession_SetFileTimeField(ECSValue *entry, const char *name, const char *path)
 {
     SDL_PathInfo info = {0};
 
@@ -663,8 +661,48 @@ static SHUResult ECSISession_SetTime(ECSValue *entry, const char *name, const ch
     return SHUResult_Ok;
 }
 
+/// @brief Adds a file's entry to a list of presets or sessions, which says when it was last used or saved.
+typedef SHUResult (*ECSISessionAddEntryFunction)(ECSValue *list, const ECSISessionFile *file, const ECSIPresetInfo *info);
+
+/// @brief Adds the entry of a file to a list: its name, path, appID and appName.
+/// @param retEntry The new entry, for the fields that follow.
+static SHUResult ECSISession_AddEntry(ECSValue *list, const ECSISessionFile *file, const ECSIPresetInfo *info, ECSValue **retEntry)
+{
+    SHU_ReturnResult(ECSValue_AddListItem(list, retEntry));
+    ECSValue_SetTable(*retEntry);
+    SHU_ReturnResult(ECSISession_SetStringField(*retEntry, "name", file->name));
+    SHU_ReturnResult(ECSISession_SetStringField(*retEntry, "path", file->path));
+    SHU_ReturnResult(ECSISession_SetStringField(*retEntry, "appID", info->appID));
+    return ECSISession_SetStringField(*retEntry, "appName", info->appName);
+}
+
+/// @brief Adds a preset to the list of presets, with when its tool's last session was written, unless it says listed = false.
+static SHUResult ECSISession_AddPresetEntry(ECSValue *list, const ECSISessionFile *file, const ECSIPresetInfo *info)
+{
+    if (!ECSValue_GetBool(ECSValue_GetTableField(info->file, "listed"), true))
+    {
+        return SHUResult_Ok;
+    }
+
+    ECSValue *entry = nullptr;
+    SHU_ReturnResult(ECSISession_AddEntry(list, file, info, &entry));
+    char *lastSession = ECSISession_GetLastPath(SESSION.state, info->appID);
+    SHUResult result = ECSISession_SetFileTimeField(entry, "lastUsed", lastSession);
+    SDL_free(lastSession);
+    return result;
+}
+
+/// @brief Adds a session to the list of sessions, with when it was saved.
+static SHUResult ECSISession_AddSessionEntry(ECSValue *list, const ECSISessionFile *file, const ECSIPresetInfo *info)
+{
+    ECSValue *entry = nullptr;
+    SHU_ReturnResult(ECSISession_AddEntry(list, file, info, &entry));
+    return ECSISession_SetFileTimeField(entry, "saved", file->path);
+}
+
 /// @brief Reads a list's files, sorted by name, and adds an entry for each to the list. A file that cannot be read is reported and left out.
-static SHUResult ECSISession_FillList(ECSValue *retList, ECSISessionFile *files, bool presets)
+/// @param what "presets" or "sessions", for reports.
+static SHUResult ECSISession_FillList(ECSValue *retList, ECSISessionFile *files, const char *what, ECSISessionAddEntryFunction AddEntry)
 {
     SDL_qsort(files, arrlenu(files), sizeof(*files), ECSISession_CompareFiles);
     ECSValue_SetTable(retList);
@@ -678,37 +716,12 @@ static SHUResult ECSISession_FillList(ECSValue *retList, ECSISessionFile *files,
         // the Lua module reported why the file cannot be read
         if (result && result != SHUResult_ErrAllocation)
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is left out of the list of %s.", files[i].path, presets ? "presets" : "sessions");
-            ECSISession_FreeInfo(&info);
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is left out of the list of %s.", files[i].path, what);
             result = SHUResult_Ok;
-            continue;
         }
-
-        if (!result && (!presets || ECSValue_GetBool(ECSValue_GetTableField(info.file, "listed"), true)))
+        else if (!result)
         {
-            ECSValue *entry = nullptr;
-            result = ECSValue_AddListItem(retList, &entry);
-
-            if (!result)
-            {
-                ECSValue_SetTable(entry);
-            }
-
-            result = result ? result : ECSISession_SetText(entry, "name", files[i].name);
-            result = result ? result : ECSISession_SetText(entry, "path", files[i].path);
-            result = result ? result : ECSISession_SetText(entry, "appID", info.appID);
-            result = result ? result : ECSISession_SetText(entry, "appName", info.appName);
-
-            if (presets)
-            {
-                char *lastSession = ECSISession_GetLastPath(SESSION.state, info.appID);
-                result = result ? result : ECSISession_SetTime(entry, "lastUsed", lastSession);
-                SDL_free(lastSession);
-            }
-            else
-            {
-                result = result ? result : ECSISession_SetTime(entry, "saved", files[i].path);
-            }
+            result = AddEntry(retList, &files[i], &info);
         }
 
         ECSISession_FreeInfo(&info);
@@ -745,9 +758,7 @@ static SHUResult ECSISession_OpenFile(const char *path, bool preset)
     }
 
     // like closing panels, opening a session keeps the unsaved work when the user cannot be asked
-    ECSPanel *panels = ECSILayout_GetPanels();
-    bool confirmed = ECSIPanels_ConfirmClose(panels, arrlenu(panels), false);
-    arrfree(panels);
+    bool confirmed = ECSILayout_ConfirmCloseAll(false);
 
     if (!confirmed)
     {
@@ -887,7 +898,7 @@ SHUResult ECSISession_Apply(const char *path, const ECSIPresetInfo *info)
     // plugins get their state before panels are created, so panels find their data
     ECSIPlugins_RestoreStates(ECSValue_GetTableField(info->file, "pluginState"));
     SHU_ReturnResult(ECSISession_ReadWorkspaces(path, info->file));
-    ECSILayout_WorkspaceSwitch(ECSISession_CurrentWorkspace(info->file));
+    ECSILayout_WorkspaceSwitch(ECSISession_GetCurrentWorkspace(info->file));
     return SHUResult_Ok;
 }
 
@@ -949,12 +960,12 @@ SHUResult ECSISession_Initialize(const ECSISessionFolders *folders, bool canOpen
     SDL_assert(folders != nullptr);
 
     SESSION.presets = folders->presets == nullptr ? nullptr : SDL_strdup(folders->presets);
-    SESSION.folder = folders->sessions == nullptr ? nullptr : SDL_strdup(folders->sessions);
+    SESSION.sessions = folders->sessions == nullptr ? nullptr : SDL_strdup(folders->sessions);
     SESSION.state = folders->state == nullptr ? nullptr : SDL_strdup(folders->state);
     SESSION.origin = SDL_strdup(folders->origin);
     SESSION.canOpen = canOpen;
 
-    if ((folders->presets != nullptr && SESSION.presets == nullptr) || (folders->sessions != nullptr && SESSION.folder == nullptr) || (folders->state != nullptr && SESSION.state == nullptr) || SESSION.origin == nullptr)
+    if ((folders->presets != nullptr && SESSION.presets == nullptr) || (folders->sessions != nullptr && SESSION.sessions == nullptr) || (folders->state != nullptr && SESSION.state == nullptr) || SESSION.origin == nullptr)
     {
         return SHUResult_ErrAllocation;
     }
@@ -965,20 +976,20 @@ SHUResult ECSISession_Initialize(const ECSISessionFolders *folders, bool canOpen
     return ECSIServices_RegisterCore("ecs.layout.reset", (ECSFunction)ECSISession_ResetBound, "void()", "Reset layout");
 }
 
-const char *ECSISession_GetNext(const char **retOption)
+const char *ECSISession_GetNext(void)
 {
-    if (retOption != nullptr)
-    {
-        *retOption = SESSION.nextIsPreset ? "--preset" : "--session";
-    }
-
     return SESSION.next;
+}
+
+const char *ECSISession_GetNextOption(void)
+{
+    return SESSION.nextIsPreset ? "--preset" : "--session";
 }
 
 void ECSISession_Terminate(void)
 {
     SDL_free(SESSION.presets);
-    SDL_free(SESSION.folder);
+    SDL_free(SESSION.sessions);
     SDL_free(SESSION.state);
     SDL_free(SESSION.origin);
     SDL_free(SESSION.next);
@@ -1023,7 +1034,7 @@ SHUResult ECSSession_ListPresets(ECSValue *retList)
     SHUResult result = SDL_asprintf(&firstParty, "%spresets/", SDL_GetBasePath()) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok;
     result = result ? result : ECSISession_FindFiles(&files, SESSION.presets);
     result = result ? result : ECSISession_FindFiles(&files, firstParty);
-    result = result ? result : ECSISession_FillList(retList, files, true);
+    result = result ? result : ECSISession_FillList(retList, files, "presets", ECSISession_AddPresetEntry);
 
     ECSISession_FreeFiles(&files);
     SDL_free(firstParty);
@@ -1035,8 +1046,8 @@ SHUResult ECSSession_ListSessions(ECSValue *retList)
     SDL_assert(retList != nullptr);
 
     ECSISessionFile *files = nullptr;
-    SHUResult result = ECSISession_FindFiles(&files, SESSION.folder);
-    result = result ? result : ECSISession_FillList(retList, files, false);
+    SHUResult result = ECSISession_FindFiles(&files, SESSION.sessions);
+    result = result ? result : ECSISession_FillList(retList, files, "sessions", ECSISession_AddSessionEntry);
 
     ECSISession_FreeFiles(&files);
     return result;

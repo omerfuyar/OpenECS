@@ -302,7 +302,7 @@ static int ECSITest_Key(lua_State *state)
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSISettings_ParseKey(text, false, &key, &modifiers))
+    if (ECSISettings_ParseKey(text, &key, &modifiers))
     {
         return luaL_error(state, "'%s' is not a key combination", text);
     }
@@ -337,7 +337,7 @@ static int ECSITest_KeyEvent(lua_State *state)
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSISettings_ParseKey(text, false, &key, &modifiers) || modifiers != 0)
+    if (ECSISettings_ParseKey(text, &key, &modifiers) || modifiers != 0)
     {
         return luaL_error(state, "'%s' is not a key without modifiers", text);
     }

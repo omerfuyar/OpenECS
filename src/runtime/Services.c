@@ -1821,7 +1821,7 @@ SHUResult ECSService_RegisterFunction(ECSPlugin plugin, const char *name, ECSFun
     SDL_assert(signature != nullptr);
 
     // the plugin gives the local name, and the function is known by its full name
-    char *fullName = ECSIPlugin_FullName(plugin, name);
+    char *fullName = ECSIPlugin_MakeFullName(plugin, name);
     ECSIFunction *registered = nullptr;
     SHUResult result = fullName == nullptr ? SHUResult_ErrBadData : ECSIServices_Create(plugin, fullName, signature, description, &registered);
     SDL_free(fullName);
@@ -1952,8 +1952,8 @@ SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char *type, const char *me
     SDL_assert(method != nullptr);
     SDL_assert(function != nullptr);
 
-    char *typeName = ECSIPlugin_FullName(plugin, type);
-    char *functionName = ECSIPlugin_FullName(plugin, function);
+    char *typeName = ECSIPlugin_MakeFullName(plugin, type);
+    char *functionName = ECSIPlugin_MakeFullName(plugin, function);
     ECSIHandleType *handleType = typeName == nullptr ? nullptr : ECSIServices_FindHandleType(typeName);
     ECSIFunction *target = functionName == nullptr ? nullptr : shget(SERVICES.functions, functionName);
     SHUResult result = SHUResult_Ok;
@@ -2017,7 +2017,7 @@ SHUResult ECSIServices_RegisterLuaHandleType(ECSPlugin plugin, const char *name)
     SDL_assert(plugin != nullptr);
     SDL_assert(name != nullptr);
 
-    char *fullName = ECSIPlugin_FullName(plugin, name);
+    char *fullName = ECSIPlugin_MakeFullName(plugin, name);
     SHUResult result = fullName == nullptr ? SHUResult_ErrBadData : ECSIServices_RegisterHandleType(plugin, fullName, ECSIServices_DestroyLuaObject);
     SDL_free(fullName);
     return result;
@@ -2082,7 +2082,7 @@ SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, ECSHandleDe
     SDL_assert(plugin != nullptr);
     SDL_assert(name != nullptr);
 
-    char *fullName = ECSIPlugin_FullName(plugin, name);
+    char *fullName = ECSIPlugin_MakeFullName(plugin, name);
     SHUResult result = fullName == nullptr ? SHUResult_ErrBadData : ECSIServices_RegisterHandleType(plugin, fullName, Destroy);
     SDL_free(fullName);
     return result;
@@ -2102,7 +2102,7 @@ void ECSHandle_Free(ECSPlugin plugin, const char *type, void *object)
     SDL_assert(object != nullptr);
 
     // Lua may have no handle of the object, so its type is found by name
-    char *fullName = ECSIPlugin_FullName(plugin, type);
+    char *fullName = ECSIPlugin_MakeFullName(plugin, type);
     ECSIHandleType *handleType = fullName == nullptr ? nullptr : ECSIServices_FindHandleType(fullName);
     SDL_free(fullName);
     SDL_assert(handleType != nullptr && handleType->plugin == plugin);

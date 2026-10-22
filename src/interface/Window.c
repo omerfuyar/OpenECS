@@ -1731,7 +1731,7 @@ static void ECSIWindow_PresentPopups(void)
 static void ECSIWindow_ReadColor(const char *name, Clay_Color *retColor)
 {
     u32 argb = 0;
-    bool parsed = ECSISettings_ParseColor(ECSValue_GetString(ECSSetting_Get(name), ""), &argb);
+    bool parsed = ECSIColor_ParseHex(ECSValue_GetString(ECSSetting_Get(name), ""), &argb);
     SDL_assert(parsed);
     (void)parsed;
 

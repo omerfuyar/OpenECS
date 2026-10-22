@@ -46,6 +46,7 @@ static struct
     char *configFolder;  // nullptr if there is none
     char *presetsFolder; // the user's presets, or nullptr if there is no configuration folder
     char *stateFolder;   // nullptr if there is none
+    char *dataFolder;    // the user's plugins and saved sessions are in it; nullptr if there is none, as in a test
     bool test;           // true when the program runs a test: no user files, no last session, nothing saved
     bool definitions;    // true when the program only writes definition files: no display, nothing opened or saved
 } APP = {0};
@@ -53,7 +54,7 @@ static struct
 /// @brief Finds an XDG base folder for OpenECS: $variable/openecs/, or ~/fallback/openecs/ if the variable is not set.
 /// On Windows, every folder is SDL's pref path, %APPDATA%\openecs\ (DESIGN 16).
 /// @return The folder, ending with a separator, or nullptr if neither the variable nor HOME is set. Free it with SDL_free.
-static char *ECSIApp_XdgFolder(const char *variable, const char *fallback)
+static char *ECSIApp_FindXdgFolder(const char *variable, const char *fallback)
 {
 #if defined(SDL_PLATFORM_WINDOWS)
     (void)fallback;
@@ -100,7 +101,7 @@ static void ECSIApp_RemoveRegistrations(ECSPlugin plugin)
 
 /// @brief Stops the program if a start-up step failed. The dialog names the step, its file, the last error and where the log is.
 /// @param file The file the step reads, or nullptr.
-static void ECSIApp_CheckStart(SHUResult result, const char *step, const char *file)
+static void ECSIApp_ExitOnFailure(SHUResult result, const char *step, const char *file)
 {
     if (!result)
     {
@@ -127,14 +128,14 @@ static void ECSIApp_CheckStart(SHUResult result, const char *step, const char *f
 }
 
 /// @brief Lists every plugin in some folders of plugins: each folder in them that holds a manifest.
-static SHUResult ECSIApp_FindPlugins(const char *const *directories, usz directoryCount, ECSValue *retList)
+static SHUResult ECSIApp_FindPlugins(const char *const *folders, usz folderCount, ECSValue *retList)
 {
     ECSValue_SetTable(retList);
 
-    for (usz i = 0; i < directoryCount; i++)
+    for (usz i = 0; i < folderCount; i++)
     {
         int count = 0;
-        char **manifests = SDL_GlobDirectory(directories[i], "*/manifest.lua", 0, &count);
+        char **manifests = SDL_GlobDirectory(folders[i], "*/manifest.lua", 0, &count);
 
         for (int j = 0; j < count; j++)
         {
@@ -161,33 +162,31 @@ static SHUResult ECSIApp_FindPlugins(const char *const *directories, usz directo
     return SHUResult_Ok;
 }
 
-/// @brief Loads the plugins a preset names. Search order: the preset's directory, the user's plugins, the first-party plugins.
+/// @brief Loads the plugins a preset names. Search order: the preset's plugins folder, the user's plugins, the first-party plugins.
 static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
 {
-    char *userData = APP.test ? nullptr : SDL_GetPrefPath(nullptr, "openecs");
     char *userPlugins = nullptr;
     char *firstPartyPlugins = nullptr;
 
-    if (userData == nullptr && !APP.test)
+    if (APP.dataFolder != nullptr && SDL_asprintf(&userPlugins, "%splugins/", APP.dataFolder) < 0)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The user's plugin directory is not available: %s", SDL_GetError());
-    }
-    else
-    {
-        SDL_asprintf(&userPlugins, "%splugins/", userData);
+        userPlugins = nullptr;
     }
 
-    SDL_asprintf(&firstPartyPlugins, "%splugins/", SDL_GetBasePath());
+    if (SDL_asprintf(&firstPartyPlugins, "%splugins/", SDL_GetBasePath()) < 0)
+    {
+        firstPartyPlugins = nullptr;
+    }
 
-    const char *directories[3];
-    usz directoryCount = 0;
+    const char *folders[3];
+    usz folderCount = 0;
     const char *candidates[] = {preset->pluginsFolder, userPlugins, firstPartyPlugins};
 
     for (usz i = 0; i < SDL_arraysize(candidates); i++)
     {
         if (candidates[i] != nullptr)
         {
-            directories[directoryCount++] = candidates[i];
+            folders[folderCount++] = candidates[i];
         }
     }
 
@@ -203,15 +202,15 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
     }
 
     // the preset's plugins first, then the plugins that the settings files name for every tool; a test loads only what its preset names, and writing definitions loads every plugin it finds
-    SHUResult result = ECSIPlugins_Load(directories, directoryCount, ECSValue_GetTableField(preset->file, "depends"), neededBy != nullptr ? neededBy : "the preset");
-    SHUResult extraResult = APP.test ? SHUResult_Ok : ECSIPlugins_Load(directories, directoryCount, ECSISettings_GetPlugins(), "the settings files");
+    SHUResult result = ECSIPlugins_Load(folders, folderCount, ECSValue_GetTableField(preset->file, "depends"), neededBy != nullptr ? neededBy : "the preset");
+    SHUResult extraResult = APP.test ? SHUResult_Ok : ECSIPlugins_Load(folders, folderCount, ECSISettings_GetPlugins(), "the settings files");
 
     if (APP.definitions)
     {
         ECSValue *every = nullptr;
         SHUResult found = ECSValue_Create(&every);
-        found = found ? found : ECSIApp_FindPlugins(directories, directoryCount, every);
-        SHUResult everyResult = found ? found : ECSIPlugins_Load(directories, directoryCount, every, "writing the definitions");
+        found = found ? found : ECSIApp_FindPlugins(folders, folderCount, every);
+        SHUResult everyResult = found ? found : ECSIPlugins_Load(folders, folderCount, every, "writing the definitions");
         extraResult = extraResult ? extraResult : everyResult;
         ECSValue_Destroy(&every);
     }
@@ -228,13 +227,11 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
     }
 
     SDL_free(neededBy);
-
-    SDL_free(userData);
     SDL_free(userPlugins);
     SDL_free(firstPartyPlugins);
 
     // a manifest that is not valid, or a cycle of dependencies, is a mistake in the tool's files, so it stops the start; a missing or failed plugin only loses its panels
-    ECSIApp_CheckStart(result == SHUResult_ErrBadData || extraResult == SHUResult_ErrBadData ? SHUResult_ErrBadData : SHUResult_Ok, "loading the plugins", nullptr);
+    ECSIApp_ExitOnFailure(result == SHUResult_ErrBadData || extraResult == SHUResult_ErrBadData ? SHUResult_ErrBadData : SHUResult_Ok, "loading the plugins", nullptr);
 }
 
 /// @brief Passes files to the function that the preset or session names in open, one call for each file.
@@ -260,10 +257,18 @@ static i32 ECSIApp_ShorterWait(i32 a, i32 b)
     return a < 0 || (b >= 0 && b < a) ? b : a;
 }
 
-/// @brief Quits as keys and menus ask, like ECSApp_Quit.
-static void ECSIApp_QuitBound(void)
+/// @brief Starts from a session in place of the preset: the session's identity wins, so it may name another tool.
+static void ECSIApp_UseSession(const char *path)
 {
-    ECSApp_Quit();
+    APP.sessionPath = SDL_strdup(path);
+    ECSISession_FreeInfo(&APP.preset);
+    ECSIApp_ExitOnFailure(APP.sessionPath == nullptr ? SHUResult_ErrAllocation : ECSISession_ReadInfo(APP.sessionPath, &APP.preset), "reading the session", path);
+}
+
+/// @brief Writes the definition files of a plugin into the folder that the data names.
+static SHUResult ECSIApp_WritePluginDefinitions(ECSPlugin plugin, void *data)
+{
+    return ECSIServices_WriteDefinitions(plugin, data);
 }
 
 #pragma endregion Source Only
@@ -282,13 +287,13 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     SDL_Log("OpenECS %s, plugin API %d.", OPENECS_VERSION, OPENECS_API_VERSION);
 
     // every path of the program's own files starts here
-    ECSIApp_CheckStart(SDL_GetBasePath() == nullptr ? SHUResult_ErrNotFound : SHUResult_Ok, "finding the program's folder", nullptr);
+    ECSIApp_ExitOnFailure(SDL_GetBasePath() == nullptr ? SHUResult_ErrNotFound : SHUResult_Ok, "finding the program's folder", nullptr);
 
     // read the preset first, because SDL needs the tool's identity before it starts
-    ECSIApp_CheckStart(ECSILua_Initialize(), "starting Lua", nullptr);
-    ECSIApp_CheckStart(ECSIEvents_Initialize(), "preparing worker threads", nullptr);
-    ECSIApp_CheckStart(ECSIServices_Initialize(), "preparing services", nullptr);
-    ECSIApp_CheckStart(ECSIServices_RegisterCore("ecs.app.quit", (ECSFunction)ECSIApp_QuitBound, "void()", "Quit"), "registering the core's functions", nullptr);
+    ECSIApp_ExitOnFailure(ECSILua_Initialize(), "starting Lua", nullptr);
+    ECSIApp_ExitOnFailure(ECSIEvents_Initialize(), "preparing worker threads", nullptr);
+    ECSIApp_ExitOnFailure(ECSIServices_Initialize(), "preparing services", nullptr);
+    ECSIApp_ExitOnFailure(ECSIServices_RegisterCore("ecs.app.quit", (ECSFunction)ECSApp_Quit, "void()", "Quit"), "registering the core's functions", nullptr);
 
     // a test names its preset and starts from it alone, without the user's files and folders
     char *testPreset = nullptr;
@@ -297,13 +302,15 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 
     if (APP.test)
     {
-        ECSIApp_CheckStart(ECSITest_Load(arguments->test, &testPreset), "reading the test", arguments->test);
+        ECSIApp_ExitOnFailure(ECSITest_Load(arguments->test, &testPreset), "reading the test", arguments->test);
     }
 
+    // a test has no folders of the user
     if (!APP.test)
     {
-        APP.configFolder = ECSIApp_XdgFolder("XDG_CONFIG_HOME", ".config");
-        APP.stateFolder = ECSIApp_XdgFolder("XDG_STATE_HOME", ".local/state");
+        APP.configFolder = ECSIApp_FindXdgFolder("XDG_CONFIG_HOME", ".config");
+        APP.stateFolder = ECSIApp_FindXdgFolder("XDG_STATE_HOME", ".local/state");
+        APP.dataFolder = ECSIApp_FindXdgFolder("XDG_DATA_HOME", ".local/share");
     }
 
     // the lines logged so far went to standard error only; from here, a failed start can name the log file
@@ -325,21 +332,19 @@ void ECSIApp_Start(const ECSIArguments *arguments)
         APP.presetsFolder = nullptr;
     }
 
-    ECSIApp_CheckStart(ECSISession_FindPreset(&APP.presetPath, APP.test ? testPreset : arguments->preset, APP.presetsFolder), "finding the preset", APP.test ? testPreset : arguments->preset);
-    ECSIApp_CheckStart(ECSISession_ReadInfo(APP.presetPath, &APP.preset), "reading the preset", APP.presetPath);
+    ECSIApp_ExitOnFailure(ECSISession_FindPreset(&APP.presetPath, APP.test ? testPreset : arguments->preset, APP.presetsFolder), "finding the preset", APP.test ? testPreset : arguments->preset);
+    ECSIApp_ExitOnFailure(ECSISession_ReadInfo(APP.presetPath, &APP.preset), "reading the preset", APP.presetPath);
     SDL_free(testPreset);
 
     // a session on the command line replaces the preset; its identity wins, so it may name another tool
     if (arguments->session != nullptr && !APP.test)
     {
-        APP.sessionPath = SDL_strdup(arguments->session);
-        ECSISession_FreeInfo(&APP.preset);
-        ECSIApp_CheckStart(ECSISession_ReadInfo(APP.sessionPath, &APP.preset), "reading the session", APP.sessionPath);
+        ECSIApp_UseSession(arguments->session);
     }
 
     char *coreSettingsPath = nullptr;
-    ECSIApp_CheckStart(SDL_asprintf(&coreSettingsPath, "%s%s", SDL_GetBasePath(), OPENECS_CORE_SETTINGS_FILE) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok, "finding the core's settings", nullptr);
-    ECSIApp_CheckStart(ECSISettings_Initialize(coreSettingsPath, ECSValue_GetTableField(APP.preset.file, "settings"), APP.sessionPath != nullptr ? APP.sessionPath : APP.presetPath, APP.preset.appID, APP.configFolder), "reading the settings", nullptr);
+    ECSIApp_ExitOnFailure(SDL_asprintf(&coreSettingsPath, "%s%s", SDL_GetBasePath(), OPENECS_CORE_SETTINGS_FILE) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok, "finding the core's settings", nullptr);
+    ECSIApp_ExitOnFailure(ECSISettings_Initialize(coreSettingsPath, ECSValue_GetTableField(APP.preset.file, "settings"), APP.sessionPath != nullptr ? APP.sessionPath : APP.presetPath, APP.preset.appID, APP.configFolder), "reading the settings", nullptr);
     SDL_free(coreSettingsPath);
 
     // with ecs.keepSession, the tool's last session replaces the preset, unless the command line asks for a fresh start
@@ -347,14 +352,12 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 
     if (APP.sessionPath == nullptr && !arguments->fresh && ECSISettings_PeekBool(OPENECS_KEEP_SESSION, false) && APP.lastSession != nullptr && SDL_GetPathInfo(APP.lastSession, nullptr))
     {
-        APP.sessionPath = SDL_strdup(APP.lastSession);
-        ECSISession_FreeInfo(&APP.preset);
-        ECSIApp_CheckStart(ECSISession_ReadInfo(APP.sessionPath, &APP.preset), "reading the session", APP.sessionPath);
-        ECSIApp_CheckStart(ECSISettings_SetPreset(ECSValue_GetTableField(APP.preset.file, "settings"), APP.sessionPath), "reading the session's settings", APP.sessionPath);
+        ECSIApp_UseSession(APP.lastSession);
+        ECSIApp_ExitOnFailure(ECSISettings_SetPreset(ECSValue_GetTableField(APP.preset.file, "settings"), APP.sessionPath), "reading the session's settings", APP.sessionPath);
     }
 
     ECSSettingDesc keepSession = {.name = OPENECS_KEEP_SESSION, .type = ECSSettingType_Bool, .description = "Save the tool's session when it quits, and start from it the next time"};
-    ECSIApp_CheckStart(ECSISettings_DeclareCore(&keepSession), "declaring the session settings", nullptr);
+    ECSIApp_ExitOnFailure(ECSISettings_DeclareCore(&keepSession), "declaring the session settings", nullptr);
     const char *sourcePath = APP.sessionPath != nullptr ? APP.sessionPath : APP.presetPath;
 
     SDL_SetAppMetadata(APP.preset.appName, nullptr, APP.preset.appID);
@@ -373,28 +376,27 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL failed to start: %s", SDL_GetError());
-        ECSIApp_CheckStart(SHUResult_ErrInternal, "starting SDL", nullptr);
+        ECSIApp_ExitOnFailure(SHUResult_ErrInternal, "starting SDL", nullptr);
     }
 
     // the system's theme is known once SDL has started
     ECSISettings_ApplyTheme();
-    ECSIApp_CheckStart(ECSILayout_Initialize(), "declaring the layout settings", nullptr);
-    ECSIApp_CheckStart(ECSIWindow_Initialize(APP.preset.appName), "opening the window", nullptr);
+    ECSIApp_ExitOnFailure(ECSILayout_Initialize(), "declaring the layout settings", nullptr);
+    ECSIApp_ExitOnFailure(ECSIWindow_Initialize(APP.preset.appName), "opening the window", nullptr);
     ECSIWindow_SetHint(ECSValue_GetString(ECSValue_GetTableField(APP.preset.file, "hint"), nullptr));
-    ECSIApp_CheckStart(ECSIKeys_Initialize(), "reading the keys", nullptr);
-    ECSIApp_CheckStart(ECSIMenus_Initialize(), "registering the core's functions", nullptr);
-    ECSIApp_CheckStart(ECSIInput_Initialize(), "declaring the input settings", nullptr);
+    ECSIApp_ExitOnFailure(ECSIKeys_Initialize(), "reading the keys", nullptr);
+    ECSIApp_ExitOnFailure(ECSIMenus_Initialize(), "registering the core's functions", nullptr);
+    ECSIApp_ExitOnFailure(ECSIInput_Initialize(), "declaring the input settings", nullptr);
     ECSIInput_SetLogInput(arguments->logInput);
 
-    // a test has no data folder; its sessions field names the folder that stands for the saved sessions
-    char *dataFolder = APP.test ? nullptr : ECSIApp_XdgFolder("XDG_DATA_HOME", ".local/share");
+    // a test's sessions field names the folder that stands for the saved sessions
     char *sessionsFolder = nullptr;
 
     if (APP.test)
     {
         sessionsFolder = ECSITest_GetSessionsFolder() == nullptr ? nullptr : SDL_strdup(ECSITest_GetSessionsFolder());
     }
-    else if (dataFolder != nullptr && SDL_asprintf(&sessionsFolder, "%s%s", dataFolder, OPENECS_SESSIONS_FOLDER) < 0)
+    else if (APP.dataFolder != nullptr && SDL_asprintf(&sessionsFolder, "%s%s", APP.dataFolder, OPENECS_SESSIONS_FOLDER) < 0)
     {
         sessionsFolder = nullptr;
     }
@@ -402,8 +404,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     // the layout is reset from the preset, or from the session the command line named
     const char *origin = arguments->session != nullptr && !APP.test ? arguments->session : APP.presetPath;
     ECSISessionFolders folders = {.presets = APP.presetsFolder, .sessions = sessionsFolder, .state = APP.stateFolder, .origin = origin};
-    ECSIApp_CheckStart(ECSISession_Initialize(&folders, !APP.test), "registering the session functions", nullptr);
-    SDL_free(dataFolder);
+    ECSIApp_ExitOnFailure(ECSISession_Initialize(&folders, !APP.test), "registering the session functions", nullptr);
     SDL_free(sessionsFolder);
 
     ECSIBindings_Initialize();
@@ -412,7 +413,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIPlugins_SetHooks(&hooks);
 
     ECSIApp_LoadPlugins(&APP.preset);
-    ECSIApp_CheckStart(ECSISession_Apply(sourcePath, &APP.preset), "building the layout", nullptr);
+    ECSIApp_ExitOnFailure(ECSISession_Apply(sourcePath, &APP.preset), "building the layout", nullptr);
 
     // misspelt names change nothing, so they are reported once everything is registered
     ECSISettings_ReportUndeclared();
@@ -442,14 +443,7 @@ SHUResult ECSIApp_WriteDefinitions(const char *folder)
         return SHUResult_ErrFile;
     }
 
-    SHUResult result = SHUResult_Ok;
-    ECSPlugin plugin = nullptr;
-
-    for (usz i = 0; (plugin = ECSIPlugins_GetAt(i)) != nullptr; i++)
-    {
-        SHUResult written = ECSIServices_WriteDefinitions(plugin, path);
-        result = result ? result : written;
-    }
+    SHUResult result = ECSIPlugins_ForEach(ECSIApp_WritePluginDefinitions, path);
 
     SDL_Log("Definition files written to '%s'.", path);
     SDL_free(path);
@@ -508,16 +502,14 @@ int ECSIApp_Run(void)
         }
 
         // a session opened in this pass replaces the program once it stops
-        running = ECSITest_Step() && ECSISession_GetNext(nullptr) == nullptr;
+        running = ECSITest_Step() && ECSISession_GetNext() == nullptr;
     }
 
     return ECSITest_GetStatus();
 }
 
-char *ECSIApp_Stop(const char **retOption)
+ECSIRestart ECSIApp_Stop(void)
 {
-    SDL_assert(retOption != nullptr);
-
     ECSITest_Terminate();
 
     // the setting in effect when the tool quits decides; a tool whose panels were all closed starts from its preset the next time
@@ -548,10 +540,12 @@ char *ECSIApp_Stop(const char **retOption)
     ECSIWorkers_Terminate();
     ECSIServices_Terminate();
     ECSIEvents_Terminate();
+    ECSIPlugins_ReportRepeatedErrors();
     ECSIPlugins_Unload();
     ECSISettings_Terminate();
     ECSIBindings_Terminate();
-    char *next = ECSISession_GetNext(retOption) == nullptr ? nullptr : SDL_strdup(ECSISession_GetNext(nullptr));
+    ECSIRestart restart = {.option = ECSISession_GetNextOption()};
+    restart.path = ECSISession_GetNext() == nullptr ? nullptr : SDL_strdup(ECSISession_GetNext());
     ECSISession_Terminate();
     ECSISession_FreeInfo(&APP.preset);
     SDL_free(APP.presetPath);
@@ -560,12 +554,13 @@ char *ECSIApp_Stop(const char **retOption)
     SDL_free(APP.configFolder);
     SDL_free(APP.presetsFolder);
     SDL_free(APP.stateFolder);
+    SDL_free(APP.dataFolder);
     ECSILua_Terminate();
 
     // Debug builds check for leaks here, when OpenECS has freed its memory but SDL still holds its own
     ECSISanitizers_CheckLeaks();
 
     SDL_Quit();
-    ECSILog_Terminate();
-    return next;
+    ECSILog_CloseFile();
+    return restart;
 }

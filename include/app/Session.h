@@ -72,9 +72,12 @@ SHUWUR SHUResult ECSISession_Build(ECSValue *retSession);
 SHUWUR SHUResult ECSISession_Initialize(const ECSISessionFolders *folders, bool canOpen);
 
 /// @brief Gets the session or preset that ECSSession_Open or ECSSession_OpenPreset chose, which OpenECS starts again from once it stops.
-/// @param retOption The command-line option that names it, "--session" or "--preset"; nullptr if not needed.
 /// @return The file's path, or nullptr. Valid until ECSISession_Terminate.
-const char *ECSISession_GetNext(const char **retOption);
+const char *ECSISession_GetNext(void);
+
+/// @brief Gets the command-line option that names the file ECSISession_GetNext gives.
+/// @return "--session" or "--preset".
+const char *ECSISession_GetNextOption(void);
 
 /// @brief Frees what the Session module holds.
 void ECSISession_Terminate(void);

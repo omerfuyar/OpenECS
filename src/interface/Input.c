@@ -197,16 +197,6 @@ static bool ECSIInput_IsModifierKey(SDL_Keycode key)
     return (key >= SDLK_LCTRL && key <= SDLK_RGUI) || key == SDLK_MODE;
 }
 
-/// @brief Asks about the unsaved work of every panel before the program quits.
-/// @return true if the program may quit; the user may cancel to keep the work.
-static bool ECSIInput_ConfirmQuit(void)
-{
-    ECSPanel *panels = ECSILayout_GetPanels();
-    bool quit = ECSIPanels_ConfirmClose(panels, arrlenu(panels), true);
-    arrfree(panels);
-    return quit;
-}
-
 /// @brief Gets the panel that got the pointer press, unless code closed it since.
 static ECSPanel ECSIInput_PointerPanel(void)
 {
@@ -933,11 +923,11 @@ bool ECSIInput_Handle(const SDL_Event *event)
         }
 
         // closing the main window quits
-        return !ECSIInput_ConfirmQuit();
+        return !ECSILayout_ConfirmCloseAll(true);
     }
 
     case SDL_EVENT_QUIT:
-        return !ECSIInput_ConfirmQuit();
+        return !ECSILayout_ConfirmCloseAll(true);
 
     case SDL_EVENT_SYSTEM_THEME_CHANGED:
         ECSISettings_ApplyTheme();

@@ -1082,7 +1082,7 @@ SHUResult ECSIPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
     }
 
     // the description gives the local name, and the type is known by its full name
-    char *fullName = ECSIPlugin_FullName(plugin, desc->name);
+    char *fullName = ECSIPlugin_MakeFullName(plugin, desc->name);
 
     if (fullName == nullptr)
     {

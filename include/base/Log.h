@@ -14,7 +14,7 @@ void ECSILog_Initialize(void);
 void ECSILog_OpenFile(const char *path);
 
 /// @brief Closes the log file. Lines logged later go to standard error only.
-void ECSILog_Terminate(void);
+void ECSILog_CloseFile(void);
 
 /// @brief Gets the path of the log file.
 /// @return The path, or nullptr if there is no log file.

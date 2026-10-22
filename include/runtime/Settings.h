@@ -42,25 +42,24 @@ bool ECSISettings_PeekBool(const char *name, bool fallback);
 
 /// @brief Reads a key combination written as text, such as "Ctrl+Shift+P". Key names are SDL's.
 /// @param text The text.
-/// @param report true to report a text that is not a key combination.
 /// @param retKey The SDL key code.
 /// @param retModifiers The ECSModifier bits.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the text is not a key combination, or SHUResult_ErrAllocation.
-SHUResult ECSISettings_ParseKey(const char *text, bool report, u32 *retKey, u32 *retModifiers);
+SHUResult ECSISettings_ParseKey(const char *text, u32 *retKey, u32 *retModifiers);
 
 /// @brief Reads a colour written as "#RRGGBB" or "#RRGGBBAA".
 /// @param text The text.
 /// @param retColor The colour as ARGB.
 /// @return true if the text is a colour.
-bool ECSISettings_ParseColor(const char *text, u32 *retColor);
+bool ECSIColor_ParseHex(const char *text, u32 *retColor);
 
 /// @brief Room for a colour written as "#RRGGBBAA", with the end of the text.
 #define OPENECS_COLOR_TEXT_SIZE 10
 
 /// @brief Writes a colour as "#RRGGBBAA".
 /// @param color The colour, ARGB.
-/// @param text Gets the text.
-void ECSIColor_Format(ECSColor color, char text[OPENECS_COLOR_TEXT_SIZE]);
+/// @param retText Gets the text.
+void ECSIColor_Format(ECSColor color, char retText[OPENECS_COLOR_TEXT_SIZE]);
 
 /// @brief Turns a colour into the premultiplied form that surfaces hold, and back.
 /// @param color The colour, ARGB.
@@ -83,23 +82,10 @@ SHUWUR SHUResult ECSISettings_DeclareCore(const ECSSettingDesc *desc);
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description or the default is invalid or the name is taken, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISettings_DeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *desc, const ECSValue *defaultValue);
 
-/// @brief Gets a declared setting's default: for a core setting, its value in the core's settings file.
-/// @param name Name of the setting.
-/// @return The default, or nullptr if no setting has the name. Valid while the setting is declared.
-const ECSValue *ECSISettings_GetDefault(const char *name);
-
 /// @brief Gets the keys table of a settings file (DESIGN 7.8): the core's, or the user's for every tool with the tool's own keys merged in, which win.
 /// @param layer ECSISettingsLayer_Core or ECSISettingsLayer_User.
 /// @return The keys table, or nullptr. Valid until ECSISettings_Terminate.
 const ECSValue *ECSISettings_GetKeys(ECSISettingsLayer layer);
-
-/// @brief Describes a declared setting.
-/// @param name Name of the setting.
-/// @param retOwner Its owner; nullptr for the core.
-/// @param retType Its type.
-/// @param retLayer The layer its value in effect comes from.
-/// @return true if the setting is declared.
-bool ECSISettings_Describe(const char *name, ECSPlugin *retOwner, ECSSettingType *retType, ECSISettingsLayer *retLayer);
 
 /// @brief Tells owners about the settings whose value in effect changed since the last call. The main loop calls it after delivering events.
 void ECSISettings_DeliverChanges(void);
@@ -114,6 +100,5 @@ void ECSISettings_ReportUndeclared(void);
 /// @brief Gets the plugins that the settings files name: the core's file, and the user's files for every tool and for this tool.
 /// @return A list of plugin names, for ECSIPlugins_Load. Valid until ECSISettings_Terminate.
 const ECSValue *ECSISettings_GetPlugins(void);
-
 
 #pragma endregion Declarations

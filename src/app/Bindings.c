@@ -180,7 +180,7 @@ static int ECSIBindings_SettingDeclare(lua_State *state)
     {
         lua_getfield(state, 1, "name");
         listener = SDL_calloc(1, sizeof(ECSILuaListener));
-        char *name = listener == nullptr ? nullptr : ECSIPlugin_FullName(ECSIBindings_GetPlugin(state), luaL_optstring(state, -1, ""));
+        char *name = listener == nullptr ? nullptr : ECSIPlugin_MakeFullName(ECSIBindings_GetPlugin(state), luaL_optstring(state, -1, ""));
 
         if (name == nullptr)
         {

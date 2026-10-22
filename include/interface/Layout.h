@@ -345,6 +345,11 @@ void ECSILayout_ClosePanel(ECSPanel panel);
 /// @return stb_ds array of the panels. Free it with arrfree.
 ECSPanel *ECSILayout_GetPanels(void);
 
+/// @brief Asks the user about the unsaved work of every panel of every workspace, as ECSIPanels_ConfirmClose does.
+/// @param quitting true when the program quits.
+/// @return true if the panels may close.
+bool ECSILayout_ConfirmCloseAll(bool quitting);
+
 /// @brief Opens the last closed panel again, with the state it had: next to a panel that stayed in its group, or else in the focused group. Its workspace is shown.
 void ECSILayout_Reopen(void);
 

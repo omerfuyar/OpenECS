@@ -8,8 +8,8 @@
 typedef struct ECSITimer
 {
     ECSPlugin plugin;
-    u64 dueTicks;      // nanoseconds, as SDL_GetTicksNS
-    u64 intervalTicks; // nanoseconds
+    u64 dueNanoseconds;      // as SDL_GetTicksNS
+    u64 intervalNanoseconds;
     bool repeat;
     bool stopped; // freed when no timer is running
     ECSTimerFunction Function;
@@ -448,7 +448,7 @@ SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *descr
     SDL_assert(plugin != nullptr);
     SDL_assert(name != nullptr && description != nullptr);
 
-    char *fullName = ECSIPlugin_FullName(plugin, name);
+    char *fullName = ECSIPlugin_MakeFullName(plugin, name);
     SHUResult result = fullName == nullptr ? SHUResult_ErrBadData : ECSIEvents_Declare(plugin, fullName, description);
     SDL_free(fullName);
     return result;
@@ -528,12 +528,12 @@ SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, ECSTimer *retTimer, f64 second
         return SHUResult_ErrAllocation;
     }
 
-    u64 intervalTicks = (u64)(seconds * (f64)SDL_NS_PER_SECOND);
+    u64 intervalNanoseconds = (u64)(seconds * (f64)SDL_NS_PER_SECOND);
 
     *timer = (ECSITimer){
         .plugin = plugin,
-        .dueTicks = SDL_GetTicksNS() + intervalTicks,
-        .intervalTicks = intervalTicks,
+        .dueNanoseconds = SDL_GetTicksNS() + intervalNanoseconds,
+        .intervalNanoseconds = intervalNanoseconds,
         .repeat = repeat,
         .Function = function,
         .Release = release,
@@ -576,7 +576,7 @@ i32 ECSIEvents_GetWait(void)
 
         if (!timer->stopped)
         {
-            wait = SDL_min(wait, timer->dueTicks > now ? timer->dueTicks - now : 0);
+            wait = SDL_min(wait, timer->dueNanoseconds > now ? timer->dueNanoseconds - now : 0);
         }
     }
 
@@ -601,7 +601,7 @@ void ECSIEvents_RunTimers(void)
     {
         ECSITimer *timer = EVENTS.timers[i];
 
-        if (timer->stopped || timer->dueTicks > now)
+        if (timer->stopped || timer->dueNanoseconds > now)
         {
             continue;
         }
@@ -613,8 +613,8 @@ void ECSIEvents_RunTimers(void)
         else
         {
             // calls missed while the program was busy are skipped
-            timer->dueTicks += timer->intervalTicks;
-            timer->dueTicks = timer->dueTicks <= now ? now + timer->intervalTicks : timer->dueTicks;
+            timer->dueNanoseconds += timer->intervalNanoseconds;
+            timer->dueNanoseconds = timer->dueNanoseconds <= now ? now + timer->intervalNanoseconds : timer->dueNanoseconds;
         }
 
         timer->Function(timer->data);
@@ -657,7 +657,7 @@ void ECSIEvents_Terminate(void)
 
     arrfree(EVENTS.timers);
 
-    // named events still queued hold their copies
+    // named events and main-thread tasks still queued hold their copies
     for (usz i = 0; i < arrlenu(EVENTS.queue); i++)
     {
         if (EVENTS.queue[i].Deliver == ECSIEvents_DeliverEmission)
@@ -666,6 +666,10 @@ void ECSIEvents_Terminate(void)
             SDL_free(emission->name);
             ECSValue_Destroy(&emission->value);
             SDL_free(emission);
+        }
+        else if (EVENTS.queue[i].Deliver == ECSIEvents_DeliverMainTask)
+        {
+            SDL_free(EVENTS.queue[i].target);
         }
     }
 

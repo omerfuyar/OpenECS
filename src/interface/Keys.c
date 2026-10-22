@@ -85,7 +85,7 @@ static void ECSIKeys_ReadPrefix(void)
     }
 
     KEYS.prefixDirty = false;
-    SHUResult result = ECSISettings_ParseKey(ECSValue_GetString(ECSSetting_Get("ecs.prefix"), ""), true, &KEYS.prefixKey, &KEYS.prefixModifiers);
+    SHUResult result = ECSISettings_ParseKey(ECSValue_GetString(ECSSetting_Get("ecs.prefix"), ""), &KEYS.prefixKey, &KEYS.prefixModifiers);
     SDL_assert(result == SHUResult_Ok);
     (void)result;
 }
@@ -107,7 +107,7 @@ static void ECSIKeys_PutBinding(ECSIKeyBinding **bindings, const char *text, con
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSISettings_ParseKey(text, false, &key, &modifiers))
+    if (ECSISettings_ParseKey(text, &key, &modifiers))
     {
         return;
     }
@@ -183,7 +183,7 @@ static void ECSIKeys_ConsiderBinding(ECSIBindingSearch *search, const char *text
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSISettings_ParseKey(text, false, &key, &modifiers) || key != search->key || modifiers != search->modifiers)
+    if (ECSISettings_ParseKey(text, &key, &modifiers) || key != search->key || modifiers != search->modifiers)
     {
         return;
     }
@@ -267,7 +267,7 @@ static void ECSIKeys_CheckInnerField(const char *name, const ECSValue *field, vo
         return;
     }
 
-    if (ECSISettings_ParseKey(name, false, &key, &modifiers))
+    if (ECSISettings_ParseKey(name, &key, &modifiers))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' in the keys of %s is not a key combination.", name, (const char *)userData);
     }
@@ -339,7 +339,7 @@ static void ECSIKeys_TextField(const char *name, const ECSValue *field, void *us
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (search->text != nullptr || SDL_strcmp(ECSValue_GetString(field, ""), search->function) != 0 || ECSISettings_ParseKey(name, false, &key, &modifiers))
+    if (search->text != nullptr || SDL_strcmp(ECSValue_GetString(field, ""), search->function) != 0 || ECSISettings_ParseKey(name, &key, &modifiers))
     {
         return;
     }
@@ -530,7 +530,7 @@ char *ECSIKeys_BoundTextOf(const char *panelType, const char *function)
         u32 key = 0;
         u32 modifiers = 0;
 
-        if (SDL_strcmp(binding->panelType, panelType) == 0 && SDL_strcmp(binding->function, function) == 0 && !ECSISettings_ParseKey(binding->key, false, &key, &modifiers))
+        if (SDL_strcmp(binding->panelType, panelType) == 0 && SDL_strcmp(binding->function, function) == 0 && !ECSISettings_ParseKey(binding->key, &key, &modifiers))
         {
             const char *found = ECSIKeys_FindFor(key, modifiers, panelType);
 
@@ -559,8 +559,9 @@ SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *key, 
         return SHUResult_ErrBadData;
     }
 
-    if (ECSISettings_ParseKey(key, true, &code, &modifiers))
+    if (ECSISettings_ParseKey(key, &code, &modifiers))
     {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a key combination.", key);
         return SHUResult_ErrBadData;
     }
 
