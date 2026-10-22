@@ -1404,11 +1404,7 @@ static SHUResult ECSIWindow_Open(const char *title)
     // a relative font path starts at the executable's folder
     const char *font = ECSValue_GetString(ECSSetting_Get("ecs.font"), "");
     char *fontPath = nullptr;
-
-    if (SDL_asprintf(&fontPath, "%s%s", ECSPath_IsAbsolute(font) ? "" : SDL_GetBasePath(), font) < 0)
-    {
-        return SHUResult_ErrAllocation;
-    }
+    SHU_ReturnResult(ECSPath_GetFull(&fontPath, font));
 
     WINDOW.font = TTF_OpenFont(fontPath, WINDOW.fontSize);
 
