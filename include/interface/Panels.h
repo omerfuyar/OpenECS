@@ -34,12 +34,12 @@ struct ECSIPanel
     f32 y;
     f32 width;
     f32 height;
-    SDL_Surface *pixels;  // what the panel drew, kept between draws
-    SDL_Texture *texture; // the pixels on the GPU, made by the renderer of the OS window that shows the panel; for a GPU panel, that renderer's view of gpuTexture
-    SDL_GPUTexture *gpuTexture; // a GPU panel's texture on the shared device, kept when the panel moves to another OS window; nullptr for a pixels panel
-    SDL_GPUDevice *gpuDevice;   // the device of gpuTexture
+    SDL_Surface *pixels;            // what the panel drew, kept between draws
+    SDL_Texture *texture;           // the pixels on the GPU, made by the renderer of the OS window that shows the panel; for a GPU panel, that renderer's view of gpuTexture
+    SDL_GPUTexture *gpuTexture;     // a GPU panel's texture on the shared device, kept when the panel moves to another OS window; nullptr for a pixels panel
+    SDL_GPUDevice *gpuDevice;       // the device of gpuTexture
     SDL_GPUTransferBuffer *gpuCopy; // where gpuTexture is downloaded to after each draw, for an OS window whose renderer has no GPU device and shows a copy; else nullptr
-    i32 gpuWidth;               // the size of gpuTexture
+    i32 gpuWidth;                   // the size of gpuTexture
     i32 gpuHeight;
     u64 lastDrawTicks;
     u64 focusTicks; // when the panel last got focus, for placing new panels of its type; 0 if never
@@ -47,8 +47,8 @@ struct ECSIPanel
     bool visible;   // what the panel was last told: shown or hidden
     f32 toldWidth;  // the size the panel was last told
     f32 toldHeight;
-    char *fault;    // the error of a callback, or nullptr; a faulted panel shows it and its type is not called again, except Destroy
-    char **accepts; // stb_ds array of the types of data the panel accepts when data is dropped on it
+    char *fault;        // the error of a callback, or nullptr; a faulted panel shows it and its type is not called again, except Destroy
+    char **accepts;     // stb_ds array of the types of data the panel accepts when data is dropped on it
     bool textInput;     // the panel accepts typed text
     SDL_FRect textArea; // its text cursor, in surface pixels
 };

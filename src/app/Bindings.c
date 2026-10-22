@@ -1750,7 +1750,8 @@ static int ECSIBindings_PanelOpenPopup(lua_State *state)
         luaL_unref(state, LUA_REGISTRYINDEX, luaPopup->description);
         SDL_free(luaPopup);
         lua_pushnil(state);
-        lua_pushfstring(state, "the popup is not opened (%s)", result == SHUResult_ErrNotFound ? "the panel is not shown" : result == SHUResult_ErrBadData ? "it needs a width and a height above 0" : SHUResult_String(result));
+        lua_pushfstring(state, "the popup is not opened (%s)", result == SHUResult_ErrNotFound ? "the panel is not shown" : result == SHUResult_ErrBadData ? "it needs a width and a height above 0"
+                                                                                                                                                           : SHUResult_String(result));
         return 2;
     }
 

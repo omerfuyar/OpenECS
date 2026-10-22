@@ -28,7 +28,7 @@ struct ECSINode
     f32 height;
 
     // split
-    bool vertical;        // children are stacked from top to bottom
+    bool vertical;       // children are stacked from top to bottom
     ECSINode **children; // stb_ds array
 
     // group; its tab row's fields belong to the window

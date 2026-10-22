@@ -18,20 +18,20 @@
 #define OPENECS_DEFAULT_PRESET "launcher"
 
 /// @brief What --help prints.
-#define OPENECS_USAGE                                                                                     \
-    "Usage: OpenECS [OPTION...] [FILE...]\n"                                                              \
-    "\n"                                                                                                  \
-    "Starts the launcher, which lists the presets of the presets folders and the saved sessions,\n"      \
-    "or the tool of a preset or a session. The preset's open function opens each FILE.\n"                \
-    "\n"                                                                                                  \
-    "Options:\n"                                                                                          \
-    "  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file\n"         \
-    "  -s, --session FILE      Open a saved session\n"                                                    \
-    "  -f, --fresh             Start from the preset, not from the tool's last session\n"                 \
-    "  -l, --log-input         Log each key and text event as the system gives it\n"                     \
-    "  -t, --test FILE         Run a test; Debug builds only\n"                                           \
-    "  -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit\n"    \
-    "  -v, --version           Print the version and exit\n"                                              \
+#define OPENECS_USAGE                                                                                 \
+    "Usage: OpenECS [OPTION...] [FILE...]\n"                                                          \
+    "\n"                                                                                              \
+    "Starts the launcher, which lists the presets of the presets folders and the saved sessions,\n"   \
+    "or the tool of a preset or a session. The preset's open function opens each FILE.\n"             \
+    "\n"                                                                                              \
+    "Options:\n"                                                                                      \
+    "  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file\n"     \
+    "  -s, --session FILE      Open a saved session\n"                                                \
+    "  -f, --fresh             Start from the preset, not from the tool's last session\n"             \
+    "  -l, --log-input         Log each key and text event as the system gives it\n"                  \
+    "  -t, --test FILE         Run a test; Debug builds only\n"                                       \
+    "  -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit\n" \
+    "  -v, --version           Print the version and exit\n"                                          \
     "  -h, --help              Print this help and exit\n"
 
 /// @brief One option of the command line.

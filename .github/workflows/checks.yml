@@ -1,4 +1,4 @@
-# Checks every change to dev and main: a Debug build with the static analyzer, the examples' tests under the sanitizers, on SDL's offscreen driver and on Wayland, a Release build, and the Lua annotations.
+# Checks every change to dev and main: the C files' format, a Debug build with the static analyzer, the examples' tests under the sanitizers, on SDL's offscreen driver and on Wayland, a Release build, and the Lua annotations.
 # Windows builds Debug and Release with LLVM-MinGW, and runs the examples' tests, without the analyzer and the sanitizers, which MinGW does not have.
 # The examples are the tests: each one's test runs its preset, so they check the core and the standard plugins together.
 name: Checks
@@ -14,6 +14,21 @@ permissions:
   contents: read
 
 jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-24.04
+    env:
+      CLANG_FORMAT: clang-format-18
+    steps:
+      - uses: actions/checkout@v4
+
+      # the C files must be as clang-format 18, Ubuntu 24.04's, writes them; agents format them with check.sh
+      - name: Install clang-format
+        run: sudo apt-get install -y clang-format-18
+
+      - name: Check the C files' format
+        run: .github/scripts/format.sh
+
   debug-linux:
     name: Debug (Linux)
     runs-on: ubuntu-24.04

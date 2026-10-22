@@ -55,17 +55,17 @@ static struct
     ECSPopup pointerPopup;    // popup that got the press; it gets pointer events until the release
     f32 pointerX;             // the pointer's last position in the OS window, in layout units
     f32 pointerY;
-    void *clipboard;          // what a clipboard getter returned last, freed by the next call
-    char *dragType;           // type of the data a panel drags, or nullptr
-    ECSValue *dragValue;      // the dragged data
-    char **droppedFiles;      // stb_ds array of the files another application drops, until the drop completes
-    char *droppedText;        // the text another application drops, until the drop completes, or nullptr
-    bool swallowText;         // the last key press ran a binding or the core's keys, so the text it types is dropped
-    bool textOn;              // text input is on, for the panel below
+    void *clipboard;     // what a clipboard getter returned last, freed by the next call
+    char *dragType;      // type of the data a panel drags, or nullptr
+    ECSValue *dragValue; // the dragged data
+    char **droppedFiles; // stb_ds array of the files another application drops, until the drop completes
+    char *droppedText;   // the text another application drops, until the drop completes, or nullptr
+    bool swallowText;    // the last key press ran a binding or the core's keys, so the text it types is dropped
+    bool textOn;         // text input is on, for the panel below
     ECSPanel textPanel;
-    SDL_Window *textWindow; // the OS window text input is on in
-    SDL_Rect textArea;      // where the input method shows its window, in the OS window
-    const ECSIDialogView *dialog; // the message dialog that waits for an answer, or nullptr
+    SDL_Window *textWindow;          // the OS window text input is on in
+    SDL_Rect textArea;               // where the input method shows its window, in the OS window
+    const ECSIDialogView *dialog;    // the message dialog that waits for an answer, or nullptr
     ECSIDialogStepFunction TestStep; // a running test's step while a dialog waits, or nullptr
     ECSIDialogWaitFunction TestWait;
     // an input method, such as fcitx5, may repeat a held key itself: it sends a release and a press with the first press's time, again and again
