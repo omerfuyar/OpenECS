@@ -63,7 +63,7 @@ int main(int argc, char **argv)
     CONFIG.compiler = CompilerArgument(argc, argv);
     SHU_CompilerConfigureTry(CONFIG.compiler);
     SHU_UtilAutomate(argc, argv);
-    SetupConfiguration(argc, argv);
+    SetupConfiguration(argc, argv); // todo move this up somehow, merge it with CompilerArgument. I dont want to split them ???
 
     // dependencies are built only once
     // SDL and SDL_ttf are always shared libraries, so the core and the plugins that link SDL share one copy
@@ -124,12 +124,12 @@ static void PrintUsageAndExit(int status)
            "  -c, --compiler CC  The compiler: gcc (the default), clang, or on Windows LLVM-MinGW's clang (the default there).\n"
            "                     A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/\n"
            "  -h, --help         Show this help\n");
-    exit(status);
+    exit(status); // todo use functions from shuild, do not use raw std functions
 }
 
 static void Refuse(const char *reason, const char *argument)
 {
-    SHU_UtilFail(0, "%s: " SHUM_LOG_VALUE("%s"), reason, argument);
+    SHU_UtilFail(0, "%s: " SHUM_LOG_VALUE("%s"), reason, argument); // !!! UtilFail doesn't fail ???
     PrintUsageAndExit(1);
 }
 
@@ -189,7 +189,7 @@ static void SetupConfiguration(int argc, char **argv)
     SHU_CacheConfigure(CONFIG.buildDir);
 
     SHU_UtilLog("building " SHUM_LOG_VALUE("%s") " with " SHUM_LOG_VALUE("%s") " for " SHUM_LOG_VALUE("%s") "; standard plugins: " SHUM_LOG_VALUE("%s") ", examples: " SHUM_LOG_VALUE("%s"),
-            BuildType_String(CONFIG.type), CONFIG.compiler, SHUPlatform_GetString(target), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
+                BuildType_String(CONFIG.type), CONFIG.compiler, SHUPlatform_GetString(target), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
 }
 
 // our code gets warnings, and in Debug gcc's static analyzer and the address and undefined-behaviour sanitizers, which MinGW does not have; dependencies get none of them
@@ -216,7 +216,7 @@ static void SetBuildFlags(bool ownCode)
                 SHU_CompilerAddFlags(" -fsanitize=address,undefined -fno-omit-frame-pointer");
             }
         }
-        SHU_CompilerAddFlags(SHUM_FLAGS_DEBUG SHUM_FLAGS_OPTIMIZATION_DEBUG);
+        SHU_CompilerAddFlags(SHUM_FLAGS_DEBUG SHUM_FLAGS_OPTIMIZATION_DEBUG); // ??? still using old style, this is a variadic macro !!!
         SHU_CompilerAddDefinitions("DEBUG", NULL, "SDL_ASSERT_LEVEL", "2");
         break;
     case BuildType_Release:
@@ -241,7 +241,8 @@ static void SetBuildFlags(bool ownCode)
 static bool IsBuilt(const char *library, bool shared)
 {
     // a DLL is in bin/, and lib/ has its import library
-    const char *file = !shared ? SHU_UtilLibraryFile(library, SHUModuleType_LibraryStatic)
+    // todo ugly, maybe expose the internal shuild function for that purpose
+    const char *file = !shared          ? SHU_UtilLibraryFile(library, SHUModuleType_LibraryStatic)
                        : CONFIG.windows ? SHU_UtilFormat("lib%s.dll.a", library)
                                         : SHU_UtilLibraryFile(library, SHUModuleType_LibraryDynamic);
     return SHU_UtilFileExists(SHU_UtilFormat("%slib/%s", CONFIG.outputDir, file)) == SHUFileType_Regular;
@@ -251,6 +252,7 @@ static bool IsBuilt(const char *library, bool shared)
 /// @param gcc The tool's name for gcc. @param clang The tool's name for clang.
 static char *CompilerTool(const char *gcc, const char *clang)
 {
+    // todo overall too much work to do in a build script, try moving these to shuild itself.
     const char *name = SHU_CompilerGetFamily() == SHUCompiler_Clang ? "clang" : "gcc";
     const char *found = NULL;
 
@@ -302,14 +304,14 @@ static void Shuild_CMake(const char *name, const char *source, const char *optio
 static void Shuild_SDL(void)
 {
     Shuild_CMake("SDL3", "SDL",
-                 "-DSDL_SHARED=ON -DSDL_STATIC=OFF "                          // link type
+                 "-DSDL_SHARED=ON -DSDL_STATIC=OFF "                           // link type
                  "-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF"); // options
 }
 
 static void Shuild_SDL_ttf(void)
 {
     Shuild_CMake("SDL3_ttf", "SDL_ttf",
-                 "-DBUILD_SHARED_LIBS=ON "                    // link type
+                 "-DBUILD_SHARED_LIBS=ON "                     // link type
                  "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF"); // options
 }
 
@@ -331,15 +333,15 @@ static void Shuild_lua(void)
     SHU_CompilerAddDefinitions("MAKE_LIB", NULL);
     SHU_ModuleAddSourceFile("onelua.c");
 
-    char *tempStr = SHU_UtilFormat("%sinclude/lua/", CONFIG.outputDir);
-    SHU_UtilCreateDirectory(tempStr);
-    SHU_UtilCopyFile("dependencies/lua/lua.h", tempStr);
-    SHU_UtilCopyFile("dependencies/lua/lauxlib.h", tempStr);
-    SHU_UtilCopyFile("dependencies/lua/lualib.h", tempStr);
-    SHU_UtilCopyFile("dependencies/lua/luaconf.h", tempStr);
+    char *headerOutputDir = SHU_UtilFormat("%sinclude/lua/", CONFIG.outputDir);
+    SHU_UtilCreateDirectory(headerOutputDir); // !!! I think copy file already creates dir !!!
+    SHU_UtilCopyFile("dependencies/lua/lua.h", headerOutputDir);
+    SHU_UtilCopyFile("dependencies/lua/lauxlib.h", headerOutputDir);
+    SHU_UtilCopyFile("dependencies/lua/lualib.h", headerOutputDir);
+    SHU_UtilCopyFile("dependencies/lua/luaconf.h", headerOutputDir);
 
-    tempStr = SHU_UtilFormat("%slib/", CONFIG.outputDir);
-    SHU_ModuleCompile(tempStr, SHUModuleType_LibraryStatic);
+    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.outputDir);
+    SHU_ModuleCompile(binOutputDir, SHUModuleType_LibraryStatic);
 }
 
 static void Shuild_clay(void)
@@ -349,17 +351,17 @@ static void Shuild_clay(void)
 
     SHU_ModuleAddSourceFile("../other/clay/clay.c");
 
-    char *tempStr = SHU_UtilFormat("../../%sinclude/", CONFIG.outputDir);
-    SHU_ModuleAddIncludeDirectory(tempStr);
+    char *clayIncludeDir = SHU_UtilFormat("../../%sinclude/", CONFIG.outputDir);
+    SHU_ModuleAddIncludeDirectory(clayIncludeDir); // todo rename this and similar variadic macro functions to Directories, instead of singular !!!
 
-    tempStr = SHU_UtilFormat("%slib/", CONFIG.outputDir);
-    SHU_ModuleCompile(tempStr, SHUModuleType_LibraryStatic);
+    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.outputDir);
+    SHU_ModuleCompile(binOutputDir, SHUModuleType_LibraryStatic);
 
     // clay.c includes the headers from the submodule, so they are copied for the core after it compiles
-    tempStr = SHU_UtilFormat("%sinclude/clay/", CONFIG.outputDir);
-    SHU_UtilCreateDirectory(tempStr);
-    SHU_UtilCopyFile("dependencies/clay/clay.h", tempStr);
-    SHU_UtilCopyFile("dependencies/other/clay/claySDL3.h", tempStr);
+    char *headerOutputDir = SHU_UtilFormat("%sinclude/clay/", CONFIG.outputDir);
+    SHU_UtilCreateDirectory(headerOutputDir);
+    SHU_UtilCopyFile("dependencies/clay/clay.h", headerOutputDir);
+    SHU_UtilCopyFile("dependencies/other/clay/claySDL3.h", headerOutputDir);
 }
 
 static void Shuild_stb(void)
@@ -368,12 +370,12 @@ static void Shuild_stb(void)
     SetBuildFlags(false);
 
     // stb.c includes the copied glue header, so the headers are copied first
-    char *tempStr = SHU_UtilFormat("%sinclude/stb/", CONFIG.outputDir);
-    SHU_UtilCreateDirectory(tempStr);
+    char *tempStr = SHU_UtilFormat("%sinclude/stb/", CONFIG.outputDir); // todo since we removed stack strings, rename these tempStrs to real names, like I did in previous functions !!!
+    SHU_UtilCreateDirectory(tempStr);                                   // !!! again, same as before, remove if redundant !!!
     SHU_UtilCopyFile("dependencies/stb/stb_ds.h", tempStr);
     SHU_UtilCopyFile("dependencies/other/stb/stbSDL3.h", tempStr);
 
-    SHU_ModuleAddSourceFile("stb.c");
+    SHU_ModuleAddSourceFile("stb.c"); // SHU_ModuleAddSourceFiles
 
     tempStr = SHU_UtilFormat("../../../%sinclude/", CONFIG.outputDir);
     SHU_ModuleAddIncludeDirectory(tempStr);
