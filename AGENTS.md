@@ -13,20 +13,23 @@ This is the only file written for agents. Everything else is written for humans.
 | [DESIGN.md](DESIGN.md)     | How OpenECS is built: modules, interfaces, conventions, dependencies and rules for contributors. |
 | [TODO.md](TODO.md)         | Open questions and pending tasks, of OpenECS and the repositories it ships.                      |
 
-Read OVERVIEW.md and DESIGN.md before you propose or change anything.
+Before you propose or change anything, read the Contents of OVERVIEW.md and DESIGN.md, then every section the task touches. Read DESIGN.md section 1 before you write code.
 
-| Path            | What it holds                                                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `include/`      | Headers: the plugin header and the core's module headers, and `ecs.lua` for editors (DESIGN.md, sections 1.5 and 9.6). |
-| `src/`          | The core's source files.                                                                                               |
-| `std/`          | Submodule: OpenECS-std, the standard plugins and first-party presets (DESIGN.md, sections 17.7 and 20).                |
-| `examples/`     | Submodule: OpenECS-examples, examples for plugin authors (DESIGN.md, sections 17.6 and 17.7).                          |
-| `dependencies/` | Third-party git submodules.                                                                                            |
-| `resources/`    | Files the program loads at run time.                                                                                   |
-| `docs/`         | Screenshots that README.md shows.                                                                                      |
-| `shuild.c`      | The build script (see README.md).                                                                                      |
-| `.github/`      | Checks, release workflow and their scripts, rulesets and release descriptions (DESIGN.md, section 19).                 |
-| `LICENSE.md`    | OpenECS's license, zlib.                                                                                               |
+| Path            | What it holds                                                                                                                                                                                                                       |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `include/`      | Headers: the plugin header and the core's module headers, and `ecs.lua` for editors (DESIGN.md, sections 1.5 and 9.6).                                                                                                              |
+| `src/`          | The core's source files.                                                                                                                                                                                                            |
+| `std/`          | Submodule: OpenECS-std, the standard plugins and first-party presets (DESIGN.md, sections 17.7 and 20).                                                                                                                             |
+| `examples/`     | Submodule: OpenECS-examples, examples for plugin authors (DESIGN.md, sections 17.6 and 17.7).                                                                                                                                       |
+| `dependencies/` | Third-party git submodules.                                                                                                                                                                                                         |
+| `resources/`    | Files the program loads at run time.                                                                                                                                                                                                |
+| `docs/`         | Screenshots that README.md shows.                                                                                                                                                                                                   |
+| `shuild.c`      | The build script (see README.md).                                                                                                                                                                                                   |
+| `.github/`      | Checks, release workflow and their scripts, rulesets and release descriptions (DESIGN.md, section 19).                                                                                                                              |
+| `.clang-format` | How clang-format formats the C code (DESIGN.md, section 1.6).                                                                                                                                                                       |
+| `.clang-tidy`   | What clang-tidy checks in the C code: names (DESIGN.md, section 1.2) and common bugs.                                                                                                                                               |
+| `.claude/`      | Claude Code's settings, skills and notes: it formats each C file it edits and never edits `dependencies/`; `skills/` holds procedures such as releases, and `notes.md` why the tools are set up as they are, and the owner's notes. |
+| `LICENSE.md`    | OpenECS's license, zlib.                                                                                                                                                                                                            |
 
 ## Current stage
 
@@ -50,7 +53,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 
 - Write text and code for a human reader: simple, short and easy to read. Do not bloat.
 - Keep `include/OpenECS.h` and `include/ecs.lua` in step, with every reference and document (DESIGN.md, section 11.5).
-- Build in Debug and in Release, and run the examples' tests, before pushing (DESIGN.md, section 19.3).
+- Check your work as [Checks](#checks) says.
 
 **Ask first**
 
@@ -65,6 +68,13 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Edit anything under `dependencies/`. Change `std/` and `examples/` in their own repositories, which follow this file too.
 - Break or invent code conventions. Follow DESIGN.md section 1.
 - Tell people to run a shell script, in any document. Scripts are for CI and agents; people build and test with shuild (`shuild.c`), so anything they need goes there.
+
+## Checks
+
+- A fresh checkout needs its submodules (README.md) and, on Linux, the packages that `.github/scripts/install-linux.sh` installs, before it builds.
+- Before each commit, run `.github/scripts/check.sh`: it formats the changed C files and checks them with clang-tidy. It needs a Debug build first.
+- Before pushing, build in Debug and run the examples' tests: `.github/scripts/build.sh D`, then `.github/scripts/test.sh build/Debug/bin/OpenECS`. The checks build Release, and run the tests on Wayland and Windows (DESIGN.md, section 19.3).
+- The scripts print only problems. Read the logs they name only when they fail.
 
 ## Git
 

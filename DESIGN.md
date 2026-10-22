@@ -102,7 +102,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 ### 1.6 Style
 
 - Documentation comments use `///` with `@brief`, `@param`, `@return` and `@note`, on every public declaration. Each `@return` names the `SHUResult` values the function can return. A public function's comment ends with `@lua` (11.5).
-- Allman braces and four spaces for indentation.
+- Allman braces and four spaces for indentation. clang-format formats the code as `.clang-format` says, and clang-tidy checks names (1.2) and common bugs as `.clang-tidy` says.
 - An unused parameter is marked `(void)name;`.
 - Plain comments are short and lowercase; `// todo` marks unfinished work and `//!` marks something important.
 - Compiler attributes are used through macros, never written out: `OPENECS_EXPORT`, `OPENECS_PRINTF`, `SHUWUR`.
@@ -1259,6 +1259,7 @@ OpenECS follows the XDG Base Directory specification:
 
   | Check             | Does                                                                                                                                                                                                                                                                                               |
   | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `Format`          | Checks that clang-format leaves the core's C files as they are (1.6).                                                                                                                                                                                                                              |
   | `Debug (Linux)`   | Builds and runs shuild's example `16_compiler_detection`, so shuild's compiler detection runs; it fails when shuild finds no compiler for the system. Then builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs the examples' tests (17.5) under the sanitizers, on SDL's offscreen driver and then on Wayland; a failed test or a report fails it. Then writes the definition files of the plugins of the example `5_services` (10.10) and compiles each C header, and checks that every function of the standard plugins says what each parameter and its result are (10.1). |
   | `Release (Linux)` | Builds in Release, so code that only Release builds compile or link fails before a release.                                                                                                                                                                                                        |
   | `Windows`         | Runs shuild's compiler detection, as `Debug (Linux)` does. Then builds on Windows with LLVM-MinGW: in Debug, then runs the examples' tests and writes the definition files, as `Debug (Linux)` does; then in Release. It has no static analyzer or sanitizers, which MinGW lacks.                                                                                  |

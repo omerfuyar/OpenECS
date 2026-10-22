@@ -61,15 +61,15 @@ static struct
     {
         char *key; // the setting's own copy of its name
         ECSISetting *value;
-    } *settings;                                // stb_ds hash map, in declaration order
+    } *settings;                               // stb_ds hash map, in declaration order
     ECSValue *layers[ECSISettingsLayer_Count]; // the core, theme, preset and user layers: tables of setting names and values
-    ECSValue *themes;                           // the themes of the settings files, by name: tables of setting names and values
-    char *theme;                                // the name of the theme in the theme layer, or nullptr before one is chosen
+    ECSValue *themes;                          // the themes of the settings files, by name: tables of setting names and values
+    char *theme;                               // the name of the theme in the theme layer, or nullptr before one is chosen
     char *paths[ECSISettingsLayer_Count];      // the file of each of those layers
-    ECSValue *plugins;                          // list of extra plugin names
+    ECSValue *plugins;                         // list of extra plugin names
     ECSValue *keys[ECSISettingsLayer_Count];   // the core's and the user's keys tables
-    ECSValue *userFile;                         // the whole user's settings file, which ECSSetting_Set changes and writes
-    char *appID;                                // chooses the tool's own part of the user's files
+    ECSValue *userFile;                        // the whole user's settings file, which ECSSetting_Set changes and writes
+    char *appID;                               // chooses the tool's own part of the user's files
     ECSISetting **changed;                     // stb_ds array of settings whose owners are not told yet
 } SETTINGS = {0};
 

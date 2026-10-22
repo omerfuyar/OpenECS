@@ -195,7 +195,7 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
     char *neededBy = nullptr;
 
     if (SDL_asprintf(&neededBy, "%s '%s'", lastSession ? "the tool's last session" : APP.sessionPath != nullptr ? "the session"
-                                                                                                             : "the preset",
+                                                                                                                : "the preset",
                      APP.sessionPath != nullptr ? APP.sessionPath : APP.presetPath) < 0)
     {
         neededBy = nullptr;
