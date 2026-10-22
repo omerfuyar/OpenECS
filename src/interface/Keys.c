@@ -55,10 +55,10 @@ typedef struct ECSIBindingSearch
 {
     u32 key;
     u32 modifiers;
-    ECSIKeysLayer layer;     // of the table being searched
-    ECSIBindingScope scope;  // of the table being searched
-    bool found;              // a binding matched; its function may be nullptr, when false removes the key
-    const char *function;    // the best binding so far
+    ECSIKeysLayer layer;    // of the table being searched
+    ECSIBindingScope scope; // of the table being searched
+    bool found;             // a binding matched; its function may be nullptr, when false removes the key
+    const char *function;   // the best binding so far
     ECSIKeysLayer bestLayer;
     ECSIBindingScope bestScope;
 } ECSIBindingSearch;

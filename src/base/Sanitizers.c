@@ -37,7 +37,7 @@ const char *__lsan_default_suppressions(void)
            "leak:libLLVM\n"
            "leak:_dri.so\n"
            "leak:libdrm\n"
-           "leak:libvulkan\n" // the loader and drivers such as libvulkan_radeon.so
+           "leak:libvulkan\n"  // the loader and drivers such as libvulkan_radeon.so
            "leak:libVkLayer\n" // Vulkan layers, such as Mesa's device select
            "leak:libnvidia\n"
            "leak:libibus\n"

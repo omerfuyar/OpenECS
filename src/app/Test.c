@@ -25,30 +25,30 @@
 
 static struct
 {
-    lua_State *thread;            // the coroutine of the test's run function, or nullptr when no test runs
-    int threadReference;          // registry reference that keeps the coroutine alive
-    bool started;                 // false until the run function is first resumed
-    bool failed;                  // true when the test failed
-    bool resuming;                // the test's own code runs, so a dialog it opens cannot wait for it
-    bool ended;                   // the test has ended, so the program stops, even when it ended while a dialog waited
-    SDL_Event *events;            // input events the test sent; one goes to the loop in each pass
-    SDL_Keymod *eventModifiers;   // stb_ds array of the modifiers held during each event, set before it goes to the loop
-    SDL_Keymod held;              // modifiers held during the pointer events being sent
-    usz nextEvent;                // index of the next event to send
-    u64 resumeTicks;              // when the test goes on after test.wait, in nanoseconds
-    usz window;                   // the OS window that input events go to, as ECSIWindow_Get counts them; 0 before test.window chooses one, which is the main window
-    f32 pointerX;                 // the pointer's last position
+    lua_State *thread;          // the coroutine of the test's run function, or nullptr when no test runs
+    int threadReference;        // registry reference that keeps the coroutine alive
+    bool started;               // false until the run function is first resumed
+    bool failed;                // true when the test failed
+    bool resuming;              // the test's own code runs, so a dialog it opens cannot wait for it
+    bool ended;                 // the test has ended, so the program stops, even when it ended while a dialog waited
+    SDL_Event *events;          // input events the test sent; one goes to the loop in each pass
+    SDL_Keymod *eventModifiers; // stb_ds array of the modifiers held during each event, set before it goes to the loop
+    SDL_Keymod held;            // modifiers held during the pointer events being sent
+    usz nextEvent;              // index of the next event to send
+    u64 resumeTicks;            // when the test goes on after test.wait, in nanoseconds
+    usz window;                 // the OS window that input events go to, as ECSIWindow_Get counts them; 0 before test.window chooses one, which is the main window
+    f32 pointerX;               // the pointer's last position
     f32 pointerY;
-    SDL_MouseButtonFlags buttons; // the buttons held
+    SDL_MouseButtonFlags buttons;   // the buttons held
     SDL_MouseButtonFlags delivered; // the buttons held in the events delivered so far
     SDL_WindowID grabID;            // the window that got the press while buttons are held, as the system keeps the pointer there; 0 for the event's own
     f32 grabX;                      // where that window shows in the event's own, so positions move into it
     f32 grabY;
-    SDL_Point *sizes;               // stb_ds array of each OS window's size when the test last went on
-    char **files;                 // stb_ds array of the paths that the test's files field names
-    char **keptTexts;             // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
-    char *presets;                // the folder that the test's presets field names, ending with a separator, or nullptr
-    char *sessions;               // the folder that the test's sessions field names, ending with a separator, or nullptr
+    SDL_Point *sizes; // stb_ds array of each OS window's size when the test last went on
+    char **files;     // stb_ds array of the paths that the test's files field names
+    char **keptTexts; // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
+    char *presets;    // the folder that the test's presets field names, ending with a separator, or nullptr
+    char *sessions;   // the folder that the test's sessions field names, ending with a separator, or nullptr
 } TEST = {0};
 
 /// @brief test.match: compares by contents and names the path of the first difference.

@@ -27,9 +27,9 @@
 typedef struct ECSIMenuEntry
 {
     char *label;
-    char *keys;                     // text of the keys that run it, or nullptr
-    char *function;                 // the function it runs on the focused panel, or nullptr
-    ECSPanel tab;                   // the panel whose tab it shows, or nullptr
+    char *keys;                    // text of the keys that run it, or nullptr
+    char *function;                // the function it runs on the focused panel, or nullptr
+    ECSPanel tab;                  // the panel whose tab it shows, or nullptr
     struct ECSIMenuEntry *submenu; // stb_ds array of the entries of the submenu it opens, or nullptr
 } ECSIMenuEntry;
 
@@ -37,7 +37,7 @@ typedef struct ECSIMenuEntry
 typedef struct ECSIMenuLevel
 {
     ECSIMenuEntry *entries; // owned by the panel menu's entries
-    const char **lines;      // stb_ds array of each entry's key text and label, which the window shows
+    const char **lines;     // stb_ds array of each entry's key text and label, which the window shows
 } ECSIMenuLevel;
 
 static struct
@@ -120,7 +120,7 @@ static void ECSIMenus_OpenLevel(ECSIMenuEntry *entries, SDL_FRect anchor)
     for (usz i = 0; i < arrlenu(entries); i++)
     {
         arrput(level.lines, entries[i].submenu != nullptr ? OPENECS_SUBMENU_MARK : entries[i].keys != nullptr ? entries[i].keys
-                                                                                                        : "");
+                                                                                                              : "");
         arrput(level.lines, entries[i].label != nullptr ? entries[i].label : "");
     }
 
@@ -403,7 +403,7 @@ static void ECSIMenus_ShowWorkspaces(void)
 }
 
 /// @brief Defines the core's two functions for a workspace number: switching to the workspace, and moving the focused panel to it.
-#define ECSIMenus_WorkspaceFunctions(number)                 \
+#define ECSIMenus_WorkspaceFunctions(number)            \
     static void ECSIMenus_Workspace##number(void)       \
     {                                                   \
         ECSILayout_WorkspaceSwitch(number - 1);         \
@@ -428,9 +428,9 @@ ECSIMenus_WorkspaceFunctions(10)
 // clang-format on
 
 /// @brief The entries of the core function table for a workspace number.
-#define ECSIMenus_WorkspaceEntries(number)                                                                               \
-    {"ecs.workspace.switch" #number, ECSIMenus_Workspace##number, "Workspace " #number},                        \
-    {                                                                                                               \
+#define ECSIMenus_WorkspaceEntries(number)                                                               \
+    {"ecs.workspace.switch" #number, ECSIMenus_Workspace##number, "Workspace " #number},                 \
+    {                                                                                                    \
         "ecs.layout.moveToWorkspace" #number, ECSIMenus_MoveToWorkspace##number, "To workspace " #number \
     }
 

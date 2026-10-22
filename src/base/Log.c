@@ -9,8 +9,8 @@
 
 static struct
 {
-    SDL_IOStream *file; // nullptr until the state folder is known
-    char *path;         // of the log file, or nullptr
+    SDL_IOStream *file;                     // nullptr until the state folder is known
+    char *path;                             // of the log file, or nullptr
     char lastError[OPENECS_LOG_ERROR_SIZE]; // the last error or critical message, empty if none
 } LOG = {0};
 
