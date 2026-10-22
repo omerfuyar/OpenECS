@@ -102,7 +102,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 ### 1.6 Style
 
 - Documentation comments use `///` with `@brief`, `@param`, `@return` and `@note`, on every public declaration. Each `@return` names the `SHUResult` values the function can return. A public function's comment ends with `@lua` (11.5).
-- Allman braces and four spaces for indentation.
+- Allman braces and four spaces for indentation. clang-format formats the code as `.clang-format` says, and clang-tidy checks names (1.2) and common bugs as `.clang-tidy` says.
 - An unused parameter is marked `(void)name;`.
 - Plain comments are short and lowercase; `// todo` marks unfinished work and `//!` marks something important.
 - Compiler attributes are used through macros, never written out: `OPENECS_EXPORT`, `OPENECS_PRINTF`, `SHUWUR`.
