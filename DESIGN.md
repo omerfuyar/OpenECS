@@ -339,6 +339,7 @@ typedef struct ECSSurface
 - 32 bits per pixel, `ARGB8888` in native byte order, with premultiplied alpha.
 - Panels are opaque, so alpha is ignored for panels. It matters only for popups.
 - A colour that a plugin gives is an `ECSColor`, `0xAARRGGBB`, not premultiplied; the core premultiplies it where it writes pixels. Lua, settings and presets write colours as texts: `"#RRGGBB"`, `"#RRGGBBAA"`, or the name of a colour of the theme, such as `"text"` for `ecs.colorText` (12.4). `ECSColor_Parse` reads such a text, and the signature type `color` (10.2) turns texts into `ECSColor` between Lua and C.
+- The names of the theme's colours are the core's colour settings, `ecs.colorBackground` to `ecs.colorSelected` (12.4), each without `ecs.color` and with a small first letter, such as `"tabRow"`. The type `ecs.Color` in `ecs.lua` lists them, so editors complete them wherever a colour goes, and it changes with the core's colour settings.
 - A panel may report which rectangles changed. If it reports none, the whole surface is uploaded.
 
 ### 5.3 The renderer
