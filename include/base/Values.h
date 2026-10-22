@@ -29,10 +29,10 @@ typedef struct ECSIFieldRule
 typedef void (*ECSIValueFieldFunction)(const char *name, const ECSValue *field, void *userData);
 
 /// @brief Makes a value a deep copy of another.
-/// @param value The value to set.
-/// @param source The value to copy, or nullptr for nil. Must not be inside the value.
-/// @return SHUResult_Ok, or SHUResult_ErrAllocation; the value holds a partial copy then.
-SHUWUR SHUResult ECSIValue_Copy(ECSValue *value, const ECSValue *source);
+/// @param retCopy The value to set to the copy.
+/// @param source The value to copy, or nullptr for nil. Must not be inside retCopy.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation; retCopy holds a partial copy then.
+SHUWUR SHUResult ECSIValue_Copy(ECSValue *retCopy, const ECSValue *source);
 
 /// @brief Checks whether two values are the same: the same type and contents, with fields in any order.
 /// @param first A value, or nullptr for nil.
@@ -78,6 +78,11 @@ SHUWUR SHUResult ECSIValue_SetLuaHandle(ECSValue *value, const char *type, void 
 
 /// @brief Gives the registry reference of the Lua handle that a value keeps, or 0 for a handle that C set, and for any other value.
 int ECSIValue_GetLuaHandle(const ECSValue *value);
+
+/// @brief Checks whether a value is a whole number: an integer, or a number without a fraction that fits in 64 bits.
+/// @param value The value, or nullptr.
+/// @return true if it is a whole number.
+bool ECSIValue_IsInteger(const ECSValue *value);
 
 /// @brief Checks a version text: one to three numbers separated by dots, such as "1.2.0" or "0.1".
 /// @param text The text, or nullptr.

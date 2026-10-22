@@ -34,9 +34,15 @@ void ECSIApp_Start(const ECSIArguments *arguments);
 /// @return The program's exit status: 1 if a test failed or did not finish, 0 otherwise.
 int ECSIApp_Run(void);
 
+/// @brief What the program starts again from once it stops: the session or preset that ECSSession_Open or ECSSession_OpenPreset chose.
+typedef struct ECSIRestart
+{
+    char *path;         // the file, or nullptr to exit; free it with SDL_free
+    const char *option; // the command-line option that names it, "--session" or "--preset"
+} ECSIRestart;
+
 /// @brief Saves the session for the next start, then stops every module.
-/// @param retOption The command-line option that names the file returned, "--session" or "--preset".
-/// @return The session or preset that ECSSession_Open or ECSSession_OpenPreset chose, which the program starts again from, or nullptr. Free it with SDL_free.
-char *ECSIApp_Stop(const char **retOption);
+/// @return What the program starts again from.
+ECSIRestart ECSIApp_Stop(void);
 
 #pragma endregion Declarations

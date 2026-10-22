@@ -123,49 +123,49 @@ void ECSValue_Destroy(ECSValue **value)
     }
 }
 
-SHUResult ECSIValue_Copy(ECSValue *value, const ECSValue *source)
+SHUResult ECSIValue_Copy(ECSValue *retCopy, const ECSValue *source)
 {
-    SDL_assert(value != nullptr);
-    SDL_assert(value != source);
+    SDL_assert(retCopy != nullptr);
+    SDL_assert(retCopy != source);
 
     switch (ECSValue_GetType(source))
     {
     case ECSValueType_Nil:
-        ECSValue_SetNil(value);
+        ECSValue_SetNil(retCopy);
         return SHUResult_Ok;
     case ECSValueType_Bool:
-        ECSValue_SetBool(value, source->boolean);
+        ECSValue_SetBool(retCopy, source->boolean);
         return SHUResult_Ok;
     case ECSValueType_Integer:
-        ECSValue_SetInteger(value, source->integer);
+        ECSValue_SetInteger(retCopy, source->integer);
         return SHUResult_Ok;
     case ECSValueType_Number:
-        ECSValue_SetNumber(value, source->number);
+        ECSValue_SetNumber(retCopy, source->number);
         return SHUResult_Ok;
     case ECSValueType_String:
-        return ECSValue_SetString(value, source->string);
+        return ECSValue_SetString(retCopy, source->string);
     case ECSValueType_Buffer:
-        return ECSValue_SetBuffer(value, (SHUSliceView){.data = source->bytes, .size = source->size});
+        return ECSValue_SetBuffer(retCopy, (SHUSliceView){.data = source->bytes, .size = source->size});
     case ECSValueType_Handle:
-        return source->reference != 0 && VALUES.Keep != nullptr ? ECSIValue_SetLuaHandle(value, source->handleType, source->object, VALUES.Keep(source->reference))
-                                                                : ECSValue_SetHandle(value, source->handleType, source->object);
+        return source->reference != 0 && VALUES.Keep != nullptr ? ECSIValue_SetLuaHandle(retCopy, source->handleType, source->object, VALUES.Keep(source->reference))
+                                                                : ECSValue_SetHandle(retCopy, source->handleType, source->object);
     case ECSValueType_Table:
         break;
     }
 
-    ECSValue_SetTable(value);
+    ECSValue_SetTable(retCopy);
 
     for (usz i = 0; i < arrlenu(source->items); i++)
     {
         ECSValue *item = nullptr;
-        SHU_ReturnResult(ECSValue_ListAddItem(value, &item));
+        SHU_ReturnResult(ECSValue_AddListItem(retCopy, &item));
         SHU_ReturnResult(ECSIValue_Copy(item, source->items[i]));
     }
 
     for (usz i = 0; i < shlenu(source->fields); i++)
     {
         ECSValue *field = nullptr;
-        SHU_ReturnResult(ECSValue_TableSetField(value, source->fields[i].key, &field));
+        SHU_ReturnResult(ECSValue_SetTableField(retCopy, source->fields[i].key, &field));
         SHU_ReturnResult(ECSIValue_Copy(field, source->fields[i].value));
     }
 
@@ -282,7 +282,7 @@ bool ECSIValue_CheckFields(const ECSValue *table, const ECSIFieldRule *rules, us
             matches = type == ECSValueType_Bool;
             break;
         case ECSIFieldType_Integer:
-            matches = type == ECSValueType_Integer || (type == ECSValueType_Number && (f64)ECSValue_GetInteger(field, 0) == ECSValue_GetNumber(field, 0.5));
+            matches = ECSIValue_IsInteger(field);
             break;
         case ECSIFieldType_Number:
             matches = type == ECSValueType_Integer || type == ECSValueType_Number;
@@ -338,6 +338,20 @@ bool ECSIValue_IsVersion(const char *text)
     return numbers > 0 && text != nullptr && *text == '\0';
 }
 
+bool ECSIValue_IsInteger(const ECSValue *value)
+{
+    switch (ECSValue_GetType(value))
+    {
+    case ECSValueType_Integer:
+        return true;
+    case ECSValueType_Number:
+        // the range check keeps the conversion to an integer defined
+        return value->number >= -0x1p63 && value->number < 0x1p63 && value->number == SDL_floor(value->number);
+    default:
+        return false;
+    }
+}
+
 ECSValueType ECSValue_GetType(const ECSValue *value)
 {
     return value == nullptr ? ECSValueType_Nil : value->type;
@@ -355,13 +369,7 @@ i64 ECSValue_GetInteger(const ECSValue *value, i64 fallback)
     case ECSValueType_Integer:
         return value->integer;
     case ECSValueType_Number:
-        // the range check keeps the conversion defined
-        if (value->number >= -0x1p63 && value->number < 0x1p63 && value->number == SDL_floor(value->number))
-        {
-            return (i64)value->number;
-        }
-
-        return fallback;
+        return ECSIValue_IsInteger(value) ? (i64)value->number : fallback;
     default:
         return fallback;
     }
@@ -531,23 +539,7 @@ SHUResult ECSValue_SetBuffer(ECSValue *value, SHUSliceView buffer)
 
 SHUResult ECSValue_SetHandle(ECSValue *value, const char *type, void *object)
 {
-    SDL_assert(value != nullptr);
-    SDL_assert(type != nullptr);
-    SDL_assert(object != nullptr);
-
-    char *copy = SDL_strdup(type);
-
-    if (copy == nullptr)
-    {
-        return SHUResult_ErrAllocation;
-    }
-
-    ECSIValue_Clear(value);
-    value->type = ECSValueType_Handle;
-    value->handleType = copy;
-    value->object = object;
-    value->reference = 0;
-    return SHUResult_Ok;
+    return ECSIValue_SetLuaHandle(value, type, object, 0);
 }
 
 SHUResult ECSIValue_SetLuaHandle(ECSValue *value, const char *type, void *object, int reference)
@@ -560,7 +552,7 @@ SHUResult ECSIValue_SetLuaHandle(ECSValue *value, const char *type, void *object
 
     if (copy == nullptr)
     {
-        if (VALUES.Drop != nullptr)
+        if (reference != 0 && VALUES.Drop != nullptr)
         {
             VALUES.Drop(reference);
         }
@@ -584,7 +576,7 @@ void ECSValue_SetTable(ECSValue *value)
     value->type = ECSValueType_Table;
 }
 
-SHUResult ECSValue_ListAddItem(ECSValue *table, ECSValue **retItem)
+SHUResult ECSValue_AddListItem(ECSValue *table, ECSValue **retItem)
 {
     SDL_assert(table != nullptr);
     SDL_assert(retItem != nullptr);
@@ -595,7 +587,7 @@ SHUResult ECSValue_ListAddItem(ECSValue *table, ECSValue **retItem)
     return SHUResult_Ok;
 }
 
-SHUResult ECSValue_TableSetField(ECSValue *table, const char *name, ECSValue **retField)
+SHUResult ECSValue_SetTableField(ECSValue *table, const char *name, ECSValue **retField)
 {
     SDL_assert(table != nullptr);
     SDL_assert(name != nullptr);

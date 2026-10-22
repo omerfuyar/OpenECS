@@ -1,5 +1,6 @@
 #include "app/Test.h"
 #include "base/Lua.h"
+#include "base/Paths.h"
 #include "interface/Input.h"
 #include "interface/Layout.h"
 #include "interface/Panels.h"
@@ -30,7 +31,6 @@ static struct
     bool failed;                  // true when the test failed
     bool resuming;                // the test's own code runs, so a dialog it opens cannot wait for it
     bool ended;                   // the test has ended, so the program stops, even when it ended while a dialog waited
-    const ECSIPresetInfo *info;  // what the preset said, for test.session
     SDL_Event *events;            // input events the test sent; one goes to the loop in each pass
     SDL_Keymod *eventModifiers;   // stb_ds array of the modifiers held during each event, set before it goes to the loop
     SDL_Keymod held;              // modifiers held during the pointer events being sent
@@ -46,7 +46,7 @@ static struct
     f32 grabY;
     SDL_Point *sizes;               // stb_ds array of each OS window's size when the test last went on
     char **files;                 // stb_ds array of the paths that the test's files field names
-    char **dropped;               // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
+    char **keptTexts;             // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
     char *presets;                // the folder that the test's presets field names, ending with a separator, or nullptr
     char *sessions;               // the folder that the test's sessions field names, ending with a separator, or nullptr
 } TEST = {0};
@@ -302,21 +302,21 @@ static int ECSITest_Key(lua_State *state)
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSISettings_ParseKey(text, false, &key, &modifiers))
+    if (ECSISettings_ParseKey(text, &key, &modifiers))
     {
         return luaL_error(state, "'%s' is not a key combination", text);
     }
 
-    SDL_Keymod mod = SDL_KMOD_NONE;
-    mod |= (modifiers & ECSModifier_Shift) ? SDL_KMOD_LSHIFT : 0;
-    mod |= (modifiers & ECSModifier_Ctrl) ? SDL_KMOD_LCTRL : 0;
-    mod |= (modifiers & ECSModifier_Alt) ? SDL_KMOD_LALT : 0;
-    mod |= (modifiers & ECSModifier_Super) ? SDL_KMOD_LGUI : 0;
+    SDL_Keymod sdlModifiers = SDL_KMOD_NONE;
+    sdlModifiers |= (modifiers & ECSModifier_Shift) ? SDL_KMOD_LSHIFT : 0;
+    sdlModifiers |= (modifiers & ECSModifier_Ctrl) ? SDL_KMOD_LCTRL : 0;
+    sdlModifiers |= (modifiers & ECSModifier_Alt) ? SDL_KMOD_LALT : 0;
+    sdlModifiers |= (modifiers & ECSModifier_Super) ? SDL_KMOD_LGUI : 0;
 
     SDL_Event event = {.type = SDL_EVENT_KEY_DOWN};
     event.key.key = key;
     event.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
-    event.key.mod = mod;
+    event.key.mod = sdlModifiers;
     event.key.down = true;
     ECSITest_Send(event);
 
@@ -327,23 +327,23 @@ static int ECSITest_Key(lua_State *state)
     return lua_yield(state, 0);
 }
 
-/// @brief test.keyEvent(combination, down, ms, repeat): sends one press or release of a key as SDL gives it, with its time in milliseconds and whether it is SDL's repeat, as an input method's own repeat gives them.
+/// @brief test.keyEvent(combination, down, milliseconds, repeat): sends one press or release of a key as SDL gives it, with its time in milliseconds and whether it is SDL's repeat, as an input method's own repeat gives them.
 static int ECSITest_KeyEvent(lua_State *state)
 {
     const char *text = luaL_checkstring(state, 1);
     bool down = lua_toboolean(state, 2);
-    lua_Number ms = luaL_checknumber(state, 3);
+    lua_Number milliseconds = luaL_checknumber(state, 3);
     bool repeat = lua_toboolean(state, 4);
     u32 key = 0;
     u32 modifiers = 0;
 
-    if (ECSISettings_ParseKey(text, false, &key, &modifiers) || modifiers != 0)
+    if (ECSISettings_ParseKey(text, &key, &modifiers) || modifiers != 0)
     {
         return luaL_error(state, "'%s' is not a key without modifiers", text);
     }
 
     SDL_Event event = {.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP};
-    event.key.timestamp = (Uint64)(SDL_max(ms, 0.0) * (lua_Number)SDL_NS_PER_MS);
+    event.key.timestamp = (Uint64)(SDL_max(milliseconds, 0.0) * (lua_Number)SDL_NS_PER_MS);
     event.key.key = key;
     event.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
     event.key.down = down;
@@ -464,7 +464,7 @@ static void ECSITest_SendDrop(f32 x, f32 y, Uint32 type, const char *const *text
 
         if (copy != nullptr)
         {
-            arrput(TEST.dropped, copy);
+            arrput(TEST.keptTexts, copy);
             event = (SDL_Event){.type = type};
             event.drop.x = x;
             event.drop.y = y;
@@ -490,7 +490,7 @@ static int ECSITest_Text(lua_State *state)
     }
 
     // the event points to the text, so the test keeps it until it ends
-    arrput(TEST.dropped, copy);
+    arrput(TEST.keptTexts, copy);
     SDL_Event event = {.type = SDL_EVENT_TEXT_INPUT};
     event.text.text = copy;
     ECSITest_Send(event);
@@ -559,62 +559,81 @@ static int ECSITest_Session(lua_State *state)
 {
     ECSValue *session = nullptr;
 
-    if (ECSValue_Create(&session) || ECSISession_Build(TEST.info, session))
+    if (ECSValue_Create(&session) || ECSISession_Build(session))
     {
         ECSValue_Destroy(&session);
         return luaL_error(state, "the session cannot be built; see the log");
     }
 
     // values are pushed onto the main state, and the test runs in its own thread
-    ECSILua_PushValue(session);
+    ECSILua_PushValue(ECSILua_GetState(), session);
     lua_xmove(ECSILua_GetState(), state, 1);
     ECSValue_Destroy(&session);
     return 1;
 }
 
+/// @brief Pushes a rectangle as a table: x, y, width and height.
+static void ECSITest_PushRect(lua_State *state, SDL_FRect rect)
+{
+    lua_createtable(state, 0, 5);
+    lua_pushnumber(state, (lua_Number)rect.x);
+    lua_setfield(state, -2, "x");
+    lua_pushnumber(state, (lua_Number)rect.y);
+    lua_setfield(state, -2, "y");
+    lua_pushnumber(state, (lua_Number)rect.w);
+    lua_setfield(state, -2, "width");
+    lua_pushnumber(state, (lua_Number)rect.h);
+    lua_setfield(state, -2, "height");
+}
+
+/// @brief Finds the panel whose id a Lua argument gives.
+/// @return The panel, or nullptr if no open panel has the id.
+static ECSPanel ECSITest_FindPanel(lua_State *state, int index)
+{
+    lua_Integer id = luaL_checkinteger(state, index);
+    return id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : nullptr;
+}
+
 /// @brief test.rect(id): the rectangle of a shown panel, and the number of its OS window.
 static int ECSITest_Rect(lua_State *state)
 {
-    lua_Integer id = luaL_checkinteger(state, 1);
-    ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : nullptr;
+    ECSPanel panel = ECSITest_FindPanel(state, 1);
 
     if (panel == nullptr)
     {
-        return luaL_error(state, "no panel has the id %d", (int)id);
+        return luaL_error(state, "no panel has the id %d", (int)luaL_checkinteger(state, 1));
     }
 
     // a hidden panel keeps the rectangle it had when it was last shown
     if (!panel->visible)
     {
-        return luaL_error(state, "the panel %d is not shown", (int)id);
+        return luaL_error(state, "the panel %d is not shown", (int)panel->id);
     }
 
-    lua_createtable(state, 0, 5);
+    ECSITest_PushRect(state, (SDL_FRect){panel->x, panel->y, panel->width, panel->height});
     lua_pushinteger(state, (lua_Integer)ECSIWindow_NumberOf(panel));
     lua_setfield(state, -2, "window");
-    lua_pushnumber(state, (lua_Number)panel->x);
-    lua_setfield(state, -2, "x");
-    lua_pushnumber(state, (lua_Number)panel->y);
-    lua_setfield(state, -2, "y");
-    lua_pushnumber(state, (lua_Number)panel->width);
-    lua_setfield(state, -2, "width");
-    lua_pushnumber(state, (lua_Number)panel->height);
-    lua_setfield(state, -2, "height");
     return 1;
 }
 
-/// @brief test.panel(id): a panel's title and type, whether it has unsaved work, and its fault: the error that stopped it, or why its type is missing.
+/// @brief test.panel(id): a panel's title and type, whether it has unsaved work, its saved state as the session would save it, and its fault: the error that stopped it, or why its type is missing.
 static int ECSITest_Panel(lua_State *state)
 {
-    lua_Integer id = luaL_checkinteger(state, 1);
-    ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : nullptr;
+    ECSPanel panel = ECSITest_FindPanel(state, 1);
 
     if (panel == nullptr)
     {
-        return luaL_error(state, "no panel has the id %d", (int)id);
+        return luaL_error(state, "no panel has the id %d", (int)luaL_checkinteger(state, 1));
+    }
+    ECSValue *saved = nullptr;
+
+    if (ECSValue_Create(&saved) || ECSIPanel_Save(panel, saved))
+    {
+        ECSValue_Destroy(&saved);
+        return luaL_error(state, "the panel's state cannot be saved; see the log");
     }
 
-    lua_createtable(state, 0, 4);
+    lua_createtable(state, 0, 5);
     lua_pushstring(state, panel->title);
     lua_setfield(state, -2, "title");
     lua_pushstring(state, panel->typeName);
@@ -628,6 +647,70 @@ static int ECSITest_Panel(lua_State *state)
         lua_setfield(state, -2, "fault");
     }
 
+    // values are pushed onto the main state, and the test runs in its own thread
+    ECSILua_PushValue(ECSILua_GetState(), ECSValue_GetTableField(saved, "state"));
+    lua_xmove(ECSILua_GetState(), state, 1);
+    lua_setfield(state, -2, "state");
+    ECSValue_Destroy(&saved);
+    return 1;
+}
+
+/// @brief Adds the panels of a layout tree of a session to the list on top of the stack, in the tree's order.
+static void ECSITest_AddPanels(lua_State *state, const ECSValue *node, usz workspace, usz window)
+{
+    const ECSValue *panels = ECSValue_GetTableField(node, "panels");
+
+    for (usz i = 0; i < ECSValue_GetListCount(panels); i++)
+    {
+        const ECSValue *saved = ECSValue_GetListItem(panels, i);
+        i64 id = ECSValue_GetInteger(ECSValue_GetTableField(saved, "id"), 0);
+        ECSPanel panel = id > 0 && id <= UINT32_MAX ? ECSLayout_FindPanel((u32)id) : nullptr;
+
+        lua_createtable(state, 0, 5);
+        lua_pushinteger(state, (lua_Integer)id);
+        lua_setfield(state, -2, "id");
+        lua_pushstring(state, ECSValue_GetString(ECSValue_GetTableField(saved, "type"), ""));
+        lua_setfield(state, -2, "type");
+        lua_pushstring(state, panel != nullptr ? panel->title : "");
+        lua_setfield(state, -2, "title");
+        lua_pushinteger(state, (lua_Integer)workspace);
+        lua_setfield(state, -2, "workspace");
+        lua_pushinteger(state, (lua_Integer)window);
+        lua_setfield(state, -2, "window");
+        lua_rawseti(state, -2, (lua_Integer)lua_rawlen(state, -2) + 1);
+    }
+
+    for (usz i = 0; i < ECSValue_GetListCount(node); i++)
+    {
+        ECSITest_AddPanels(state, ECSValue_GetListItem(node, i), workspace, window);
+    }
+}
+
+/// @brief test.panels(): every panel, by workspace, then OS window, then its place in the layout tree: its id, type, title, and the numbers of its workspace and OS window.
+static int ECSITest_Panels(lua_State *state)
+{
+    ECSValue *session = nullptr;
+
+    if (ECSValue_Create(&session) || ECSISession_Build(session))
+    {
+        ECSValue_Destroy(&session);
+        return luaL_error(state, "the session cannot be built; see the log");
+    }
+
+    const ECSValue *workspaces = ECSValue_GetTableField(session, "workspaces");
+    lua_newtable(state);
+
+    for (usz i = 0; i < ECSValue_GetListCount(workspaces); i++)
+    {
+        const ECSValue *windows = ECSValue_GetTableField(ECSValue_GetListItem(workspaces, i), "windows");
+
+        for (usz j = 0; j < ECSValue_GetListCount(windows); j++)
+        {
+            ECSITest_AddPanels(state, ECSValue_GetListItem(windows, j), i + 1, j + 1);
+        }
+    }
+
+    ECSValue_Destroy(&session);
     return 1;
 }
 
@@ -643,7 +726,7 @@ static int ECSITest_Setting(lua_State *state)
     }
 
     // values are pushed onto the main state, and the test runs in its own thread
-    ECSILua_PushValue(value);
+    ECSILua_PushValue(ECSILua_GetState(), value);
     lua_xmove(ECSILua_GetState(), state, 1);
     return 1;
 }
@@ -662,17 +745,9 @@ static int ECSITest_Popup(lua_State *state)
         return luaL_error(state, "there is no shown popup %d", (int)number);
     }
 
-    lua_createtable(state, 0, 5);
+    ECSITest_PushRect(state, rect);
     lua_pushinteger(state, (lua_Integer)window);
     lua_setfield(state, -2, "window");
-    lua_pushnumber(state, (lua_Number)rect.x);
-    lua_setfield(state, -2, "x");
-    lua_pushnumber(state, (lua_Number)rect.y);
-    lua_setfield(state, -2, "y");
-    lua_pushnumber(state, (lua_Number)rect.w);
-    lua_setfield(state, -2, "width");
-    lua_pushnumber(state, (lua_Number)rect.h);
-    lua_setfield(state, -2, "height");
     return 1;
 }
 
@@ -703,15 +778,7 @@ static int ECSITest_Dialog(lua_State *state)
         ECSIWindow_DialogButtonRect(i, &rect);
         lua_pushstring(state, dialog->buttons[i]);
         lua_rawseti(state, -3, (lua_Integer)i + 1);
-        lua_createtable(state, 0, 4);
-        lua_pushnumber(state, (lua_Number)rect.x);
-        lua_setfield(state, -2, "x");
-        lua_pushnumber(state, (lua_Number)rect.y);
-        lua_setfield(state, -2, "y");
-        lua_pushnumber(state, (lua_Number)rect.w);
-        lua_setfield(state, -2, "width");
-        lua_pushnumber(state, (lua_Number)rect.h);
-        lua_setfield(state, -2, "height");
+        ECSITest_PushRect(state, rect);
         lua_rawseti(state, -2, (lua_Integer)i + 1);
     }
 
@@ -788,6 +855,7 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"session", ECSITest_Session},
     {"rect", ECSITest_Rect},
     {"panel", ECSITest_Panel},
+    {"panels", ECSITest_Panels},
     {"setting", ECSITest_Setting},
     {"popup", ECSITest_Popup},
     {"dialog", ECSITest_Dialog},
@@ -803,7 +871,7 @@ static SHUResult ECSITest_PushTable(lua_State *state)
 {
     luaL_newlib(state, OPENECS_TEST_FUNCTIONS);
 
-    if (luaL_loadbufferx(state, OPENECS_TEST_MATCH, sizeof(OPENECS_TEST_MATCH) - 1, "=match", "t") != LUA_OK || ECSILua_Call(0, 1))
+    if (luaL_loadbufferx(state, OPENECS_TEST_MATCH, sizeof(OPENECS_TEST_MATCH) - 1, "=match", "t") != LUA_OK || ECSILua_Call(state, 0, 1))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "test.match does not load: %s", lua_tostring(state, -1));
         lua_pop(state, 2);
@@ -833,13 +901,11 @@ static void ECSITest_Finish(void)
 /// @brief Reads a field of the test table, at -2, that names a folder relative to the test file.
 static void ECSITest_ReadFolder(lua_State *state, const char *field, const char *path, char **retFolder)
 {
-    const char *slash = ECSPath_LastSeparator(path);
-
     if (lua_getfield(state, -2, field) == LUA_TSTRING)
     {
         const char *folder = lua_tostring(state, -1);
 
-        if (SDL_asprintf(retFolder, "%.*s%s/", slash != nullptr && !ECSPath_IsAbsolute(folder) ? (int)(slash - path + 1) : 0, path, folder) < 0)
+        if (SDL_asprintf(retFolder, "%.*s%s/", ECSIPath_GetFolderLength(path, folder), path, folder) < 0)
         {
             *retFolder = nullptr;
         }
@@ -857,10 +923,9 @@ static bool ECSITest_StepDialog(void)
     return !TEST.resuming && TEST.thread != nullptr && ECSITest_Step();
 }
 
-SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **retPreset)
+SHUResult ECSITest_Load(const char *path, char **retPreset)
 {
     SDL_assert(path != nullptr);
-    SDL_assert(info != nullptr);
     SDL_assert(retPreset != nullptr);
     SDL_assert(TEST.thread == nullptr);
 
@@ -883,7 +948,7 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     lua_setmetatable(state, -2);
     lua_setupvalue(state, -2, 1);
 
-    if (ECSILua_Call(0, 1))
+    if (ECSILua_Call(state, 0, 1))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Error in the test '%s': %s", path, lua_tostring(state, -1));
         lua_settop(state, top);
@@ -899,10 +964,7 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
 
     // a preset path is relative to the test file
     const char *preset = lua_getfield(state, -2, "preset") == LUA_TSTRING ? lua_tostring(state, -1) : OPENECS_TEST_PRESET;
-    const char *slash = ECSPath_LastSeparator(path);
-    usz length = SDL_strlen(preset);
-    bool file = ECSPath_LastSeparator(preset) != nullptr || (length > 4 && SDL_strcmp(preset + length - 4, ".lua") == 0);
-    int folderLength = slash != nullptr && file && !ECSPath_IsAbsolute(preset) ? (int)(slash - path + 1) : 0;
+    int folderLength = ECSISession_IsPresetPath(preset) ? ECSIPath_GetFolderLength(path, preset) : 0;
 
     if (SDL_asprintf(retPreset, "%.*s%s", folderLength, path, preset) < 0)
     {
@@ -921,7 +983,7 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
         const char *name = lua_tostring(state, -1);
         char *copy = nullptr;
 
-        if (SDL_asprintf(&copy, "%.*s%s", slash != nullptr && !ECSPath_IsAbsolute(name) ? (int)(slash - path + 1) : 0, path, name) >= 0)
+        if (SDL_asprintf(&copy, "%.*s%s", ECSIPath_GetFolderLength(path, name), path, name) >= 0)
         {
             arrput(TEST.files, copy);
         }
@@ -953,7 +1015,6 @@ SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **ret
     lua_xmove(state, TEST.thread, 1);
     lua_settop(state, top);
 
-    TEST.info = info;
     TEST.started = false;
     TEST.failed = false;
     TEST.ended = false;
@@ -969,12 +1030,12 @@ char **ECSITest_GetFiles(usz *retCount)
     return TEST.files;
 }
 
-const char *ECSITest_GetPresets(void)
+const char *ECSITest_GetPresetsFolder(void)
 {
     return TEST.presets;
 }
 
-const char *ECSITest_GetSessions(void)
+const char *ECSITest_GetSessionsFolder(void)
 {
     return TEST.sessions;
 }
@@ -991,12 +1052,12 @@ void ECSITest_Terminate(void)
 
     arrfree(TEST.files);
 
-    for (usz i = 0; i < arrlenu(TEST.dropped); i++)
+    for (usz i = 0; i < arrlenu(TEST.keptTexts); i++)
     {
-        SDL_free(TEST.dropped[i]);
+        SDL_free(TEST.keptTexts[i]);
     }
 
-    arrfree(TEST.dropped);
+    arrfree(TEST.keptTexts);
     SDL_free(TEST.presets);
     SDL_free(TEST.sessions);
     SDL_zero(TEST);
@@ -1085,10 +1146,9 @@ int ECSITest_GetStatus(void)
 
 #else
 
-SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **retPreset)
+SHUResult ECSITest_Load(const char *path, char **retPreset)
 {
     (void)path;
-    (void)info;
     *retPreset = nullptr;
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Only Debug builds run tests.");
     return SHUResult_ErrPrivileges;
@@ -1100,12 +1160,12 @@ char **ECSITest_GetFiles(usz *retCount)
     return nullptr;
 }
 
-const char *ECSITest_GetPresets(void)
+const char *ECSITest_GetPresetsFolder(void)
 {
     return nullptr;
 }
 
-const char *ECSITest_GetSessions(void)
+const char *ECSITest_GetSessionsFolder(void)
 {
     return nullptr;
 }

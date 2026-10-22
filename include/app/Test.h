@@ -8,10 +8,9 @@
 
 /// @brief Reads a test file and prepares its run function. Builds other than Debug refuse it.
 /// @param path Path of the test file.
-/// @param info What the preset said. The test reads it when it asks for the session, so it may be filled later.
 /// @param retPreset The preset the test starts from: a name, or a path. Free it with SDL_free.
 /// @return SHUResult_Ok, SHUResult_ErrFile if the file cannot be read, SHUResult_ErrBadData if it fails or returns no test, SHUResult_ErrAllocation, or SHUResult_ErrPrivileges in builds other than Debug.
-SHUWUR SHUResult ECSITest_Load(const char *path, const ECSIPresetInfo *info, char **retPreset);
+SHUWUR SHUResult ECSITest_Load(const char *path, char **retPreset);
 
 /// @brief Gets the files that the test's files field names, which the program opens as if the command line named them.
 /// @param retCount The number of files.
@@ -20,11 +19,11 @@ char **ECSITest_GetFiles(usz *retCount);
 
 /// @brief Gets the folder that the test's presets field names, which stands for the folder of the user's presets.
 /// @return The folder, ending with a separator, or nullptr if the test names none. Valid until ECSITest_Terminate.
-const char *ECSITest_GetPresets(void);
+const char *ECSITest_GetPresetsFolder(void);
 
 /// @brief Gets the folder that the test's sessions field names, which stands for the folder of saved sessions.
 /// @return The folder, ending with a separator, or nullptr if the test names none. Valid until ECSITest_Terminate.
-const char *ECSITest_GetSessions(void);
+const char *ECSITest_GetSessionsFolder(void);
 
 /// @brief Frees the test.
 void ECSITest_Terminate(void);

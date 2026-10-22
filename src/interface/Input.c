@@ -177,7 +177,7 @@ static ECSPanelEvent ECSIInput_MakeWheelEvent(const SDL_MouseWheelEvent *wheel, 
     return (ECSPanelEvent){
         .type = ECSPanelEventType_Wheel,
         .modifiers = ECSIInput_ConvertModifiers(SDL_GetModState()),
-        .wheel = {.x = x, .y = y, .amountX = wheel->x * direction, .amountY = wheel->y * direction},
+        .wheel = {.x = x, .y = y, .scrollX = wheel->x * direction, .scrollY = wheel->y * direction},
     };
 }
 
@@ -195,16 +195,6 @@ static ECSPanelEvent ECSIInput_MakeKeyEvent(ECSPanelEventType type, const SDL_Ke
 static bool ECSIInput_IsModifierKey(SDL_Keycode key)
 {
     return (key >= SDLK_LCTRL && key <= SDLK_RGUI) || key == SDLK_MODE;
-}
-
-/// @brief Asks about the unsaved work of every panel before the program quits.
-/// @return true if the program may quit; the user may cancel to keep the work.
-static bool ECSIInput_ConfirmQuit(void)
-{
-    ECSPanel *panels = ECSILayout_GetPanels();
-    bool quit = ECSIPanels_ConfirmClose(panels, arrlenu(panels), true);
-    arrfree(panels);
-    return quit;
 }
 
 /// @brief Gets the panel that got the pointer press, unless code closed it since.
@@ -331,7 +321,7 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
 
         if (menu != nullptr && event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_ESCAPE)
         {
-            ECSPopup_Close(menu);
+            ECSPopup_Close(&menu);
         }
         else if (menu != nullptr)
         {
@@ -399,7 +389,7 @@ static void ECSIInput_CompleteDrop(f32 x, f32 y)
         for (usz i = 0; !result && i < arrlenu(INPUT.droppedFiles); i++)
         {
             ECSValue *item = nullptr;
-            result = ECSValue_ListAddItem(value, &item);
+            result = ECSValue_AddListItem(value, &item);
             result = result ? result : ECSValue_SetString(item, INPUT.droppedFiles[i]);
         }
 
@@ -933,11 +923,11 @@ bool ECSIInput_Handle(const SDL_Event *event)
         }
 
         // closing the main window quits
-        return !ECSIInput_ConfirmQuit();
+        return !ECSILayout_ConfirmCloseAll(true);
     }
 
     case SDL_EVENT_QUIT:
-        return !ECSIInput_ConfirmQuit();
+        return !ECSILayout_ConfirmCloseAll(true);
 
     case SDL_EVENT_SYSTEM_THEME_CHANGED:
         ECSISettings_ApplyTheme();

@@ -46,33 +46,33 @@ function ecs.log.error(text) end
 ---@field default? any
 ---@field changed? fun(value: any) Called with the new value when the setting changes.
 
----@class ecs.settings
-ecs.settings = {}
+---@class ecs.setting
+ecs.setting = {}
 
 ---Declares a setting of the plugin.
 ---@param desc ecs.SettingDesc The setting's local name, type, default and description.
 ---@return true|nil ok true if the setting is declared.
 ---@return string? message Why the setting is not declared.
-function ecs.settings.declare(desc) end
+function ecs.setting.declare(desc) end
 
 ---Gets a setting's value from the highest layer that sets it.
 ---@param name string The setting's full name, such as "canvas.grid".
 ---@return any value Its value in effect, or nil if no setting has the name.
-function ecs.settings.get(name) end
+function ecs.setting.get(name) end
 
 ---Sets a setting in the user's settings file, the highest layer, and writes the file.
 ---@param name string The setting's full name, such as "canvas.grid".
 ---@param value any The new value, of the setting's type.
 ---@return true|nil ok true if the value is set and written.
 ---@return string? message Why the setting is not set.
-function ecs.settings.set(name, value) end
+function ecs.setting.set(name, value) end
 
 ---Lists the names of every declared setting, in the order they were declared.
 ---@return string[]? names The full names, such as "canvas.grid".
 ---@return string? message Why the names cannot be listed.
-function ecs.settings.list() end
+function ecs.setting.list() end
 
----A declared setting, as ecs.settings.explain gives it: its description, with its full name, and where its value comes from.
+---A declared setting, as ecs.setting.explain gives it: its description, with its full name, and where its value comes from.
 ---@class ecs.SettingExplanation: ecs.SettingDesc
 ---@field name string The full name, such as "canvas.grid".
 ---@field owner string The plugin that declared the setting.
@@ -85,7 +85,7 @@ function ecs.settings.list() end
 ---@param name string The setting's full name, such as "canvas.grid".
 ---@return ecs.SettingExplanation? explanation The setting, its value and its layers; nil if it is not declared.
 ---@return string? message Why it cannot be explained.
-function ecs.settings.explain(name) end
+function ecs.setting.explain(name) end
 
 -- Timers
 
@@ -98,12 +98,12 @@ function Timer:stop() end
 ---@class ecs.timer
 ecs.timer = {}
 
----Starts a timer of the plugin.
+---Starts a timer of the plugin. A panel's timer is stopped in its type's destroy, as its subscriptions end there.
 ---@param seconds number More than 0, or 0 for a one-shot timer.
----@param repeat_ boolean true: it runs every seconds until stopped; false: it runs once.
----@param fn fun() Runs on the main thread when the time comes.
+---@param repeats boolean true: it runs every seconds until stopped; false: it runs once.
+---@param callback fun() Runs on the main thread when the time comes.
 ---@return ecs.Timer timer The timer, which stops it.
-function ecs.timer.start(seconds, repeat_, fn) end
+function ecs.timer.start(seconds, repeats, callback) end
 
 -- Workers: Lua scripts on threads of their own (DESIGN 3.4)
 
@@ -148,20 +148,13 @@ function ecs.worker.send(value) end
 ---A panel: a handle of type ecs.panel. Its data are fields, and what it does are methods.
 ---@class ecs.Panel
 ---@field title string The title its tab shows; setting it changes the tab.
----@field id integer Read only: the panel's id, which stays the same across sessions, and which events and ecs.layout.find use.
+---@field id integer Read only: the panel's id, which stays the same across sessions, and which events and ecs.layout.findPanel use.
 ---@field type string Read only: the name of the panel's type, such as "canvas.view".
 ---@field unsaved boolean Whether the panel has unsaved work, which shows a mark on its tab; before it closes, the user is asked to save it.
 local Panel = {}
 
 ---Asks for the panel to be drawn again.
 function Panel:redraw() end
-
----Starts a timer that stops when the panel is closed.
----@param seconds number More than 0, or 0 for a one-shot timer.
----@param repeat_ boolean true: it runs every seconds until stopped or the panel closes; false: it runs once.
----@param fn fun() Runs on the main thread when the time comes.
----@return ecs.Timer timer The timer, which stops it.
-function Panel:startTimer(seconds, repeat_, fn) end
 
 ---Says whether the panel accepts typed text, and where its text cursor is. While the panel has focus and accepts text, it gets text events,
 ---and the system's input method shows its window beside the cursor. A key that runs a binding types no text.
@@ -187,7 +180,7 @@ function Panel:startDrag(type, value) end
 
 ---Opens a popup next to a rectangle of the shown panel: below it, or above it if there is no room below.
 ---It closes when code closes it, on a press outside every popup, on Escape if it is a menu, and when the panel closes, fails or is hidden.
----@param desc ecs.PopupDesc The popup's kind, place, size and functions.
+---@param desc ecs.PopupDesc The popup's type, place, size and functions.
 ---@return ecs.Popup? popup The popup, which closes, draws again and resizes it; nil if it is not opened.
 ---@return string? message Why the popup is not opened.
 function Panel:openPopup(desc) end
@@ -230,7 +223,7 @@ function Surface:setRow(y, bytes, x) end
 ---@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"|"drop"|"text"
 
 ---@class ecs.PopupDesc
----@field kind? "menu"|"tooltip" A menu takes the key presses while it is open, and Escape closes it; a tooltip takes none. "menu" if missing.
+---@field type? "menu"|"tooltip" A menu takes the key presses while it is open, and Escape closes it; a tooltip takes none. "menu" if missing.
 ---@field anchor? { x: number, y: number, width: number, height: number } The rectangle of the panel it opens next to, in the panel's surface pixels.
 ---@field width number In layout units.
 ---@field height number In layout units.
@@ -262,8 +255,8 @@ function Popup:setSize(width, height) end
 ---@field x? number For pointer, wheel and drop events.
 ---@field y? number For pointer, wheel and drop events.
 ---@field button? integer For pointerDown and pointerUp.
----@field wheelX? number For wheel events.
----@field wheelY? number For wheel events.
+---@field scrollX? number For wheel events.
+---@field scrollY? number For wheel events.
 ---@field key? string SDL's key name, for keyDown and keyUp.
 ---@field width? number For shown and resized.
 ---@field height? number For shown and resized.
@@ -311,7 +304,7 @@ function ecs.panel.addMenuEntry(type, functionName) end
 
 ---Lists the registered panel types, so a plugin can offer to open them.
 ---@return ecs.PanelTypeEntry[] types Sorted by plugin, then by title.
-function ecs.panel.types() end
+function ecs.panel.listTypes() end
 
 ---Restarts the focused panel from its last saved state, if it failed. Keys can run it.
 function ecs.panel.restart() end
@@ -337,7 +330,7 @@ ecs.layout = {}
 ---Finds a panel by its id.
 ---@param id integer The panel's id, as a panel's id field gives it.
 ---@return ecs.Panel? panel The panel, or nil if no open panel has the id.
-function ecs.layout.find(id) end
+function ecs.layout.findPanel(id) end
 
 ---Opens a panel.
 ---@param type string The panel type, such as "canvas.view".
@@ -357,9 +350,9 @@ function ecs.layout.open(type, saved, target, zone) end
 function ecs.layout.move(panel, target, zone) end
 
 ---Closes a panel. If it has unsaved work, the user is asked first and may cancel.
----Without a panel, it is the user's close: the focused panel, unless its group is locked. Keys can run it.
----@param panel? ecs.Panel The panel to close; the focused panel if missing.
----@return boolean closed true if the panel closed; false if the user kept its unsaved work, or its group is locked.
+---Keys run ecs.layout.close as the user's close: it closes the focused panel, unless its group is locked.
+---@param panel ecs.Panel The panel to close.
+---@return boolean closed true if the panel closed; false if the user kept its unsaved work.
 function ecs.layout.close(panel) end
 
 ---Focuses a panel, and shows its workspace, group and OS window.
@@ -431,7 +424,7 @@ ecs.workspace = {}
 
 ---Counts the workspaces.
 ---@return integer count How many workspaces there are.
-function ecs.workspace.count() end
+function ecs.workspace.getCount() end
 
 ---Gives the workspace that shows.
 ---@return integer number The shown workspace, from 1.
@@ -460,15 +453,15 @@ function ecs.app.quit() end
 ecs.session = {}
 
 ---Writes the session to a file: the plugins' state, the workspaces and the panels with their saved state. Quitting still saves the tool's last session.
----Without a path, it asks for the file with a save dialog. Keys can run it.
----@param path? string Missing folders are created.
+---Keys run ecs.session.save, which asks for the file with a save dialog.
+---@param path string The file. Missing folders are created.
 ---@return true|nil ok true if the session is written.
 ---@return string? message Why the session is not saved.
 function ecs.session.save(path) end
 
----Opens a session, or a preset, in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
----Without a path, it asks for the file with an open dialog. Keys can run it.
----@param path? string A session or a preset file.
+---Opens a session in place of the current one: it asks about unsaved work, and once the current pass of the main loop ends, OpenECS saves the tool's last session, stops and starts again from the session.
+---Keys run ecs.session.open, which asks for the file with an open dialog.
+---@param path string A session file. A preset is refused; ecs.session.openPreset opens it.
 ---@return true|nil ok true if the session will open once the current pass of the main loop ends.
 ---@return string? message Why the session is not opened: the file is not a session, the user keeps the unsaved work, or a test runs.
 function ecs.session.open(path) end
@@ -491,16 +484,16 @@ function ecs.session.openPreset(nameOrPath) end
 ---Lists the presets that a name finds: the user's presets, then the first-party presets. A name in both is listed once, from the user's presets.
 ---A file that cannot be read is reported and left out, and so is a preset with listed = false.
 ---@return ecs.SessionEntry[] presets Sorted by name.
-function ecs.session.presets() end
+function ecs.session.listPresets() end
 
 ---Lists the .lua files in the folder of saved sessions. A file that cannot be read is reported and left out.
 ---@return ecs.SessionEntry[] sessions Sorted by name.
-function ecs.session.sessions() end
+function ecs.session.listSessions() end
 
--- Input
+-- Keys
 
----@class ecs.input
-ecs.input = {}
+---@class ecs.key
+ecs.key = {}
 
 ---Gives a function a default key for one of the plugin's panel types. Presets and the user's settings can change it.
 ---@param panelType string One of the plugin's panel types, by its full name, such as "canvas.view".
@@ -508,15 +501,15 @@ ecs.input = {}
 ---@param functionName string A service function, such as "canvas.clear".
 ---@return true|nil ok true if the key is bound.
 ---@return string? message Why the key is not bound.
-function ecs.input.bind(panelType, key, functionName) end
+function ecs.key.bind(panelType, key, functionName) end
 
 -- Events
 
 ---@class ecs.Subscription
 local Subscription = {}
 
----Stops the subscription. One that already ended does nothing.
-function Subscription:cancel() end
+---Ends the subscription. One that already ended does nothing.
+function Subscription:unsubscribe() end
 
 ---@class ecs.event
 ecs.event = {}
@@ -533,9 +526,9 @@ function ecs.event.emit(name, value) end
 
 ---Subscribes to an event, such as "ecs.panelOpened".
 ---@param name string The event's full name, such as "canvas.changed".
----@param fn fun(name: string, value: any) Gets the event's name and value, each time it is emitted.
----@return ecs.Subscription subscription The subscription, which cancels it.
-function ecs.event.subscribe(name, fn) end
+---@param callback fun(name: string, value: any) Gets the event's name and value, each time it is emitted.
+---@return ecs.Subscription subscription The subscription, which ends it.
+function ecs.event.subscribe(name, callback) end
 
 -- Handles
 
@@ -552,8 +545,8 @@ function ecs.handle.registerType(name) end
 ---Makes a function of the plugin a method of one of its handle types, so a handle's user calls it on the handle: `socket:send(data, true)`.
 ---@param type string The handle type's local name, such as "brush".
 ---@param method string The method's name, such as "paint".
----@param function_ string The local name of one of the plugin's functions, registered with ecs.service.register, whose first parameter is a handle of the type.
-function ecs.handle.addMethod(type, method, function_) end
+---@param functionName string The local name of one of the plugin's functions, registered with ecs.service.register, whose first parameter is a handle of the type.
+function ecs.handle.addMethod(type, method, functionName) end
 
 ---Makes a handle that stands for a Lua value. Lua only: in C, a handle is the object's pointer.
 ---@param name string A handle type of the plugin, by its full name.
@@ -586,7 +579,7 @@ function ecs.service.register(functions) end
 ---Gets a registered function.
 ---@param name string Such as "canvas.clear".
 ---@param signature? string The signature the caller expects.
----@return function? fn The function, to call as any Lua function.
+---@return function? callback The function, to call as any Lua function.
 ---@return string? message Why the function is not available.
 function ecs.service.get(name, signature) end
 
@@ -660,10 +653,10 @@ function ecs.dialog.show(desc, done) end
 ---Shows a message in a dialog that the core draws, and waits for a button; no plugin code runs while it waits.
 ---Return presses the first button unless the user chooses another, and Escape or closing the window presses the last.
 ---@param title string The dialog's title.
----@param text string The message.
+---@param message string The message.
 ---@param buttons? string[] { "OK" } if missing.
 ---@return integer? button The pressed button's position, from 1; nil if the dialog cannot be shown.
-function ecs.dialog.message(title, text, buttons) end
+function ecs.dialog.showMessage(title, message, buttons) end
 
 -- Files: the shapes of manifests, presets, sessions and settings files, for editors. Write ---@type ecs.Manifest, for example, above the file's return.
 

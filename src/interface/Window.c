@@ -1404,11 +1404,7 @@ static SHUResult ECSIWindow_Open(const char *title)
     // a relative font path starts at the executable's folder
     const char *font = ECSValue_GetString(ECSSetting_Get("ecs.font"), "");
     char *fontPath = nullptr;
-
-    if (SDL_asprintf(&fontPath, "%s%s", ECSPath_IsAbsolute(font) ? "" : SDL_GetBasePath(), font) < 0)
-    {
-        return SHUResult_ErrAllocation;
-    }
+    SHU_ReturnResult(ECSPath_GetFull(&fontPath, font));
 
     WINDOW.font = TTF_OpenFont(fontPath, WINDOW.fontSize);
 
@@ -1580,7 +1576,7 @@ static ECSIPopupView *ECSIWindow_MakePopupView(ECSPopup popup, const ECSIOSWindo
         return view;
     }
 
-    SDL_WindowFlags flags = popup->desc.kind == ECSPopupKind_Menu ? SDL_WINDOW_POPUP_MENU : SDL_WINDOW_TOOLTIP;
+    SDL_WindowFlags flags = popup->desc.type == ECSPopupType_Menu ? SDL_WINDOW_POPUP_MENU : SDL_WINDOW_TOOLTIP;
     view->window = SDL_CreatePopupWindow(osWindow->window, (int)rect.x, (int)rect.y, (int)rect.w, (int)rect.h, flags | SDL_WINDOW_TRANSPARENT);
     view->renderer = view->window == nullptr ? nullptr : ECSIWindow_CreateRenderer(view->window);
 
@@ -1731,7 +1727,7 @@ static void ECSIWindow_PresentPopups(void)
 static void ECSIWindow_ReadColor(const char *name, Clay_Color *retColor)
 {
     u32 argb = 0;
-    bool parsed = ECSISettings_ParseColor(ECSValue_GetString(ECSSetting_Get(name), ""), &argb);
+    bool parsed = ECSIColor_ParseHex(ECSValue_GetString(ECSSetting_Get(name), ""), &argb);
     SDL_assert(parsed);
     (void)parsed;
 

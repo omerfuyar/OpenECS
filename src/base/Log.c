@@ -81,7 +81,7 @@ void ECSILog_OpenFile(const char *path)
 {
     SDL_assert(path != nullptr);
 
-    ECSILog_Terminate();
+    ECSILog_CloseFile();
     LOG.file = SDL_IOFromFile(path, "w");
     LOG.path = LOG.file == nullptr ? nullptr : SDL_strdup(path);
 
@@ -91,7 +91,7 @@ void ECSILog_OpenFile(const char *path)
     }
 }
 
-void ECSILog_Terminate(void)
+void ECSILog_CloseFile(void)
 {
     if (LOG.file != nullptr)
     {

@@ -20,7 +20,7 @@ void ECSIEvents_EmitCore(const char *name, const ECSValue *value);
 
 /// @brief Subscribes to a named event like ECSEvent_Subscribe, with a function that releases the data when the subscription is freed. The Bindings module uses it for Lua.
 /// @param release Function called with the data when the subscription is freed, or nullptr.
-SHUWUR SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, const char *name, ECSSubscription *retSubscription, ECSEventFunction function, ECSTimerFunction release, void *data);
+SHUWUR SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscription, const char *name, ECSEventFunction function, ECSTimerFunction release, void *data);
 
 /// @brief Removes a plugin's named events and subscriptions, and the subscriptions to its events.
 /// @param plugin The plugin.
@@ -37,7 +37,6 @@ void ECSIEvents_Deliver(void);
 
 /// @brief Starts a timer.
 /// @param plugin The plugin that owns the timer.
-/// @param owner What the timer belongs to, such as a panel, or nullptr. ECSIEvents_StopTimersOf stops all timers of an owner.
 /// @param retTimer The new timer.
 /// @param seconds Time until the first call, and between repeated calls. Must be positive for a repeating timer.
 /// @param repeat true to call the function until the timer is stopped.
@@ -45,11 +44,7 @@ void ECSIEvents_Deliver(void);
 /// @param release Function called with the data when the timer is freed, after it stops, or nullptr.
 /// @param data Passed to the functions.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, const void *owner, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data);
-
-/// @brief Stops every timer of an owner. Their handles become invalid.
-/// @param owner The owner given to ECSIEvents_StartTimer.
-void ECSIEvents_StopTimersOf(const void *owner);
+SHUWUR SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data);
 
 /// @brief Stops every timer of a plugin. Their handles become invalid.
 /// @param plugin The plugin.

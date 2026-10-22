@@ -8,9 +8,8 @@
 typedef struct ECSITimer
 {
     ECSPlugin plugin;
-    const void *owner;
-    u64 dueTicks;      // nanoseconds, as SDL_GetTicksNS
-    u64 intervalTicks; // nanoseconds
+    u64 dueNanoseconds;      // as SDL_GetTicksNS
+    u64 intervalNanoseconds;
     bool repeat;
     bool stopped; // freed when no timer is running
     ECSTimerFunction Function;
@@ -376,7 +375,7 @@ void ECSIEvents_EmitCore(const char *name, const ECSValue *value)
     }
 }
 
-SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, const char *name, ECSSubscription *retSubscription, ECSEventFunction function, ECSTimerFunction release, void *data)
+SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscription, const char *name, ECSEventFunction function, ECSTimerFunction release, void *data)
 {
     SDL_assert(plugin != nullptr);
     SDL_assert(name != nullptr && retSubscription != nullptr && function != nullptr);
@@ -449,7 +448,7 @@ SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *descr
     SDL_assert(plugin != nullptr);
     SDL_assert(name != nullptr && description != nullptr);
 
-    char *fullName = ECSIPlugin_FullName(plugin, name);
+    char *fullName = ECSIPlugin_MakeFullName(plugin, name);
     SHUResult result = fullName == nullptr ? SHUResult_ErrBadData : ECSIEvents_Declare(plugin, fullName, description);
     SDL_free(fullName);
     return result;
@@ -471,9 +470,9 @@ SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name, const ECSValue *valu
     return ECSIEvents_Emit(name, value);
 }
 
-SHUResult ECSEvent_Subscribe(ECSPlugin plugin, const char *name, ECSSubscription *retSubscription, ECSEventFunction function, void *data)
+SHUResult ECSEvent_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscription, const char *name, ECSEventFunction function, void *data)
 {
-    return ECSIEvents_Subscribe(plugin, name, retSubscription, function, nullptr, data);
+    return ECSIEvents_Subscribe(plugin, retSubscription, name, function, nullptr, data);
 }
 
 void ECSEvent_Unsubscribe(ECSSubscription *subscription)
@@ -515,7 +514,7 @@ void ECSIEvents_Deliver(void)
     ECSIEvents_FreeCancelled();
 }
 
-SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, const void *owner, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data)
+SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data)
 {
     SDL_assert(plugin != nullptr);
     SDL_assert(retTimer != nullptr);
@@ -529,13 +528,12 @@ SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, const void *owner, ECSTimer *r
         return SHUResult_ErrAllocation;
     }
 
-    u64 intervalTicks = (u64)(seconds * (f64)SDL_NS_PER_SECOND);
+    u64 intervalNanoseconds = (u64)(seconds * (f64)SDL_NS_PER_SECOND);
 
     *timer = (ECSITimer){
         .plugin = plugin,
-        .owner = owner,
-        .dueTicks = SDL_GetTicksNS() + intervalTicks,
-        .intervalTicks = intervalTicks,
+        .dueNanoseconds = SDL_GetTicksNS() + intervalNanoseconds,
+        .intervalNanoseconds = intervalNanoseconds,
         .repeat = repeat,
         .Function = function,
         .Release = release,
@@ -545,21 +543,6 @@ SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, const void *owner, ECSTimer *r
     arrput(EVENTS.timers, timer);
     *retTimer = timer;
     return SHUResult_Ok;
-}
-
-void ECSIEvents_StopTimersOf(const void *owner)
-{
-    SDL_assert(owner != nullptr);
-
-    for (usz i = 0; i < arrlenu(EVENTS.timers); i++)
-    {
-        if (EVENTS.timers[i]->owner == owner)
-        {
-            EVENTS.timers[i]->stopped = true;
-        }
-    }
-
-    ECSIEvents_FreeStoppedTimers();
 }
 
 void ECSIEvents_StopTimersOfPlugin(ECSPlugin plugin)
@@ -593,7 +576,7 @@ i32 ECSIEvents_GetWait(void)
 
         if (!timer->stopped)
         {
-            wait = SDL_min(wait, timer->dueTicks > now ? timer->dueTicks - now : 0);
+            wait = SDL_min(wait, timer->dueNanoseconds > now ? timer->dueNanoseconds - now : 0);
         }
     }
 
@@ -618,7 +601,7 @@ void ECSIEvents_RunTimers(void)
     {
         ECSITimer *timer = EVENTS.timers[i];
 
-        if (timer->stopped || timer->dueTicks > now)
+        if (timer->stopped || timer->dueNanoseconds > now)
         {
             continue;
         }
@@ -630,8 +613,8 @@ void ECSIEvents_RunTimers(void)
         else
         {
             // calls missed while the program was busy are skipped
-            timer->dueTicks += timer->intervalTicks;
-            timer->dueTicks = timer->dueTicks <= now ? now + timer->intervalTicks : timer->dueTicks;
+            timer->dueNanoseconds += timer->intervalNanoseconds;
+            timer->dueNanoseconds = timer->dueNanoseconds <= now ? now + timer->intervalNanoseconds : timer->dueNanoseconds;
         }
 
         timer->Function(timer->data);
@@ -674,7 +657,7 @@ void ECSIEvents_Terminate(void)
 
     arrfree(EVENTS.timers);
 
-    // named events still queued hold their copies
+    // named events and main-thread tasks still queued hold their copies
     for (usz i = 0; i < arrlenu(EVENTS.queue); i++)
     {
         if (EVENTS.queue[i].Deliver == ECSIEvents_DeliverEmission)
@@ -683,6 +666,10 @@ void ECSIEvents_Terminate(void)
             SDL_free(emission->name);
             ECSValue_Destroy(&emission->value);
             SDL_free(emission);
+        }
+        else if (EVENTS.queue[i].Deliver == ECSIEvents_DeliverMainTask)
+        {
+            SDL_free(EVENTS.queue[i].target);
         }
     }
 
@@ -706,12 +693,17 @@ void ECSIEvents_Terminate(void)
 
 SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
 {
-    return ECSIEvents_StartTimer(plugin, nullptr, retTimer, seconds, repeat, function, nullptr, data);
+    return ECSIEvents_StartTimer(plugin, retTimer, seconds, repeat, function, nullptr, data);
 }
 
 void ECSTimer_Stop(ECSTimer *timer)
 {
-    SDL_assert(timer != nullptr && *timer != nullptr);
+    SDL_assert(timer != nullptr);
+
+    if (*timer == nullptr)
+    {
+        return;
+    }
 
     (*timer)->stopped = true;
     *timer = nullptr;

@@ -377,7 +377,6 @@ void ECSIPanel_Destroy(ECSPanel *panel)
     SDL_assert(panel != nullptr && *panel != nullptr);
 
     ECSPanel target = *panel;
-    ECSIEvents_StopTimersOf(target);
 
     if (target->type != nullptr)
     {
@@ -412,7 +411,6 @@ void ECSIPanel_Close(ECSPanel *panel)
     SDL_assert(panel != nullptr && *panel != nullptr);
     SDL_assert(!(*panel)->closed);
 
-    ECSIEvents_StopTimersOf(*panel);
     ECSIPanel_Emit("ecs.panelClosed", *panel);
 
     // a closed panel is never shown again, and its OS window may close before it is destroyed, with the renderer its texture belongs to
@@ -450,9 +448,9 @@ SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retSaved)
 
     ECSValue *field = nullptr;
     ECSValue_SetTable(retSaved);
-    SHU_ReturnResult(ECSValue_TableSetField(retSaved, "id", &field));
+    SHU_ReturnResult(ECSValue_SetTableField(retSaved, "id", &field));
     ECSValue_SetInteger(field, panel->id);
-    SHU_ReturnResult(ECSValue_TableSetField(retSaved, "type", &field));
+    SHU_ReturnResult(ECSValue_SetTableField(retSaved, "type", &field));
     SHU_ReturnResult(ECSValue_SetString(field, panel->typeName));
 
     const ECSValue *state = panel->savedState;
@@ -483,12 +481,12 @@ SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retSaved)
 
     if (state != nullptr)
     {
-        result = ECSValue_TableSetField(retSaved, "stateVersion", &field);
+        result = ECSValue_SetTableField(retSaved, "stateVersion", &field);
 
         if (!result)
         {
             ECSValue_SetInteger(field, version);
-            result = ECSValue_TableSetField(retSaved, "state", &field);
+            result = ECSValue_SetTableField(retSaved, "state", &field);
         }
 
         result = result ? result : ECSIValue_Copy(field, state);
@@ -670,7 +668,7 @@ void ECSIPanel_Emit(const char *name, ECSPanel panel)
     ECSValue *value = nullptr;
     ECSValue *field = nullptr;
 
-    if (ECSValue_Create(&value) || ECSValue_TableSetField(value, "panel", &field))
+    if (ECSValue_Create(&value) || ECSValue_SetTableField(value, "panel", &field))
     {
         ECSValue_Destroy(&value);
         return;
@@ -678,7 +676,7 @@ void ECSIPanel_Emit(const char *name, ECSPanel panel)
 
     ECSValue_SetInteger(field, panel->id);
 
-    if (ECSValue_TableSetField(value, "type", &field) == SHUResult_Ok && ECSValue_SetString(field, panel->typeName) == SHUResult_Ok)
+    if (ECSValue_SetTableField(value, "type", &field) == SHUResult_Ok && ECSValue_SetString(field, panel->typeName) == SHUResult_Ok)
     {
         ECSIEvents_EmitCore(name, value);
     }
@@ -942,7 +940,6 @@ bool ECSIPanel_Restart(ECSPanel panel)
     }
 
     // the new state says again which data it accepts
-    ECSIEvents_StopTimersOf(panel);
     ECSIPanel_ClearAccepts(panel);
     panel->textInput = false;
     SDL_free(panel->fault);
@@ -985,7 +982,7 @@ static int SDLCALL ECSIPanel_CompareTypes(const void *a, const void *b)
 static SHUResult ECSIPanel_SetStringField(ECSValue *table, const char *name, const char *string)
 {
     ECSValue *field = nullptr;
-    SHU_ReturnResult(ECSValue_TableSetField(table, name, &field));
+    SHU_ReturnResult(ECSValue_SetTableField(table, name, &field));
     return ECSValue_SetString(field, string);
 }
 
@@ -1013,7 +1010,7 @@ SHUResult ECSPanelType_List(ECSValue *retList)
     for (usz i = 0; i < count && !result; i++)
     {
         ECSValue *entry = nullptr;
-        result = ECSValue_ListAddItem(retList, &entry);
+        result = ECSValue_AddListItem(retList, &entry);
 
         if (!result)
         {
@@ -1085,7 +1082,7 @@ SHUResult ECSIPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
     }
 
     // the description gives the local name, and the type is known by its full name
-    char *fullName = ECSIPlugin_FullName(plugin, desc->name);
+    char *fullName = ECSIPlugin_MakeFullName(plugin, desc->name);
 
     if (fullName == nullptr)
     {
@@ -1129,15 +1126,7 @@ SHUResult ECSIPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
     return SHUResult_Ok;
 }
 
-SHUResult ECSPanel_StartTimer(ECSPanel panel, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
-{
-    SDL_assert(panel != nullptr);
-    SDL_assert(panel->type != nullptr); // placeholders run no code
-
-    return ECSIEvents_StartTimer(panel->type->plugin, panel, retTimer, seconds, repeat, function, nullptr, data);
-}
-
-bool ECSPanel_IsUnsaved(ECSPanel panel)
+bool ECSPanel_GetUnsaved(ECSPanel panel)
 {
     SDL_assert(panel != nullptr);
 
