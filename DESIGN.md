@@ -1079,6 +1079,7 @@ When the command line names no preset and no session, OpenECS starts with the fi
 - All logging goes through SDL's log, including SDL's own messages. The core calls it directly; plugins call `ECS_Log`, which adds the plugin's name.
 - Each line holds the time, the level, the plugin and the message: `12:30:05.123 warning  [canvas] message`. The core's own lines name `ecs`.
 - Lines go to standard error and to the log file (16). Each start writes the log file anew.
+- On a terminal, the level shows in a colour: the detailed levels dim, info green, warning yellow, error red and critical bold red. The log file, pipes and the setting `NO_COLOR` (no-color.org) get plain text.
 - On Windows, only Debug builds open a console window. Other builds are Windows GUI programs, so a release opens no console beside its window. Started from a console, such as `cmd.exe`, they write to it; started with their output sent elsewhere, such as into a pipe, they write there.
 
 ## 15. Memory and ownership
