@@ -27,9 +27,10 @@ static struct
     const char *badArgument; // the first argument that cannot be read, and why
     const char *badArgumentReason;
     bool windows; // the compiler compiles for Windows
-    char *buildDir;
-    char *cmakeDir; // the CMake builds, a folder for each compiler, as CMake keeps the compiler it configured with, such as .shu/Debug/cmake/gcc/
-    char *outputDir;
+    char *buildDir;        // shuild's cache, such as .shu/Debug/
+    char *dependenciesDir; // the built dependencies, which only the build uses: their headers in include/ and their libraries in lib/, such as .shu/Debug/dependencies/
+    char *cmakeDir;        // the CMake builds, a folder for each compiler, as CMake keeps the compiler it configured with, such as .shu/Debug/cmake/gcc/
+    char *outputDir;       // what people use: the program in bin/, the plugin interface in include/, and on Windows OpenECS's import library in lib/
 } CONFIG = {.type = BuildType_Debug, .std = true, .compiler = SHUM_HOST_WINDOWS ? "clang" : "gcc"};
 
 #pragma endregion Setup
@@ -236,6 +237,7 @@ static void Configure(void)
     CONFIG.windows = target == SHUPlatform_Windows;
     CONFIG.buildDir = SHU_UtilFormat(".shu/%s%s/", BuildType_String(CONFIG.type), system);
     CONFIG.outputDir = SHU_UtilFormat("build/%s%s/", BuildType_String(CONFIG.type), system);
+    CONFIG.dependenciesDir = SHU_UtilFormat("%sdependencies/", CONFIG.buildDir);
 
     // a program built for another system cannot run here
     if (CONFIG.test && !SHUM_PLATFORM_IS_HOST(target))
@@ -315,10 +317,10 @@ static bool IsBuilt(const char *library, bool shared)
 {
     // lib/ has the file a library is linked by: on Windows, a DLL's import library, as the DLL is in bin/
     char *file = SHU_UtilLibraryFile(library, shared ? SHUModuleType_LibraryDynamic : SHUModuleType_LibraryStatic);
-    return SHU_UtilFileExists(SHU_UtilFormat("%slib/%s", CONFIG.outputDir, file)) == SHUFileType_Regular;
+    return SHU_UtilFileExists(SHU_UtilFormat("%slib/%s", CONFIG.dependenciesDir, file)) == SHUFileType_Regular;
 }
 
-/// @brief Builds a CMake project of dependencies/ and installs it into the build's folder. The output of each step goes to a log in the cache folder,
+/// @brief Builds a CMake project of dependencies/ and installs it into the dependencies' folder. The output of each step goes to a log in the cache folder,
 /// such as .shu/Debug/cmake/gcc/SDL3-build.log, and the end of the log shows when the step fails.
 static void Shuild_CMake(const char *name, const char *source, const char *options)
 {
@@ -328,7 +330,7 @@ static void Shuild_CMake(const char *name, const char *source, const char *optio
 
     char *sourceDir = SHU_UtilFormat("%sdependencies/%s/", root, source);
     char *buildDir = SHU_UtilFormat("%s%s%s/", root, CONFIG.cmakeDir, name);
-    char *outputPrefixDir = SHU_UtilFormat("%s%s", root, CONFIG.outputDir);
+    char *outputPrefixDir = SHU_UtilFormat("%s%s", root, CONFIG.dependenciesDir);
 
     // CMake compiles with the same compiler, and a cross compiler builds for its system
     char *compilers = SHU_UtilFormat("-DCMAKE_C_COMPILER=\"%s\" -DCMAKE_CXX_COMPILER=\"%s\"", CONFIG.compiler, SHU_CompilerGetTool("g++", "clang++"));
@@ -371,13 +373,13 @@ static void Shuild_SDL_ttf(void)
 
 static void Shuild_lua(void)
 {
-    char *headerOutputDir = SHU_UtilFormat("%sinclude/lua/", CONFIG.outputDir);
+    char *headerOutputDir = SHU_UtilFormat("%sinclude/lua/", CONFIG.dependenciesDir);
     SHU_UtilCopyFile("dependencies/lua/lua.h", headerOutputDir);
     SHU_UtilCopyFile("dependencies/lua/lauxlib.h", headerOutputDir);
     SHU_UtilCopyFile("dependencies/lua/lualib.h", headerOutputDir);
     SHU_UtilCopyFile("dependencies/lua/luaconf.h", headerOutputDir);
 
-    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.outputDir);
+    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.dependenciesDir);
 
     SHU_MODULE("lua", "dependencies/lua", SHUModuleType_LibraryStatic, binOutputDir)
     {
@@ -400,8 +402,8 @@ static void Shuild_lua(void)
 
 static void Shuild_clay(void)
 {
-    char *clayIncludeDir = SHU_UtilFormat("../../%sinclude/", CONFIG.outputDir);
-    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.outputDir);
+    char *clayIncludeDir = SHU_UtilFormat("../../%sinclude/", CONFIG.dependenciesDir);
+    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.dependenciesDir);
 
     SHU_MODULE("clay", "dependencies/clay", SHUModuleType_LibraryStatic, binOutputDir)
     {
@@ -411,7 +413,7 @@ static void Shuild_clay(void)
     }
 
     // clay.c includes the headers from the submodule, so they are copied for the core after it compiles
-    char *headerOutputDir = SHU_UtilFormat("%sinclude/clay/", CONFIG.outputDir);
+    char *headerOutputDir = SHU_UtilFormat("%sinclude/clay/", CONFIG.dependenciesDir);
     SHU_UtilCopyFile("dependencies/clay/clay.h", headerOutputDir);
     SHU_UtilCopyFile("dependencies/other/clay/claySDL3.h", headerOutputDir);
 }
@@ -419,12 +421,12 @@ static void Shuild_clay(void)
 static void Shuild_stb(void)
 {
     // stb.c includes the copied glue header, so the headers are copied first
-    char *headerOutputDir = SHU_UtilFormat("%sinclude/stb/", CONFIG.outputDir);
+    char *headerOutputDir = SHU_UtilFormat("%sinclude/stb/", CONFIG.dependenciesDir);
     SHU_UtilCopyFile("dependencies/stb/stb_ds.h", headerOutputDir);
     SHU_UtilCopyFile("dependencies/other/stb/stbSDL3.h", headerOutputDir);
 
-    char *includeDir = SHU_UtilFormat("../../../%sinclude/", CONFIG.outputDir);
-    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.outputDir);
+    char *includeDir = SHU_UtilFormat("../../../%sinclude/", CONFIG.dependenciesDir);
+    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.dependenciesDir);
 
     SHU_MODULE("stb", "dependencies/other/stb", SHUModuleType_LibraryStatic, binOutputDir)
     {
@@ -533,14 +535,14 @@ static void Shuild_libffi(void)
     }
 
     // the sources include ffi.h and ffitarget.h, so they are written to the build before libffi compiles; the copy makes the folder
-    char *headers = SHU_UtilFormat("%sinclude/libffi/", CONFIG.outputDir);
+    char *headers = SHU_UtilFormat("%sinclude/libffi/", CONFIG.dependenciesDir);
     char *targetHeader = SHU_UtilFormat("dependencies/libffi/%sffitarget.h", targetDirectory);
     SHU_UtilCopyFile(targetHeader, headers);
     char *ffiHeader = SHU_UtilFormat("%sffi.h", headers);
     MakeFfiHeader(target, ffiHeader);
 
-    char *headersFromRoot = SHU_UtilFormat("../../%sinclude/libffi/", CONFIG.outputDir);
-    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.outputDir);
+    char *headersFromRoot = SHU_UtilFormat("../../%sinclude/libffi/", CONFIG.dependenciesDir);
+    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.dependenciesDir);
 
     SHU_MODULE("ffi", "dependencies/libffi", SHUModuleType_LibraryStatic, binOutputDir)
     {
@@ -565,12 +567,76 @@ static void Shuild_libffi(void)
     }
 }
 
+/// @brief Writes the source file that puts the plugin interface into the executable: the bytes of OpenECS.h, shu.h and ecs.lua, which
+/// OpenECS --definitions writes for plugin authors, so they always match the program (DESIGN 10.10). A file whose bytes did not change keeps its time,
+/// so it compiles again only after a change.
+/// @return The source file's path.
+static char *WriteInterfaceSource(void)
+{
+    const char *const files[][2] = {{"OpenECS.h", "include/OpenECS.h"}, {"shu.h", "dependencies/shu/shu.h"}, {"ecs.lua", "include/ecs.lua"}};
+    usz count = sizeof(files) / sizeof(*files);
+    SHUSlice contents[sizeof(files) / sizeof(*files)];
+    usz size = 1024;
+
+    for (usz i = 0; i < count; i++)
+    {
+        contents[i] = SHU_UtilReadFile(files[i][1]);
+        // "0xNN," and a space or a line break with its indent
+        size += contents[i].size * 6 + contents[i].size / 16 * 5 + 256;
+    }
+
+    // each byte is written as 0xNN, with 16 on a line
+    char *source = malloc(size);
+    usz length = 0;
+    if (source == NULL)
+    {
+        SHU_UtilFail("the plugin interface's source file cannot be written.");
+    }
+
+    length += (usz)snprintf(source + length, size - length, "// OpenECS's build writes this file: the files of the plugin interface, which OpenECS --definitions writes (DESIGN 10.10)\n\n#include \"runtime/Services.h\"\n");
+
+    for (usz i = 0; i < count; i++)
+    {
+        length += (usz)snprintf(source + length, size - length, "\nstatic const u8 FILE_%zu[] = {", i);
+
+        for (usz j = 0; j < contents[i].size; j++)
+        {
+            length += (usz)snprintf(source + length, size - length, "%s0x%02x,", j % 16 == 0 ? "\n    " : " ", ((const unsigned char *)contents[i].data)[j]);
+        }
+
+        length += (usz)snprintf(source + length, size - length, "\n};\n");
+        free(contents[i].data);
+    }
+
+    length += (usz)snprintf(source + length, size - length, "\nconst ECSIInterfaceFile ECSI_INTERFACE_FILES[] = {\n");
+
+    for (usz i = 0; i < count; i++)
+    {
+        length += (usz)snprintf(source + length, size - length, "    {\"%s\", FILE_%zu, sizeof(FILE_%zu)},\n", files[i][0], i, i);
+    }
+
+    length += (usz)snprintf(source + length, size - length, "};\n\nconst usz ECSI_INTERFACE_FILE_COUNT = %zu;\n", count);
+
+    char *folder = SHU_UtilFormat("%sinterface/", CONFIG.buildDir);
+    char *path = SHU_UtilFormat("%sInterface.c", folder);
+    SHU_UtilCreateDirectory(folder);
+    SHU_UtilWriteFile(path, csv(cs(source, length)));
+    free(source);
+    return path;
+}
+
 static void Shuild_OpenECS(void)
 {
-    char *includeDir = SHU_UtilFormat("%sinclude/", CONFIG.outputDir);
-    char *ffiIncludeDir = SHU_UtilFormat("%sinclude/libffi/", CONFIG.outputDir);
-    char *libraryDir = SHU_UtilFormat("%slib/", CONFIG.outputDir);
+    char *dependenciesIncludeDir = SHU_UtilFormat("%s%sinclude/", SHU_UtilGetScriptDirectory(), CONFIG.dependenciesDir);
+    char *libraryDir = SHU_UtilFormat("%slib/", CONFIG.dependenciesDir);
     char *binOutputDir = SHU_UtilFormat("%sbin/", CONFIG.outputDir);
+    char *interfaceSource = WriteInterfaceSource();
+
+    // a plugin's DLL on Windows links the executable's import library, in the build's lib/
+    if (CONFIG.windows)
+    {
+        SHU_UtilCreateDirectory(SHU_UtilFormat("%slib/", CONFIG.outputDir));
+    }
 
     SHU_MODULE("OpenECS", NULL, SHUModuleType_Executable, binOutputDir)
     {
@@ -604,12 +670,13 @@ static void Shuild_OpenECS(void)
             }
         }
 
-        SHU_ModuleAddSourceFiles("src/");
+        SHU_ModuleAddSourceFiles("src/", interfaceSource);
         SHU_ModuleAddIncludeDirectories("include/");
 
-        // the dependencies' headers are system headers, so their warnings and macros stay out of our checks;
-        // ffi.h includes ffitarget.h beside it as <ffitarget.h>, which must not be a system copy of another libffi
-        SHU_CompilerAddFlags(SHU_UtilFormat("-isystem %s%s", SHU_UtilGetScriptDirectory(), includeDir), SHU_UtilFormat("-isystem %s%s", SHU_UtilGetScriptDirectory(), ffiIncludeDir));
+        // the dependencies' headers are system headers, so their warnings and macros stay out of our checks: shu.h, which OpenECS.h includes, and
+        // the built dependencies'; ffi.h includes ffitarget.h beside it as <ffitarget.h>, which must not be a system copy of another libffi
+        SHU_CompilerAddFlags(SHU_UtilFormat("-isystem %sdependencies/shu", SHU_UtilGetScriptDirectory()), SHU_UtilFormat("-isystem %s", dependenciesIncludeDir),
+                             SHU_UtilFormat("-isystem %slibffi", dependenciesIncludeDir));
 
         SHU_ModuleAddLibraryDirectories(libraryDir);
         SHU_ModuleLinkLibraries("clay", "SDL3_ttf", "SDL3", "lua", "ffi", "stb");
@@ -620,23 +687,43 @@ static void Shuild_OpenECS(void)
         }
     }
 
-    // the shared libraries go next to the executable under the names it asks for, as files rather than links; CMake installs Windows' DLLs there already
-    if (!CONFIG.windows)
+    // the shared libraries go next to the executable under the names it asks for, as files rather than links
+    const char *libraries[] = {"lib/libSDL3.so.0", "lib/libSDL3_ttf.so.0"};
+    const char *windowsLibraries[] = {"bin/SDL3.dll", "bin/SDL3_ttf.dll"};
+
+    for (usz i = 0; i < 2; i++)
     {
-        char *library = SHU_UtilFormat("%slib/libSDL3.so.0", CONFIG.outputDir);
-        SHU_UtilCopyFile(library, binOutputDir);
-        library = SHU_UtilFormat("%slib/libSDL3_ttf.so.0", CONFIG.outputDir);
-        SHU_UtilCopyFile(library, binOutputDir);
+        SHU_UtilCopyFile(SHU_UtilFormat("%s%s", CONFIG.dependenciesDir, CONFIG.windows ? windowsLibraries[i] : libraries[i]), binOutputDir);
     }
 
+    // the plugin interface goes to include/, where the standard plugins and the examples are built against it; OpenECS --definitions writes the same
+    // files with the plugins' definitions, and a build for another system cannot run it
+    char *includeDir = SHU_UtilFormat("%sinclude/", CONFIG.outputDir);
     SHU_UtilCopyFile("include/OpenECS.h", includeDir);
     SHU_UtilCopyFile("include/ecs.lua", includeDir);
+    SHU_UtilCopyFile("dependencies/shu/shu.h", includeDir);
+}
+
+/// @brief A path of this folder as seen from a folder in it, such as ../build/Debug/ from std/: one level up for each of its folders.
+static char *PathFromFolder(const char *folder, const char *path)
+{
+    const char *up = "";
+
+    for (const char *c = folder; *c != '\0'; c++)
+    {
+        if (*c == '/')
+        {
+            up = SHU_UtilFormat("%s../", up);
+        }
+    }
+
+    return SHU_UtilFormat("%s%s", up, path);
 }
 
 /// @brief Builds a repository checked out in a folder of OpenECS, std/ or examples/, with the shuild.c of its own (DESIGN 17.7).
 /// Its shuild.c is compiled with shu and shuild from dependencies/ into shuild.ignore in its folder, because shuild finds every path from the folder of the program it runs in.
-/// It runs with the build type and this build's output folder as seen from its folder.
-static void Shuild_Repository(const char *folder)
+/// It runs with the build type and this build's output folder as seen from its folder, and the arguments given.
+static void Shuild_Repository(const char *folder, const char *moreArguments)
 {
     char *source = SHU_UtilFormat("%sshuild.c", folder);
 
@@ -648,23 +735,10 @@ static void Shuild_Repository(const char *folder)
         SHU_UtilFail(SHUM_LOG_NAME("%.*s") " is not checked out; clone OpenECS with " SHUM_LOG_COMMAND("--recursive") ".", nameLength, folder);
     }
 
-    // the output folder is named from the repository's folder, which is one level deeper for each of its folders
-    const char *output = "";
-
-    for (const char *c = folder; *c != '\0'; c++)
-    {
-        if (*c == '/')
-        {
-            output = SHU_UtilFormat("%s../", output);
-        }
-    }
-
-    output = SHU_UtilFormat("%s%s", output, CONFIG.outputDir);
-
     // shuild compiles it with shu and shuild from dependencies/, and runs it in its folder
     char *program = SHU_UtilFormat("%sshuild.ignore", folder);
     char *flags = SHU_UtilFormat("-I%sdependencies", SHU_UtilGetScriptDirectory());
-    char *arguments = SHU_UtilFormat("-b %s -o %s -c %s", BuildType_String(CONFIG.type), output, CONFIG.compiler);
+    char *arguments = SHU_UtilFormat("-b %s -o %s -c %s %s", BuildType_String(CONFIG.type), PathFromFolder(folder, CONFIG.outputDir), CONFIG.compiler, moreArguments);
 
     SHU_UtilLog(SHUM_LOG_NAME("%.*s") " (build script): building", nameLength, folder);
     SHU_UtilBuildScript(source, program, flags, arguments);
@@ -680,10 +754,11 @@ static void Shuild_Plugins(void)
         DeleteIfExists(examples);
     }
 
-    // OpenECS-std builds the standard plugins into bin/plugins/ and their presets into bin/presets/; OpenECS-examples builds the examples into bin/examples/
+    // OpenECS-std builds the standard plugins into bin/plugins/ and their presets into bin/presets/, with the built dependencies that they reuse;
+    // OpenECS-examples builds the examples into bin/examples/, with the plugin interface alone, as any plugin's author does
     if (CONFIG.std)
     {
-        Shuild_Repository("std/");
+        Shuild_Repository("std/", SHU_UtilFormat("-d %s", PathFromFolder("std/", CONFIG.dependenciesDir)));
     }
 
     // the definitions come before the examples, so an example's C plugin includes the headers of the standard plugins, such as ui.h
@@ -691,15 +766,12 @@ static void Shuild_Plugins(void)
 
     if (CONFIG.examples)
     {
-        Shuild_Repository("examples/");
+        Shuild_Repository("examples/", "");
     }
 }
 
 static void Shuild_other(void)
 {
-    char *shuHeaderDir = SHU_UtilFormat("%sinclude/shu/", CONFIG.outputDir);
-    SHU_UtilCopyFile("dependencies/shu/shu.h", shuHeaderDir);
-
     char *resourcesDir = SHU_UtilFormat("%sbin/resources/", CONFIG.outputDir);
     SHU_UtilCopyFile("resources/", resourcesDir);
 }
@@ -717,16 +789,17 @@ static char *ProgramPath(void)
     return program;
 }
 
-/// @brief Writes a .luarc.json file that points LuaLS at OpenECS's ecs.lua and the definition files, so editors complete what Lua code uses.
-/// @param ignore Files LuaLS leaves out of the workspace, in .gitignore's grammar, or "": the plugins' types.lua, whose classes the definition files hold already.
-static void WriteLuaConfig(const char *folder, const char *include, const char *definitions, const char *ignore)
+/// @brief Writes a .luarc.json file that points LuaLS at the build's include/, with ecs.lua and the definition files, so editors complete what Lua code uses.
+/// @param ignore Files LuaLS leaves out of the workspace, in .gitignore's grammar: the plugins' types.lua, whose classes the definition files hold already,
+/// and OpenECS's own ecs.lua, as the build's copy is the one in the library.
+static void WriteLuaConfig(const char *folder, const char *include, const char *ignore)
 {
     char *path = SHU_UtilFormat("%s.luarc.json", folder);
-    char *text = SHU_UtilFormat("{\n  \"workspace.library\": [\"%s\", \"%s\"]%s%s%s\n}\n", include, definitions, ignore[0] == '\0' ? "" : ",\n  \"workspace.ignoreDir\": [\"", ignore, ignore[0] == '\0' ? "" : "\"]");
+    char *text = SHU_UtilFormat("{\n  \"workspace.library\": [\"%s\"]%s%s%s\n}\n", include, ignore[0] == '\0' ? "" : ",\n  \"workspace.ignoreDir\": [", ignore, ignore[0] == '\0' ? "" : "]");
     SHU_UtilWriteFile(path, csv(cs(text, strlen(text))));
 }
 
-/// @brief Deletes a file of the build's definitions/ that the new definitions, in the folder of data, do not have, as its plugin is gone.
+/// @brief Deletes a file of the build's include/ that the new definitions, in the folder of data, do not have, as its plugin is gone.
 static void DeleteOldDefinition(const char *path, SHUFileType type, void *data)
 {
     (void)type;
@@ -743,11 +816,11 @@ static void DeleteOldDefinition(const char *path, SHUFileType type, void *data)
     }
 }
 
-// editors complete the functions of other plugins from their definition files, which the built program writes for every plugin it finds;
+// the built program writes the plugin interface and the definition files of every plugin it finds, which go to include/ (DESIGN 10.10);
 // the .luarc.json files, which git ignores, point LuaLS at them from OpenECS, std/ and examples/
 static void Shuild_Definitions(void)
 {
-    char *definitions = SHU_UtilFormat("%sdefinitions/", CONFIG.outputDir);
+    char *definitions = SHU_UtilFormat("%sinclude/", CONFIG.outputDir);
 
     // a program built for another system cannot run here to write them
     if (!SHUM_PLATFORM_IS_HOST(SHU_CompilerGetTarget()))
@@ -776,9 +849,9 @@ static void Shuild_Definitions(void)
     SHU_UtilCopyFile(newDefinitions, definitions);
 
     char *up = SHU_UtilFormat("../%s", definitions);
-    WriteLuaConfig("", "include", definitions, "std/plugins/*/types.lua");
-    WriteLuaConfig("std/", "../include", up, "plugins/*/types.lua");
-    WriteLuaConfig("examples/", "../include", up, "");
+    WriteLuaConfig("", definitions, "\"std/plugins/*/types.lua\", \"include/ecs.lua\"");
+    WriteLuaConfig("std/", up, "\"plugins/*/types.lua\"");
+    WriteLuaConfig("examples/", up, "");
 }
 
 /// @brief How many tests ran, and how many failed.

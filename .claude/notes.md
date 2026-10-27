@@ -5,6 +5,7 @@ Notes for agents and the owner that belong in no other document: why the tools a
 ## Tools
 
 - shuild writes `compile_commands.json` in each repository's folder: the command that compiles each C file, of the last build. `.github/scripts/check.sh` runs clang-tidy on it, through a copy in `build/tidy/` without gcc's `-fanalyzer`, which clang does not have. clangd reads the same database, so editors with clangd, and Claude Code through a clangd plugin, see each file's real flags; git ignores `.clangd`, so each person's own drops gcc's flags with `CompileFlags: { Remove: [-fanalyzer, -fno-analyzer] }`.
+- OpenECS's `.luarc.json` leaves `include/ecs.lua` out of the workspace, as the build's copy is in its library and LuaLS would see each class twice; the check `Lua (LuaLS)`, which runs without a build, checks it.
 - The core's build gives the dependencies' headers as system headers (`-isystem`), so clang-tidy leaves their macros alone, such as stb_ds's `arrput`.
 - `check.sh` checks Lua files with LuaLS over the whole folder and prints only the named files' problems, because LuaLS 3.15 finds nothing in a file that it checks alone.
 - `check.sh` skips clang-tidy on `src/base/Sanitizers.c`: it includes gcc's sanitizer headers, which clang does not have.

@@ -2,7 +2,7 @@
 
 // The plugin interface of OpenECS. This is the only header a plugin includes.
 
-#include "shu/shu.h"
+#include "shu.h"
 
 #pragma region Macros
 
@@ -458,11 +458,16 @@ OPENECS_EXPORT bool ECSPath_IsAbsolute(const char *path);
 OPENECS_EXPORT const char *ECSPath_FindLastSeparator(const char *path);
 
 /// @brief Makes a path absolute: a relative path is relative to the program's folder, and an absolute one stays as it is.
-/// @param retFullPath The absolute path. Free it with SDL_free.
+/// @param retFullPath The absolute path. Free it with ECSPath_Free.
 /// @param path The path.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 /// @lua none: Lua code gives paths to the functions that take them
 OPENECS_EXPORT SHUWUR SHUResult ECSPath_GetFull(char **retFullPath, const char *path);
+
+/// @brief Frees a path that ECSPath_GetFull gave.
+/// @param path The path, or nullptr.
+/// @lua none: Lua code gives paths to the functions that take them
+OPENECS_EXPORT void ECSPath_Free(char *path);
 
 /// @brief Registers a plugin's description: how it saves and restores its own state in sessions, and what it does before the program exits. Call it once, from ECSPlugin_Init. Main thread only.
 /// @param plugin The plugin.

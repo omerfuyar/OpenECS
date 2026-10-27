@@ -1,7 +1,7 @@
 #!/bin/sh
 # Packs a Release build for one platform into dist/openecs-VERSION-PLATFORM.tar.gz, or .zip for Windows:
-# the program with its plugins, presets, examples and resources; the plugin interface with the standard plugins' definition files; OpenECS's license and the licenses of what it includes.
-# For Windows, also the import libraries that a C plugin links (DESIGN 17.2).
+# the program with its plugins, presets, examples and resources; include/, the plugin interface with the standard plugins' definition files, as the build wrote it;
+# OpenECS's license and the licenses of what it includes. For Windows, also lib/, OpenECS's import library that a C plugin links (DESIGN 17.2).
 set -eu
 
 version="$1"
@@ -10,25 +10,17 @@ name="openecs-$version-$platform"
 folder="dist/$name"
 
 rm -rf "$folder"
-mkdir -p "$folder/include" "$folder/licenses"
+mkdir -p "$folder/licenses"
 
 cp -r build/Release/bin/. "$folder/"
-cp include/OpenECS.h include/ecs.lua "$folder/include/"
-cp -r build/Release/include/shu "$folder/include/"
-# cglm's headers, which the cglm plugin's definition header includes, so C plugins call cglm
-cp -r build/Release/include/cglm "$folder/include/"
-# the build wrote the definition files of the plugins it found, the standard ones, so editors complete their functions with include/ alone
-cp build/Release/definitions/*.lua build/Release/definitions/*.h "$folder/include/"
+cp -r build/Release/include "$folder/"
 cp LICENSE.md README.md "$folder/"
 
 # the plugins' own import libraries are left out, as nothing links a plugin
 find "$folder" -name '*.dll.a' -delete
 
 case "$platform" in
-windows-*)
-    mkdir -p "$folder/lib"
-    cp build/Release/lib/libOpenECS.a build/Release/lib/libSDL3.dll.a build/Release/lib/libSDL3_ttf.dll.a "$folder/lib/"
-    ;;
+windows-*) cp -r build/Release/lib "$folder/" ;;
 esac
 
 # the libraries linked into the program, and the font it ships

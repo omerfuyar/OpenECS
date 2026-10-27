@@ -58,6 +58,11 @@ SHUResult ECSPath_GetFull(char **retFullPath, const char *path)
     return SHUResult_Ok;
 }
 
+void ECSPath_Free(char *path)
+{
+    SDL_free(path);
+}
+
 int ECSIPath_GetFolderLength(const char *file, const char *path)
 {
     SDL_assert(file != nullptr);

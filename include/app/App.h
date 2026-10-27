@@ -20,7 +20,7 @@ typedef struct ECSIArguments
     usz fileCount;
 } ECSIArguments;
 
-/// @brief Writes the definition files of every loaded plugin's functions (DESIGN 10.10). Call it after ECSIApp_Start, in place of ECSIApp_Run.
+/// @brief Writes the plugin interface, and the definition files of every loaded plugin's functions (DESIGN 10.10). Call it after ECSIApp_Start, in place of ECSIApp_Run.
 /// @param folder The folder to write into; it is made if it is missing.
 /// @return SHUResult_Ok, or the first error; each is reported.
 SHUWUR SHUResult ECSIApp_WriteDefinitions(const char *folder);

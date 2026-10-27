@@ -2721,6 +2721,34 @@ SHUResult ECSIServices_PushPlugin(ECSPlugin plugin, ECSPlugin provider)
     return SHUResult_Ok;
 }
 
+SHUResult ECSIServices_WriteInterface(const char *folder)
+{
+    SDL_assert(folder != nullptr);
+
+    for (usz i = 0; i < ECSI_INTERFACE_FILE_COUNT; i++)
+    {
+        const ECSIInterfaceFile *file = &ECSI_INTERFACE_FILES[i];
+        char *path = nullptr;
+
+        if (SDL_asprintf(&path, "%s%s", folder, file->name) < 0)
+        {
+            return SHUResult_ErrAllocation;
+        }
+
+        bool saved = SDL_SaveFile(path, file->data, file->size);
+
+        if (!saved)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot write '%s': %s", path, SDL_GetError());
+        }
+
+        SDL_free(path);
+        SHU_ReturnResult(saved ? SHUResult_Ok : SHUResult_ErrFile);
+    }
+
+    return SHUResult_Ok;
+}
+
 SHUResult ECSIServices_WriteDefinitions(ECSPlugin provider, const char *folder)
 {
     SDL_assert(provider != nullptr);

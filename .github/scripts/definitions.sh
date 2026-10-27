@@ -1,6 +1,6 @@
 #!/bin/sh
-# Writes the definition files of the plugins of the example 5_services, one in C and one in Lua, with the Debug executable, and checks that every C header compiles,
-# and that every function of the standard plugins says what each of its parameters and its result is.
+# Writes the plugin interface and the definition files of the plugins of the example 5_services, one in C and one in Lua, with the Debug executable, and checks
+# that every C header compiles with that folder alone, and that every function of the standard plugins says what each of its parameters and its result is.
 # CC names the compiler, gcc if it is not set.
 set -eu
 
@@ -11,12 +11,14 @@ rm -rf "$folder"
 "$executable" --preset "$(dirname "$executable")/examples/5_services/preset.lua" --definitions "$folder" > build/definitions.log 2>&1
 
 for header in "$folder"/*.h; do
-    printf '#include "%s"\n' "$(basename "$header")" | "${CC:-gcc}" -std=c23 -Wall -Wextra -Werror -fsyntax-only -Iinclude -Idependencies -I"$(dirname "$executable")/../include" -I"$folder" -x c -
+    printf '#include "%s"\n' "$(basename "$header")" | "${CC:-gcc}" -std=c23 -Wall -Wextra -Werror -fsyntax-only -I"$folder" -x c -
     echo "compiles $header"
 done
 
 # every function of the standard plugins says what each of its parameters and its result is (DESIGN 10.1): the build wrote their definition headers
-for header in "$(dirname "$executable")"/../definitions/*.h; do
+# into include/, beside the plugin interface, whose own documentation is not a definition file's
+for header in "$(dirname "$executable")"/../include/*.h; do
+    case "$(basename "$header")" in OpenECS.h | shu.h) continue ;; esac
     awk -v file="$(basename "$header")" '
         /^ *\/\/\// { if ($2 == "@param") documented[$3] = 1; if ($2 == "@return") returns = 1; next }
         /\(\*[A-Za-z_0-9]+\)\(.*\);$/ {

@@ -111,6 +111,24 @@ SHUWUR SHUResult ECSIServices_PushFunction(ECSPlugin plugin, const char *name, c
 /// @return SHUResult_Ok with the table pushed, or SHUResult_ErrPrivileges or SHUResult_ErrAllocation with nothing pushed.
 SHUWUR SHUResult ECSIServices_PushPlugin(ECSPlugin plugin, ECSPlugin provider);
 
+/// @brief A file of the plugin interface: OpenECS.h, shu.h or ecs.lua. The build writes their bytes into the executable, so --definitions writes them
+/// beside the definition files, and they always match the program (DESIGN 10.10).
+typedef struct ECSIInterfaceFile
+{
+    const char *name; // the file's name, such as "OpenECS.h"
+    const u8 *data;
+    usz size;
+} ECSIInterfaceFile;
+
+/// @brief The files of the plugin interface, in the source file that the build writes.
+extern const ECSIInterfaceFile ECSI_INTERFACE_FILES[];
+extern const usz ECSI_INTERFACE_FILE_COUNT;
+
+/// @brief Writes the files of the plugin interface: OpenECS.h, shu.h and ecs.lua (DESIGN 10.10).
+/// @param folder The folder to write into, ending with a separator.
+/// @return SHUResult_Ok, SHUResult_ErrFile if a file cannot be written, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSIServices_WriteInterface(const char *folder);
+
 /// @brief Writes the definition files of a plugin's functions (DESIGN 10.10): NAME.lua for editors of Lua plugins, and NAME.h for plugins in C.
 /// @param provider The plugin.
 /// @param folder The folder to write into, ending with a separator.
