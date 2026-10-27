@@ -13,6 +13,7 @@ Notes for agents and the owner that belong in no other document: why the tools a
   - `bugprone-branch-clone`: branches in a fixed order that do the same thing for different reasons.
   - `cert-err33-c`: unchecked `fprintf` and `fputs` to stderr. `SHUWUR` marks the results that must be checked.
   - `misc-include-cleaner`: the core includes through glue headers such as `stb/stbSDL3.h`.
+- `readability-function-cognitive-complexity` ignores what macros expand to (`IgnoreMacros`). stb_ds's `arrput`, `SDL_assert`, Clay's `CLAY` and `SHUResult_String` expand into nested conditionals that a reader never sees; counted, they put almost every function that uses them over the threshold.
 - Names that the naming checks cannot tell apart: a function pointer is PascalCase as a field, parameter or variable, so any PascalCase parameter or variable passes. A table of constants inside a function is UPPER_CASE, so any UPPER_CASE variable passes.
 - clang-format splits chained conditionals, `a ? b : c ? d : e`, onto aligned lines; no option keeps them on one line without changing other code. `StatementMacros` names macros that make whole definitions, such as `ECSIMenus_WorkspaceFunctions`.
 - The check `Format` uses clang-format 18, Ubuntu 24.04's. Another version may format some lines differently; format with 18.
