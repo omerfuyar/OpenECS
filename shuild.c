@@ -802,9 +802,17 @@ static void RunTest(const char *path, SHUFileType type, void *data)
         return;
     }
 
+    // the test gets its path with forward slashes on every system, as a test finds its own folder by them
+    char *test = SHU_UtilFormat("%s", path);
+
+    for (char *c = test; *c != '\0'; c++)
+    {
+        *c = *c == '\\' ? '/' : *c;
+    }
+
     TestCount *count = data;
     char *log = SHU_UtilFormat("%stest.log", CONFIG.outputDir);
-    bool passed = SHU_UtilRunTry("%s --test %s > %s 2>&1", ProgramPath(), path, log) == 0;
+    bool passed = SHU_UtilRunTry("%s --test %s > %s 2>&1", ProgramPath(), test, log) == 0;
 
     SHUSlice output = SHU_UtilReadFile(log);
     passed = passed && strstr(output.data, "Sanitizer") == NULL && strstr(output.data, "runtime error:") == NULL;
@@ -813,12 +821,12 @@ static void RunTest(const char *path, SHUFileType type, void *data)
 
     if (passed)
     {
-        printf("pass %s\n", path);
+        printf("pass %s\n", test);
     }
     else
     {
         count->failed++;
-        printf("FAIL %s\n%s\n", path, (char *)output.data);
+        printf("FAIL %s\n%s\n", test, (char *)output.data);
     }
 
     fflush(stdout);
