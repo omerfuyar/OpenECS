@@ -605,9 +605,11 @@ static void Shuild_OpenECS(void)
         }
 
         SHU_ModuleAddSourceFiles("src/");
+        SHU_ModuleAddIncludeDirectories("include/");
 
+        // the dependencies' headers are system headers, so their warnings and macros stay out of our checks;
         // ffi.h includes ffitarget.h beside it as <ffitarget.h>, which must not be a system copy of another libffi
-        SHU_ModuleAddIncludeDirectories("include/", includeDir, ffiIncludeDir);
+        SHU_CompilerAddFlags(SHU_UtilFormat("-isystem %s%s", SHU_UtilGetScriptDirectory(), includeDir), SHU_UtilFormat("-isystem %s%s", SHU_UtilGetScriptDirectory(), ffiIncludeDir));
 
         SHU_ModuleAddLibraryDirectories(libraryDir);
         SHU_ModuleLinkLibraries("clay", "SDL3_ttf", "SDL3", "lua", "ffi", "stb");

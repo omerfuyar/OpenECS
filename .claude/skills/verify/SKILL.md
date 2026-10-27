@@ -15,7 +15,14 @@ Work from OpenECS's folder; OpenECS-std and OpenECS-examples are checked out in 
 
 ## 2. Before each commit
 
-Run the check script of the repository you changed: `.github/scripts/check.sh` in OpenECS, `std/` or `examples/`. It formats the changed C files and checks them with clang-tidy, and prints only problems. It needs a Debug build.
+Run the check script of the repository you changed: `.github/scripts/check.sh` in OpenECS, `std/` or `examples/`. It formats the changed C files and checks them with clang-tidy, checks the changed Lua files with the Lua language server, and prints only problems. clang-tidy needs a Debug build.
+
+The Lua check runs only when `lua-language-server` is on the PATH. Install the version that the check `Lua (LuaLS)` uses, `LUALS_VERSION` in `.github/workflows/checks.yml`, once:
+
+```sh
+mkdir -p ~/.local/luals && curl -sSL https://github.com/LuaLS/lua-language-server/releases/download/3.15.0/lua-language-server-3.15.0-linux-x64.tar.gz | tar -xz -C ~/.local/luals
+ln -sf ~/.local/luals/bin/lua-language-server ~/.local/bin/lua-language-server
+```
 
 ## 3. Before pushing
 

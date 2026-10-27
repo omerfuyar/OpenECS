@@ -10,6 +10,11 @@ on:
     branches: [dev, main]
   workflow_dispatch:
 
+# a new push to a branch or a pull request cancels its older run, whose result no longer counts
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
