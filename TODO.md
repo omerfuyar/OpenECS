@@ -28,6 +28,7 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 - **web.** HTTP/2 and compressed answers, which need more libraries or more of libcurl.
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
+- **A parser plugin.** Reading and writing common text formats, such as `.env` and JSON files, into values plugins use. Which formats, and which library, are open.
 
 ## Questions
 
