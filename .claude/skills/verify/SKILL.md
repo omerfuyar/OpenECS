@@ -20,8 +20,8 @@ Run the check script of the repository you changed: `.github/scripts/check.sh` i
 ## 3. Before pushing
 
 1. `.github/scripts/build.sh D` builds Debug with the static analyzer and the sanitizers, and the examples. It prints the last 40 lines of `build/shuild.log` only when it fails.
-2. `.github/scripts/test.sh build/Debug/bin/OpenECS` runs every example's test and prints the log of each test that fails.
-3. Only when the change touches windows, popups or pop-outs: `.github/scripts/test-wayland.sh build/Debug/bin/OpenECS`.
+2. `.github/scripts/test.sh` runs every example's test with shuild's `--test`, and prints the log of each test that fails.
+3. Only when the change touches windows, popups or pop-outs: `.github/scripts/test-wayland.sh`.
 4. Only when the change touches plugins' function signatures or their documentation: `.github/scripts/definitions.sh build/Debug/bin/OpenECS`.
 
 The checks build Release, and run the tests on Wayland and Windows (DESIGN.md, section 19.3); do not run those yourself.

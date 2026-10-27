@@ -28,6 +28,7 @@ static struct
     const char *badArgumentReason;
     bool windows; // the compiler compiles for Windows
     char *buildDir;
+    char *cmakeDir; // the CMake builds, a folder for each compiler, as CMake keeps the compiler it configured with, such as .shu/Debug/cmake/gcc/
     char *outputDir;
 } CONFIG = {.type = BuildType_Debug, .std = true, .compiler = SHUM_HOST_WINDOWS ? "clang" : "gcc"};
 
@@ -244,16 +245,32 @@ static void Configure(void)
 
     SHU_CacheConfigure(CONFIG.buildDir);
 
+    // a compiler named by its path, such as /usr/bin/clang, has a folder of its name
+    const char *compilerName = CONFIG.compiler + strlen(CONFIG.compiler);
+
+    while (compilerName > CONFIG.compiler && compilerName[-1] != '/' && compilerName[-1] != '\\')
+    {
+        compilerName--;
+    }
+
+    CONFIG.cmakeDir = SHU_UtilFormat("%scmake/%s/", CONFIG.buildDir, compilerName);
+
     SHU_UtilLog("building " SHUM_LOG_VALUE("%s") " with " SHUM_LOG_VALUE("%s") " for " SHUM_LOG_VALUE("%s") "; standard plugins: " SHUM_LOG_VALUE("%s") ", examples: " SHUM_LOG_VALUE("%s"),
                 BuildType_String(CONFIG.type), CONFIG.compiler, SHUPlatform_GetString(target), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
 }
 
-// our code gets warnings, and in Debug gcc's static analyzer and the address and undefined-behaviour sanitizers, which MinGW does not have; dependencies get none of them
+// our code gets warnings, and in Debug gcc's static analyzer and the address and undefined-behaviour sanitizers, which MinGW does not have;
+// dependencies get none of them, and compile without warnings, as their warnings are not ours to fix
 // release builds drop every SDL_assert
 static void SetBuildFlags(bool ownCode)
 {
     SHU_CompilerClearFlags();
     SHU_CompilerAddFlags(SHUM_FLAGS_STANDARD_C23);
+
+    if (!ownCode)
+    {
+        SHU_CompilerAddFlags("-w");
+    }
 
     switch (CONFIG.type)
     {
@@ -302,7 +319,7 @@ static bool IsBuilt(const char *library, bool shared)
 }
 
 /// @brief Builds a CMake project of dependencies/ and installs it into the build's folder. The output of each step goes to a log in the cache folder,
-/// such as .shu/Debug/SDL3-build.log, and the end of the log shows when the step fails.
+/// such as .shu/Debug/cmake/gcc/SDL3-build.log, and the end of the log shows when the step fails.
 static void Shuild_CMake(const char *name, const char *source, const char *options)
 {
     SHU_UtilLog(SHUM_LOG_NAME("%s") " (CMake): building", name);
@@ -310,7 +327,7 @@ static void Shuild_CMake(const char *name, const char *source, const char *optio
     const char *root = SHU_UtilGetScriptDirectory();
 
     char *sourceDir = SHU_UtilFormat("%sdependencies/%s/", root, source);
-    char *buildDir = SHU_UtilFormat("%s%s%s/", root, CONFIG.buildDir, name);
+    char *buildDir = SHU_UtilFormat("%s%s%s/", root, CONFIG.cmakeDir, name);
     char *outputPrefixDir = SHU_UtilFormat("%s%s", root, CONFIG.outputDir);
 
     // CMake compiles with the same compiler, and a cross compiler builds for its system
@@ -321,7 +338,7 @@ static void Shuild_CMake(const char *name, const char *source, const char *optio
         compilers = SHU_UtilFormat("%s -DCMAKE_SYSTEM_NAME=%s -DCMAKE_RC_COMPILER=\"%s\"", compilers, SHUPlatform_GetString(SHU_CompilerGetTarget()), SHU_CompilerGetTool("windres", "windres"));
     }
 
-    char *log = SHU_UtilFormat("%s%s-configure.log", CONFIG.buildDir, name);
+    char *log = SHU_UtilFormat("%s%s-configure.log", CONFIG.cmakeDir, name);
     SHU_UtilRunLogged(log,
                       "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s %s "
                       "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
@@ -329,10 +346,10 @@ static void Shuild_CMake(const char *name, const char *source, const char *optio
                       sourceDir, buildDir, BuildType_String(CONFIG.type), compilers,
                       outputPrefixDir, outputPrefixDir, options);
 
-    log = SHU_UtilFormat("%s%s-build.log", CONFIG.buildDir, name);
+    log = SHU_UtilFormat("%s%s-build.log", CONFIG.cmakeDir, name);
     SHU_UtilRunLogged(log, "cmake --build \"%s\" --parallel", buildDir);
 
-    log = SHU_UtilFormat("%s%s-install.log", CONFIG.buildDir, name);
+    log = SHU_UtilFormat("%s%s-install.log", CONFIG.cmakeDir, name);
     SHU_UtilRunLogged(log, "cmake --install \"%s\"", buildDir);
 
     SHU_UtilLog(SHUM_LOG_NAME("%s") " (CMake): built", name);
@@ -528,7 +545,6 @@ static void Shuild_libffi(void)
     SHU_MODULE("ffi", "dependencies/libffi", SHUModuleType_LibraryStatic, binOutputDir)
     {
         SetBuildFlags(false);
-        SHU_CompilerAddFlags("-w"); // libffi warns about its own deprecated Java interface
         SHU_CompilerAddDefinitions("HAVE_CONFIG_H", NULL);
 
         SHU_ModuleAddSourceFiles("src/prep_cif.c", "src/types.c", "src/raw_api.c", "src/java_raw_api.c", "src/closures.c", "src/tramp.c");
@@ -708,6 +724,23 @@ static void WriteLuaConfig(const char *folder, const char *include, const char *
     SHU_UtilWriteFile(path, csv(cs(text, strlen(text))));
 }
 
+/// @brief Deletes a file of the build's definitions/ that the new definitions, in the folder of data, do not have, as its plugin is gone.
+static void DeleteOldDefinition(const char *path, SHUFileType type, void *data)
+{
+    (void)type;
+    const char *name = path + strlen(path);
+
+    while (name > path && name[-1] != '/' && name[-1] != SHUM_PATH_SEPARATOR)
+    {
+        name--;
+    }
+
+    if (SHU_UtilFileExists(SHU_UtilFormat("%s%s", (const char *)data, name)) == SHUFileType_Invalid)
+    {
+        SHU_UtilDeleteFile(path);
+    }
+}
+
 // editors complete the functions of other plugins from their definition files, which the built program writes for every plugin it finds;
 // the .luarc.json files, which git ignores, point LuaLS at them from OpenECS, std/ and examples/
 static void Shuild_Definitions(void)
@@ -722,14 +755,23 @@ static void Shuild_Definitions(void)
     }
 
     // a program that fails to write them does not stop the build
-    DeleteIfExists(definitions);
-    SHU_UtilRunTry("%s --definitions %s > %sdefinitions.log 2>&1", ProgramPath(), definitions, CONFIG.outputDir);
+    char *newDefinitions = SHU_UtilFormat("%sdefinitions/", CONFIG.buildDir);
+    DeleteIfExists(newDefinitions);
+    SHU_UtilRunTry("%s --definitions %s > %sdefinitions.log 2>&1", ProgramPath(), newDefinitions, CONFIG.outputDir);
 
-    if (SHU_UtilFileExists(definitions) != SHUFileType_Directory)
+    if (SHU_UtilFileExists(newDefinitions) != SHUFileType_Directory)
     {
         SHU_UtilWarn("the definition files are not written; " SHUM_LOG_PATH("%sdefinitions.log") " says why.", CONFIG.outputDir);
         return;
     }
+
+    // they are written fresh into the cache, then copied: a file that has not changed keeps its time, so the C plugins that include it do not compile again
+    if (SHU_UtilFileExists(definitions) == SHUFileType_Directory)
+    {
+        SHU_UtilListDirectory(definitions, false, DeleteOldDefinition, newDefinitions);
+    }
+
+    SHU_UtilCopyFile(newDefinitions, definitions);
 
     char *up = SHU_UtilFormat("../%s", definitions);
     WriteLuaConfig("", "include", definitions, "std/plugins/*/types.lua");

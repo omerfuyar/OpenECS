@@ -797,7 +797,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 
 ### 10.6 Handles
 
-- A handle stands for an object owned by its provider: a pointer plus a type name and a destructor, registered with `ECSHandle_RegisterType(plugin, "sound", Destroy)` by the plugin `audio`. In C, a `handle<audio.sound>` is the object's pointer.
+- A handle stands for an object owned by its provider: a pointer plus a type name and a destructor, registered with `ECSHandle_RegisterType(plugin, "sound", Destroy)` by the plugin `audio`. In C, a `handle<audio.sound>` is the object's pointer, as `void *`. A function that takes or gives a handle is written with `void *`, the type its definition file names, as a call through a pointer of another function type is undefined.
 - In Lua, a handle is a userdata whose metatable names its type. A handle of the wrong type is rejected with a clear error. When Lua no longer uses a handle, its garbage collector calls the destructor.
 - The same object always has the same Lua handle. A provider that still uses an object after giving it to Lua counts references, and its destructor drops one.
 - A handle that waits for its finalizer is already gone from Lua, so pushing its object again makes a new handle. The destructor runs once, when the object's last handle is collected.
