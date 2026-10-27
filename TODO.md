@@ -32,6 +32,7 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 ## Questions
 
+- **Vectors in cglm.** cglm's Lua functions pass vectors and matrices as strings of packed floats. Decided: Lua gets tables with `x`, `y`, `z` and `w` that it may change, with operators; a matrix is 16 numbers, column by column; a vector times a vector is an error, and `dot` and `cross` are methods; the types belong to the cglm plugin, and cglm's own headers stay inside it. Open: how a plugin's value type, such as `struct<cglm.vec3>`, gets its operators and crosses signatures. A generic core feature like handle types (DESIGN 10.6) was proposed; the owner thinks handles may already cover it. The owner decides it later.
 - **Desktop entries.** A preset gives the tool's identity (DESIGN 13.2). It could also describe the tool's entry in the system's application launcher: its categories, and the file types its `open` function takes, so installing a tool adds it to the launcher and to "Open with". To decide: whether presets describe it, and whether OpenECS or an installer writes the `.desktop` file. The owner decides it later.
 
 ## Reaching users
