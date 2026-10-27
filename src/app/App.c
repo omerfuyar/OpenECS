@@ -27,7 +27,7 @@
 #define OPENECS_CORE_SETTINGS_FILE "resources/settings.lua"
 
 /// @brief The log file, in the state folder. Each start writes it anew.
-#define OPENECS_LOG_FILE "openecs.log"
+#define OPENECS_LOG_FILE "OpenECS.log"
 
 /// @brief The setting that keeps the tool's session between runs.
 #define OPENECS_KEEP_SESSION "ecs.keepSession"
@@ -51,14 +51,14 @@ static struct
     bool definitions;    // true when the program only writes definition files: no display, nothing opened or saved
 } APP = {0};
 
-/// @brief Finds an XDG base folder for OpenECS: $variable/openecs/, or ~/fallback/openecs/ if the variable is not set.
-/// On Windows, every folder is SDL's pref path, %APPDATA%\openecs\ (DESIGN 16).
+/// @brief Finds an XDG base folder for OpenECS: $variable/OpenECS/, or ~/fallback/OpenECS/ if the variable is not set.
+/// On Windows, every folder is SDL's pref path, %APPDATA%\OpenECS\ (DESIGN 16).
 /// @return The folder, ending with a separator, or nullptr if neither the variable nor HOME is set. Free it with SDL_free.
 static char *ECSIApp_FindXdgFolder(const char *variable, const char *fallback)
 {
 #if defined(SDL_PLATFORM_WINDOWS)
     (void)fallback;
-    char *prefPath = SDL_GetPrefPath(nullptr, "openecs");
+    char *prefPath = SDL_GetPrefPath(nullptr, "OpenECS");
 
     if (prefPath == nullptr)
     {
@@ -73,11 +73,11 @@ static char *ECSIApp_FindXdgFolder(const char *variable, const char *fallback)
 
     if (base != nullptr && base[0] != '\0')
     {
-        SDL_asprintf(&folder, "%s/openecs/", base);
+        SDL_asprintf(&folder, "%s/OpenECS/", base);
     }
     else if (home != nullptr)
     {
-        SDL_asprintf(&folder, "%s/%s/openecs/", home, fallback);
+        SDL_asprintf(&folder, "%s/%s/OpenECS/", home, fallback);
     }
     else
     {
@@ -387,7 +387,6 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_ExitOnFailure(ECSIKeys_Initialize(), "reading the keys", nullptr);
     ECSIApp_ExitOnFailure(ECSIMenus_Initialize(), "registering the core's functions", nullptr);
     ECSIApp_ExitOnFailure(ECSIInput_Initialize(), "declaring the input settings", nullptr);
-    ECSIInput_SetLogInput(arguments->logInput);
 
     // a test's sessions field names the folder that stands for the saved sessions
     char *sessionsFolder = nullptr;
