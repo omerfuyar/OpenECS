@@ -1871,6 +1871,29 @@ static void ECSIDefinition_AddLuaFunctionOf(ECSIText *lua, const ECSIFunction *f
 }
 
 /// @brief Writes the Lua definitions of a plugin's functions and handle types, for editors.
+static int ECSIDefinition_CompareFunctions(const void *first, const void *second)
+{
+    return SDL_strcmp((*(const ECSIFunction *const *)first)->name, (*(const ECSIFunction *const *)second)->name);
+}
+
+/// @brief Gives a plugin's functions sorted by name, so its definition files are the same each time they are written.
+/// @return A stb_ds array; free it with arrfree.
+static const ECSIFunction **ECSIDefinition_GetFunctions(ECSPlugin provider)
+{
+    const ECSIFunction **functions = nullptr;
+
+    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
+    {
+        if (SERVICES.functions[i].value->plugin == provider)
+        {
+            arrput(functions, SERVICES.functions[i].value);
+        }
+    }
+
+    SDL_qsort(functions, arrlenu(functions), sizeof(const ECSIFunction *), ECSIDefinition_CompareFunctions);
+    return functions;
+}
+
 static SHUResult ECSIDefinition_WriteLua(ECSPlugin provider, const char *folder)
 {
     const char *plugin = ECSIPlugin_GetName(provider);
@@ -1880,15 +1903,14 @@ static SHUResult ECSIDefinition_WriteLua(ECSPlugin provider, const char *folder)
     ECSIText lua = {0};
     ECSIText_Add(&lua, "---@meta %s\n-- The functions of the plugin %s, for editors. OpenECS --definitions wrote this file.\n-- A Lua plugin whose manifest depends on %s gets them with require(\"%s\").\n\n---@class %s\nlocal %s = {}\n", plugin, plugin, plugin, plugin, plugin, pascal);
 
-    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
-    {
-        const ECSIFunction *function = SERVICES.functions[i].value;
+    const ECSIFunction **functions = ECSIDefinition_GetFunctions(provider);
 
-        if (function->plugin == provider)
-        {
-            ECSIDefinition_AddLuaFunctionOf(&lua, function, pascal, SDL_strchr(function->name, '.') + 1, false);
-        }
+    for (usz i = 0; i < arrlenu(functions); i++)
+    {
+        ECSIDefinition_AddLuaFunctionOf(&lua, functions[i], pascal, SDL_strchr(functions[i]->name, '.') + 1, false);
     }
+
+    arrfree(functions);
 
     // each of the plugin's handle types is a class, with its methods
     for (usz i = 0; i < shlenu(SERVICES.handleTypes); i++)
@@ -1927,15 +1949,12 @@ static SHUResult ECSIDefinition_WriteC(ECSPlugin provider, const char *folder)
     ECSIText c = {0};
     ECSIText_Add(&c, "// The functions of the plugin %s, for plugins in C. OpenECS --definitions wrote this file.\n#pragma once\n\n#include \"OpenECS.h\"\n\n/// @brief The functions of the plugin %s. %sFunctions_Get fills them.\ntypedef struct %sFunctions\n{\n", plugin, plugin, pascal, pascal);
 
-    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
-    {
-        const ECSIFunction *function = SERVICES.functions[i].value;
-        const ECSISignature *signature = &function->signature;
+    const ECSIFunction **functions = ECSIDefinition_GetFunctions(provider);
 
-        if (function->plugin != provider)
-        {
-            continue;
-        }
+    for (usz i = 0; i < arrlenu(functions); i++)
+    {
+        const ECSIFunction *function = functions[i];
+        const ECSISignature *signature = &function->signature;
 
         // a member that points to the function
         ECSIText_Add(&c, "    /// @brief %s\n", function->description);
@@ -1966,16 +1985,13 @@ static SHUResult ECSIDefinition_WriteC(ECSPlugin provider, const char *folder)
 
     ECSIText_Add(&c, "} %sFunctions;\n\n/// @brief Looks up every function of the plugin %s. Call it from ECSPlugin_Init; the plugin's manifest must depend on %s.\n/// @return SHUResult_Ok, or the error of the first function that cannot be looked up.\nstatic inline SHUResult %sFunctions_Get(ECSPlugin plugin, %sFunctions *retFunctions)\n{\n    ECSFunction function = nullptr;\n", pascal, plugin, plugin, pascal, pascal);
 
-    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
+    for (usz i = 0; i < arrlenu(functions); i++)
     {
-        const ECSIFunction *function = SERVICES.functions[i].value;
-
-        if (function->plugin == provider)
-        {
-            ECSIDefinition_ToMemberName(SDL_strchr(function->name, '.') + 1, cs(member, sizeof(member)));
-            ECSIText_Add(&c, "\n    SHU_ReturnResult(ECSService_GetFunction(plugin, &function, \"%s\", \"%s\"));\n    retFunctions->%s = (typeof(retFunctions->%s))function;\n", function->name, function->signature.text, member, member);
-        }
+        ECSIDefinition_ToMemberName(SDL_strchr(functions[i]->name, '.') + 1, cs(member, sizeof(member)));
+        ECSIText_Add(&c, "\n    SHU_ReturnResult(ECSService_GetFunction(plugin, &function, \"%s\", \"%s\"));\n    retFunctions->%s = (typeof(retFunctions->%s))function;\n", functions[i]->name, functions[i]->signature.text, member, member);
     }
+
+    arrfree(functions);
 
     ECSIText_Add(&c, "\n    return SHUResult_Ok;\n}\n");
 

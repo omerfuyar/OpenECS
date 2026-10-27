@@ -797,7 +797,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 
 ### 10.6 Handles
 
-- A handle stands for an object owned by its provider: a pointer plus a type name and a destructor, registered with `ECSHandle_RegisterType(plugin, "sound", Destroy)` by the plugin `audio`. In C, a `handle<audio.sound>` is the object's pointer.
+- A handle stands for an object owned by its provider: a pointer plus a type name and a destructor, registered with `ECSHandle_RegisterType(plugin, "sound", Destroy)` by the plugin `audio`. In C, a `handle<audio.sound>` is the object's pointer, as `void *`. A function that takes or gives a handle is written with `void *`, the type its definition file names, as a call through a pointer of another function type is undefined.
 - In Lua, a handle is a userdata whose metatable names its type. A handle of the wrong type is rejected with a clear error. When Lua no longer uses a handle, its garbage collector calls the destructor.
 - The same object always has the same Lua handle. A provider that still uses an object after giving it to Lua counts references, and its destructor drops one.
 - A handle that waits for its finalizer is already gone from Lua, so pushing its object again makes a new handle. The destructor runs once, when the object's last handle is collected.
@@ -1193,8 +1193,8 @@ OpenECS follows the XDG Base Directory specification:
 - A Lua error fails the test and logs it with its stack trace. When `run` returns, the program quits without asking about unsaved work.
 - While a message dialog waits (7.7), the test goes on, so it can read and answer the dialog. A dialog that the test's own step opens, as `call` can, cannot wait for the test, so it is answered with its last button, and so is one that waits when the test ends.
 - The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
-- `.github/scripts/test.sh` runs every test in `bin/examples/` with a Debug build.
-- `.github/scripts/test-wayland.sh` runs them on Wayland, in a headless sway that tiles the windows. There, popups and pop-out windows are windows of their own.
+- OpenECS's build runs the tests with `-t`, `--test`: it builds in Debug with the examples, then runs every test in `bin/examples/`. It prints `pass` or `FAIL` for each test, and fails when one fails. A test fails when the program fails, or when its output has a sanitizer's report: `Sanitizer` or `runtime error:`.
+- The checks (19.3) also run them on Wayland, in a headless sway that tiles the windows. There, popups and pop-out windows are windows of their own.
 
 ### 17.6 Examples
 
@@ -1222,6 +1222,7 @@ OpenECS follows the XDG Base Directory specification:
   | (none)                  | `std/shuild.c`: the standard plugins into `bin/plugins/`, and their presets into `bin/presets/` |
   | `-n`, `--no-std`        | not `std/shuild.c`, so the build holds the core alone                                                                                                       |
   | `-e`, `--examples`      | `examples/shuild.c`: the examples into `bin/examples/`                                                                                                      |
+  | `-t`, `--test`          | a Debug build with the examples, then the examples' tests (17.5)                                                                                           |
 
 - A repository that is not checked out is skipped with a warning.
 - Each repository has its own checks (19.3). They check out OpenECS's `dev` with its submodules, put the repository's own commit in its folder, build OpenECS with it and the examples, and run the examples' tests.
@@ -1266,7 +1267,7 @@ OpenECS follows the XDG Base Directory specification:
   | `Windows`         | Runs shuild's compiler detection, as `Debug (Linux)` does. Then builds on Windows with LLVM-MinGW: in Debug, then runs the examples' tests and writes the definition files, as `Debug (Linux)` does; then in Release. It has no static analyzer or sanitizers, which MinGW lacks.                                                                                  |
   | `Lua (LuaLS)`     | Checks every Lua file with LuaLS, so code that misuses the `ecs` module, and mistakes in `ecs.lua`, fail it (9.6).                                                                                                                                                                                 |
 
-- The steps are scripts in `.github/scripts/`, so they run the same way on a contributor's computer.
+- The steps are scripts in `.github/scripts/`, for CI. Each builds or tests with shuild, so a contributor runs the same build and tests with `shuild.c`: `-b debug -e`, `-b release -e` and `-t`.
 - The built dependencies are kept between runs until a submodule or the build changes. OpenECS's own files are compiled every time, so the analyzer sees all of them.
 
 ### 19.4 Releases
