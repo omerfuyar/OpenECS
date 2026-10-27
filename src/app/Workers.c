@@ -355,6 +355,59 @@ static void ECSIWorkers_Call(ECSIWorker *worker, int function, int argumentCount
     }
 }
 
+/// @brief Takes the messages a worker sent and delivers them to its message function, unless the worker was stopped.
+/// @return Whether the worker's script had ended when its messages were taken.
+static bool ECSIWorkers_DeliverMessages(ECSIWorker *worker)
+{
+    SDL_LockMutex(worker->lock);
+    ECSValue **messages = worker->outbox;
+    worker->outbox = nullptr;
+    bool finished = worker->finished;
+    SDL_UnlockMutex(worker->lock);
+
+    for (usz i = 0; i < arrlenu(messages) && worker->messageReference != LUA_NOREF; i++)
+    {
+        if (!SDL_GetAtomicInt(&worker->stopping))
+        {
+            ECSILua_PushValue(ECSILua_GetState(), messages[i]);
+            ECSIWorkers_Call(worker, worker->messageReference, 1);
+        }
+    }
+
+    ECSIWorkers_FreeMessages(&messages);
+    return finished;
+}
+
+/// @brief Reports the end of a worker's script to its plugin: an error to the plugin's log, and the result to its done function.
+static void ECSIWorkers_DeliverEnd(ECSIWorker *worker)
+{
+    const char *error = worker->error == nullptr ? "out of memory" : worker->error;
+
+    if (!worker->succeeded)
+    {
+        ECSIPlugin_ReportError(worker->plugin, error);
+    }
+
+    if (worker->doneReference == LUA_NOREF)
+    {
+        return;
+    }
+
+    lua_State *state = ECSILua_GetState();
+    lua_pushboolean(state, worker->succeeded);
+
+    if (worker->succeeded)
+    {
+        ECSILua_PushValue(state, worker->result);
+    }
+    else
+    {
+        lua_pushstring(state, error);
+    }
+
+    ECSIWorkers_Call(worker, worker->doneReference, 2);
+}
+
 /// @brief Delivers what the workers sent, and the ends of their scripts, then frees the workers that ended. A worker that was stopped gets no calls.
 static void SDLCALL ECSIWorkers_Pump(void *data)
 {
@@ -368,24 +421,7 @@ static void SDLCALL ECSIWorkers_Pump(void *data)
     {
         ECSIWorker *worker = WORKERS.workers[i];
 
-        SDL_LockMutex(worker->lock);
-        ECSValue **messages = worker->outbox;
-        worker->outbox = nullptr;
-        bool finished = worker->finished;
-        SDL_UnlockMutex(worker->lock);
-
-        for (usz m = 0; m < arrlenu(messages) && worker->messageReference != LUA_NOREF; m++)
-        {
-            if (!SDL_GetAtomicInt(&worker->stopping))
-            {
-                ECSILua_PushValue(ECSILua_GetState(), messages[m]);
-                ECSIWorkers_Call(worker, worker->messageReference, 1);
-            }
-        }
-
-        ECSIWorkers_FreeMessages(&messages);
-
-        if (!finished)
+        if (!ECSIWorkers_DeliverMessages(worker))
         {
             i++;
             continue;
@@ -396,27 +432,7 @@ static void SDLCALL ECSIWorkers_Pump(void *data)
 
         if (!SDL_GetAtomicInt(&worker->stopping))
         {
-            if (!worker->succeeded)
-            {
-                ECSIPlugin_ReportError(worker->plugin, worker->error == nullptr ? "out of memory" : worker->error);
-            }
-
-            if (worker->doneReference != LUA_NOREF)
-            {
-                lua_State *state = ECSILua_GetState();
-                lua_pushboolean(state, worker->succeeded);
-
-                if (worker->succeeded)
-                {
-                    ECSILua_PushValue(state, worker->result);
-                }
-                else
-                {
-                    lua_pushstring(state, worker->error == nullptr ? "out of memory" : worker->error);
-                }
-
-                ECSIWorkers_Call(worker, worker->doneReference, 2);
-            }
+            ECSIWorkers_DeliverEnd(worker);
         }
 
         ECSIWorkers_Free(worker);
