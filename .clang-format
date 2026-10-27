@@ -1,0 +1,19 @@
+# Formatting of OpenECS's C code (DESIGN.md, section 1.6). Agents run it through .github/scripts/check.sh.
+BasedOnStyle: Microsoft
+Language: Cpp
+Standard: Latest
+IndentWidth: 4
+UseTab: Never
+BreakBeforeBraces: Allman
+ColumnLimit: 0
+PointerAlignment: Right
+SortIncludes: Never
+IndentCaseLabels: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortEnumsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+# macros that make whole definitions and need no semicolon after them
+StatementMacros: [ECSIMenus_WorkspaceFunctions]

@@ -9,15 +9,14 @@
 /// @brief What the command line asks for.
 typedef struct ECSIArguments
 {
-    const char *preset;  // name or path of the preset
-    const char *session; // path of a session, or nullptr if the command line names none
-    bool fresh;          // true to start from the preset, not from the tool's last session
-    bool logInput;       // log each key and text event that SDL gives
-    const char *test;    // path of a test to run, or nullptr
+    const char *preset;      // name or path of the preset
+    const char *session;     // path of a session, or nullptr if the command line names none
+    bool fresh;              // true to start from the preset, not from the tool's last session
+    const char *test;        // path of a test to run, or nullptr
     const char *definitions; // folder to write the definition files of the plugins' functions into, or nullptr
-    bool version;        // print the version and exit
-    bool help;           // print the options and exit
-    char **files;        // the files to open, as the command line names them
+    bool version;            // print the version and exit
+    bool help;               // print the options and exit
+    char **files;            // the files to open, as the command line names them
     usz fileCount;
 } ECSIArguments;
 

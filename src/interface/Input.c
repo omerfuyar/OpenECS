@@ -47,7 +47,6 @@ static const struct
 
 static struct
 {
-    bool logInput; // --log-input: each key and text event that SDL gives is logged
     bool prefixActive;
     const char **prefixLines; // stb_ds array of the lines shown after the prefix: key text, description, and so on; a nullptr key text makes a heading
     char **prefixTexts;       // stb_ds array of the key texts made for the lines, such as "1...0"
@@ -55,17 +54,17 @@ static struct
     ECSPopup pointerPopup;    // popup that got the press; it gets pointer events until the release
     f32 pointerX;             // the pointer's last position in the OS window, in layout units
     f32 pointerY;
-    void *clipboard;          // what a clipboard getter returned last, freed by the next call
-    char *dragType;           // type of the data a panel drags, or nullptr
-    ECSValue *dragValue;      // the dragged data
-    char **droppedFiles;      // stb_ds array of the files another application drops, until the drop completes
-    char *droppedText;        // the text another application drops, until the drop completes, or nullptr
-    bool swallowText;         // the last key press ran a binding or the core's keys, so the text it types is dropped
-    bool textOn;              // text input is on, for the panel below
+    void *clipboard;     // what a clipboard getter returned last, freed by the next call
+    char *dragType;      // type of the data a panel drags, or nullptr
+    ECSValue *dragValue; // the dragged data
+    char **droppedFiles; // stb_ds array of the files another application drops, until the drop completes
+    char *droppedText;   // the text another application drops, until the drop completes, or nullptr
+    bool swallowText;    // the last key press ran a binding or the core's keys, so the text it types is dropped
+    bool textOn;         // text input is on, for the panel below
     ECSPanel textPanel;
-    SDL_Window *textWindow; // the OS window text input is on in
-    SDL_Rect textArea;      // where the input method shows its window, in the OS window
-    const ECSIDialogView *dialog; // the message dialog that waits for an answer, or nullptr
+    SDL_Window *textWindow;          // the OS window text input is on in
+    SDL_Rect textArea;               // where the input method shows its window, in the OS window
+    const ECSIDialogView *dialog;    // the message dialog that waits for an answer, or nullptr
     ECSIDialogStepFunction TestStep; // a running test's step while a dialog waits, or nullptr
     ECSIDialogWaitFunction TestWait;
     // an input method, such as fcitx5, may repeat a held key itself: it sends a release and a press with the first press's time, again and again
@@ -819,29 +818,6 @@ void ECSIInput_Terminate(void)
     SDL_zero(INPUT);
 }
 
-void ECSIInput_SetLogInput(bool log)
-{
-    INPUT.logInput = log;
-}
-
-/// @brief Logs a key or text event as SDL gives it, for --log-input: which key, whether it repeats, and when, so doubled keys or text can be told apart.
-static void ECSIInput_LogEvent(const SDL_Event *event)
-{
-    if (event->type == SDL_EVENT_KEY_DOWN || event->type == SDL_EVENT_KEY_UP)
-    {
-        SDL_Log("input %.3f ms: key %s '%s'%s, mod 0x%x", (double)event->key.timestamp / 1e6, event->key.down ? "down" : "up", SDL_GetKeyName(event->key.key),
-                event->key.repeat ? " repeat" : "", (unsigned)event->key.mod);
-    }
-    else if (event->type == SDL_EVENT_TEXT_INPUT)
-    {
-        SDL_Log("input %.3f ms: text '%s'", (double)event->text.timestamp / 1e6, event->text.text != nullptr ? event->text.text : "");
-    }
-    else if (event->type == SDL_EVENT_TEXT_EDITING)
-    {
-        SDL_Log("input %.3f ms: editing '%s' at %d", (double)event->edit.timestamp / 1e6, event->edit.text != nullptr ? event->edit.text : "", (int)event->edit.start);
-    }
-}
-
 /// @brief Tells whether a key event is SDL's own repeat of a key that an input method repeats too, which would type the key twice.
 /// SDL keeps the stale time of the input method's presses, so when the key is released it sends at once every repeat it thinks it missed.
 static bool ECSIInput_IsDoubledRepeat(const SDL_Event *event)
@@ -872,11 +848,6 @@ static bool ECSIInput_IsDoubledRepeat(const SDL_Event *event)
 bool ECSIInput_Handle(const SDL_Event *event)
 {
     SDL_assert(event != nullptr);
-
-    if (INPUT.logInput)
-    {
-        ECSIInput_LogEvent(event);
-    }
 
     // the doubled repeat goes nowhere, and neither does the text that SDL sends with it
     if (ECSIInput_IsDoubledRepeat(event))

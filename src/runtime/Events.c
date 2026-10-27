@@ -8,7 +8,7 @@
 typedef struct ECSITimer
 {
     ECSPlugin plugin;
-    u64 dueNanoseconds;      // as SDL_GetTicksNS
+    u64 dueNanoseconds; // as SDL_GetTicksNS
     u64 intervalNanoseconds;
     bool repeat;
     bool stopped; // freed when no timer is running
@@ -83,7 +83,7 @@ static struct
 {
     SDL_Mutex *lock;
     SDL_Condition *ready;
-    ECSIWork *queue;      // stb_ds array, guarded by lock
+    ECSIWork *queue;       // stb_ds array, guarded by lock
     SDL_Thread **workers;  // stb_ds array
     bool stopping;         // guarded by lock
     SDL_AtomicInt stopped; // tasks that reach the main thread after this are dropped, because plugins may be gone
@@ -101,7 +101,7 @@ static struct
     {
         char *key;
         ECSINamedEvent value;
-    } *named;                                 // stb_ds hash map of the declared named events, with copied keys
+    } *named;                                // stb_ds hash map of the declared named events, with copied keys
     struct ECSISubscription **subscriptions; // stb_ds array; handles point to them, so each is allocated on its own
 } EVENTS = {0};
 

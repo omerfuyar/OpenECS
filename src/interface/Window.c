@@ -26,7 +26,7 @@
 /// @brief How far from an OS window's edge the pointer resizes it, when OpenECS draws the title bar, in layout units.
 #define OPENECS_RESIZE_EDGE 6.0f
 /// @brief How long a panel dropped outside its OS window waits for the pointer to enter another one, where the system does not tell where windows are, in nanoseconds.
-#define OPENECS_PENDING_DROP_NANOSECONDS (400 * SDL_NS_PER_MS)
+#define OPENECS_PENDING_DROP_NANOSECONDS SDL_MS_TO_NS(400)
 /// @brief Most menus open at once: the panel menu and its submenus.
 #define OPENECS_MENU_DEPTH 4
 
@@ -116,7 +116,7 @@ typedef struct ECSIOSWindow
     f32 width; // in layout units
     f32 height;
     ECSIDrawnTab *tabs; // stb_ds array of the tabs drawn in its last frame
-    u64 raised;       // when it last opened or got the focus, counted across the OS windows; the highest is in front
+    u64 raised;         // when it last opened or got the focus, counted across the OS windows; the highest is in front
 } ECSIOSWindow;
 
 /// @brief How a popup is shown: in an SDL popup window, or inside its panel's OS window when the video driver has no popup windows.
@@ -138,11 +138,11 @@ typedef struct ECSIGpu
 
 static struct
 {
-    ECSIOSWindow **windows; // stb_ds array: the main window, then the pop-out windows
-    ECSIGpu gpu;            // kept from ECSIWindow_Terminate to ECSIWindow_DestroyDevice
+    ECSIOSWindow **windows;    // stb_ds array: the main window, then the pop-out windows
+    ECSIGpu gpu;               // kept from ECSIWindow_Terminate to ECSIWindow_DestroyDevice
     ECSIOSWindow *eventWindow; // the OS window of the pointer event being handled; positions are in its layout units
-    ECSPopup eventPopup;    // the popup whose SDL popup window has the pointer event being handled, or nullptr
-    bool noPopupWindows;    // the video driver has no popup windows, so popups are drawn inside the OS windows
+    ECSPopup eventPopup;       // the popup whose SDL popup window has the pointer event being handled, or nullptr
+    bool noPopupWindows;       // the video driver has no popup windows, so popups are drawn inside the OS windows
     ECSIOSWindow *gripWindow;
     ECSIOSWindow *dropWindow; // the OS window where the dragged panel lands, or nullptr for a pop-out
     ECSIOSWindow *dataWindow; // the OS window under the pointer while data is dragged
@@ -160,7 +160,7 @@ static struct
 
     ECSINode *gripGroup; // lone group whose grip is shown, or nullptr
     ECSINode *dragSplit; // split whose divider is dragged, or nullptr
-    usz dragDivider;      // the dragged divider follows this child
+    usz dragDivider;     // the dragged divider follows this child
 
     u64 raises; // counts the OS windows' openings and focus changes, so the one in front is known (ECSIOSWindow.raised)
 
@@ -171,18 +171,18 @@ static struct
     bool dragging;
     f32 dragStartX;
     f32 dragStartY;
-    ECSIDrop drop;     // where the dragged panel lands now
-    bool dropOutside;  // the pointer is outside every OS window whose place is known, as on Wayland outside the window it was dragged from
+    ECSIDrop drop;      // where the dragged panel lands now
+    bool dropOutside;   // the pointer is outside every OS window whose place is known, as on Wayland outside the window it was dragged from
     SDL_FRect dropRect; // the highlight of the drop place
 
     // on Wayland, which does not tell where windows are, a panel released outside its OS window lands where the pointer enters next
     struct
     {
-        ECSPanel panel;       // the released panel, or nullptr
-        bool group;           // its whole group was dragged
-        ECSIOSWindow *from;   // the OS window it was dragged from
-        ECSIDrop drop;        // where it lands if no other OS window takes it: a pop-out, or nowhere when it is alone in its OS window already
-        u64 until;            // when it lands there
+        ECSPanel panel;     // the released panel, or nullptr
+        bool group;         // its whole group was dragged
+        ECSIOSWindow *from; // the OS window it was dragged from
+        ECSIDrop drop;      // where it lands if no other OS window takes it: a pop-out, or nowhere when it is alone in its OS window already
+        u64 until;          // when it lands there
     } pending;
 
     const char *dataType; // type of the data being dragged, or nullptr
@@ -212,7 +212,6 @@ static struct
 
 /// @brief Width of the key column in the list of prefix keys.
 #define OPENECS_PREFIX_KEY_COLUMN 104.0f
-
 
 static Clay_String ECSIWindow_ClayText(const char *text)
 {
@@ -673,22 +672,34 @@ static void ECSIWindow_DeclareIcon(ECSIIcon icon, Clay_Color color)
         {
         case ECSIIcon_Locked:
             // a padlock: the shackle's arch, then the body
-            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.56f), CLAY_SIZING_FIXED(size * 0.45f)}}, .border = {.color = color, .width = {line, line, line, 0, 0}}, .cornerRadius = {size * 0.28f, size * 0.28f, 0, 0}}) {}
-            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.84f), CLAY_SIZING_FIXED(size * 0.55f)}}, .backgroundColor = color, .cornerRadius = CLAY_CORNER_RADIUS(size * 0.1f)}) {}
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.56f), CLAY_SIZING_FIXED(size * 0.45f)}}, .border = {.color = color, .width = {line, line, line, 0, 0}}, .cornerRadius = {size * 0.28f, size * 0.28f, 0, 0}})
+            {
+            }
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.84f), CLAY_SIZING_FIXED(size * 0.55f)}}, .backgroundColor = color, .cornerRadius = CLAY_CORNER_RADIUS(size * 0.1f)})
+            {
+            }
             break;
         case ECSIIcon_Maximized:
             // a window that fills the screen: a frame with a thick top
-            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.9f), CLAY_SIZING_FIXED(size * 0.8f)}}, .border = {.color = color, .width = {line, line, (u16)(line * 2), line, 0}}}) {}
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.9f), CLAY_SIZING_FIXED(size * 0.8f)}}, .border = {.color = color, .width = {line, line, (u16)(line * 2), line, 0}}})
+            {
+            }
             break;
         case ECSIIcon_Minimize:
-            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.8f), CLAY_SIZING_FIXED(line)}}, .backgroundColor = color}) {}
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.8f), CLAY_SIZING_FIXED(line)}}, .backgroundColor = color})
+            {
+            }
             break;
         case ECSIIcon_Restore:
             // two windows, one behind the other
             CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size), CLAY_SIZING_FIXED(size)}}})
             {
-                CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.7f), CLAY_SIZING_FIXED(size * 0.6f)}}, .border = {.color = color, .width = {line, line, line, line, 0}}, .floating = {.attachTo = CLAY_ATTACH_TO_PARENT, .offset = {size * 0.3f, size * 0.1f}}}) {}
-                CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.7f), CLAY_SIZING_FIXED(size * 0.6f)}}, .backgroundColor = behind, .border = {.color = color, .width = {line, line, line, line, 0}}, .floating = {.attachTo = CLAY_ATTACH_TO_PARENT, .offset = {0.0f, size * 0.35f}}}) {}
+                CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.7f), CLAY_SIZING_FIXED(size * 0.6f)}}, .border = {.color = color, .width = {line, line, line, line, 0}}, .floating = {.attachTo = CLAY_ATTACH_TO_PARENT, .offset = {size * 0.3f, size * 0.1f}}})
+                {
+                }
+                CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size * 0.7f), CLAY_SIZING_FIXED(size * 0.6f)}}, .backgroundColor = behind, .border = {.color = color, .width = {line, line, line, line, 0}}, .floating = {.attachTo = CLAY_ATTACH_TO_PARENT, .offset = {0.0f, size * 0.35f}}})
+                {
+                }
             }
             break;
         }
@@ -787,13 +798,13 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
             for (usz i = 0; i < arrlenu(group->panels); i++)
             {
                 CLAY(CLAY_IDI("Tab", (u32)arrlenu(osWindow->tabs)), {
-                                                                     .layout = {
-                                                                         .sizing = {CLAY_SIZING_FIT(0), CLAY_SIZING_GROW(0)},
-                                                                         .padding = {12, 12, 0, 0},
-                                                                         .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
-                                                                     },
-                                                                     .backgroundColor = i == group->shown ? WINDOW.colors[ECSIColor_TabShown] : WINDOW.colors[ECSIColor_Tab],
-                                                                 })
+                                                                        .layout = {
+                                                                            .sizing = {CLAY_SIZING_FIT(0), CLAY_SIZING_GROW(0)},
+                                                                            .padding = {12, 12, 0, 0},
+                                                                            .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                                                                        },
+                                                                        .backgroundColor = i == group->shown ? WINDOW.colors[ECSIColor_TabShown] : WINDOW.colors[ECSIColor_Tab],
+                                                                    })
                 {
                     CLAY_TEXT(ECSIWindow_ClayText(group->panels[i]->title),
                               CLAY_TEXT_CONFIG({
@@ -1085,7 +1096,9 @@ static void ECSIWindow_DeclareMenus(void)
                 })
                 {
                     CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
-                    CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}}}) {}
+                    CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}}})
+                    {
+                    }
                     CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                 }
             }
@@ -2381,9 +2394,9 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
         ECSILayout_DividerAt(ECSIWindow_RootOf(WINDOW.eventWindow), x, y, &split, &divider);
     }
 
-    ECSIWindow_SetCursor(split != nullptr ? (split->vertical ? SDL_SYSTEM_CURSOR_NS_RESIZE : SDL_SYSTEM_CURSOR_EW_RESIZE)
-                         : WINDOW.dragging     ? SDL_SYSTEM_CURSOR_MOVE
-                                               : SDL_SYSTEM_CURSOR_DEFAULT);
+    ECSIWindow_SetCursor(split != nullptr  ? (split->vertical ? SDL_SYSTEM_CURSOR_NS_RESIZE : SDL_SYSTEM_CURSOR_EW_RESIZE)
+                         : WINDOW.dragging ? SDL_SYSTEM_CURSOR_MOVE
+                                           : SDL_SYSTEM_CURSOR_DEFAULT);
 
     if (WINDOW.dragSplit != nullptr)
     {
@@ -2657,7 +2670,8 @@ SDL_WindowID ECSIWindow_ShowDialog(const ECSIDialogView *dialog)
     }
 
     // the dialog shows over the OS window of the event that asks, such as a pop-out window's close button, and comes forward
-    ECSIOSWindow *osWindow = WINDOW.eventWindow != nullptr && ECSIWindow_IsShown(WINDOW.eventWindow) ? WINDOW.eventWindow : arrlenu(WINDOW.windows) > 0 ? WINDOW.windows[0] : nullptr;
+    ECSIOSWindow *osWindow = WINDOW.eventWindow != nullptr && ECSIWindow_IsShown(WINDOW.eventWindow) ? WINDOW.eventWindow : arrlenu(WINDOW.windows) > 0 ? WINDOW.windows[0]
+                                                                                                                                                        : nullptr;
 
     if (osWindow == nullptr)
     {

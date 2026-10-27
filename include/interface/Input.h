@@ -24,9 +24,6 @@ bool ECSIInput_Handle(const SDL_Event *event);
 /// @brief Turns the system's text input on while the focused panel accepts text, and tells the input method where its text cursor is. Call it once each pass of the loop, after events are delivered.
 void ECSIInput_UpdateTextInput(void);
 
-/// @brief Turns on the logging of each key and text event as SDL gives it, for --log-input.
-void ECSIInput_SetLogInput(bool log);
-
 /// @brief Shows a file dialog for a plugin or for the core, as ECSDialog_Show does.
 /// @param plugin The plugin that asks, or nullptr for the core.
 /// @param desc Description of the dialog.

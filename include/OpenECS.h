@@ -270,11 +270,11 @@ typedef void (*ECSPopupClosedFunction)(void *data);
 typedef struct ECSPopupDesc
 {
     ECSPopupType type;
-    f32 anchorX;      // the rectangle of the panel the popup opens next to, in the panel's surface pixels
+    f32 anchorX; // the rectangle of the panel the popup opens next to, in the panel's surface pixels
     f32 anchorY;
     f32 anchorWidth;
     f32 anchorHeight;
-    f32 width;        // the popup's size, in layout units
+    f32 width; // the popup's size, in layout units
     f32 height;
 
     // required

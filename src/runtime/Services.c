@@ -50,7 +50,7 @@ typedef struct ECSIHandleType
     char *metatable;  // name of its metatable in the registry
     ECSPlugin plugin; // nullptr for the core
     ECSHandleDestroyFunction Destroy;
-    char **methods;                     // stb_ds array: the names of its methods in Lua
+    char **methods;                      // stb_ds array: the names of its methods in Lua
     const struct ECSIFunction **targets; // stb_ds array: the function each method calls, in the same order
 } ECSIHandleType;
 
@@ -79,13 +79,13 @@ typedef struct ECSILuaObject
 typedef struct ECSIParameter
 {
     ECSIParameterType type;
-    char *name;                        // the name the signature gives it, or nullptr; only for documentation
-    bool out;                          // an output parameter: a pointer in C, an extra result in Lua
-    bool keep;                         // a callback that stays valid after the call, until the function that took it releases it
-    ECSIHandleType *handle;           // handles: their type
-    struct ECSISignature *callback;   // callbacks: their signature, owned by the parameter
-    char *luaType;                     // values: the Lua type that value<...> names for editors, or nullptr; only for documentation, as names are
-    char *documentation;               // what the parameter or result is, from the function's description, or nullptr; only for documentation
+    char *name;                     // the name the signature gives it, or nullptr; only for documentation
+    bool out;                       // an output parameter: a pointer in C, an extra result in Lua
+    bool keep;                      // a callback that stays valid after the call, until the function that took it releases it
+    ECSIHandleType *handle;         // handles: their type
+    struct ECSISignature *callback; // callbacks: their signature, owned by the parameter
+    char *luaType;                  // values: the Lua type that value<...> names for editors, or nullptr; only for documentation, as names are
+    char *documentation;            // what the parameter or result is, from the function's description, or nullptr; only for documentation
 } ECSIParameter;
 
 /// @brief A parsed signature with its libffi call description.
@@ -93,7 +93,7 @@ typedef struct ECSISignature
 {
     ECSIParameter result;
     ECSIParameter *parameters; // stb_ds array
-    ffi_type **types;           // stb_ds array of the parameters' libffi types
+    ffi_type **types;          // stb_ds array of the parameters' libffi types
     usz outCount;
     ffi_cif cif;
     char *text; // the signature written the same way every time, such as "int(string, out float)"
@@ -1636,7 +1636,7 @@ static void ECSIDefinition_AddLuaFunction(ECSIText *text, const ECSISignature *s
 /// @brief Adds a parameter's type for LuaLS.
 static void ECSIDefinition_AddLuaType(ECSIText *text, ECSIParameter parameter)
 {
-    static const char *const types[ECSIParameterType_Count] = {"nil", "boolean", "integer", "integer", "number", "number", "string", "string", "string", "any", "userdata", "function"};
+    static const char *const types[ECSIParameterType_Count] = {"nil", "boolean", "integer", "integer", "number", "number", "ecs.Color", "string", "string", "any", "userdata", "function"};
 
     if (parameter.type == ECSIParameterType_Callback)
     {
@@ -2006,7 +2006,6 @@ SHUResult ECSIServices_Initialize(void)
     SHU_ReturnResult(ECSIServices_RegisterHandleType(nullptr, "ecs.popup", nullptr));
     return ECSIServices_RegisterHandleType(nullptr, "ecs.surface", nullptr);
 }
-
 
 void ECSIServices_PushHandle(const char *type, void *object)
 {
@@ -2641,7 +2640,6 @@ SHUResult ECSIServices_PushPlugin(ECSPlugin plugin, ECSPlugin provider)
 
     return SHUResult_Ok;
 }
-
 
 SHUResult ECSIServices_WriteDefinitions(ECSPlugin provider, const char *folder)
 {
