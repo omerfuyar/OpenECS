@@ -88,7 +88,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 ### 1.5 Files
 
 - Headers are in `include/`, source files in `src/`.
-- `include/OpenECS.h` is the one header that plugins include. It holds every public type and function, with documentation. The build copies only this header and `include/ecs.lua` (9.6) to the build's `include/` folder, and plugins are built against that copy, so they never see the core's headers.
+- `include/OpenECS.h` is the one header that plugins include, with `shu.h`, which it includes. It holds every public type and function, with documentation. The build copies these two and `include/ecs.lua` (9.6) to the build's `include/` folder, beside the plugins' definition files (10.10), and plugins are built against that folder alone, so they never see the core's headers or its dependencies'.
 - Each module (2.1) is a pair of files in its group's folder: `include/<group>/<Module>.h` with the module's declarations and their documentation, and `src/<group>/<Module>.c` with the definitions. Includes name the folder: `#include "base/Values.h"`.
 - `src/main.c` only reads the command line and runs the App module.
 - A module includes only the modules listed before it in 2.1, so modules never depend on each other in a cycle. So a group includes only its own folder and the groups before it.
@@ -150,7 +150,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 
 - No header that plugins include, and no function that plugins call, exposes a type from SDL, Lua, Clay or libffi.
 - `shu.h` is the exception; it is part of the plugin interface (1.3).
-- Native plugins get the core's SDL objects only through `ECSGpu_GetDevice` and a GPU surface's texture (9.8). A native plugin may call SDL itself, using the executable's copy (17.2), as the standard plugins do (20). Inside the core, every module calls SDL directly (1.7).
+- Native plugins get the core's SDL objects only through `ECSGpu_GetDevice` and a GPU surface's texture (9.8). The plugin interface includes no dependency's header: a plugin that uses a library, SDL too, brings it itself (17.2). Inside the core, every module calls SDL directly (1.7).
 - Plugins can call only the core functions marked `OPENECS_EXPORT`. Every other function of the core is hidden from them (17.2).
 
 ### 2.3 Start-up
@@ -705,7 +705,7 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 ### 9.8 The GPU device
 
 - Every plugin is a plugin on disk; the executable contains none. The core gives native plugins its SDL objects through two parts of its interface only: `ECSGpu_GetDevice()`, the GPU device, an `SDL_GPUDevice *` or nullptr without one, and a GPU surface's `texture` (5.4).
-- The core owns the device and destroys it after every plugin's `Destroy` (5.3). A plugin calls the rest of SDL itself, with the executable's copy (17.2).
+- The core owns the device and destroys it after every plugin's `Destroy` (5.3). A plugin that draws with SDL's GPU API itself brings SDL's headers (17.2); the standard plugin gpu draws with it for others.
 - Lua has neither. The standard plugin **gpu** draws into GPU surfaces from Lua and C, with an interface of its own (20).
 
 ### 9.9 Names
@@ -827,8 +827,8 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 
 ### 10.10 Definition files
 
-- `OpenECS --definitions FOLDER` loads every plugin it finds, without a display, writes two definition files for each, and exits. Nothing is opened or saved. With `--preset`, it loads that preset's plugins only.
-- The build writes the definitions of the plugins it built into `build/<type>/definitions/`, after the standard plugins and before the examples, so an example's C plugin includes their headers, such as `ui.h`. It also writes a `.luarc.json` in OpenECS, `std/` and `examples/` that names them and `include/`, so editors complete `require("ui")` there with no setup. A release's archive holds the standard plugins' definition files in its `include/`, beside `ecs.lua`, so plugin authors get them with `include/` alone.
+- `OpenECS --definitions FOLDER` writes the plugin interface, `OpenECS.h`, `shu.h` and `ecs.lua`, whose bytes the build puts into the executable so they always match it. Then it loads every plugin it finds, without a display, writes two definition files for each, and exits. Nothing is opened or saved. With `--preset`, it loads that preset's plugins only.
+- The build writes them into `build/<type>/include/`, after the standard plugins and before the examples, so an example's C plugin includes their headers, such as `ui.h`, with that folder alone, as any plugin's author does. It also writes a `.luarc.json` in OpenECS, `std/` and `examples/` that names that folder, so editors complete `require("ui")` there with no setup. A release's archive holds the same `include/`, so plugin authors get everything with it alone, and `--definitions` writes it again from any OpenECS, with the definitions of the plugins installed there.
 - `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, with what each parameter and result is (10.1), so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`. Each handle type of the plugin is a class there, with its methods, so an editor completes `connection:send` too.
 - `NAME.h` is a C header. Its structure is named after the plugin in PascalCase, such as `SketchCFunctions` for `sketch_c`, and has one typed function pointer for each function, with its description and what each parameter and the result are. `SketchCFunctions_Get(plugin, &functions)` looks them all up with their signatures.
 - A parameter without a name is called `arg1`, `arg2` and so on. In C, an output parameter is `ret` and its name with a capital first letter, such as `i32 *retWidth` for `out int width`; in Lua it is a result and keeps its name.
@@ -1133,8 +1133,9 @@ OpenECS follows the XDG Base Directory specification:
 - Lua, Clay, libffi and stb are linked statically into the executable.
 - libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64 and Windows on x86_64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default, and with `OPENECS_CORE` defined, so `OPENECS_EXPORT` exports.
-- Native plugins are shared libraries, built against the plugin header only. On Linux they do not link against the core; their calls to it are resolved when they are loaded. A DLL on Windows cannot call into the executable without its import library, so there the executable writes `lib/libOpenECS.a`, and plugins link it.
-- First-party native plugins may call SDL3 and SDL3_ttf. Like their calls to the core, these calls are resolved when the plugin is loaded, against the libraries the executable loaded, so every plugin uses the executable's copy of SDL. On Windows they link SDL's import libraries for it.
+- The build writes what people use into `build/<type>/`: the program, its plugins, presets and resources in `bin/`, the plugin interface in `include/` (10.10), and on Windows OpenECS's import library in `lib/`. What only the build uses, such as the dependencies' headers and libraries, stays in `.shu/<type>/`.
+- Native plugins are shared libraries, built against `include/` only. On Linux they do not link against the core; their calls to it are resolved when they are loaded. A DLL on Windows cannot call into the executable without its import library, so there the executable writes `lib/libOpenECS.a`, and plugins link it.
+- The standard plugins ship with OpenECS, so they reuse its built dependencies from `.shu/<type>/dependencies/` (17.7): they call SDL3 and SDL3_ttf, and keep arrays in stb_ds. Like their calls to the core, their calls to SDL are resolved when the plugin is loaded, against the libraries the executable loaded, so they use the executable's copy of SDL. On Windows they link SDL's import libraries for it. No other plugin sees OpenECS's dependencies: neither their headers nor their import libraries are in `include/` or `lib/`, and a plugin that uses a library brings it itself.
 - A plugin's own functions that the core calls, such as `ECSPlugin_Init`, are marked `OPENECS_PLUGIN`, which exports them from the plugin's library.
 - A first-party plugin is built from every C file in its folder, so the build needs no settings for each plugin. Its Lua files and its folders, which hold its Lua modules (9.6), are copied.
 - OpenECS-std and OpenECS-examples build their plugins this way, with their own builds (17.7).
@@ -1203,7 +1204,7 @@ OpenECS follows the XDG Base Directory specification:
 - The examples are in OpenECS-examples (17.7). An example is a folder that shows plugin authors one part of the plugin interface, or one standard plugin. Its number orders the examples from the first steps to the complex ones, so they are read in order: `1_hello`, `2_native`, and so on. The examples of the plugin interface come first, then those of the standard plugins.
 - An example holds a preset, `preset.lua`, the folders of its plugins, and its tests, the files whose names start with `test`. The preset names the folder in `pluginsDir`, so the example needs nothing else but the standard plugins.
 - Its comments explain how the core behaves: what a statement makes the core do, when it may be called, and a concept the first time it appears. They do not explain the example's own logic or repeat the functions' documentation.
-- With the flag `--examples`, the examples' build copies the numbered folders of `examples/`, sources too, to `bin/examples/`, and builds each example's native plugins there. A native plugin includes `OpenECS.h`, SDL and the standard plugins' definition headers (10.10).
+- With the flag `--examples`, the examples' build copies the numbered folders of `examples/`, sources too, to `bin/examples/`, and builds each example's native plugins there. A native plugin includes `OpenECS.h` and the standard plugins' definition headers from the build's `include/` alone (10.10), as any plugin's author does.
 - A change that breaks an example changes the example in the same piece of work, so every test passes.
 
 ### 17.7 Repositories
@@ -1216,7 +1217,7 @@ OpenECS follows the XDG Base Directory specification:
   | `OpenECS-examples` | The examples (17.6)                                                                                                        | `examples/`       |
 
 - Both are git submodules of OpenECS, so one build and one release hold all three (19.4). A submodule names one commit of its repository's `dev`; OpenECS moves it forward in a pull request.
-- Each repository has a build of its own, `shuild.c`, which OpenECS's build runs. OpenECS's build compiles it with shu and shuild from OpenECS's `dependencies/` into `shuild.ignore` in the repository's folder, because shuild finds every path from the folder of the program it runs in. It runs it there with the build type and OpenECS's build folder as seen from that folder.
+- Each repository has a build of its own, `shuild.c`, which OpenECS's build runs. OpenECS's build compiles it with shu and shuild from OpenECS's `dependencies/` into `shuild.ignore` in the repository's folder, because shuild finds every path from the folder of the program it runs in. It runs it there with the build type and OpenECS's build folder as seen from that folder, and OpenECS-std's also with the folder of OpenECS's built dependencies, `.shu/<type>/dependencies/`, with `-d` (17.2).
 - OpenECS's build builds the standard plugins unless it is given `--no-std`, and the examples when it is given `--examples`:
 
   | Flag of OpenECS's build | Runs                                                                                                                                                        |
@@ -1277,7 +1278,7 @@ OpenECS follows the XDG Base Directory specification:
 
 - OpenECS, OpenECS-std and OpenECS-examples are released together, with the same version. Each has a `dev` branch, a `main` branch that holds its releases, and a tag `vVERSION` for each release on its `main`.
 - `.github/workflows/release.yml` runs when a version tag is pushed. It fails when the tag does not match `OPENECS_VERSION`.
-- For each platform, it makes a Release build and packs it into `openecs-VERSION-PLATFORM.tar.gz`: the program with its plugins, presets, examples and resources, the plugin interface (`OpenECS.h`, `ecs.lua` and `shu.h`), `LICENSE`, and the licenses of the works it includes. The Windows package is a zip file, which Windows opens itself, with SDL's DLLs beside the program. Its `lib/` holds the import libraries of OpenECS, SDL3 and SDL3_ttf, which a C plugin links on Windows (17.2).
+- For each platform, it makes a Release build and packs it into `openecs-VERSION-PLATFORM.tar.gz`: the program with its plugins, presets, examples and resources, `include/` with the plugin interface and the standard plugins' definition files (10.10), `LICENSE`, and the licenses of the works it includes. The Windows package is a zip file, which Windows opens itself, with SDL's DLLs beside the program. Its `lib/` holds OpenECS's import library, which a C plugin links on Windows (17.2).
 - It packs the source with every submodule into `openecs-VERSION-source.tar.gz`, because GitHub's own source archives leave the submodules out. `SHA256SUMS` holds the checksums of the archives.
 - It makes a draft release with these files. Its description is `.github/release-notes/vVERSION.md`. A version below 1.0.0, or one with a suffix, is marked as a pre-release.
 - OpenECS-std and OpenECS-examples make a draft release of their own from their tag, with their source and its submodules, and their own description. For each platform, it also holds their part of OpenECS's Release build of the same version, `openecs-std-VERSION-PLATFORM` and `openecs-examples-VERSION-PLATFORM`: std's plugins, the preset `launcher` and the plugins' definition files, or the examples with their native plugins. Unpacked into an OpenECS folder of that version, their folders join OpenECS's. Their workflows check out OpenECS at the same tag, so OpenECS's tag is pushed first.

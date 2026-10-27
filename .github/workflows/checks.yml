@@ -55,8 +55,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            build/Debug/lib
-            build/Debug/include
+            .shu/Debug/dependencies
           key: debug-linux-${{ steps.dependencies.outputs.key }}
 
       - name: Detect the compilers with shuild
@@ -101,8 +100,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            build/Release/lib
-            build/Release/include
+            .shu/Release/dependencies
           key: release-linux-${{ steps.dependencies.outputs.key }}
 
       # code that only Release builds compile, or link, breaks here instead of at a release
@@ -126,7 +124,7 @@ jobs:
         shell: pwsh
         run: .github/scripts/install-windows.ps1
 
-      # SDL's DLLs are installed into bin/, beside the executable, and lib/ has their import libraries
+      # SDL's DLLs and import libraries are installed with the other dependencies, and the build copies the DLLs beside the executable
       - name: Name the dependencies' versions
         id: dependencies
         run: echo "key=$( (git submodule status --recursive; sha256sum shuild.c dependencies/other/*/*) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
@@ -135,12 +133,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            build/Debug/lib
-            build/Debug/include
-            build/Debug/bin/*.dll
-            build/Release/lib
-            build/Release/include
-            build/Release/bin/*.dll
+            .shu/Debug/dependencies
+            .shu/Release/dependencies
           key: windows-${{ steps.dependencies.outputs.key }}
 
       - name: Detect the compilers with shuild

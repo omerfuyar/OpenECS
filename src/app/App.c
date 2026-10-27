@@ -485,9 +485,12 @@ SHUResult ECSIApp_WriteDefinitions(const char *folder)
         return SHUResult_ErrFile;
     }
 
-    SHUResult result = ECSIPlugins_ForEach(ECSIApp_WritePluginDefinitions, path);
+    // the plugin interface first, so the folder holds everything a plugin's author includes
+    SHUResult result = ECSIServices_WriteInterface(path);
+    SHUResult written = ECSIPlugins_ForEach(ECSIApp_WritePluginDefinitions, path);
+    result = result ? result : written;
 
-    SDL_Log("Definition files written to '%s'.", path);
+    SDL_Log("The plugin interface and the definition files written to '%s'.", path);
     SDL_free(path);
     return result;
 }
