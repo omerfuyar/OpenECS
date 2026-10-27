@@ -29,4 +29,4 @@ if [ -z "$display" ]; then
     exit 1
 fi
 
-XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$display" SDL_VIDEO_DRIVER=wayland "$(dirname "$0")/test.sh"
+XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$display" SDL_VIDEO_DRIVER=wayland "$(dirname "$0")/test.sh" "$@"

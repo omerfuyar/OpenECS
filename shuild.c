@@ -19,14 +19,16 @@ static const char *const BUILD_TYPE_STRINGS[] = {"Debug", "Release", "RelWithDeb
 static struct
 {
     BuildType type;
-    bool std;      // also build the standard plugins, from std/
-    bool examples; // also build the examples, from examples/
-    bool test;     // run the examples' tests after the build
-    bool help;     // print the help, and build nothing
+    bool std;              // also build the standard plugins, from std/
+    bool examples;         // also build the examples, from examples/
+    bool test;             // run the examples' tests after the build
+    char **testedExamples; // the examples whose tests run, as the command line names them, or none for every example
+    int testedExampleCount;
+    bool help; // print the help, and build nothing
     const char *compiler;
     const char *badArgument; // the first argument that cannot be read, and why
     const char *badArgumentReason;
-    bool windows; // the compiler compiles for Windows
+    bool windows;          // the compiler compiles for Windows
     char *buildDir;        // shuild's cache, such as .shu/Debug/
     char *dependenciesDir; // the built dependencies, which only the build uses: their headers in include/ and their libraries in lib/, such as .shu/Debug/dependencies/
     char *cmakeDir;        // the CMake builds, a folder for each compiler, as CMake keeps the compiler it configured with, such as .shu/Debug/cmake/gcc/
@@ -136,8 +138,9 @@ static void PrintUsage(void)
            "                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release\n"
            "  -n, --no-std       Do not build the standard plugins of std/\n"
            "  -e, --examples     Also build the examples of examples/, into bin/examples/\n"
-           "  -t, --test         Build in Debug with the examples, then run every example's test. Prints pass or FAIL for each,\n"
-           "                     and fails when a test fails or its output has a sanitizer's report\n"
+           "  -t, --test [EXAMPLE...]\n"
+           "                     Build in Debug with the examples, then run the tests of the examples named, such as c12_sketch,\n"
+           "                     or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report\n"
            "  -c, --compiler CC  The compiler: gcc (the default), clang, or on Windows LLVM-MinGW's clang (the default there).\n"
            "                     A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/\n"
            "  -h, --help         Show this help\n");
@@ -203,6 +206,21 @@ static void ReadArguments(int argc, char **argv)
         else if (!strcmp(flag, "-t") || !strcmp(flag, "--test"))
         {
             CONFIG.test = true;
+
+            // the arguments after it that are no flags name examples, such as c12_sketch
+            CONFIG.testedExamples = &argv[i + 1];
+
+            while (i + 1 < argc && argv[i + 1][0] != '-')
+            {
+                if (SHU_UtilFileExists(SHU_UtilFormat("examples/%s/", argv[i + 1])) != SHUFileType_Directory)
+                {
+                    NoteBadArgument("No example is named", argv[i + 1]);
+                    return;
+                }
+
+                CONFIG.testedExampleCount++;
+                i++;
+            }
         }
         else if (!strcmp(flag, "-h") || !strcmp(flag, "--help"))
         {
@@ -908,16 +926,39 @@ static void RunTest(const char *path, SHUFileType type, void *data)
     free(output.data);
 }
 
-/// @brief Runs the test of each example of the folder.
+/// @brief Tells whether the command line asks for an example's tests: it names the example, or names none.
+static bool IsTested(const char *path)
+{
+    // the entry is the folder's path, with a separator at its end
+    int end = (int)strlen(path) - 1;
+    int start = end;
+
+    while (start > 0 && path[start - 1] != '/' && path[start - 1] != SHUM_PATH_SEPARATOR)
+    {
+        start--;
+    }
+
+    bool named = CONFIG.testedExampleCount == 0;
+
+    for (int i = 0; i < CONFIG.testedExampleCount && !named; i++)
+    {
+        named = (int)strlen(CONFIG.testedExamples[i]) == end - start && strncmp(path + start, CONFIG.testedExamples[i], (usz)(end - start)) == 0;
+    }
+
+    return named;
+}
+
+/// @brief Runs the test of each example of the folder that the command line asks for.
 static void RunExampleTests(const char *path, SHUFileType type, void *data)
 {
-    if (type == SHUFileType_Directory)
+    if (type == SHUFileType_Directory && IsTested(path))
     {
         SHU_UtilListDirectory(path, false, RunTest, data);
     }
 }
 
-// the examples are the tests: each test of bin/examples/ runs with the Debug build, on SDL's offscreen driver unless SDL_VIDEO_DRIVER names another (DESIGN 17.5)
+// the examples are the tests: each test of bin/examples/, or of the examples the command line names, runs with the Debug build, on SDL's offscreen driver
+// unless SDL_VIDEO_DRIVER names another (DESIGN 17.5)
 static void RunTests(void)
 {
     TestCount count = {0};
