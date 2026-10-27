@@ -435,6 +435,27 @@ static void ECSILayout_FreeWorkspaces(ECSILayoutTreeFunction FreeTree)
     arrfree(LAYOUT.closed);
 }
 
+/// @brief Moves the children of a split into the list of children of its parent split, with their shares scaled to the split's share, and frees the split.
+static void ECSILayout_MergeSplit(ECSINode *parent, ECSINode *split, ECSINode ***children)
+{
+    f32 shareSum = 0.0f;
+
+    for (usz i = 0; i < arrlenu(split->children); i++)
+    {
+        shareSum += split->children[i]->fixedSize > 0.0f ? 0.0f : split->children[i]->share;
+    }
+
+    for (usz i = 0; i < arrlenu(split->children); i++)
+    {
+        ECSINode *child = split->children[i];
+        child->share = child->fixedSize > 0.0f || shareSum <= 0.0f ? child->share : child->share * split->share / shareSum;
+        child->parent = parent;
+        arrput(*children, child);
+    }
+
+    ECSILayout_FreeNode(split);
+}
+
 /// @brief Tidies a subtree after an operation: frees empty groups and splits, merges a split into a parent split of the same direction, and replaces a split that has one child by that child.
 /// @return The node that takes the subtree's place, or nullptr if nothing is left.
 static ECSINode *ECSILayout_TidyNode(ECSIRoot *root, ECSINode *node)
@@ -469,22 +490,7 @@ static ECSINode *ECSILayout_TidyNode(ECSIRoot *root, ECSINode *node)
         // a child split of the same direction gives its children its place; a fixed-size one keeps them, so their shares keep their meaning
         if (child->type == ECSINodeType_Split && child->vertical == node->vertical && child->fixedSize <= 0.0f)
         {
-            f32 shareSum = 0.0f;
-
-            for (usz j = 0; j < arrlenu(child->children); j++)
-            {
-                shareSum += child->children[j]->fixedSize > 0.0f ? 0.0f : child->children[j]->share;
-            }
-
-            for (usz j = 0; j < arrlenu(child->children); j++)
-            {
-                ECSINode *grandchild = child->children[j];
-                grandchild->share = grandchild->fixedSize > 0.0f || shareSum <= 0.0f ? grandchild->share : grandchild->share * child->share / shareSum;
-                grandchild->parent = node;
-                arrput(children, grandchild);
-            }
-
-            ECSILayout_FreeNode(child);
+            ECSILayout_MergeSplit(node, child, &children);
             continue;
         }
 

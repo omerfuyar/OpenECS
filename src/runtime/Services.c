@@ -196,14 +196,14 @@ static void ECSIText_Add(ECSIText *text, const char *format, ...)
     char *joined = nullptr;
     va_list arguments;
     va_start(arguments, format);
-    bool ok = !text->failed && SDL_vasprintf(&part, format, arguments) >= 0;
+    bool succeeded = !text->failed && SDL_vasprintf(&part, format, arguments) >= 0;
     va_end(arguments);
 
-    ok = ok && SDL_asprintf(&joined, "%s%s", text->data == nullptr ? "" : text->data, part) >= 0;
+    succeeded = succeeded && SDL_asprintf(&joined, "%s%s", text->data == nullptr ? "" : text->data, part) >= 0;
     SDL_free(part);
     SDL_free(text->data);
-    text->data = ok ? joined : nullptr;
-    text->failed = !ok;
+    text->data = succeeded ? joined : nullptr;
+    text->failed = !succeeded;
 }
 
 static ECSIHandleType *ECSIServices_FindHandleType(const char *name)
@@ -478,6 +478,55 @@ static void ECSISignature_AddParameter(ECSIText *text, ECSIParameter parameter)
     }
 }
 
+/// @brief Reads a parameter of a signature's list, with its name if it has one and the comma after it, and adds it to the signature.
+/// @return false if the parameter is not valid; then nothing is added.
+static bool ECSISignature_ReadListedParameter(const char **cursor, ECSISignature *signature)
+{
+    ECSIParameter parameter = {0};
+    bool valid = ECSISignature_ReadParameter(cursor, &parameter) && parameter.type != ECSIParameterType_Void && !(parameter.out && parameter.type == ECSIParameterType_Callback);
+
+    // a parameter may have a name after its type, such as "float x"
+    if (valid && (SDL_isalpha((unsigned char)**cursor) || **cursor == '_'))
+    {
+        const char *word = nullptr;
+        usz length = ECSISignature_ReadWord(cursor, &word);
+        parameter.name = SDL_strndup(word, length);
+        valid = parameter.name != nullptr;
+    }
+
+    valid = valid && (**cursor == ',' || **cursor == ')');
+    *cursor += valid && **cursor == ',' ? 1 : 0;
+    ECSISignature_SkipSpaces(cursor);
+
+    if (!valid)
+    {
+        ECSIParameter_Free(&parameter);
+        return false;
+    }
+
+    arrput(signature->parameters, parameter);
+    arrput(signature->types, ECSIServices_GetFfiType(parameter));
+    signature->outCount += parameter.out ? 1 : 0;
+    return true;
+}
+
+/// @brief Writes a signature's text again, so signatures compare the same however they are spaced: the result, then the parameters in parentheses.
+static ECSIText ECSISignature_Write(const ECSISignature *signature)
+{
+    ECSIText written = {0};
+    ECSISignature_AddParameter(&written, signature->result);
+    ECSIText_Add(&written, "(");
+
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
+    {
+        ECSIText_Add(&written, "%s", i == 0 ? "" : ", ");
+        ECSISignature_AddParameter(&written, signature->parameters[i]);
+    }
+
+    ECSIText_Add(&written, ")");
+    return written;
+}
+
 /// @brief Parses a signature such as "int(string path, out float)", and prepares its libffi call description. Parameter names are kept apart from the signature's text, so they never change how signatures compare.
 static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignature)
 {
@@ -491,32 +540,7 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
 
     while (valid && *cursor != ')')
     {
-        ECSIParameter parameter = {0};
-        valid = ECSISignature_ReadParameter(&cursor, &parameter) && parameter.type != ECSIParameterType_Void && !(parameter.out && parameter.type == ECSIParameterType_Callback);
-
-        // a parameter may have a name after its type, such as "float x"
-        if (valid && (SDL_isalpha((unsigned char)*cursor) || *cursor == '_'))
-        {
-            const char *word = nullptr;
-            usz length = ECSISignature_ReadWord(&cursor, &word);
-            parameter.name = SDL_strndup(word, length);
-            valid = parameter.name != nullptr;
-        }
-
-        valid = valid && (*cursor == ',' || *cursor == ')');
-        cursor += valid && *cursor == ',' ? 1 : 0;
-        ECSISignature_SkipSpaces(&cursor);
-
-        if (!valid)
-        {
-            ECSIParameter_Free(&parameter);
-        }
-        else
-        {
-            arrput(retSignature->parameters, parameter);
-            arrput(retSignature->types, ECSIServices_GetFfiType(parameter));
-            retSignature->outCount += parameter.out ? 1 : 0;
-        }
+        valid = ECSISignature_ReadListedParameter(&cursor, retSignature);
     }
 
     valid = valid && *cursor++ == ')';
@@ -529,19 +553,7 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
         return SHUResult_ErrBadData;
     }
 
-    // the text is written again, so signatures compare the same however they are spaced: the result, then the parameters in parentheses
-    usz count = arrlenu(retSignature->parameters);
-    ECSIText written = {0};
-    ECSISignature_AddParameter(&written, retSignature->result);
-    ECSIText_Add(&written, "(");
-
-    for (usz i = 0; i < count; i++)
-    {
-        ECSIText_Add(&written, "%s", i == 0 ? "" : ", ");
-        ECSISignature_AddParameter(&written, retSignature->parameters[i]);
-    }
-
-    ECSIText_Add(&written, ")");
+    ECSIText written = ECSISignature_Write(retSignature);
     retSignature->text = written.data;
 
     if (written.failed)
@@ -550,7 +562,7 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
         return SHUResult_ErrAllocation;
     }
 
-    if (ffi_prep_cif(&retSignature->cif, FFI_DEFAULT_ABI, (unsigned int)count, ECSIServices_GetFfiType(retSignature->result), retSignature->types) != FFI_OK)
+    if (ffi_prep_cif(&retSignature->cif, FFI_DEFAULT_ABI, (unsigned int)arrlenu(retSignature->parameters), ECSIServices_GetFfiType(retSignature->result), retSignature->types) != FFI_OK)
     {
         ECSISignature_Free(retSignature);
         return SHUResult_ErrInternal;
@@ -709,38 +721,12 @@ static void ECSIServices_NarrowResult(ECSIParameter result, ECSISlot *slot)
     }
 }
 
-/// @brief Calls a C function from Lua through libffi. The function is the first upvalue: a registered function, or a callback that C gave Lua. The second, for a registered function, is the plugin that calls it. Output parameters become extra results.
-static int ECSIServices_CallC(lua_State *state)
+/// @brief Checks the arguments of a call from Lua and puts them in the call's parameters; an output parameter points to where C writes it. Raises a Lua error for a wrong argument.
+static void ECSIServices_CheckArguments(lua_State *state, const ECSISignature *signature, ECSICallParameter *parameters, void **arguments)
 {
-    const ECSIFunction *function = lua_touserdata(state, lua_upvalueindex(1));
-    ECSPlugin caller = lua_touserdata(state, lua_upvalueindex(2));
-    const ECSISignature *signature = &function->signature;
-    usz count = arrlenu(signature->parameters);
-
-    if (function->pointer == nullptr)
-    {
-        return luaL_error(state, "a callback given to '%s' is valid only during the call that gave it", function->name);
-    }
-
-    // a missing argument is nil; the stack holds one for each, so the storage below never stands where an argument is read
-    int inputs = 0;
-
-    for (usz i = 0; i < count; i++)
-    {
-        inputs += signature->parameters[i].out ? 0 : 1;
-    }
-
-    if (lua_gettop(state) < inputs)
-    {
-        lua_settop(state, inputs);
-    }
-
-    // the storage is a userdata, so it is freed even when an argument raises an error; libffi takes the arguments as an array of pointers
-    ECSICallParameter *parameters = lua_newuserdatauv(state, count * (sizeof(ECSICallParameter) + sizeof(void *)) + 1, 0);
-    void **arguments = (void **)(parameters + count);
     int index = 1;
 
-    for (usz i = 0; i < count; i++)
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
     {
         ECSICallParameter *call = &parameters[i];
         *call = (ECSICallParameter){0};
@@ -756,11 +742,14 @@ static int ECSIServices_CallC(lua_State *state)
             ECSIServices_CheckArgument(state, call->index, signature->parameters[i], &call->slot);
         }
     }
+}
 
-    // values allocate, so they are made after every check that can raise an error
+/// @brief Makes the values that a call passes: the Lua arguments as values, and empty values for the outputs.
+static SHUResult ECSIServices_MakeValues(lua_State *state, const ECSISignature *signature, ECSICallParameter *parameters)
+{
     SHUResult result = SHUResult_Ok;
 
-    for (usz i = 0; i < count; i++)
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
     {
         ECSIParameter parameter = signature->parameters[i];
 
@@ -780,46 +769,52 @@ static int ECSIServices_CallC(lua_State *state)
         }
     }
 
-    // a Lua function becomes a closure that C calls; it is valid until this call returns, or until C releases it if C keeps it
-    for (usz i = 0; !result && i < count; i++)
+    return result;
+}
+
+/// @brief Makes the Lua functions that a call passes into closures that C calls. A closure is valid until the call returns, or until C releases it if C keeps it.
+static SHUResult ECSIServices_MakeCallbacks(lua_State *state, const ECSIFunction *function, ECSPlugin caller, ECSICallParameter *parameters)
+{
+    const ECSISignature *signature = &function->signature;
+
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
     {
         ECSICallParameter *call = &parameters[i];
 
-        if (signature->parameters[i].type == ECSIParameterType_Callback && !lua_isnoneornil(state, call->index))
+        if (signature->parameters[i].type != ECSIParameterType_Callback || lua_isnoneornil(state, call->index))
         {
-            result = ECSIServices_MakeCallback(state, call->index, function, caller, signature->parameters[i].callback, &call->callback);
+            continue;
+        }
 
-            // C gets the closure's code; POSIX lets a data pointer hold code
-            if (!result)
-            {
-                SDL_memcpy(&call->slot.pointer, &call->callback->pointer, sizeof(call->slot.pointer));
-            }
+        SHU_ReturnResult(ECSIServices_MakeCallback(state, call->index, function, caller, signature->parameters[i].callback, &call->callback));
 
-            // a kept closure is the map's from now on, so C may release it during the call
-            if (!result && signature->parameters[i].keep)
-            {
-                hmput(SERVICES.kept, call->slot.pointer, call->callback);
-            }
+        // C gets the closure's code; POSIX lets a data pointer hold code
+        SDL_memcpy(&call->slot.pointer, &call->callback->pointer, sizeof(call->slot.pointer));
+
+        // a kept closure is the map's from now on, so C may release it during the call
+        if (signature->parameters[i].keep)
+        {
+            hmput(SERVICES.kept, call->slot.pointer, call->callback);
         }
     }
 
-    ECSISlot returned = {0};
+    return SHUResult_Ok;
+}
 
-    if (!result)
-    {
-        ffi_call((ffi_cif *)&signature->cif, FFI_FN(function->pointer), &returned, arguments);
-    }
-
+/// @brief Pushes what a call gives back to Lua: its result, then its output parameters.
+/// @return The number of values pushed.
+static int ECSIServices_PushResults(lua_State *state, const ECSISignature *signature, const ECSICallParameter *parameters, ECSISlot *returned)
+{
     int pushed = 0;
 
-    if (!result && signature->result.type != ECSIParameterType_Void)
+    if (signature->result.type != ECSIParameterType_Void)
     {
-        ECSIServices_NarrowResult(signature->result, &returned);
-        ECSIServices_PushArgument(state, signature->result, &returned);
+        ECSIServices_NarrowResult(signature->result, returned);
+        ECSIServices_PushArgument(state, signature->result, returned);
         pushed++;
     }
 
-    for (usz i = 0; !result && i < count; i++)
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
     {
         if (signature->parameters[i].out)
         {
@@ -828,7 +823,13 @@ static int ECSIServices_CallC(lua_State *state)
         }
     }
 
-    for (usz i = 0; i < count; i++)
+    return pushed;
+}
+
+/// @brief Frees the values and closures of a call. A kept closure that the call got is C's once the call ran, released or not; when the call did not run, nothing can release it.
+static void ECSIServices_FreeCallParameters(const ECSISignature *signature, ECSICallParameter *parameters, bool called)
+{
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
     {
         ECSICallParameter *call = &parameters[i];
         bool keep = signature->parameters[i].keep;
@@ -838,17 +839,59 @@ static int ECSIServices_CallC(lua_State *state)
             ECSValue_Destroy((ECSValue **)&call->slot.pointer);
         }
 
-        // a kept closure that the call got is C's now, released or not; when the call did not run, nothing can release it
-        if (call->callback != nullptr && (!keep || result))
+        if (call->callback == nullptr || (keep && called))
         {
-            if (keep)
-            {
-                (void)hmdel(SERVICES.kept, call->slot.pointer);
-            }
-
-            ECSIServices_FreeCallback(&call->callback);
+            continue;
         }
+
+        if (keep)
+        {
+            (void)hmdel(SERVICES.kept, call->slot.pointer);
+        }
+
+        ECSIServices_FreeCallback(&call->callback);
     }
+}
+
+/// @brief Calls a C function from Lua through libffi. The function is the first upvalue: a registered function, or a callback that C gave Lua. The second, for a registered function, is the plugin that calls it. Output parameters become extra results.
+static int ECSIServices_CallC(lua_State *state)
+{
+    const ECSIFunction *function = lua_touserdata(state, lua_upvalueindex(1));
+    ECSPlugin caller = lua_touserdata(state, lua_upvalueindex(2));
+    const ECSISignature *signature = &function->signature;
+    usz count = arrlenu(signature->parameters);
+
+    if (function->pointer == nullptr)
+    {
+        return luaL_error(state, "a callback given to '%s' is valid only during the call that gave it", function->name);
+    }
+
+    // a missing argument is nil; the stack holds one for each, so the storage below never stands where an argument is read
+    int inputs = (int)(count - signature->outCount);
+
+    if (lua_gettop(state) < inputs)
+    {
+        lua_settop(state, inputs);
+    }
+
+    // the storage is a userdata, so it is freed even when an argument raises an error; libffi takes the arguments as an array of pointers
+    ECSICallParameter *parameters = lua_newuserdatauv(state, count * (sizeof(ECSICallParameter) + sizeof(void *)) + 1, 0);
+    void **arguments = (void **)(parameters + count);
+    ECSIServices_CheckArguments(state, signature, parameters, arguments);
+
+    // values allocate, so they are made after every check that can raise an error
+    SHUResult result = ECSIServices_MakeValues(state, signature, parameters);
+    result = result ? result : ECSIServices_MakeCallbacks(state, function, caller, parameters);
+    int pushed = 0;
+
+    if (!result)
+    {
+        ECSISlot returned = {0};
+        ffi_call((ffi_cif *)&signature->cif, FFI_FN(function->pointer), &returned, arguments);
+        pushed = ECSIServices_PushResults(state, signature, parameters, &returned);
+    }
+
+    ECSIServices_FreeCallParameters(signature, parameters, !result);
 
     if (result)
     {
@@ -1067,6 +1110,41 @@ static void ECSIServices_PushArgument(lua_State *state, ECSIParameter parameter,
     }
 }
 
+/// @brief Writes a string that a Lua function gave, at an index of the stack, where C reads it: as a string, or as a buffer.
+/// The anchor keeps the string alive; a buffer gets a copy, because C may write into it.
+/// @param anchors Index of the table that keeps strings and buffers alive until the function returns again.
+/// @return false if the Lua value is not a string.
+static bool ECSIServices_WriteBytes(lua_State *state, int index, int anchors, bool buffer, void *retTarget)
+{
+    bool text = lua_type(state, index) == LUA_TSTRING;
+    usz length = 0;
+    const char *bytes = text ? lua_tolstring(state, index, &length) : nullptr;
+
+    if (buffer && text)
+    {
+        void *copy = lua_newuserdatauv(state, length + 1, 0);
+        SDL_memcpy(copy, bytes, length);
+        bytes = copy;
+    }
+    else
+    {
+        lua_pushvalue(state, index);
+    }
+
+    lua_rawseti(state, anchors, (lua_Integer)lua_rawlen(state, anchors) + 1);
+
+    if (buffer)
+    {
+        *(SHUSlice *)retTarget = cs((void *)bytes, length);
+    }
+    else
+    {
+        *(const char **)retTarget = bytes;
+    }
+
+    return text;
+}
+
 /// @brief Writes a value that a Lua function gave, at an index of the stack, where C reads it: its return value or an output.
 /// @param anchors Index of the table that keeps strings and buffers alive until the function returns again.
 /// @return false if the Lua value has the wrong type.
@@ -1139,36 +1217,7 @@ static bool ECSIServices_WriteOutput(lua_State *state, ECSIFunction *function, i
     }
     case ECSIParameterType_String:
     case ECSIParameterType_Buffer:
-    {
-        bool text = lua_type(state, index) == LUA_TSTRING;
-        usz length = 0;
-        const char *bytes = text ? lua_tolstring(state, index, &length) : nullptr;
-
-        // the anchor keeps the string alive; a buffer gets a copy, because C may write into it
-        if (type == ECSIParameterType_Buffer && text)
-        {
-            void *copy = lua_newuserdatauv(state, length + 1, 0);
-            SDL_memcpy(copy, bytes, length);
-            bytes = copy;
-        }
-        else
-        {
-            lua_pushvalue(state, index);
-        }
-
-        lua_rawseti(state, anchors, (lua_Integer)lua_rawlen(state, anchors) + 1);
-
-        if (type == ECSIParameterType_String)
-        {
-            *(const char **)retTarget = bytes;
-        }
-        else
-        {
-            *(SHUSlice *)retTarget = cs((void *)bytes, length);
-        }
-
-        return text;
-    }
+        return ECSIServices_WriteBytes(state, index, anchors, type == ECSIParameterType_Buffer, retTarget);
     case ECSIParameterType_Value:
     {
         // a result value is kept until the function returns again; an output fills the caller's value
@@ -1391,6 +1440,40 @@ static void ECSIServices_FreeCallback(ECSIFunction **callback)
 
 #pragma endregion C Calls Lua
 
+/// @brief Finds what a line of a function's description documents: the result for "@return text", or the parameter it names for "@param name text".
+/// @param retText Where the line's text after the tag and name starts.
+/// @return The result or the parameter, or nullptr when the line is neither, or names no parameter of the signature.
+static ECSIParameter *ECSIServices_FindDocumented(ECSISignature *signature, const char *line, const char **retText)
+{
+    if (SDL_strncmp(line, "@return ", 8) == 0)
+    {
+        *retText = line + 8;
+        return &signature->result;
+    }
+
+    if (SDL_strncmp(line, "@param ", 7) != 0)
+    {
+        return nullptr;
+    }
+
+    const char *name = line + 7;
+    const char *space = SDL_strchr(name, ' ');
+    usz length = space == nullptr ? SDL_strlen(name) : (usz)(space - name);
+    *retText = name[length] == ' ' ? name + length + 1 : name + length;
+
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
+    {
+        const char *given = signature->parameters[i].name;
+
+        if (given != nullptr && SDL_strlen(given) == length && SDL_strncmp(given, name, length) == 0)
+        {
+            return &signature->parameters[i];
+        }
+    }
+
+    return nullptr;
+}
+
 /// @brief Reads the lines of a function's description after its first: "@param name text" says what a parameter is, and "@return text" what the
 /// function gives. The first line stays the description, which menus show. A line that names no parameter of the signature is reported and skipped.
 static SHUResult ECSIServices_ReadDocumentation(ECSIFunction *function)
@@ -1413,27 +1496,8 @@ static SHUResult ECSIServices_ReadDocumentation(ECSIFunction *function)
             *next++ = '\0';
         }
 
-        ECSIParameter *target = nullptr;
         const char *text = nullptr;
-
-        if (SDL_strncmp(line, "@return ", 8) == 0)
-        {
-            target = &function->signature.result;
-            text = line + 8;
-        }
-        else if (SDL_strncmp(line, "@param ", 7) == 0)
-        {
-            const char *name = line + 7;
-            const char *space = SDL_strchr(name, ' ');
-            usz length = space == nullptr ? SDL_strlen(name) : (usz)(space - name);
-            text = name[length] == ' ' ? name + length + 1 : name + length;
-
-            for (usz i = 0; i < arrlenu(function->signature.parameters) && target == nullptr; i++)
-            {
-                const char *given = function->signature.parameters[i].name;
-                target = given != nullptr && SDL_strlen(given) == length && SDL_strncmp(given, name, length) == 0 ? &function->signature.parameters[i] : nullptr;
-            }
-        }
+        ECSIParameter *target = ECSIServices_FindDocumented(&function->signature, line, &text);
 
         if (target == nullptr || target->documentation != nullptr || text[0] == '\0')
         {
@@ -1946,8 +2010,8 @@ static SHUResult ECSIDefinition_WriteC(ECSPlugin provider, const char *folder)
     char member[256];
     ECSIDefinition_ToPascalCase(plugin, cs(pascal, sizeof(pascal)));
 
-    ECSIText c = {0};
-    ECSIText_Add(&c, "// The functions of the plugin %s, for plugins in C. OpenECS --definitions wrote this file.\n#pragma once\n\n#include \"OpenECS.h\"\n\n/// @brief The functions of the plugin %s. %sFunctions_Get fills them.\ntypedef struct %sFunctions\n{\n", plugin, plugin, pascal, pascal);
+    ECSIText header = {0};
+    ECSIText_Add(&header, "// The functions of the plugin %s, for plugins in C. OpenECS --definitions wrote this file.\n#pragma once\n\n#include \"OpenECS.h\"\n\n/// @brief The functions of the plugin %s. %sFunctions_Get fills them.\ntypedef struct %sFunctions\n{\n", plugin, plugin, pascal, pascal);
 
     const ECSIFunction **functions = ECSIDefinition_GetFunctions(provider);
 
@@ -1957,7 +2021,7 @@ static SHUResult ECSIDefinition_WriteC(ECSPlugin provider, const char *folder)
         const ECSISignature *signature = &function->signature;
 
         // a member that points to the function
-        ECSIText_Add(&c, "    /// @brief %s\n", function->description);
+        ECSIText_Add(&header, "    /// @brief %s\n", function->description);
 
         for (usz j = 0; j < arrlenu(signature->parameters); j++)
         {
@@ -1965,39 +2029,39 @@ static SHUResult ECSIDefinition_WriteC(ECSPlugin provider, const char *folder)
 
             if (signature->parameters[j].documentation != nullptr)
             {
-                ECSIText_Add(&c, "    /// @param %s %s\n", ECSIDefinition_GetCName(signature->parameters[j], j, cs(name, sizeof(name))), signature->parameters[j].documentation);
+                ECSIText_Add(&header, "    /// @param %s %s\n", ECSIDefinition_GetCName(signature->parameters[j], j, cs(name, sizeof(name))), signature->parameters[j].documentation);
             }
         }
 
         if (signature->result.documentation != nullptr)
         {
-            ECSIText_Add(&c, "    /// @return %s\n", signature->result.documentation);
+            ECSIText_Add(&header, "    /// @return %s\n", signature->result.documentation);
         }
 
         char declarator[300];
         ECSIDefinition_ToMemberName(SDL_strchr(function->name, '.') + 1, cs(member, sizeof(member)));
         SDL_snprintf(declarator, sizeof(declarator), "(*%s)", member);
-        ECSIText_Add(&c, "    ");
-        ECSIDefinition_AddCDeclaration(&c, signature->result, declarator);
-        ECSIDefinition_AddCParameters(&c, signature);
-        ECSIText_Add(&c, ";\n");
+        ECSIText_Add(&header, "    ");
+        ECSIDefinition_AddCDeclaration(&header, signature->result, declarator);
+        ECSIDefinition_AddCParameters(&header, signature);
+        ECSIText_Add(&header, ";\n");
     }
 
-    ECSIText_Add(&c, "} %sFunctions;\n\n/// @brief Looks up every function of the plugin %s. Call it from ECSPlugin_Init; the plugin's manifest must depend on %s.\n/// @return SHUResult_Ok, or the error of the first function that cannot be looked up.\nstatic inline SHUResult %sFunctions_Get(ECSPlugin plugin, %sFunctions *retFunctions)\n{\n    ECSFunction function = nullptr;\n", pascal, plugin, plugin, pascal, pascal);
+    ECSIText_Add(&header, "} %sFunctions;\n\n/// @brief Looks up every function of the plugin %s. Call it from ECSPlugin_Init; the plugin's manifest must depend on %s.\n/// @return SHUResult_Ok, or the error of the first function that cannot be looked up.\nstatic inline SHUResult %sFunctions_Get(ECSPlugin plugin, %sFunctions *retFunctions)\n{\n    ECSFunction function = nullptr;\n", pascal, plugin, plugin, pascal, pascal);
 
     for (usz i = 0; i < arrlenu(functions); i++)
     {
         ECSIDefinition_ToMemberName(SDL_strchr(functions[i]->name, '.') + 1, cs(member, sizeof(member)));
-        ECSIText_Add(&c, "\n    SHU_ReturnResult(ECSService_GetFunction(plugin, &function, \"%s\", \"%s\"));\n    retFunctions->%s = (typeof(retFunctions->%s))function;\n", functions[i]->name, functions[i]->signature.text, member, member);
+        ECSIText_Add(&header, "\n    SHU_ReturnResult(ECSService_GetFunction(plugin, &function, \"%s\", \"%s\"));\n    retFunctions->%s = (typeof(retFunctions->%s))function;\n", functions[i]->name, functions[i]->signature.text, member, member);
     }
 
     arrfree(functions);
 
-    ECSIText_Add(&c, "\n    return SHUResult_Ok;\n}\n");
+    ECSIText_Add(&header, "\n    return SHUResult_Ok;\n}\n");
 
     // what the plugin gives C plugins beside its functions, such as macros, from its header.h
-    ECSIDefinition_AddFile(&c, provider, "header.h", "//");
-    return ECSIDefinition_Save(folder, plugin, ".h", &c);
+    ECSIDefinition_AddFile(&header, provider, "header.h", "//");
+    return ECSIDefinition_Save(folder, plugin, ".h", &header);
 }
 
 #pragma endregion Definitions

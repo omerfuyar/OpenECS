@@ -320,6 +320,52 @@ static f32 ECSIWindow_GetTitleButtonWidth(void)
     return WINDOW.titleBarHeight * OPENECS_TITLE_BUTTON_WIDTH;
 }
 
+/// @brief Gives the edge or corner of an OS window that a point resizes the window by, or SDL_HITTEST_NORMAL away from the edges.
+static SDL_HitTestResult ECSIWindow_HitEdge(f32 x, f32 y, f32 width, f32 height)
+{
+    bool left = x < OPENECS_RESIZE_EDGE;
+    bool right = x >= width - OPENECS_RESIZE_EDGE;
+    bool top = y < OPENECS_RESIZE_EDGE;
+    bool bottom = y >= height - OPENECS_RESIZE_EDGE;
+
+    if (top && left)
+    {
+        return SDL_HITTEST_RESIZE_TOPLEFT;
+    }
+
+    if (top && right)
+    {
+        return SDL_HITTEST_RESIZE_TOPRIGHT;
+    }
+
+    if (bottom && left)
+    {
+        return SDL_HITTEST_RESIZE_BOTTOMLEFT;
+    }
+
+    if (bottom && right)
+    {
+        return SDL_HITTEST_RESIZE_BOTTOMRIGHT;
+    }
+
+    if (top)
+    {
+        return SDL_HITTEST_RESIZE_TOP;
+    }
+
+    if (bottom)
+    {
+        return SDL_HITTEST_RESIZE_BOTTOM;
+    }
+
+    if (left)
+    {
+        return SDL_HITTEST_RESIZE_LEFT;
+    }
+
+    return right ? SDL_HITTEST_RESIZE_RIGHT : SDL_HITTEST_NORMAL;
+}
+
 /// @brief Tells SDL which part of an OS window moves or resizes it, when OpenECS draws its title bar: the edges resize it, and the title bar moves it, apart from its buttons.
 static SDL_HitTestResult SDLCALL ECSIWindow_HitTest(SDL_Window *window, const SDL_Point *point, void *data)
 {
@@ -331,24 +377,17 @@ static SDL_HitTestResult SDLCALL ECSIWindow_HitTest(SDL_Window *window, const SD
     f32 x = (f32)point->x;
     f32 y = (f32)point->y;
 
+    // a maximized or fullscreen window has no edges to resize it by
+    SDL_HitTestResult edge = SDL_HITTEST_NORMAL;
+
     if ((SDL_GetWindowFlags(window) & (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_FULLSCREEN)) == 0)
     {
-        bool left = x < OPENECS_RESIZE_EDGE;
-        bool right = x >= (f32)width - OPENECS_RESIZE_EDGE;
-        bool top = y < OPENECS_RESIZE_EDGE;
-        bool bottom = y >= (f32)height - OPENECS_RESIZE_EDGE;
+        edge = ECSIWindow_HitEdge(x, y, (f32)width, (f32)height);
+    }
 
-        if (top || bottom || left || right)
-        {
-            return top && left       ? SDL_HITTEST_RESIZE_TOPLEFT
-                   : top && right    ? SDL_HITTEST_RESIZE_TOPRIGHT
-                   : bottom && left  ? SDL_HITTEST_RESIZE_BOTTOMLEFT
-                   : bottom && right ? SDL_HITTEST_RESIZE_BOTTOMRIGHT
-                   : top             ? SDL_HITTEST_RESIZE_TOP
-                   : bottom          ? SDL_HITTEST_RESIZE_BOTTOM
-                   : left            ? SDL_HITTEST_RESIZE_LEFT
-                                     : SDL_HITTEST_RESIZE_RIGHT;
-        }
+    if (edge != SDL_HITTEST_NORMAL)
+    {
+        return edge;
     }
 
     return y < WINDOW.titleBarHeight && x < (f32)width - 3.0f * ECSIWindow_GetTitleButtonWidth() ? SDL_HITTEST_DRAGGABLE : SDL_HITTEST_NORMAL;
@@ -462,6 +501,102 @@ static ECSIDrop ECSIWindow_FindTabGap(ECSIOSWindow *osWindow, ECSINode *group, f
     return drop;
 }
 
+/// @brief Gives the edge of the layout that a point is near enough to dock a panel along, or ECSIZone_None away from the edges.
+static ECSIZone ECSIWindow_WindowEdgeAt(const ECSIRoot *root, f32 x, f32 y)
+{
+    if (x < WINDOW.dockEdge)
+    {
+        return ECSIZone_WindowLeft;
+    }
+
+    if (x >= root->width - WINDOW.dockEdge)
+    {
+        return ECSIZone_WindowRight;
+    }
+
+    if (y < root->top + WINDOW.dockEdge)
+    {
+        return ECSIZone_WindowTop;
+    }
+
+    if (y >= root->top + root->height - WINDOW.dockEdge)
+    {
+        return ECSIZone_WindowBottom;
+    }
+
+    return ECSIZone_None;
+}
+
+/// @brief Gives the quarter of the layout that a panel docked along an edge of it takes.
+static SDL_FRect ECSIWindow_GetWindowEdgeRect(const ECSIRoot *root, ECSIZone edge)
+{
+    f32 top = root->top;
+    f32 width = root->width;
+    f32 height = root->height;
+
+    switch (edge)
+    {
+    case ECSIZone_WindowLeft:
+        return (SDL_FRect){0.0f, top, width / 4.0f, height};
+    case ECSIZone_WindowRight:
+        return (SDL_FRect){width * 0.75f, top, width / 4.0f, height};
+    case ECSIZone_WindowTop:
+        return (SDL_FRect){0.0f, top, width, height / 4.0f};
+    default:
+        return (SDL_FRect){0.0f, top + height * 0.75f, width, height / 4.0f};
+    }
+}
+
+/// @brief Gives the edge band of a panel that a point is in: the nearest band wins, and ECSIZone_Center is outside every band.
+/// Edge bands are a quarter of the panel deep at most, so the centre keeps at least half of it.
+static ECSIZone ECSIWindow_PanelBandAt(ECSPanel panel, f32 x, f32 y)
+{
+    f32 bandX = SDL_min(panel->width / 4.0f, WINDOW.splitDepth);
+    f32 bandY = SDL_min(panel->height / 4.0f, WINDOW.splitDepth);
+    const f32 distances[] = {
+        (x - panel->x) / bandX,
+        (panel->x + panel->width - x) / bandX,
+        (y - panel->y) / bandY,
+        (panel->y + panel->height - y) / bandY,
+    };
+
+    // distances are relative to the band, so 1 is its inner edge
+    ECSIZone zone = ECSIZone_Center;
+    f32 nearest = 1.0f;
+
+    for (usz i = 0; i < SDL_arraysize(distances); i++)
+    {
+        if (distances[i] < nearest)
+        {
+            nearest = distances[i];
+            zone = (ECSIZone)(ECSIZone_Left + (i32)i);
+        }
+    }
+
+    return zone;
+}
+
+/// @brief Gives the half of a panel that a panel dropped on its side takes, or the whole panel for its centre.
+static SDL_FRect ECSIWindow_GetPanelZoneRect(ECSPanel panel, ECSIZone zone)
+{
+    f32 halfWidth = panel->width / 2.0f;
+    f32 halfHeight = panel->height / 2.0f;
+
+    switch (zone)
+    {
+    case ECSIZone_Left:
+        return (SDL_FRect){panel->x, panel->y, halfWidth, panel->height};
+    case ECSIZone_Right:
+        return (SDL_FRect){panel->x + halfWidth, panel->y, halfWidth, panel->height};
+    case ECSIZone_Top:
+        return (SDL_FRect){panel->x, panel->y, panel->width, halfHeight};
+    case ECSIZone_Bottom:
+        return (SDL_FRect){panel->x, panel->y + halfHeight, panel->width, halfHeight};
+    default:
+        return (SDL_FRect){panel->x, panel->y, panel->width, panel->height};
+    }
+}
+
 /// @brief Finds where a panel dragged to a point lands, the OS window it lands in, and the rectangle to highlight there. The checks follow DESIGN 6.7.
 /// @param x Horizontal position in the event window, in layout units.
 /// @param y Vertical position in the event window, in layout units.
@@ -479,30 +614,19 @@ static ECSIDrop ECSIWindow_FindDrop(f32 x, f32 y, ECSIOSWindow **retWindow, SDL_
         return (ECSIDrop){.zone = ECSIZone_PopOut};
     }
 
-    // the layout fills the OS window below the title bar
-    f32 top = root->top;
-    f32 width = root->width;
-    f32 height = root->height;
-
-    // an empty window takes the panel whole
+    // an empty window takes the panel whole; the layout fills the OS window below the title bar
     if (root->tree == nullptr)
     {
-        *retRect = (SDL_FRect){0.0f, top, width, height};
+        *retRect = (SDL_FRect){0.0f, root->top, root->width, root->height};
         return (ECSIDrop){.zone = ECSIZone_Center, .root = root};
     }
 
-    if (x < WINDOW.dockEdge || x >= width - WINDOW.dockEdge || y < top + WINDOW.dockEdge || y >= top + height - WINDOW.dockEdge)
-    {
-        ECSIZone zone = x < WINDOW.dockEdge            ? ECSIZone_WindowLeft
-                        : x >= width - WINDOW.dockEdge ? ECSIZone_WindowRight
-                        : y < top + WINDOW.dockEdge    ? ECSIZone_WindowTop
-                                                       : ECSIZone_WindowBottom;
+    ECSIZone edge = ECSIWindow_WindowEdgeAt(root, x, y);
 
-        *retRect = zone == ECSIZone_WindowLeft    ? (SDL_FRect){0.0f, top, width / 4.0f, height}
-                   : zone == ECSIZone_WindowRight ? (SDL_FRect){width * 0.75f, top, width / 4.0f, height}
-                   : zone == ECSIZone_WindowTop   ? (SDL_FRect){0.0f, top, width, height / 4.0f}
-                                                  : (SDL_FRect){0.0f, top + height * 0.75f, width, height / 4.0f};
-        return (ECSIDrop){.zone = zone, .root = root};
+    if (edge != ECSIZone_None)
+    {
+        *retRect = ECSIWindow_GetWindowEdgeRect(root, edge);
+        return (ECSIDrop){.zone = edge, .root = root};
     }
 
     ECSINode *group = ECSILayout_GroupAt(root, x, y);
@@ -518,43 +642,16 @@ static ECSIDrop ECSIWindow_FindDrop(f32 x, f32 y, ECSIOSWindow **retWindow, SDL_
         return group->locked ? (ECSIDrop){0} : ECSIWindow_FindTabGap(osWindow, group, x, retRect);
     }
 
-    // edge bands are a quarter of the panel deep at most, so the centre keeps at least half of it
     ECSPanel panel = group->panels[group->shown];
-    f32 bandX = SDL_min(panel->width / 4.0f, WINDOW.splitDepth);
-    f32 bandY = SDL_min(panel->height / 4.0f, WINDOW.splitDepth);
-    const f32 distances[] = {
-        (x - panel->x) / bandX,
-        (panel->x + panel->width - x) / bandX,
-        (y - panel->y) / bandY,
-        (panel->y + panel->height - y) / bandY,
-    };
+    ECSIZone zone = ECSIWindow_PanelBandAt(panel, x, y);
 
-    // the nearest band wins; distances are relative to the band, so 1 is its inner edge
-    ECSIZone zone = ECSIZone_Center;
-    f32 nearest = 1.0f;
-
-    for (usz i = 0; i < SDL_arraysize(distances); i++)
-    {
-        if (distances[i] < nearest)
-        {
-            nearest = distances[i];
-            zone = (ECSIZone)(ECSIZone_Left + (i32)i);
-        }
-    }
-
-    f32 halfWidth = panel->width / 2.0f;
-    f32 halfHeight = panel->height / 2.0f;
-    *retRect = zone == ECSIZone_Left     ? (SDL_FRect){panel->x, panel->y, halfWidth, panel->height}
-               : zone == ECSIZone_Right  ? (SDL_FRect){panel->x + halfWidth, panel->y, halfWidth, panel->height}
-               : zone == ECSIZone_Top    ? (SDL_FRect){panel->x, panel->y, panel->width, halfHeight}
-               : zone == ECSIZone_Bottom ? (SDL_FRect){panel->x, panel->y + halfHeight, panel->width, halfHeight}
-                                         : (SDL_FRect){panel->x, panel->y, panel->width, panel->height};
+    // a locked group takes no panel into its tabs
     if (zone == ECSIZone_Center && group->locked)
     {
-        *retRect = (SDL_FRect){0};
         return (ECSIDrop){0};
     }
 
+    *retRect = ECSIWindow_GetPanelZoneRect(panel, zone);
     return (ECSIDrop){.zone = zone, .root = root, .group = group};
 }
 
@@ -1613,6 +1710,78 @@ static ECSIPopupView *ECSIWindow_MakePopupView(ECSPopup popup, const ECSIOSWindo
     return view;
 }
 
+/// @brief Puts a popup's pixels in its view's texture when they were drawn, or when the texture is new: one of the pixels' size, for the renderer that shows it.
+static void ECSIWindow_UploadPopup(ECSIPopupView *view, SDL_Renderer *renderer, const SDL_Surface *pixels, bool drawn)
+{
+    if (view->texture != nullptr && (view->texture->w != pixels->w || view->texture->h != pixels->h || SDL_GetRendererFromTexture(view->texture) != renderer))
+    {
+        SDL_DestroyTexture(view->texture);
+        view->texture = nullptr;
+    }
+
+    if (view->texture == nullptr)
+    {
+        // a popup's pixels have premultiplied alpha, so what it leaves out shows what is below
+        view->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, pixels->w, pixels->h);
+        SDL_SetTextureBlendMode(view->texture, SDL_BLENDMODE_BLEND_PREMULTIPLIED);
+        drawn = true;
+    }
+
+    if (drawn && view->texture != nullptr)
+    {
+        SDL_UpdateTexture(view->texture, nullptr, pixels->pixels, pixels->pitch);
+    }
+}
+
+/// @brief Places an open popup, draws its pixels if it needs it, and puts them in its texture.
+static void ECSIWindow_UpdatePopup(ECSPopup popup)
+{
+    ECSIOSWindow *osWindow = ECSIWindow_FindByRoot(ECSILayout_RootOf(popup->panel));
+    ECSIPopupView *view = popup->view;
+
+    if (osWindow == nullptr)
+    {
+        return;
+    }
+
+    // a popup whose panel moved to another OS window is shown there anew
+    if (view != nullptr && view->rootID != osWindow->rootID)
+    {
+        ECSIWindow_ReleasePopup(popup);
+        view = nullptr;
+    }
+
+    SDL_FRect rect = ECSIWindow_PlacePopup(popup, osWindow);
+    view = view != nullptr ? view : ECSIWindow_MakePopupView(popup, osWindow, rect);
+
+    if (view == nullptr)
+    {
+        return;
+    }
+
+    // drawn inside the OS window, it is also kept inside it
+    if (view->window == nullptr)
+    {
+        rect.x = SDL_max(0.0f, SDL_min(rect.x, osWindow->width - rect.w));
+        rect.y = SDL_max(0.0f, SDL_min(rect.y, osWindow->height - rect.h));
+    }
+
+    if (view->window != nullptr && (rect.x != view->rect.x || rect.y != view->rect.y || rect.w != view->rect.w || rect.h != view->rect.h))
+    {
+        SDL_SetWindowPosition(view->window, (int)rect.x, (int)rect.y);
+        SDL_SetWindowSize(view->window, (int)rect.w, (int)rect.h);
+    }
+
+    view->rect = rect;
+    SDL_Renderer *renderer = view->renderer != nullptr ? view->renderer : osWindow->renderer;
+    bool drawn = ECSIPopup_Draw(popup);
+
+    if (popup->pixels != nullptr)
+    {
+        ECSIWindow_UploadPopup(view, renderer, popup->pixels, drawn);
+    }
+}
+
 /// @brief Places each open popup, draws its pixels if it needs it, and puts them in its texture. A popup window is drawn and presented with ECSIWindow_PresentPopups.
 static void ECSIWindow_UpdatePopups(void)
 {
@@ -1627,71 +1796,7 @@ static void ECSIWindow_UpdatePopups(void)
             break;
         }
 
-        ECSPopup popup = popups[i];
-        ECSIOSWindow *osWindow = ECSIWindow_FindByRoot(ECSILayout_RootOf(popup->panel));
-        ECSIPopupView *view = popup->view;
-
-        if (osWindow == nullptr)
-        {
-            continue;
-        }
-
-        // a popup whose panel moved to another OS window is shown there anew
-        if (view != nullptr && view->rootID != osWindow->rootID)
-        {
-            ECSIWindow_ReleasePopup(popup);
-            view = nullptr;
-        }
-
-        SDL_FRect rect = ECSIWindow_PlacePopup(popup, osWindow);
-        view = view != nullptr ? view : ECSIWindow_MakePopupView(popup, osWindow, rect);
-
-        if (view == nullptr)
-        {
-            continue;
-        }
-
-        // drawn inside the OS window, it is also kept inside it
-        if (view->window == nullptr)
-        {
-            rect.x = SDL_max(0.0f, SDL_min(rect.x, osWindow->width - rect.w));
-            rect.y = SDL_max(0.0f, SDL_min(rect.y, osWindow->height - rect.h));
-        }
-
-        if (view->window != nullptr && (rect.x != view->rect.x || rect.y != view->rect.y || rect.w != view->rect.w || rect.h != view->rect.h))
-        {
-            SDL_SetWindowPosition(view->window, (int)rect.x, (int)rect.y);
-            SDL_SetWindowSize(view->window, (int)rect.w, (int)rect.h);
-        }
-
-        view->rect = rect;
-        SDL_Renderer *renderer = view->renderer != nullptr ? view->renderer : osWindow->renderer;
-        bool drawn = ECSIPopup_Draw(popup);
-        SDL_Surface *pixels = popup->pixels;
-
-        if (pixels == nullptr)
-        {
-            continue;
-        }
-
-        if (view->texture != nullptr && (view->texture->w != pixels->w || view->texture->h != pixels->h || SDL_GetRendererFromTexture(view->texture) != renderer))
-        {
-            SDL_DestroyTexture(view->texture);
-            view->texture = nullptr;
-        }
-
-        if (view->texture == nullptr)
-        {
-            // a popup's pixels have premultiplied alpha, so what it leaves out shows what is below
-            view->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, pixels->w, pixels->h);
-            SDL_SetTextureBlendMode(view->texture, SDL_BLENDMODE_BLEND_PREMULTIPLIED);
-            drawn = true;
-        }
-
-        if (drawn && view->texture != nullptr)
-        {
-            SDL_UpdateTexture(view->texture, nullptr, pixels->pixels, pixels->pitch);
-        }
+        ECSIWindow_UpdatePopup(popups[i]);
     }
 }
 

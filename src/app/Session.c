@@ -632,9 +632,9 @@ static SHUResult ECSISession_FindFiles(ECSISessionFile **files, const char *fold
     return result;
 }
 
-static int ECSISession_CompareFiles(const void *a, const void *b)
+static int ECSISession_CompareFiles(const void *first, const void *second)
 {
-    return SDL_strcmp(((const ECSISessionFile *)a)->name, ((const ECSISessionFile *)b)->name);
+    return SDL_strcmp(((const ECSISessionFile *)first)->name, ((const ECSISessionFile *)second)->name);
 }
 
 /// @brief Sets a field of a list entry to a text.

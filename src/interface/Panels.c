@@ -970,10 +970,10 @@ const char *const *ECSIPanel_GetMenuEntries(ECSPanel panel, usz *retCount)
 }
 
 /// @brief Orders panel types by the name of their plugin, then by title.
-static int SDLCALL ECSIPanel_CompareTypes(const void *a, const void *b)
+static int SDLCALL ECSIPanel_CompareTypes(const void *firstElement, const void *secondElement)
 {
-    const ECSIPanelType *first = *(const ECSIPanelType *const *)a;
-    const ECSIPanelType *second = *(const ECSIPanelType *const *)b;
+    const ECSIPanelType *first = *(const ECSIPanelType *const *)firstElement;
+    const ECSIPanelType *second = *(const ECSIPanelType *const *)secondElement;
     int plugins = SDL_strcmp(ECSIPlugin_GetName(first->plugin), ECSIPlugin_GetName(second->plugin));
     return plugins != 0 ? plugins : SDL_strcmp(first->desc.title, second->desc.title);
 }
