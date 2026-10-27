@@ -72,7 +72,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 ## Checks
 
 - A fresh checkout needs its submodules (README.md) and, on Linux, the packages that `.github/scripts/install-linux.sh` installs, before it builds.
-- Before each commit, run `.github/scripts/check.sh`: it formats the changed C files and checks them with clang-tidy. It needs a Debug build first.
+- Before each commit, run `.github/scripts/check.sh`: it formats the changed C files and checks them with clang-tidy, and checks the changed Lua files with the Lua language server when it is installed. clang-tidy needs a Debug build first.
 - Before pushing, build in Debug and run the examples' tests: `.github/scripts/build.sh D`, then `.github/scripts/test.sh`, which runs them with shuild's `--test`. The checks build Release, and run the tests on Wayland and Windows (DESIGN.md, section 19.3).
 - The scripts print only problems. Read the logs they name only when they fail.
 
