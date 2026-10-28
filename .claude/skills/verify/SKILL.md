@@ -27,7 +27,7 @@ ln -sf ~/.local/luals/bin/lua-language-server ~/.local/bin/lua-language-server
 ## 3. Before pushing
 
 1. `.github/scripts/build.sh D` builds Debug with the static analyzer and the sanitizers, and the examples. It prints the last 40 lines of `build/shuild.log` only when it fails.
-2. `.github/scripts/test.sh` runs every example's test with shuild's `--test`, and prints the log of each test that fails.
+2. `.github/scripts/test.sh` runs every example's test with shuild's `--test`, and prints the log of each test that fails. While fixing one example, name it to run its tests alone: `.github/scripts/test.sh c12_sketch`; run them all once before pushing.
 3. Only when the change touches windows, popups or pop-outs: `.github/scripts/test-wayland.sh`.
 4. Only when the change touches plugins' function signatures or their documentation: `.github/scripts/definitions.sh build/Debug/bin/OpenECS`.
 
@@ -36,5 +36,5 @@ The checks build Release, and run the tests on Wayland and Windows (DESIGN.md, s
 ## Reading failures
 
 - Search logs instead of reading them: `grep -nE "(error|warning):" build/shuild.log | grep -v dependencies/`.
-- Run one test again: `build/Debug/bin/OpenECS --test build/Debug/bin/examples/<example>/test.lua`.
+- Run one example's tests again: `.github/scripts/test.sh <example>`, such as `c12_sketch`; or one test file: `build/Debug/bin/OpenECS --test build/Debug/bin/examples/<example>/test.lua`.
 - A failure is a fact to explain, not a flake to run again. Fix its cause.
