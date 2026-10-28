@@ -27,10 +27,6 @@ void ECSIServices_PushHandle(const char *type, void *object);
 /// @return The object.
 void *ECSIServices_CheckHandle(int index, const char *type);
 
-/// @brief Makes an object's Lua handle invalid, without destroying the object, because the object is gone.
-/// @param object The object.
-void ECSIServices_ForgetHandle(void *object);
-
 /// @brief Ends a surface once its Draw returns: runs the functions given with ECSSurface_OnDrawn for it, then makes its Lua handle invalid.
 /// @param surface The surface.
 void ECSIServices_EndSurface(ECSSurface *surface);
@@ -38,14 +34,6 @@ void ECSIServices_EndSurface(ECSSurface *surface);
 /// @brief Pushes the metatable of a handle type, so the Bindings module can give its handles methods.
 /// @param type Name of the handle type. Nil is pushed if the type is gone.
 void ECSIServices_PushHandleMetatable(const char *type);
-
-/// @brief Makes a function of a plugin a method of one of its handle types, as ECSHandle_AddMethod does; Lua plugins call it through ecs.handle.addMethod.
-/// @param plugin The plugin.
-/// @param type The handle type's local name.
-/// @param method The method's name in Lua.
-/// @param function The local name of the function.
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the method cannot be added, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSIServices_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function);
 
 /// @brief Registers a handle type that a Lua plugin provides. Its objects are Lua values, which the core keeps until the handle is collected.
 /// @param plugin The plugin.
@@ -122,6 +110,24 @@ SHUWUR SHUResult ECSIServices_PushFunction(ECSPlugin plugin, const char *name, c
 /// @param provider The plugin whose functions are pushed.
 /// @return SHUResult_Ok with the table pushed, or SHUResult_ErrPrivileges or SHUResult_ErrAllocation with nothing pushed.
 SHUWUR SHUResult ECSIServices_PushPlugin(ECSPlugin plugin, ECSPlugin provider);
+
+/// @brief A file of the plugin interface: OpenECS.h, shu.h or ecs.lua. The build writes their bytes into the executable, so --definitions writes them
+/// beside the definition files, and they always match the program (DESIGN 10.10).
+typedef struct ECSIInterfaceFile
+{
+    const char *name; // the file's name, such as "OpenECS.h"
+    const u8 *data;
+    usz size;
+} ECSIInterfaceFile;
+
+/// @brief The files of the plugin interface, in the source file that the build writes.
+extern const ECSIInterfaceFile ECSI_INTERFACE_FILES[];
+extern const usz ECSI_INTERFACE_FILE_COUNT;
+
+/// @brief Writes the files of the plugin interface: OpenECS.h, shu.h and ecs.lua (DESIGN 10.10).
+/// @param folder The folder to write into, ending with a separator.
+/// @return SHUResult_Ok, SHUResult_ErrFile if a file cannot be written, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSIServices_WriteInterface(const char *folder);
 
 /// @brief Writes the definition files of a plugin's functions (DESIGN 10.10): NAME.lua for editors of Lua plugins, and NAME.h for plugins in C.
 /// @param provider The plugin.

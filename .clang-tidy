@@ -1,0 +1,55 @@
+# Checks of OpenECS's C code, run by .github/scripts/check.sh. The naming checks follow DESIGN.md, section 1.2:
+# function pointers are PascalCase as parameters and variables too, and a table of constants inside a function is UPPER_CASE, like file-level state;
+# each kind of name has an impossible case and an IgnoredRegexp with the right form, so only names in the wrong form are reported.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-reserved-identifier,
+  -bugprone-macro-parentheses,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-inc-dec-in-conditions,
+  -bugprone-narrowing-conversions,
+  -bugprone-branch-clone,
+  performance-*,
+  readability-braces-around-statements,
+  readability-function-cognitive-complexity,
+  readability-identifier-length,
+  readability-identifier-naming,
+  readability-inconsistent-declaration-parameter-name,
+  readability-misleading-indentation,
+  readability-non-const-parameter
+WarningsAsErrors: '*'
+HeaderFilterRegex: '^(include|src)/'
+CheckOptions:
+  readability-function-cognitive-complexity.Threshold: 25
+  readability-function-cognitive-complexity.IgnoreMacros: true
+  readability-identifier-length.MinimumVariableNameLength: 3
+  readability-identifier-length.MinimumParameterNameLength: 3
+  readability-identifier-length.MinimumLoopCounterNameLength: 3
+  readability-identifier-length.IgnoredVariableNames: '^(i|j|k|x|y|z|w|h|id)$'
+  readability-identifier-length.IgnoredParameterNames: '^(i|j|k|x|y|z|w|h|id)$'
+  readability-identifier-length.IgnoredLoopCounterNames: '^(i|j|k|x|y|z|w|h|id)$'
+  readability-identifier-naming.FunctionCase: UPPER_CASE
+  readability-identifier-naming.FunctionIgnoredRegexp: '^(ECSI?([A-Z][A-Za-z0-9]*)?_[A-Z][A-Za-z0-9]*|main)$'
+  readability-identifier-naming.TypedefCase: UPPER_CASE
+  readability-identifier-naming.TypedefIgnoredRegexp: '^(ECSI?[A-Z][A-Za-z0-9]*|lua_State)$'
+  readability-identifier-naming.StructCase: UPPER_CASE
+  readability-identifier-naming.StructIgnoredRegexp: '^ECSI?[A-Z][A-Za-z0-9]*$'
+  readability-identifier-naming.UnionCase: UPPER_CASE
+  readability-identifier-naming.UnionIgnoredRegexp: '^ECSI?[A-Z][A-Za-z0-9]*$'
+  readability-identifier-naming.EnumCase: UPPER_CASE
+  readability-identifier-naming.EnumIgnoredRegexp: '^ECSI?[A-Z][A-Za-z0-9]*$'
+  readability-identifier-naming.EnumConstantCase: UPPER_CASE
+  readability-identifier-naming.EnumConstantIgnoredRegexp: '^ECSI?[A-Z][A-Za-z0-9]*_[A-Z][A-Za-z0-9]*$'
+  readability-identifier-naming.ParameterCase: camelBack
+  readability-identifier-naming.ParameterIgnoredRegexp: '^[A-Z][A-Za-z0-9]*$'
+  readability-identifier-naming.LocalVariableCase: camelBack
+  readability-identifier-naming.LocalVariableIgnoredRegexp: '^([A-Z][A-Za-z0-9]*|[A-Z][A-Z0-9_]*)$'
+  readability-identifier-naming.MemberCase: camelBack
+  readability-identifier-naming.MemberIgnoredRegexp: '^[A-Z][A-Za-z0-9]*$'
+  readability-identifier-naming.GlobalVariableCase: UPPER_CASE
+  readability-identifier-naming.GlobalConstantCase: UPPER_CASE
+  readability-identifier-naming.MacroDefinitionCase: lower_case
+  readability-identifier-naming.MacroDefinitionIgnoredRegexp: '^(OPENECS_[A-Z0-9_]+|ECSI?[A-Z][A-Za-z0-9]*_[A-Z][A-Za-z0-9]*|ECSI?_[A-Z][A-Za-z0-9]*)$'

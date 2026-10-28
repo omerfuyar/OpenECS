@@ -29,15 +29,18 @@ typedef struct ECSIPluginHooks
 void ECSIPlugins_SetHooks(const ECSIPluginHooks *hooks);
 
 /// @brief Loads plugins, after the plugins they depend on, and runs their ECSPlugin_Init.
-/// @param directories Directories that hold plugin folders, searched in order. Each ends with a separator.
-/// @param directoryCount Number of directories.
+/// @param folders Folders that hold plugins, searched in order. Each ends with a separator.
+/// @param folderCount Number of folders.
 /// @param plugins A table of the plugins to load: named fields give a plugin's name and its minimum version, such as depends = { ui = "1.0" }; list items give only a name. nullptr loads nothing.
 /// @param neededBy What names these plugins, for reports, such as "the preset '/path/default.lua'".
 /// @return SHUResult_Ok if every plugin loaded; SHUResult_ErrBadData if a manifest is not valid or plugins depend on each other in a cycle, which stops the start; or SHUResult_Err if a plugin is missing, too old or failed, which is reported and skipped.
-SHUWUR SHUResult ECSIPlugins_Load(const char *const *directories, usz directoryCount, const ECSValue *plugins, const char *neededBy);
+SHUWUR SHUResult ECSIPlugins_Load(const char *const *folders, usz folderCount, const ECSValue *plugins, const char *neededBy);
 
 /// @brief Destroys every plugin, in reverse load order: the Destroy function of its description runs. Timers and events still work then.
 void ECSIPlugins_Destroy(void);
+
+/// @brief Reports each error of a plugin's callback that happened more than once, with how often it happened.
+void ECSIPlugins_ReportRepeatedErrors(void);
 
 /// @brief Frees every plugin and closes their libraries. Call it after ECSIPlugins_Destroy, when no worker thread runs their code.
 void ECSIPlugins_Unload(void);
@@ -52,7 +55,7 @@ void ECSIPlugins_RestoreStates(const ECSValue *states);
 
 /// @brief Saves the state of every plugin that registered one into a pluginState table. Entries of other plugins are kept.
 /// @param states The table to fill; a value that is not a table becomes one.
-/// @return SHUResult_Ok, or SHUResult_ErrAllocation. A plugin whose Save fails is reported and skipped.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation. A plugin whose Save fails is reported, and its entry is kept.
 SHUWUR SHUResult ECSIPlugins_SaveStates(ECSValue *states);
 
 /// @brief Gets a plugin's name.
@@ -70,7 +73,7 @@ const char *ECSIPlugin_GetDescription(ECSPlugin plugin);
 /// @return The version its manifest gives.
 const char *ECSIPlugin_GetVersion(ECSPlugin plugin);
 
-/// @brief Reports an error of a plugin's callback. Repeats of the same error are counted, not reported again; ECSIPlugins_Unload reports the counts.
+/// @brief Reports an error of a plugin's callback. Repeats of the same error are counted, not reported again; ECSIPlugins_ReportRepeatedErrors reports the counts.
 /// @param plugin The plugin.
 /// @param message The error.
 void ECSIPlugin_ReportError(ECSPlugin plugin, const char *message);
@@ -85,7 +88,7 @@ bool ECSIPlugin_DependsOn(ECSPlugin plugin, ECSPlugin other);
 /// @param plugin The plugin.
 /// @param localName The local name.
 /// @return The name, to free with SDL_free, or nullptr if the local name is not valid or memory runs out.
-char *ECSIPlugin_FullName(ECSPlugin plugin, const char *localName);
+char *ECSIPlugin_MakeFullName(ECSPlugin plugin, const char *localName);
 
 /// @brief Checks that a name of a plugin's own, such as of one of its panel types, starts with the plugin's name and a dot, and reports it if not.
 /// @param plugin The plugin.
@@ -103,9 +106,13 @@ bool ECSIPlugins_OwnerRuns(const char *name);
 /// @return The plugin, or nullptr.
 ECSPlugin ECSIPlugins_Get(const char *name);
 
-/// @brief Gets the plugins that loaded and did not fail, in load order.
-/// @param index Position, starting at 0.
-/// @return The plugin, or nullptr past the last one.
-ECSPlugin ECSIPlugins_GetAt(usz index);
+/// @brief Visits a plugin, for ECSIPlugins_ForEach.
+typedef SHUResult (*ECSIPluginsVisitFunction)(ECSPlugin plugin, void *data);
+
+/// @brief Calls a function for each plugin that loaded and did not fail, in load order.
+/// @param Visit The function.
+/// @param data Passed to the function.
+/// @return SHUResult_Ok, or the first error that the function gave; every plugin is visited still.
+SHUResult ECSIPlugins_ForEach(ECSIPluginsVisitFunction Visit, void *data);
 
 #pragma endregion Declarations

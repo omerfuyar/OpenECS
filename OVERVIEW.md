@@ -91,6 +91,7 @@ Some plugins are made and shipped together with OpenECS because the product need
 - **net:** a standard plugin: TCP connections and servers, and UDP sockets, that never block the program.
 - **web:** a standard plugin: HTTP and HTTPS requests that never block the program.
 - **gltf:** a standard plugin: reading glTF models, for plugins that draw 3D scenes.
+- **cglm:** a standard plugin: cglm's vectors, matrices and quaternions, for plugins that draw 3D scenes.
 - **fs:** a standard plugin: listing and making folders, copying files and telling what a path is, which Lua's own libraries cannot.
 - **settings:** the settings window, built on ui.
 - **panels:** the list of the tool's panel types, by plugin, which opens the one the user chooses, built on ui.
@@ -100,7 +101,9 @@ Apart from sdl, they are plugins like any other. They use only the plugin API, t
 
 ### 3.4 Platform
 
-OpenECS targets Linux only for now.
+OpenECS runs on Linux, its priority, and on Windows. Other platforms are not worked on for now.
+
+What depends on the platform stays behind an interface, so porting changes as little as it can: the core reaches the system through SDL, and a plugin that uses the system gives other plugins functions that do not, such as fs for folders and net for sockets. Plugins and tools built on those interfaces keep working when OpenECS or a plugin is ported.
 
 ### 3.5 Not priorities, and not in the design
 
@@ -256,7 +259,7 @@ A key press that triggers a binding types no text. While the focused panel takes
 
 ### 7.4 The core's keys
 
-The core reserves one key combination, the **core prefix**. After it, one more key chooses a core action: arrows move focus, Shift+arrows move the panel, numbers switch workspace, and so on. While the core waits for that key, it shows the available keys; Escape cancels.
+The core reserves one key combination, the **core prefix**. After it, one more key chooses a core action: arrows move focus, Shift+arrows move the panel, numbers switch workspace, Shift+numbers move the panel to a workspace, and so on. While the core waits for that key, it shows the available keys; Escape cancels.
 
 So the core takes only one combination away from plugins. tmux's prefix key, Vim's Ctrl+W window commands and VS Code's Ctrl+K chords work the same way. The prefix is checked when the key is pressed, so it always wins, even if it is changed while OpenECS runs. The prefix is a setting, and the user can also bind core actions to direct keys.
 

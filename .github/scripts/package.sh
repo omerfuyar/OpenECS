@@ -1,7 +1,7 @@
 #!/bin/sh
 # Packs a Release build for one platform into dist/openecs-VERSION-PLATFORM.tar.gz, or .zip for Windows:
-# the program with its plugins, presets, examples and resources; the plugin interface with the standard plugins' definition files; OpenECS's license and the licenses of what it includes.
-# For Windows, also the import libraries that a C plugin links (DESIGN 17.2).
+# the program with its plugins, presets, examples and resources; include/, the plugin interface with the standard plugins' definition files, as the build wrote it;
+# OpenECS's license and the licenses of what it includes. For Windows, also lib/, OpenECS's import library that a C plugin links (DESIGN 17.2).
 set -eu
 
 version="$1"
@@ -10,23 +10,17 @@ name="openecs-$version-$platform"
 folder="dist/$name"
 
 rm -rf "$folder"
-mkdir -p "$folder/include" "$folder/licenses"
+mkdir -p "$folder/licenses"
 
 cp -r build/Release/bin/. "$folder/"
-cp include/OpenECS.h include/ecs.lua "$folder/include/"
-cp -r build/Release/include/shu "$folder/include/"
-# the build wrote the definition files of the plugins it found, the standard ones, so editors complete their functions with include/ alone
-cp build/Release/definitions/*.lua build/Release/definitions/*.h "$folder/include/"
+cp -r build/Release/include "$folder/"
 cp LICENSE.md README.md "$folder/"
 
 # the plugins' own import libraries are left out, as nothing links a plugin
 find "$folder" -name '*.dll.a' -delete
 
 case "$platform" in
-windows-*)
-    mkdir -p "$folder/lib"
-    cp build/Release/lib/libOpenECS.a build/Release/lib/libSDL3.dll.a build/Release/lib/libSDL3_ttf.dll.a "$folder/lib/"
-    ;;
+windows-*) cp -r build/Release/lib "$folder/" ;;
 esac
 
 # the libraries linked into the program, and the font it ships
@@ -44,14 +38,7 @@ cp dependencies/stb/LICENSE "$folder/licenses/stb.txt"
 cp resources/Roboto-LICENSE.txt "$folder/licenses/Roboto.txt"
 
 # the libraries that the standard plugins include or link, and the font draw ships
-std=std/dependencies
-cp $std/SDL_net/LICENSE.txt "$folder/licenses/SDL_net.txt"
-cp $std/nanosvg/LICENSE.txt "$folder/licenses/nanosvg.txt"
-cp $std/dr_libs/LICENSE "$folder/licenses/dr_libs.txt"
-cp $std/cgltf/LICENSE "$folder/licenses/cgltf.txt"
-cp $std/curl/COPYING "$folder/licenses/curl.txt"
-cp $std/mbedtls/LICENSE "$folder/licenses/mbedTLS.txt"
-cp std/plugins/draw/fonts/OFL.txt "$folder/licenses/RobotoMono.txt"
+std_notices=$(.github/scripts/licenses-std.sh "$folder/licenses")
 
 cat > "$folder/licenses/README.txt" << NOTICE
 OpenECS $version includes these works. Their licenses are in this folder.
@@ -65,31 +52,7 @@ libffi: MIT license
 Clay: zlib license
 stb (stb_image, stb_vorbis): MIT license or public domain
 Roboto font: Apache License 2.0
-SDL_net: zlib license
-nanosvg: zlib license
-dr_libs (dr_wav, dr_mp3, dr_flac): MIT No Attribution license or public domain
-cgltf: MIT license
-curl (libcurl): curl license, derived from the MIT license
-Mbed TLS: Apache License 2.0, chosen of its Apache 2.0 or GPL 2.0 licenses
-Roboto Mono font: SIL Open Font License 1.1
+$std_notices
 NOTICE
 
-# Windows opens zip files itself; Git Bash has no zip, but GitHub's Windows runners have 7-Zip
-case "$platform" in
-windows-*)
-    archive="$name.zip"
-    rm -f "dist/$archive"
-    if command -v zip > /dev/null; then
-        (cd dist && zip -qr "$archive" "$name")
-    else
-        (cd dist && 7z a -tzip -bso0 "$archive" "$name")
-    fi
-    ;;
-*)
-    archive="$name.tar.gz"
-    tar -C dist -czf "dist/$archive" "$name"
-    ;;
-esac
-
-rm -rf "$folder"
-echo "dist/$archive"
+.github/scripts/archive.sh "$name" "$platform"

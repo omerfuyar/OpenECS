@@ -1,4 +1,4 @@
-# Checks every change to dev and main: a Debug build with the static analyzer, the examples' tests under the sanitizers, on SDL's offscreen driver and on Wayland, a Release build, and the Lua annotations.
+# Checks every change to dev and main: the C files' format, a Debug build with the static analyzer, the examples' tests under the sanitizers, on SDL's offscreen driver and on Wayland, a Release build, and the Lua annotations.
 # Windows builds Debug and Release with LLVM-MinGW, and runs the examples' tests, without the analyzer and the sanitizers, which MinGW does not have.
 # The examples are the tests: each one's test runs its preset, so they check the core and the standard plugins together.
 name: Checks
@@ -10,10 +10,30 @@ on:
     branches: [dev, main]
   workflow_dispatch:
 
+# a new push to a branch or a pull request cancels its older run, whose result no longer counts
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-24.04
+    env:
+      CLANG_FORMAT: clang-format-18
+    steps:
+      - uses: actions/checkout@v4
+
+      # the C files must be as clang-format 18, Ubuntu 24.04's, writes them; agents format them with check.sh
+      - name: Install clang-format
+        run: sudo apt-get install -y clang-format-18
+
+      - name: Check the C files' format
+        run: .github/scripts/format.sh
+
   debug-linux:
     name: Debug (Linux)
     runs-on: ubuntu-24.04
@@ -35,19 +55,33 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            build/Debug/lib
-            build/Debug/include
+            .shu/Debug/dependencies
           key: debug-linux-${{ steps.dependencies.outputs.key }}
+
+      # std builds glslang and SPIRV-Cross with CMake only when their archives are missing, so they are kept until they or std's build change
+      - name: Name the C++ libraries' versions
+        id: cpp
+        run: echo "key=$( (git -C std submodule status dependencies/glslang dependencies/SPIRV-Cross; sha256sum std/shuild.c) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the C++ libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            std/.shu/Debug/cmake
+          key: cpp-debug-linux-${{ steps.cpp.outputs.key }}
+
+      - name: Detect the compilers with shuild
+        run: .github/scripts/compilers.sh
 
       - name: Build with the static analyzer
         run: .github/scripts/build.sh D
 
       - name: Run the examples' tests with the sanitizers
-        run: .github/scripts/test.sh build/Debug/bin/OpenECS
+        run: .github/scripts/test.sh
 
       # on Wayland, popups and pop-out windows are windows of their own, which the offscreen driver does not have
       - name: Run the examples' tests on Wayland
-        run: .github/scripts/test-wayland.sh build/Debug/bin/OpenECS
+        run: .github/scripts/test-wayland.sh
 
       - name: Write and compile the definition files
         run: .github/scripts/definitions.sh build/Debug/bin/OpenECS
@@ -78,9 +112,20 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            build/Release/lib
-            build/Release/include
+            .shu/Release/dependencies
           key: release-linux-${{ steps.dependencies.outputs.key }}
+
+      # std builds glslang and SPIRV-Cross with CMake only when their archives are missing, so they are kept until they or std's build change
+      - name: Name the C++ libraries' versions
+        id: cpp
+        run: echo "key=$( (git -C std submodule status dependencies/glslang dependencies/SPIRV-Cross; sha256sum std/shuild.c) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the C++ libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            std/.shu/Release/cmake
+          key: cpp-release-linux-${{ steps.cpp.outputs.key }}
 
       # code that only Release builds compile, or link, breaks here instead of at a release
       - name: Build
@@ -103,7 +148,7 @@ jobs:
         shell: pwsh
         run: .github/scripts/install-windows.ps1
 
-      # SDL's DLLs are installed into bin/, beside the executable, and lib/ has their import libraries
+      # SDL's DLLs and import libraries are installed with the other dependencies, and the build copies the DLLs beside the executable
       - name: Name the dependencies' versions
         id: dependencies
         run: echo "key=$( (git submodule status --recursive; sha256sum shuild.c dependencies/other/*/*) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
@@ -112,19 +157,31 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            build/Debug/lib
-            build/Debug/include
-            build/Debug/bin/*.dll
-            build/Release/lib
-            build/Release/include
-            build/Release/bin/*.dll
+            .shu/Debug/dependencies
+            .shu/Release/dependencies
           key: windows-${{ steps.dependencies.outputs.key }}
+
+      # std builds glslang and SPIRV-Cross with CMake only when their archives are missing, so they are kept until they or std's build change
+      - name: Name the C++ libraries' versions
+        id: cpp
+        run: echo "key=$( (git -C std submodule status dependencies/glslang dependencies/SPIRV-Cross; sha256sum std/shuild.c) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the C++ libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            std/.shu/Debug/cmake
+            std/.shu/Release/cmake
+          key: cpp-windows-${{ steps.cpp.outputs.key }}
+
+      - name: Detect the compilers with shuild
+        run: .github/scripts/compilers.sh
 
       - name: Build Debug with LLVM-MinGW
         run: .github/scripts/build.sh D
 
       - name: Run the examples' tests
-        run: .github/scripts/test.sh build/Debug/bin/OpenECS.exe
+        run: .github/scripts/test.sh
 
       - name: Write and compile the definition files
         run: .github/scripts/definitions.sh build/Debug/bin/OpenECS.exe

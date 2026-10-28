@@ -35,13 +35,17 @@ usz ECSIWindow_NumberOf(ECSPanel panel);
 
 /// @brief Gets the OS window that shows a panel, for its text input.
 /// @return The window, or the main window if the panel is not shown.
-SDL_Window *ECSIWindow_OfPanel(ECSPanel panel);
+SDL_Window *ECSIWindow_GetPanelWindow(ECSPanel panel);
 
 /// @brief Gets the root that an OS window shows.
 /// @param id SDL's id of the window.
 /// @param retMain Gets whether it is the main window, or nullptr.
 /// @return The root, or nullptr if the window shows none now.
 ECSIRoot *ECSIWindow_GetRoot(SDL_WindowID id, bool *retMain);
+
+/// @brief Notes that an OS window got the focus, so it counts as in front of the others when a dragged panel is over windows that overlap.
+/// @param id The OS window's id; a window that is not one of the core's OS windows is ignored.
+void ECSIWindow_Focused(SDL_WindowID id);
 
 /// @brief Chooses the OS window of the pointer event being handled. The pointer functions below and ECSIWindow_PanelAt take positions in its layout units.
 /// @param id SDL's id of the window; an unknown id chooses the main window.
@@ -167,6 +171,9 @@ void ECSIWindow_ShowMenu(usz level, SDL_FRect anchor, const char *const *lines, 
 
 /// @brief Highlights an entry of a shown menu.
 void ECSIWindow_SelectMenuItem(usz level, usz index);
+
+/// @brief Gets the highlighted entry of a shown menu.
+usz ECSIWindow_GetSelectedMenuItem(usz level);
 
 /// @brief Gets where a shown menu's entry is, to open a submenu beside it.
 /// @return The entry's rectangle, in layout units.

@@ -27,18 +27,17 @@
 typedef struct ECSIMenuEntry
 {
     char *label;
-    char *keys;                     // text of the keys that run it, or nullptr
-    char *function;                 // the function it runs on the focused panel, or nullptr
-    ECSPanel tab;                   // the panel whose tab it shows, or nullptr
+    char *keys;                    // text of the keys that run it, or nullptr
+    char *function;                // the function it runs on the focused panel, or nullptr
+    ECSPanel tab;                  // the panel whose tab it shows, or nullptr
     struct ECSIMenuEntry *submenu; // stb_ds array of the entries of the submenu it opens, or nullptr
 } ECSIMenuEntry;
 
-/// @brief An open menu: the panel menu or a submenu.
+/// @brief An open menu: the panel menu or a submenu. The window shows it and keeps its highlighted entry.
 typedef struct ECSIMenuLevel
 {
     ECSIMenuEntry *entries; // owned by the panel menu's entries
-    const char **lines;      // stb_ds array of each entry's key text and label
-    usz selected;
+    const char **lines;     // stb_ds array of each entry's key text and label, which the window shows
 } ECSIMenuLevel;
 
 static struct
@@ -46,15 +45,6 @@ static struct
     ECSIMenuEntry *entries; // stb_ds array of the panel menu's entries
     ECSIMenuLevel *levels;  // stb_ds array of the open menus, the panel menu first; while any is open, it gets the pointer and the keys
 } MENUS = {0};
-
-/// @brief Moves the keyboard focus to a panel; the layout tells both panels.
-static void ECSIMenus_Focus(ECSPanel panel)
-{
-    if (panel != nullptr)
-    {
-        ECSILayout_SetFocus(panel);
-    }
-}
 
 static void ECSIMenus_FreeEntries(ECSIMenuEntry **entries)
 {
@@ -130,7 +120,7 @@ static void ECSIMenus_OpenLevel(ECSIMenuEntry *entries, SDL_FRect anchor)
     for (usz i = 0; i < arrlenu(entries); i++)
     {
         arrput(level.lines, entries[i].submenu != nullptr ? OPENECS_SUBMENU_MARK : entries[i].keys != nullptr ? entries[i].keys
-                                                                                                        : "");
+                                                                                                              : "");
         arrput(level.lines, entries[i].label != nullptr ? entries[i].label : "");
     }
 
@@ -158,23 +148,25 @@ static void ECSIMenus_AddToolEntries(ECSIMenuEntry **entries, ECSPanel panel)
 }
 
 /// @brief Builds a panel's menu: what acts on the panel and its group, the submenus that move it, its type's entries, then what acts on the tool.
-static void ECSIMenus_BuildPanelMenu(ECSIMenuEntry **entries, ECSPanel panel)
+/// @return stb_ds array of the entries.
+static ECSIMenuEntry *ECSIMenus_BuildPanelMenu(ECSPanel panel)
 {
+    ECSIMenuEntry *entries = nullptr;
     ECSIMenuEntry *move = nullptr;
     ECSIMenuEntry *workspaces = nullptr;
 
-    ECSIMenus_AddFunction(entries, "ecs.layout.close", nullptr, panel);
-    ECSIMenus_AddFunction(entries, "ecs.panel.restart", nullptr, panel);
-    ECSIMenus_AddFunction(entries, "ecs.layout.maximize", nullptr, panel);
-    ECSIMenus_AddFunction(entries, "ecs.layout.popOut", nullptr, panel);
-    ECSIMenus_AddFunction(entries, "ecs.layout.lock", nullptr, panel);
-    ECSIMenus_AddFunction(entries, "ecs.layout.reopen", nullptr, panel);
+    ECSIMenus_AddFunction(&entries, "ecs.layout.close", nullptr, panel);
+    ECSIMenus_AddFunction(&entries, "ecs.panel.restart", nullptr, panel);
+    ECSIMenus_AddFunction(&entries, "ecs.layout.maximize", nullptr, panel);
+    ECSIMenus_AddFunction(&entries, "ecs.layout.popOut", nullptr, panel);
+    ECSIMenus_AddFunction(&entries, "ecs.layout.lock", nullptr, panel);
+    ECSIMenus_AddFunction(&entries, "ecs.layout.reopen", nullptr, panel);
 
     ECSIMenus_AddFunction(&move, "ecs.layout.moveLeft", "Left", panel);
     ECSIMenus_AddFunction(&move, "ecs.layout.moveRight", "Right", panel);
     ECSIMenus_AddFunction(&move, "ecs.layout.moveUp", "Up", panel);
     ECSIMenus_AddFunction(&move, "ecs.layout.moveDown", "Down", panel);
-    ECSIMenus_AddSubmenu(entries, "Move", move);
+    ECSIMenus_AddSubmenu(&entries, "Move", move);
 
     // one entry for each other workspace, by number and name
     for (usz number = 1; number <= ECSWorkspace_GetCount() && number <= OPENECS_WORKSPACE_FUNCTION_COUNT; number++)
@@ -190,27 +182,35 @@ static void ECSIMenus_BuildPanelMenu(ECSIMenuEntry **entries, ECSPanel panel)
         }
     }
 
-    ECSIMenus_AddSubmenu(entries, "To workspace", workspaces);
-    ECSIMenus_AddTypeEntries(entries, panel);
-    ECSIMenus_AddToolEntries(entries, panel);
+    ECSIMenus_AddSubmenu(&entries, "To workspace", workspaces);
+    ECSIMenus_AddTypeEntries(&entries, panel);
+    ECSIMenus_AddToolEntries(&entries, panel);
+    return entries;
 }
 
 /// @brief Builds the menu of workspaces: each one by number and name, with the current one marked; an entry switches to it.
-static void ECSIMenus_BuildWorkspaceMenu(ECSIMenuEntry **entries)
+/// @return stb_ds array of the entries.
+static ECSIMenuEntry *ECSIMenus_BuildWorkspaceMenu(void)
 {
+    ECSIMenuEntry *entries = nullptr;
+
     for (usz number = 1; number <= ECSWorkspace_GetCount() && number <= OPENECS_WORKSPACE_FUNCTION_COUNT; number++)
     {
         char function[32];
         char label[256];
         SDL_snprintf(function, sizeof(function), "ecs.workspace.switch%zu", number);
         SDL_snprintf(label, sizeof(label), "%zu: %s", number, ECSWorkspace_GetName(number));
-        ECSIMenus_Add(entries, label, number == ECSWorkspace_GetCurrent() ? SDL_strdup(OPENECS_SHOWN_MARK) : ECSIKeys_PrefixTextOf(function), function);
+        ECSIMenus_Add(&entries, label, number == ECSWorkspace_GetCurrent() ? SDL_strdup(OPENECS_SHOWN_MARK) : ECSIKeys_PrefixTextOf(function), function);
     }
+
+    return entries;
 }
 
 /// @brief Builds a group's menu: its tabs, what acts on the whole group, then what acts on the tool.
-static void ECSIMenus_BuildGroupMenu(ECSIMenuEntry **entries, ECSPanel shownPanel)
+/// @return stb_ds array of the entries.
+static ECSIMenuEntry *ECSIMenus_BuildGroupMenu(ECSPanel shownPanel)
 {
+    ECSIMenuEntry *entries = nullptr;
     ECSIMenuEntry *tabs = nullptr;
     usz count = 0;
     usz shown = 0;
@@ -221,28 +221,30 @@ static void ECSIMenus_BuildGroupMenu(ECSIMenuEntry **entries, ECSPanel shownPane
         ECSIMenus_Add(&tabs, panels[i]->title, i == shown ? SDL_strdup(OPENECS_SHOWN_MARK) : nullptr, nullptr)->tab = panels[i];
     }
 
-    ECSIMenus_AddSubmenu(entries, "Tabs", tabs);
-    ECSIMenuEntry *workspaces = nullptr;
-    ECSIMenus_BuildWorkspaceMenu(&workspaces);
-    ECSIMenus_AddSubmenu(entries, "Workspaces", workspaces);
-    ECSIMenus_AddFunction(entries, "ecs.layout.maximize", nullptr, shownPanel);
-    ECSIMenus_AddFunction(entries, "ecs.layout.lock", nullptr, shownPanel);
-    ECSIMenus_AddFunction(entries, "ecs.layout.closeGroup", nullptr, shownPanel);
-    ECSIMenus_AddFunction(entries, "ecs.layout.reopen", nullptr, shownPanel);
-    ECSIMenus_AddToolEntries(entries, shownPanel);
+    ECSIMenus_AddSubmenu(&entries, "Tabs", tabs);
+    ECSIMenus_AddSubmenu(&entries, "Workspaces", ECSIMenus_BuildWorkspaceMenu());
+    ECSIMenus_AddFunction(&entries, "ecs.layout.maximize", nullptr, shownPanel);
+    ECSIMenus_AddFunction(&entries, "ecs.layout.lock", nullptr, shownPanel);
+    ECSIMenus_AddFunction(&entries, "ecs.layout.closeGroup", nullptr, shownPanel);
+    ECSIMenus_AddFunction(&entries, "ecs.layout.reopen", nullptr, shownPanel);
+    ECSIMenus_AddToolEntries(&entries, shownPanel);
+    return entries;
 }
 
 /// @brief Highlights an entry, and closes the submenus of the other entries.
-/// @param open Also opens the entry's submenu, if it has one.
-static void ECSIMenus_Select(usz level, usz index, bool open)
+static void ECSIMenus_Select(usz level, usz index)
 {
     ECSIMenus_CloseFrom(level + 1);
-    MENUS.levels[level].selected = index;
     ECSIWindow_SelectMenuItem(level, index);
+}
 
+/// @brief Highlights an entry and opens its submenu beside it, if it has one.
+static void ECSIMenus_SelectAndOpen(usz level, usz index)
+{
+    ECSIMenus_Select(level, index);
     const ECSIMenuEntry *entry = &MENUS.levels[level].entries[index];
 
-    if (open && entry->submenu != nullptr)
+    if (entry->submenu != nullptr)
     {
         ECSIMenus_OpenLevel(entry->submenu, ECSIWindow_MenuItemRect(level, index));
     }
@@ -255,7 +257,7 @@ static void ECSIMenus_Run(usz level, usz index)
 
     if (entry->submenu != nullptr)
     {
-        ECSIMenus_Select(level, index, true);
+        ECSIMenus_SelectAndOpen(level, index);
         return;
     }
 
@@ -266,7 +268,7 @@ static void ECSIMenus_Run(usz level, usz index)
 
     if (tab != nullptr)
     {
-        ECSILayout_ShowTab(tab);
+        ECSLayout_Focus(tab);
     }
 
     if (function != nullptr)
@@ -276,26 +278,34 @@ static void ECSIMenus_Run(usz level, usz index)
     }
 }
 
+/// @brief Closes the open menus, and shows a menu at a point with its first entry highlighted. The menu's entries are taken over.
+static void ECSIMenus_Show(ECSIMenuEntry *entries, f32 x, f32 y)
+{
+    ECSIMenus_CloseFrom(0);
+    MENUS.entries = entries;
+    ECSIMenus_OpenLevel(entries, (SDL_FRect){x, y, 0.0f, 0.0f});
+}
+
 #pragma region Core Functions
 
 static void ECSIMenus_FocusLeft(void)
 {
-    ECSIMenus_Focus(ECSILayout_FindNeighbour(-1, 0));
+    ECSILayout_SetFocus(ECSILayout_FindNeighbour(-1, 0));
 }
 
 static void ECSIMenus_FocusRight(void)
 {
-    ECSIMenus_Focus(ECSILayout_FindNeighbour(1, 0));
+    ECSILayout_SetFocus(ECSILayout_FindNeighbour(1, 0));
 }
 
 static void ECSIMenus_FocusUp(void)
 {
-    ECSIMenus_Focus(ECSILayout_FindNeighbour(0, -1));
+    ECSILayout_SetFocus(ECSILayout_FindNeighbour(0, -1));
 }
 
 static void ECSIMenus_FocusDown(void)
 {
-    ECSIMenus_Focus(ECSILayout_FindNeighbour(0, 1));
+    ECSILayout_SetFocus(ECSILayout_FindNeighbour(0, 1));
 }
 
 static void ECSIMenus_MoveLeft(void)
@@ -320,22 +330,22 @@ static void ECSIMenus_MoveDown(void)
 
 static void ECSIMenus_NextTab(void)
 {
-    ECSIMenus_Focus(ECSILayout_NextTab());
+    ECSILayout_SetFocus(ECSILayout_NextTab());
 }
 
-static void ECSIMenus_Maximize(void)
-{
-    ECSILayout_ToggleMaximize();
-}
-
-static void ECSIMenus_PopOut(void)
-{
-    ECSILayout_PopOut();
-}
-
+/// @brief The user's close: the focused panel, unless its group is locked.
 static void ECSIMenus_Close(void)
 {
-    ECSLayout_Close(nullptr);
+    ECSPanel focus = ECSILayout_GetFocus();
+
+    if (focus != nullptr && ECSILayout_IsLocked(focus))
+    {
+        SDL_Log("'%s' is locked; unlock it to close it.", focus->title);
+    }
+    else if (focus != nullptr)
+    {
+        ECSLayout_Close(focus);
+    }
 }
 
 static void ECSIMenus_CloseGroup(void)
@@ -373,16 +383,6 @@ static void ECSIMenus_CloseGroup(void)
     arrfree(panels);
 }
 
-static void ECSIMenus_Lock(void)
-{
-    ECSILayout_ToggleLock();
-}
-
-static void ECSIMenus_Reopen(void)
-{
-    ECSILayout_Reopen();
-}
-
 static void ECSIMenus_Restart(void)
 {
     ECSPanel focus = ECSILayout_GetFocus();
@@ -397,13 +397,13 @@ static void ECSIMenus_Restart(void)
 static void ECSIMenus_ShowWorkspaces(void)
 {
     ECSPanel focus = ECSILayout_GetFocus();
-    ECSIMenus_CloseFrom(0);
-    ECSIMenus_BuildWorkspaceMenu(&MENUS.entries);
-    ECSIMenus_OpenLevel(MENUS.entries, (SDL_FRect){(focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET, (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET, 0.0f, 0.0f});
+    f32 x = (focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET;
+    f32 y = (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET;
+    ECSIMenus_Show(ECSIMenus_BuildWorkspaceMenu(), x, y);
 }
 
 /// @brief Defines the core's two functions for a workspace number: switching to the workspace, and moving the focused panel to it.
-#define ECSIMenus_WorkspaceFunctions(number)                 \
+#define ECSIMenus_WorkspaceFunctions(number)            \
     static void ECSIMenus_Workspace##number(void)       \
     {                                                   \
         ECSILayout_WorkspaceSwitch(number - 1);         \
@@ -414,21 +414,23 @@ static void ECSIMenus_ShowWorkspaces(void)
         ECSILayout_MoveToWorkspace(number - 1);         \
     }
 
+// clang-format off
 ECSIMenus_WorkspaceFunctions(1)
-    ECSIMenus_WorkspaceFunctions(2)
-        ECSIMenus_WorkspaceFunctions(3)
-            ECSIMenus_WorkspaceFunctions(4)
-                ECSIMenus_WorkspaceFunctions(5)
-                    ECSIMenus_WorkspaceFunctions(6)
-                        ECSIMenus_WorkspaceFunctions(7)
-                            ECSIMenus_WorkspaceFunctions(8)
-                                ECSIMenus_WorkspaceFunctions(9)
-                                    ECSIMenus_WorkspaceFunctions(10)
+ECSIMenus_WorkspaceFunctions(2)
+ECSIMenus_WorkspaceFunctions(3)
+ECSIMenus_WorkspaceFunctions(4)
+ECSIMenus_WorkspaceFunctions(5)
+ECSIMenus_WorkspaceFunctions(6)
+ECSIMenus_WorkspaceFunctions(7)
+ECSIMenus_WorkspaceFunctions(8)
+ECSIMenus_WorkspaceFunctions(9)
+ECSIMenus_WorkspaceFunctions(10)
+// clang-format on
 
 /// @brief The entries of the core function table for a workspace number.
-#define ECSIMenus_WorkspaceEntries(number)                                                                               \
-    {"ecs.workspace.switch" #number, ECSIMenus_Workspace##number, "Workspace " #number},                        \
-    {                                                                                                               \
+#define ECSIMenus_WorkspaceEntries(number)                                                               \
+    {"ecs.workspace.switch" #number, ECSIMenus_Workspace##number, "Workspace " #number},                 \
+    {                                                                                                    \
         "ecs.layout.moveToWorkspace" #number, ECSIMenus_MoveToWorkspace##number, "To workspace " #number \
     }
 
@@ -448,12 +450,12 @@ static const struct
     {"ecs.layout.moveUp", ECSIMenus_MoveUp, "Move up"},
     {"ecs.layout.moveDown", ECSIMenus_MoveDown, "Move down"},
     {"ecs.layout.nextTab", ECSIMenus_NextTab, "Next tab"},
-    {"ecs.layout.maximize", ECSIMenus_Maximize, "Maximize"},
-    {"ecs.layout.popOut", ECSIMenus_PopOut, "Pop out"},
+    {"ecs.layout.maximize", ECSILayout_ToggleMaximize, "Maximize"},
+    {"ecs.layout.popOut", ECSILayout_PopOut, "Pop out"},
     {"ecs.layout.close", ECSIMenus_Close, "Close"},
     {"ecs.layout.closeGroup", ECSIMenus_CloseGroup, "Close group"},
-    {"ecs.layout.lock", ECSIMenus_Lock, "Lock"},
-    {"ecs.layout.reopen", ECSIMenus_Reopen, "Reopen closed"},
+    {"ecs.layout.lock", ECSILayout_ToggleLock, "Lock"},
+    {"ecs.layout.reopen", ECSILayout_Reopen, "Reopen closed"},
     {"ecs.panel.restart", ECSIMenus_Restart, "Restart"},
     ECSIMenus_WorkspaceEntries(1),
     ECSIMenus_WorkspaceEntries(2),
@@ -545,21 +547,16 @@ usz ECSIMenus_GetOrder(const char *function)
     return position;
 }
 
-void ECSIMenus_Open(ECSPanel panel, f32 x, f32 y, bool group)
+void ECSIMenus_OpenPanelMenu(ECSPanel panel, f32 x, f32 y)
 {
-    ECSIMenus_CloseFrom(0);
     ECSILayout_SetFocus(panel);
+    ECSIMenus_Show(ECSIMenus_BuildPanelMenu(panel), x, y);
+}
 
-    if (group)
-    {
-        ECSIMenus_BuildGroupMenu(&MENUS.entries, panel);
-    }
-    else
-    {
-        ECSIMenus_BuildPanelMenu(&MENUS.entries, panel);
-    }
-
-    ECSIMenus_OpenLevel(MENUS.entries, (SDL_FRect){x, y, 0.0f, 0.0f});
+void ECSIMenus_OpenGroupMenu(ECSPanel shownPanel, f32 x, f32 y)
+{
+    ECSILayout_SetFocus(shownPanel);
+    ECSIMenus_Show(ECSIMenus_BuildGroupMenu(shownPanel), x, y);
 }
 
 bool ECSIMenus_Handle(const SDL_Event *event)
@@ -571,7 +568,7 @@ bool ECSIMenus_Handle(const SDL_Event *event)
 
     usz deepest = arrlenu(MENUS.levels) - 1;
     usz count = arrlenu(MENUS.levels[deepest].entries);
-    usz selected = MENUS.levels[deepest].selected;
+    usz selected = ECSIWindow_GetSelectedMenuItem(deepest);
     usz level = 0;
     usz index = 0;
 
@@ -583,9 +580,9 @@ bool ECSIMenus_Handle(const SDL_Event *event)
         {
             bool hasSubmenu = MENUS.levels[level].entries[index].submenu != nullptr;
 
-            if (MENUS.levels[level].selected != index || arrlenu(MENUS.levels) != level + (hasSubmenu ? 2 : 1))
+            if (ECSIWindow_GetSelectedMenuItem(level) != index || arrlenu(MENUS.levels) != level + (hasSubmenu ? 2 : 1))
             {
-                ECSIMenus_Select(level, index, true);
+                ECSIMenus_SelectAndOpen(level, index);
             }
         }
 
@@ -611,10 +608,10 @@ bool ECSIMenus_Handle(const SDL_Event *event)
         switch (event->key.key)
         {
         case SDLK_UP:
-            ECSIMenus_Select(deepest, (selected + count - 1) % count, false);
+            ECSIMenus_Select(deepest, (selected + count - 1) % count);
             break;
         case SDLK_DOWN:
-            ECSIMenus_Select(deepest, (selected + 1) % count, false);
+            ECSIMenus_Select(deepest, (selected + 1) % count);
             break;
         case SDLK_RIGHT:
             if (MENUS.levels[deepest].entries[selected].submenu != nullptr)

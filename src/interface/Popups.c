@@ -97,7 +97,7 @@ ECSPopup ECSIPopups_GetMenu(void)
 {
     for (usz i = arrlenu(POPUPS.open); i > 0; i--)
     {
-        if (POPUPS.open[i - 1]->desc.kind == ECSPopupKind_Menu)
+        if (POPUPS.open[i - 1]->desc.type == ECSPopupType_Menu)
         {
             return POPUPS.open[i - 1];
         }
@@ -110,7 +110,8 @@ void ECSIPopups_CloseAll(void)
 {
     while (arrlenu(POPUPS.open) > 0)
     {
-        ECSPopup_Close(arrlast(POPUPS.open));
+        ECSPopup popup = arrlast(POPUPS.open);
+        ECSPopup_Close(&popup);
     }
 }
 
@@ -118,11 +119,12 @@ void ECSIPopups_CloseHidden(void)
 {
     for (usz i = arrlenu(POPUPS.open); i > 0; i--)
     {
-        ECSPanel panel = POPUPS.open[i - 1]->panel;
+        ECSPopup popup = POPUPS.open[i - 1];
+        ECSPanel panel = popup->panel;
 
         if (panel->closed || panel->fault != nullptr || !panel->visible)
         {
-            ECSPopup_Close(POPUPS.open[i - 1]);
+            ECSPopup_Close(&popup);
         }
     }
 }
@@ -159,15 +161,16 @@ bool ECSIPopup_Draw(ECSPopup popup)
 {
     SDL_assert(popup != nullptr);
 
-    i32 width = (i32)SDL_max(1.0f, SDL_roundf(popup->desc.width));
-    i32 height = (i32)SDL_max(1.0f, SDL_roundf(popup->desc.height));
+    i32 width = ECSIPanel_ToPixels(popup->desc.width);
+    i32 height = ECSIPanel_ToPixels(popup->desc.height);
+    bool resized = popup->pixels == nullptr || popup->pixels->w != width || popup->pixels->h != height;
 
-    if (!popup->needsDraw && popup->pixels != nullptr && popup->pixels->w == width && popup->pixels->h == height)
+    if (!popup->needsDraw && !resized)
     {
         return false;
     }
 
-    if (popup->pixels == nullptr || popup->pixels->w != width || popup->pixels->h != height)
+    if (resized)
     {
         SDL_DestroySurface(popup->pixels);
         popup->pixels = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_ARGB8888);
@@ -206,11 +209,11 @@ void ECSIPopup_PostEvent(ECSPopup popup, const ECSPanelEvent *event)
     ECSIEvents_Post(ECSIPopup_DeliverEvent, popup, event);
 }
 
-SHUResult ECSPopup_Open(ECSPanel panel, const ECSPopupDesc *desc, ECSPopup *retPopup)
+SHUResult ECSPopup_Open(ECSPanel panel, ECSPopup *retPopup, const ECSPopupDesc *desc)
 {
     SDL_assert(panel != nullptr);
-    SDL_assert(desc != nullptr);
     SDL_assert(retPopup != nullptr);
+    SDL_assert(desc != nullptr);
 
     *retPopup = nullptr;
 
@@ -240,29 +243,32 @@ SHUResult ECSPopup_Open(ECSPanel panel, const ECSPopupDesc *desc, ECSPopup *retP
     return SHUResult_Ok;
 }
 
-void ECSPopup_Close(ECSPopup popup)
+void ECSPopup_Close(ECSPopup *popup)
 {
     SDL_assert(popup != nullptr);
 
-    if (popup->closed)
+    ECSPopup closing = *popup;
+    *popup = nullptr;
+
+    if (closing == nullptr || closing->closed)
     {
         return;
     }
 
     for (usz i = 0; i < arrlenu(POPUPS.open); i++)
     {
-        if (POPUPS.open[i] == popup)
+        if (POPUPS.open[i] == closing)
         {
             arrdel(POPUPS.open, i);
             break;
         }
     }
 
-    popup->closed = true;
-    arrput(POPUPS.closed, popup);
+    closing->closed = true;
+    arrput(POPUPS.closed, closing);
     ECSILayout_RequestFrame();
     ECSPanelEvent event = {0};
-    ECSIEvents_Post(ECSIPopup_DeliverClosed, popup, &event);
+    ECSIEvents_Post(ECSIPopup_DeliverClosed, closing, &event);
 }
 
 void ECSPopup_Redraw(ECSPopup popup)

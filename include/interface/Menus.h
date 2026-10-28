@@ -32,12 +32,17 @@ const char *ECSIMenus_LabelOf(const char *function, ECSPanel panel);
 /// @return Its position, starting at 0, or the number of the core's functions if it is not one of them.
 usz ECSIMenus_GetOrder(const char *function);
 
-/// @brief Opens a panel's menu, or the menu of the panel's group, at a point. The panel gets the focus.
-/// @param panel The panel, or the group's shown panel.
+/// @brief Opens a panel's menu at a point. The panel gets the focus.
+/// @param panel The panel.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
-/// @param group true for the group's menu.
-void ECSIMenus_Open(ECSPanel panel, f32 x, f32 y, bool group);
+void ECSIMenus_OpenPanelMenu(ECSPanel panel, f32 x, f32 y);
+
+/// @brief Opens the menu of a group at a point. Its shown panel gets the focus.
+/// @param shownPanel The group's shown panel.
+/// @param x Horizontal position in layout units.
+/// @param y Vertical position in layout units.
+void ECSIMenus_OpenGroupMenu(ECSPanel shownPanel, f32 x, f32 y);
 
 /// @brief Gives an event to the open menus. Pointer and key events go to the menus only; keys go to the deepest one.
 /// @param event The event.

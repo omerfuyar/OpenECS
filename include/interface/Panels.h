@@ -12,9 +12,7 @@
 /// @brief A registered panel type.
 typedef struct ECSIPanelType
 {
-    ECSPanelTypeDesc desc; // its name and title point to the copies below
-    char *name;
-    char *title;
+    ECSPanelTypeDesc desc; // its name, the full name, and its title are the type's own copies
     ECSPlugin plugin;
     void *typeData;     // what the Bindings module keeps for a Lua panel type, or nullptr
     char **menuEntries; // stb_ds array of the functions the type adds to its panels' menu
@@ -36,12 +34,12 @@ struct ECSIPanel
     f32 y;
     f32 width;
     f32 height;
-    SDL_Surface *pixels;  // what the panel drew, kept between draws
-    SDL_Texture *texture; // the pixels on the GPU, made by the renderer of the OS window that shows the panel; for a GPU panel, that renderer's view of gpuTexture
-    SDL_GPUTexture *gpuTexture; // a GPU panel's texture on the shared device, kept when the panel moves to another OS window; nullptr for a pixels panel
-    SDL_GPUDevice *gpuDevice;   // the device of gpuTexture
+    SDL_Surface *pixels;            // what the panel drew, kept between draws
+    SDL_Texture *texture;           // the pixels on the GPU, made by the renderer of the OS window that shows the panel; for a GPU panel, that renderer's view of gpuTexture
+    SDL_GPUTexture *gpuTexture;     // a GPU panel's texture on the shared device, kept when the panel moves to another OS window; nullptr for a pixels panel
+    SDL_GPUDevice *gpuDevice;       // the device of gpuTexture
     SDL_GPUTransferBuffer *gpuCopy; // where gpuTexture is downloaded to after each draw, for an OS window whose renderer has no GPU device and shows a copy; else nullptr
-    i32 gpuWidth;               // the size of gpuTexture
+    i32 gpuWidth;                   // the size of gpuTexture
     i32 gpuHeight;
     u64 lastDrawTicks;
     u64 focusTicks; // when the panel last got focus, for placing new panels of its type; 0 if never
@@ -49,18 +47,21 @@ struct ECSIPanel
     bool visible;   // what the panel was last told: shown or hidden
     f32 toldWidth;  // the size the panel was last told
     f32 toldHeight;
-    char *fault;    // the error of a callback, or nullptr; a faulted panel shows it and its type is not called again, except Destroy
-    char **accepts; // stb_ds array of the types of data the panel accepts when data is dropped on it
+    char *fault;        // the error of a callback, or nullptr; a faulted panel shows it and its type is not called again, except Destroy
+    char **accepts;     // stb_ds array of the types of data the panel accepts when data is dropped on it
     bool textInput;     // the panel accepts typed text
     SDL_FRect textArea; // its text cursor, in surface pixels
 };
+
+/// @brief Gets the number of pixels that a size in layout units takes: rounded, and at least 1.
+i32 ECSIPanel_ToPixels(f32 size);
 
 /// @brief Registers a panel type like ECSPanelType_Register, with data for the Bindings module.
 /// @param plugin The plugin that provides the panel type.
 /// @param desc Description of the panel type.
 /// @param typeData Kept in the type, or nullptr.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSIPanel_TypeRegister(ECSPlugin plugin, const ECSPanelTypeDesc *desc, void *typeData);
+SHUWUR SHUResult ECSIPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc, void *typeData);
 
 /// @brief Asks the user with a message dialog and waits for a button, as ECSIInput_Ask does.
 /// @return The index of the pressed button, or -1 if no dialog can be shown.
@@ -137,9 +138,9 @@ void ECSIPanel_SetID(ECSPanel panel, u32 id);
 
 /// @brief Describes a panel for a session: its id, type, saved state and the state's version. A working panel saves its state through its type; a placeholder writes back the state it kept.
 /// @param panel The panel.
-/// @param retPanel The value to set to a table.
+/// @param retSaved The value to set to a table.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation. A type that fails to save its state is reported, and the last saved state is written.
-SHUWUR SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retPanel);
+SHUWUR SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retSaved);
 
 /// @brief Places a panel. The panel is drawn again if its size changes.
 /// @param panel Panel to place.

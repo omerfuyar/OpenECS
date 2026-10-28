@@ -18,20 +18,19 @@
 #define OPENECS_DEFAULT_PRESET "launcher"
 
 /// @brief What --help prints.
-#define OPENECS_USAGE                                                                                     \
-    "Usage: OpenECS [OPTION...] [FILE...]\n"                                                              \
-    "\n"                                                                                                  \
-    "Starts the launcher, which lists the presets of the presets folders and the saved sessions,\n"      \
-    "or the tool of a preset or a session. The preset's open function opens each FILE.\n"                \
-    "\n"                                                                                                  \
-    "Options:\n"                                                                                          \
-    "  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file\n"         \
-    "  -s, --session FILE      Open a saved session\n"                                                    \
-    "  -f, --fresh             Start from the preset, not from the tool's last session\n"                 \
-    "  -l, --log-input         Log each key and text event as the system gives it\n"                     \
-    "  -t, --test FILE         Run a test; Debug builds only\n"                                           \
-    "  -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit\n"    \
-    "  -v, --version           Print the version and exit\n"                                              \
+#define OPENECS_USAGE                                                                                          \
+    "Usage: OpenECS [OPTION...] [FILE...]\n"                                                                   \
+    "\n"                                                                                                       \
+    "Starts the launcher, which lists the presets of the presets folders and the saved sessions,\n"            \
+    "or the tool of a preset or a session. The preset's open function opens each FILE.\n"                      \
+    "\n"                                                                                                       \
+    "Options:\n"                                                                                               \
+    "  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file\n"              \
+    "  -s, --session FILE      Open a saved session\n"                                                         \
+    "  -f, --fresh             Start from the preset, not from the tool's last session\n"                      \
+    "  -t, --test FILE         Run a test; Debug builds only\n"                                                \
+    "  -d, --definitions DIR   Write the plugin interface and every plugin's definitions into DIR, and exit\n" \
+    "  -v, --version           Print the version and exit\n"                                                   \
     "  -h, --help              Print this help and exit\n"
 
 /// @brief One option of the command line.
@@ -47,7 +46,6 @@ static const ECSIOption OPENECS_OPTIONS[] = {
     {"-p", "--preset", true},
     {"-s", "--session", true},
     {"-f", "--fresh", false},
-    {"-l", "--log-input", false},
     {"-t", "--test", true},
     {"-d", "--definitions", true},
     {"-v", "--version", false},
@@ -56,14 +54,13 @@ static const ECSIOption OPENECS_OPTIONS[] = {
 
 typedef enum ECSIOptionIndex
 {
-    ECSIOption_Preset,
-    ECSIOption_Session,
-    ECSIOption_Fresh,
-    ECSIOption_LogInput,
-    ECSIOption_Test,
-    ECSIOption_Definitions,
-    ECSIOption_Version,
-    ECSIOption_Help,
+    ECSIOptionIndex_Preset,
+    ECSIOptionIndex_Session,
+    ECSIOptionIndex_Fresh,
+    ECSIOptionIndex_Test,
+    ECSIOptionIndex_Definitions,
+    ECSIOptionIndex_Version,
+    ECSIOptionIndex_Help,
 } ECSIOptionIndex;
 
 /// @brief Reads the options, and moves the files to the start of argv, over options already read.
@@ -112,28 +109,25 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
 
         switch ((ECSIOptionIndex)option)
         {
-        case ECSIOption_Preset:
+        case ECSIOptionIndex_Preset:
             retArguments->preset = value;
             break;
-        case ECSIOption_Session:
+        case ECSIOptionIndex_Session:
             retArguments->session = value;
             break;
-        case ECSIOption_Fresh:
+        case ECSIOptionIndex_Fresh:
             retArguments->fresh = true;
             break;
-        case ECSIOption_LogInput:
-            retArguments->logInput = true;
-            break;
-        case ECSIOption_Test:
+        case ECSIOptionIndex_Test:
             retArguments->test = value;
             break;
-        case ECSIOption_Definitions:
+        case ECSIOptionIndex_Definitions:
             retArguments->definitions = value;
             break;
-        case ECSIOption_Version:
+        case ECSIOptionIndex_Version:
             retArguments->version = true;
             break;
-        case ECSIOption_Help:
+        case ECSIOptionIndex_Help:
             retArguments->help = true;
             break;
         }
@@ -183,29 +177,27 @@ int main(int argc, char **argv)
 
     ECSIApp_Start(&arguments);
     int status = arguments.definitions != nullptr ? (ECSIApp_WriteDefinitions(arguments.definitions) ? 1 : 0) : ECSIApp_Run();
-    const char *option = nullptr;
-    char *next = ECSIApp_Stop(&option);
+    ECSIRestart restart = ECSIApp_Stop();
 
     // a session or preset opened while OpenECS ran starts a new OpenECS in place of this one; SDL can start a process but not replace one
-    if (next != nullptr)
+    if (restart.path != nullptr)
     {
 #if defined(SDL_PLATFORM_WINDOWS)
         // Windows cannot replace a process either, so the new one starts and this one ends; SDL quotes its arguments for the command line
         char *program = nullptr;
-        SDL_Process *process = _get_pgmptr(&program) == 0 ? SDL_CreateProcess((const char *[]){program, option, next, nullptr}, false) : nullptr;
+        SDL_Process *process = _get_pgmptr(&program) == 0 ? SDL_CreateProcess((const char *[]){program, restart.option, restart.path, nullptr}, false) : nullptr;
 
         if (process != nullptr)
         {
             SDL_DestroyProcess(process);
-            SDL_free(next);
+            SDL_free(restart.path);
             return status;
         }
 #else
-        (void)argv;
-        execv("/proc/self/exe", (char *[]){argv[0], (char *)option, next, nullptr});
+        execv("/proc/self/exe", (char *[]){argv[0], (char *)restart.option, restart.path, nullptr});
 #endif
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot start again from '%s'.", next);
-        SDL_free(next);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot start again from '%s'.", restart.path);
+        SDL_free(restart.path);
         return 1;
     }
 

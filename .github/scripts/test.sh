@@ -1,20 +1,13 @@
 #!/bin/sh
-# Runs the examples' tests with a Debug executable: the examples are OpenECS's tests, and the build copies them into bin/examples/.
-# Fails if a test fails or a sanitizer reports a problem.
-set -u
+# Runs the examples' tests with shuild's --test, after build.sh D compiled shuild: the examples are OpenECS's tests.
+# shuild builds in Debug with the examples, runs each test in bin/examples/ and prints pass or FAIL for it;
+# it fails if a test fails or a sanitizer reports a problem. SDL_VIDEO_DRIVER chooses another video driver, as test-wayland.sh does.
+# Examples named after it, such as c12_sketch, run alone.
+set -eu
 
-executable="$1"
-bin=$(dirname "$executable")
-failed=0
+case "$(uname -s)" in
+MINGW* | MSYS* | CYGWIN*) compiler=clang extension=.exe ;;
+*) compiler=gcc extension= ;;
+esac
 
-for test in "$bin"/examples/*/test*.lua; do
-    if "$executable" --test "$test" > build/test.log 2>&1 && ! grep -q -E 'Sanitizer|runtime error:' build/test.log; then
-        echo "pass $test"
-    else
-        echo "FAIL $test"
-        cat build/test.log
-        failed=1
-    fi
-done
-
-exit $failed
+"./shuild.ignore$extension" -c "$compiler" --test "$@"
