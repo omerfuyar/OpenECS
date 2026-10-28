@@ -19,7 +19,7 @@ See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples 
 - [OVERVIEW.md](OVERVIEW.md): what OpenECS is, its scope, and its product decisions.
 - [DESIGN.md](DESIGN.md): how OpenECS is built technically.
 - [TODO.md](TODO.md): open questions and pending work.
-- [AGENTS.md](AGENTS.md): instructions for AI agents working in this repository.
+- [CLAUDE.md](CLAUDE.md): instructions for AI agents working in this repository.
 
 ## Usage
 

@@ -1,4 +1,4 @@
-# AGENTS.md
+# CLAUDE.md
 
 Instructions for AI agents working in this repository. Read this file fully before doing anything.
 
