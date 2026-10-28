@@ -43,7 +43,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 - C23 standard is used everywhere. Its forms are preferred to older ones: `nullptr` instead of `NULL`, `static_assert`, `constexpr`, `bool` as a keyword, and enumerations with a fixed type.
 - Lua is the standard implementation, latest release.
-- Out of scope: security (plugins and files are trusted), cross platform (Linux only for now) and accessibility. Look and feel is not a priority.
+- Out of scope: security (plugins and files are trusted) and accessibility. Look and feel is not a priority. The platforms are in OVERVIEW 3.4.
 
 ### 1.2 Names
 

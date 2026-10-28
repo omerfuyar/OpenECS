@@ -101,7 +101,9 @@ Apart from sdl, they are plugins like any other. They use only the plugin API, t
 
 ### 3.4 Platform
 
-OpenECS targets Linux only for now.
+OpenECS runs on Linux, its priority, and on Windows. Other platforms are not worked on for now.
+
+What depends on the platform stays behind an interface, so porting changes as little as it can: the core reaches the system through SDL, and a plugin that uses the system gives other plugins functions that do not, such as fs for folders and net for sockets. Plugins and tools built on those interfaces keep working when OpenECS or a plugin is ported.
 
 ### 3.5 Not priorities, and not in the design
 
