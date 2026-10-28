@@ -28,7 +28,7 @@ Before you propose or change anything, read the Contents of OVERVIEW.md and DESI
 | `.github/`      | Checks, release workflow and their scripts, rulesets and release descriptions (DESIGN.md, section 19).                                                                                                                              |
 | `.clang-format` | How clang-format formats the C code (DESIGN.md, section 1.6).                                                                                                                                                                       |
 | `.clang-tidy`   | What clang-tidy checks in the C code: names (DESIGN.md, sections 1.2 and 1.6), how complex functions are, and common bugs.                                                                                                                                               |
-| `.claude/`      | Claude Code's settings, skills and notes: it formats each C file it edits and never edits `dependencies/`; `skills/` holds procedures such as releases, and `notes.md` why the tools are set up as they are, and the owner's notes. |
+| `.claude/`      | Claude Code's settings, skills and notes: it formats each C file it edits and never edits `dependencies/`; `skills/` holds procedures such as releases, and `notes.md` why the tools are set up as they are.                        |
 | `LICENSE.md`    | OpenECS's license, zlib.                                                                                                                                                                                                            |
 
 ## Current stage
