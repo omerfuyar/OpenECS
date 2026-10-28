@@ -58,6 +58,18 @@ jobs:
             .shu/Debug/dependencies
           key: debug-linux-${{ steps.dependencies.outputs.key }}
 
+      # std builds glslang and SPIRV-Cross with CMake only when their archives are missing, so they are kept until they or std's build change
+      - name: Name the C++ libraries' versions
+        id: cpp
+        run: echo "key=$( (git -C std submodule status dependencies/glslang dependencies/SPIRV-Cross; sha256sum std/shuild.c) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the C++ libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            std/.shu/Debug/cmake
+          key: cpp-debug-linux-${{ steps.cpp.outputs.key }}
+
       - name: Detect the compilers with shuild
         run: .github/scripts/compilers.sh
 
@@ -103,6 +115,18 @@ jobs:
             .shu/Release/dependencies
           key: release-linux-${{ steps.dependencies.outputs.key }}
 
+      # std builds glslang and SPIRV-Cross with CMake only when their archives are missing, so they are kept until they or std's build change
+      - name: Name the C++ libraries' versions
+        id: cpp
+        run: echo "key=$( (git -C std submodule status dependencies/glslang dependencies/SPIRV-Cross; sha256sum std/shuild.c) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the C++ libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            std/.shu/Release/cmake
+          key: cpp-release-linux-${{ steps.cpp.outputs.key }}
+
       # code that only Release builds compile, or link, breaks here instead of at a release
       - name: Build
         run: .github/scripts/build.sh R
@@ -136,6 +160,19 @@ jobs:
             .shu/Debug/dependencies
             .shu/Release/dependencies
           key: windows-${{ steps.dependencies.outputs.key }}
+
+      # std builds glslang and SPIRV-Cross with CMake only when their archives are missing, so they are kept until they or std's build change
+      - name: Name the C++ libraries' versions
+        id: cpp
+        run: echo "key=$( (git -C std submodule status dependencies/glslang dependencies/SPIRV-Cross; sha256sum std/shuild.c) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the C++ libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            std/.shu/Debug/cmake
+            std/.shu/Release/cmake
+          key: cpp-windows-${{ steps.cpp.outputs.key }}
 
       - name: Detect the compilers with shuild
         run: .github/scripts/compilers.sh

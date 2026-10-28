@@ -1229,7 +1229,7 @@ OpenECS follows the XDG Base Directory specification:
 
 - A repository that is not checked out is skipped with a warning.
 - Each repository has its own checks (19.3). They check out OpenECS's `dev` with its submodules, put the repository's own commit in its folder, build OpenECS with it and the examples, and run the examples' tests.
-- Each repository follows OpenECS's conventions and rules for contributors; its `AGENTS.md` and `DESIGN.md` name what is its own.
+- Each repository follows OpenECS's conventions and rules for contributors; its `CLAUDE.md` and `DESIGN.md` name what is its own.
 
 ## 18. Platform notes
 
@@ -1272,7 +1272,7 @@ OpenECS follows the XDG Base Directory specification:
 
 - The steps are scripts in `.github/scripts/`, for CI. Each builds or tests with shuild, so a contributor runs the same build and tests with `shuild.c`: `-b debug -e`, `-b release -e` and `-t`.
 - A new push to a branch or a pull request cancels its older run of the checks.
-- The built dependencies are kept between runs until a submodule or the build changes. OpenECS's own files are compiled every time, so the analyzer sees all of them.
+- The built dependencies, and the C++ libraries that std builds with CMake, are kept between runs until a submodule or the build changes. OpenECS's own files are compiled every time, so the analyzer sees all of them.
 
 ### 19.4 Releases
 
