@@ -642,7 +642,7 @@ plugins/
 return {
   name = "canvas",              -- unique, the folder's name; the prefix of everything it registers
   version = "1.2.0",            -- semantic version
-  api = 1,                      -- plugin API version it was built for
+  api = 2,                      -- plugin API version it was built for
   type = "native",              -- "native" or "lua"
   description = "Paint canvas", -- optional
   depends = { ui = "1.0" },     -- optional; plugin name = minimum version
