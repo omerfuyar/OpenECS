@@ -141,6 +141,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Menus      | The core's bindable functions, and the panel and group menus that offer them (6.8).                                                                            |
 |           | Input      | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input, the clipboard, dialogs.                                         |
 | app       | Session    | Reading presets and sessions, applying them, writing them.                                                                                                     |
+|           | Desktop    | The tools' entries in the system's application launcher (13.9).                                                                                                |
 |           | Workers    | Lua scripts on threads of their own, and the messages between them and the main thread (3.4).                                                                  |
 |           | Bindings   | The `ecs` module: the plugin interface for Lua plugins (11.3).                                                                                                 |
 |           | Test       | Runs a test in Debug builds (17.5).                                                                                                                            |
@@ -774,7 +775,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - A buffer is bytes that may hold zeros: `ECSValue_SetBuffer` copies them, and `ECSValue_GetBuffer` reads them, or a string's bytes. From Lua, a string with a zero byte becomes a buffer; to Lua, a buffer is a string.
 - A handle names an object of a handle type (10.6) by its type and its object: `ECSValue_SetHandle(value, "ecs.panel", panel)` and `ECSValue_GetHandle(value, "ecs.panel")`. The value does not own the object. To Lua it is the object's handle, and a handle from Lua stays one, so an event can name a panel by its handle. A value made from a Lua handle keeps that handle, so the object lives as long as the value.
 - Files hold only data (13.4): a buffer is written as a string, and a handle is left out.
-- Functions on a table's list have `List` in their names (`ECSValue_GetListCount`, `ECSValue_GetListItem`, `ECSValue_AddListItem`), and functions on its named fields have `Table` (`ECSValue_GetTableField`, `ECSValue_SetTableField`).
+- Functions on a table's list have `List` in their names (`ECSValue_GetListCount`, `ECSValue_GetListItem`, `ECSValue_AddListItem`), and functions on its named fields have `Table` (`ECSValue_GetTableField`, `ECSValue_SetTableField`, and `ECSValue_GetTableFieldCount` with `ECSValue_GetTableFieldAt`, which go through every field).
 
 ### 10.4 Calls
 
@@ -946,10 +947,11 @@ Presets and sessions share one format: a Lua file that returns a table.
 
 ```lua
 return {
-  format = 1,                                -- version of this file format
+  format = 2,                                -- version of this file format
   name = "paint",
   version = "1.0.0",
-  app = { id = "org.example.Paint", name = "Paint", icon = "paint.png" },
+  app = { id = "org.example.Paint", name = "Paint", icon = "paint.png",
+          categories = { "Graphics" }, mimeTypes = { "image/png" } },  -- the tool's desktop entry (13.9)
   depends = { canvas = "1.2", palette = "1.0" },
   pluginsDir = "plugins",                    -- optional extra plugin directory
   open = "canvas.open",                      -- receives files from the command line
@@ -975,7 +977,9 @@ return {
 - A panel's saved state is its `state` field, and the state's version is `stateVersion`.
 - Sessions also store each panel's `id`, each workspace's `focus` (a panel id), each group's `shown` panel and `maximized` mark, the `currentWorkspace`, and `pluginState`: for each plugin's name, its `state` and `stateVersion`.
 - A plugin saves state of its own, apart from its panels', with the `SaveState` and `RestoreState` functions of its description (9.4). The state of a plugin that is not loaded stays in the session.
-- The app id matches the name of the tool's `.desktop` file.
+- The app id matches the name of the tool's `.desktop` file (13.9).
+- `app.icon` is a path relative to the preset's folder. `app.categories` and `app.mimeTypes` are lists of texts for the tool's desktop entry (13.9).
+- OpenECS reads format 1 and 2, and writes format 2. Format 2 adds `app.categories` and `app.mimeTypes`.
 - A preset with `listed = false` is left out of the list of presets (13.7), as the launcher's own preset is.
 - A preset's `hint` tells a new user what to try first, such as the keys to press. The title bar that OpenECS draws (6.10) shows it after the tool's name, in dim text, cut at the buttons when the window is narrow. With the system's title bar, it does not show. A session keeps it, as it keeps the preset's other fields.
 
@@ -1011,7 +1015,7 @@ The core converts only layout data.
 ### 13.6 Command line
 
 ```
-OpenECS [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE] [-d|--definitions FOLDER] [-v|--version] [-h|--help] [FILE...]
+OpenECS [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE] [-d|--definitions FOLDER] [-i|--install] [-u|--uninstall] [-v|--version] [-h|--help] [FILE...]
 ```
 
 - `--version` prints the version of OpenECS (19.1) and of the plugin API, and exits.
@@ -1020,11 +1024,12 @@ OpenECS [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE
 - `--fresh` starts from the preset even when `ecs.keepSession` is on (13.4).
 - `--test` runs a test (17.5).
 - `--definitions` writes the definition files of the functions of every plugin it finds, and exits (10.10).
+- `--install` adds the preset's tool to the system's application launcher, and `--uninstall` removes it; both exit without starting the tool (13.9).
 - Without `--preset` and `--session`, OpenECS starts with the preset `launcher` (13.8).
 - A preset's name is looked up in the user's presets, then in the first-party presets (16). A name that has a `/` or ends with `.lua` is a path.
 - A session's identity wins over the preset's, so the session is saved again as the last session of its own tool, if `ecs.keepSession` is on.
 - Files are passed to the function that the preset or session names in `open`. Its signature is `void(string)`. It is called once for each file, in order, once the session is built (2.3). Without an `open` function, the files are reported and not opened.
-- A tool's `.desktop` file runs, for example, `OpenECS --preset paint %F`.
+- A tool's `.desktop` file runs, for example, `OpenECS --preset paint %F` (13.9).
 
 ### 13.7 Lists of presets and sessions
 
@@ -1046,6 +1051,24 @@ OpenECS [-p|--preset NAME|FILE] [-s|--session FILE] [-f|--fresh] [-t|--test FILE
 ### 13.8 The launcher
 
 When the command line names no preset and no session, OpenECS starts with the first-party preset `launcher`. Every tool loads the plugin `launcher` too (12.3), and `launcher.open`, the core prefix and `/` by default, opens its list in any tool. The preset and its plugin `launcher` are in OpenECS-std (17.7); their design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The launcher.
+
+### 13.9 Desktop entries
+
+- `OpenECS --preset paint --install` writes the tool's desktop entry, so the system's launcher lists the tool, and offers it in "Open with" for the file types its `open` function takes. Without `--preset`, it installs the launcher (13.8). `--uninstall` removes the entry.
+- The entry is `$XDG_DATA_HOME/applications/<app id>.desktop` (default `~/.local/share`), as the Desktop Entry specification says. It holds:
+
+  | Key              | From the preset                                                                                         |
+  | ---------------- | ------------------------------------------------------------------------------------------------------- |
+  | `Name`           | `app.name`                                                                                              |
+  | `Comment`        | `hint`, if it has one                                                                                   |
+  | `Icon`           | the full path of `app.icon`, if it has one                                                              |
+  | `Exec`           | the full path of the program, `--preset` with the preset's name, or its full path if a path named it, and `%F` |
+  | `StartupWMClass` | `app.id`, so the launcher matches the tool's windows to its entry                                       |
+  | `Categories`     | `app.categories`, such as `{ "Graphics" }`                                                              |
+  | `MimeType`       | `app.mimeTypes`, such as `{ "image/png" }`                                                              |
+
+- A preset named by its name stays found when the program moves; the entry names the program by its full path, so moving the program needs `--install` again.
+- Windows has no desktop entries yet: `--install` and `--uninstall` report it and exit with status 1.
 
 ## 14. Errors and logging
 
@@ -1311,6 +1334,7 @@ OpenECS follows the XDG Base Directory specification:
 - Standard plugins are generic building blocks. Views of one domain, such as a scene's hierarchy or an inspector, belong to the plugins of tools, which build them from the blocks.
 - Platform-specific code stays inside the plugins that need it, behind their functions, so porting OpenECS to another system changes those plugins and not the plugins built on them.
 - A standard plugin needs nothing but OpenECS: it links no library. Its calls to SDL and SDL_ttf are resolved against the executable's copies (17.2), and any other library it uses is compiled into it. So copying its folder into a `plugins/` folder installs it.
+- A plugin never uses another plugin's libraries (OVERVIEW 12). Two plugins that use one library, such as zlib, each compile their own copy into themselves, and its functions stay hidden inside each. A library that needs another, as libcurl needs zlib for compressed answers, gets it compiled into the same plugin.
 
 ### 20.2 OpenECS-std
 
@@ -1341,6 +1365,8 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 **Compositor.** On Wayland, the program that draws all windows on screen and decides where they go and which one has focus.
 
 **Coroutine (Lua).** A Lua function that can pause and later go on from where it paused.
+
+**Desktop entry.** A `.desktop` file that tells Linux desktops about a program: its name, icon, command and the file types it opens. Application launchers list the programs that have one.
 
 **Destructor.** A function that releases an object when it is no longer needed.
 
@@ -1373,6 +1399,8 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 **Merge commit.** A commit that joins two branches and keeps the commits of both.
 
 **Metatable (Lua).** A table that defines how a Lua value behaves. For handles, it carries the type name.
+
+**MIME type.** A name for a kind of file, such as `image/png`. Desktops use it to choose the programs that open a file.
 
 **Opaque handle.** A pointer to a structure whose fields are hidden, so only the functions that own it can change it.
 

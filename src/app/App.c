@@ -1,5 +1,6 @@
 #include "app/App.h"
 #include "app/Bindings.h"
+#include "app/Desktop.h"
 #include "app/Session.h"
 #include "app/Test.h"
 #include "app/Workers.h"
@@ -464,6 +465,37 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     usz fileCount = APP.definitions ? 0 : arguments->fileCount;
     char **files = APP.test ? ECSITest_GetFiles(&fileCount) : arguments->files;
     ECSIApp_OpenFiles(files, fileCount);
+}
+
+int ECSIApp_Install(const ECSIArguments *arguments)
+{
+    SDL_assert(arguments != nullptr);
+
+    SHUResult result = SDL_GetBasePath() == nullptr ? SHUResult_ErrNotFound : ECSILua_Initialize();
+    ECSIApp_FindUserFolders();
+    result = result ? result : ECSISession_FindPreset(&APP.presetPath, arguments->preset, APP.presetsFolder);
+    result = result ? result : ECSISession_ReadInfo(APP.presetPath, &APP.preset);
+
+    // a preset named by its name keeps working when OpenECS moves its presets
+    const char *name = ECSISession_IsPresetPath(arguments->preset) ? nullptr : arguments->preset;
+    result = result ? result : (arguments->install ? ECSIDesktop_Install(&APP.preset, APP.presetPath, name) : ECSIDesktop_Uninstall(&APP.preset));
+
+    if (result)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not %s the preset '%s' (%s).", arguments->install ? "install" : "uninstall", arguments->preset, SHUResult_String(result));
+    }
+
+    ECSISession_FreeInfo(&APP.preset);
+    SDL_free(APP.presetPath);
+    SDL_free(APP.configFolder);
+    SDL_free(APP.presetsFolder);
+    SDL_free(APP.stateFolder);
+    SDL_free(APP.dataFolder);
+    ECSILua_Terminate();
+    ECSISanitizers_CheckLeaks();
+    SDL_Quit();
+    ECSILog_CloseFile();
+    return result ? 1 : 0;
 }
 
 SHUResult ECSIApp_WriteDefinitions(const char *folder)
