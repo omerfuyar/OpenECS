@@ -364,6 +364,7 @@ The settings window changes the user's settings file, and the user can also edit
 ## 11. Operating-system integration
 
 - The core provides the clipboard (text and other typed data), drag and drop with other applications, file open and save dialogs, and message dialogs.
+- The core adds a tool to the system's application launcher, with the file types it opens (DESIGN 13.9).
 - Plugins provide a system tray icon and desktop notifications.
 
 ## 12. Principles
@@ -381,6 +382,7 @@ The settings window changes the user's settings file, and the user can also edit
 11. **Do not lose what is not understood.** Unknown settings, missing panel types and unreadable state are kept.
 12. **Errors stay local.** A broken script or panel affects only itself.
 13. **The core's own tools are plugins.** Rich windows, such as the settings window, are built on the plugin API, which proves that the API is complete.
+14. **Plugins stand alone.** A plugin uses only the libraries it brings, compiled into itself, and never another plugin's. Plugins depend on each other only through the services their manifests name in `depends`, so any plugin that no other one names can be left out of a tool on its own (DESIGN 20.1).
 
 ## Glossary
 

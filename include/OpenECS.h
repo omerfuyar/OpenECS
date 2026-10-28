@@ -594,6 +594,18 @@ OPENECS_EXPORT const ECSValue *ECSValue_GetListItem(const ECSValue *table, usz i
 /// @return The field, or nullptr if the value is not a table or has no such field.
 OPENECS_EXPORT const ECSValue *ECSValue_GetTableField(const ECSValue *table, const char *name);
 
+/// @brief Counts the named fields of a table.
+/// @param table The table, or nullptr.
+/// @return Number of named fields; 0 if the value is not a table.
+OPENECS_EXPORT usz ECSValue_GetTableFieldCount(const ECSValue *table);
+
+/// @brief Gets a named field of a table by its position, to go through every field.
+/// @param table The table, or nullptr.
+/// @param index Position of the field, starting at 0, below ECSValue_GetTableFieldCount. Fields keep the order they were set in, as long as none is removed.
+/// @param retName The field's name, valid while the table does not change; nullptr if there is no such field.
+/// @return The field, or nullptr if the value is not a table or has no such field.
+OPENECS_EXPORT const ECSValue *ECSValue_GetTableFieldAt(const ECSValue *table, usz index, const char **retName);
+
 /// @brief Makes a value nil.
 /// @param value The value.
 OPENECS_EXPORT void ECSValue_SetNil(ECSValue *value);

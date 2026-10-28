@@ -30,6 +30,8 @@
     "  -f, --fresh             Start from the preset, not from the tool's last session\n"                      \
     "  -t, --test FILE         Run a test; Debug builds only\n"                                                \
     "  -d, --definitions DIR   Write the plugin interface and every plugin's definitions into DIR, and exit\n" \
+    "  -i, --install           Add the preset's tool to the system's launcher, and exit\n"                     \
+    "  -u, --uninstall         Remove the preset's tool from the system's launcher, and exit\n"                \
     "  -v, --version           Print the version and exit\n"                                                   \
     "  -h, --help              Print this help and exit\n"
 
@@ -48,6 +50,8 @@ static const ECSIOption OPENECS_OPTIONS[] = {
     {"-f", "--fresh", false},
     {"-t", "--test", true},
     {"-d", "--definitions", true},
+    {"-i", "--install", false},
+    {"-u", "--uninstall", false},
     {"-v", "--version", false},
     {"-h", "--help", false},
 };
@@ -59,6 +63,8 @@ typedef enum ECSIOptionIndex
     ECSIOptionIndex_Fresh,
     ECSIOptionIndex_Test,
     ECSIOptionIndex_Definitions,
+    ECSIOptionIndex_Install,
+    ECSIOptionIndex_Uninstall,
     ECSIOptionIndex_Version,
     ECSIOptionIndex_Help,
 } ECSIOptionIndex;
@@ -124,6 +130,12 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
         case ECSIOptionIndex_Definitions:
             retArguments->definitions = value;
             break;
+        case ECSIOptionIndex_Install:
+            retArguments->install = true;
+            break;
+        case ECSIOptionIndex_Uninstall:
+            retArguments->uninstall = true;
+            break;
         case ECSIOptionIndex_Version:
             retArguments->version = true;
             break;
@@ -173,6 +185,11 @@ int main(int argc, char **argv)
     {
         printf("%s", OPENECS_USAGE);
         return 0;
+    }
+
+    if (arguments.install || arguments.uninstall)
+    {
+        return ECSIApp_Install(&arguments);
     }
 
     ECSIApp_Start(&arguments);

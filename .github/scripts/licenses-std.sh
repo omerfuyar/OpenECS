@@ -15,6 +15,11 @@ cp $std/glslang/LICENSE.txt "$folder/glslang.txt"
 cp $std/SPIRV-Cross/LICENSE "$folder/SPIRV-Cross.txt"
 cp $std/curl/COPYING "$folder/curl.txt"
 cp $std/mbedtls/LICENSE "$folder/mbedTLS.txt"
+cp $std/nghttp2/COPYING "$folder/nghttp2.txt"
+cp $std/zlib/LICENSE "$folder/zlib.txt"
+cp $std/zstd/LICENSE "$folder/zstd.txt"
+cp $std/yyjson/LICENSE "$folder/yyjson.txt"
+cp $std/tomlc17/LICENSE "$folder/tomlc17.txt"
 cp std/plugins/draw/fonts/OFL.txt "$folder/RobotoMono.txt"
 
 cat << NOTICE
@@ -27,5 +32,10 @@ glslang: BSD 3-Clause license, with parts under the MIT and Apache 2.0 licenses;
 SPIRV-Cross: Apache License 2.0
 curl (libcurl): curl license, derived from the MIT license
 Mbed TLS: Apache License 2.0, chosen of its Apache 2.0 or GPL 2.0 licenses
+nghttp2: MIT license
+zlib, with its minizip: zlib license
+zstd: BSD license, chosen of its BSD or GPL 2.0 licenses
+yyjson: MIT license
+tomlc17: MIT license
 Roboto Mono font: SIL Open Font License 1.1
 NOTICE

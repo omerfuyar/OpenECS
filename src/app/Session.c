@@ -15,7 +15,7 @@
 #pragma region Source Only
 
 /// @brief Version of the preset and session format that this core writes.
-#define OPENECS_SESSION_FORMAT 1
+#define OPENECS_SESSION_FORMAT 2
 
 /// @brief Longest path to a part of a file that a problem report names.
 #define OPENECS_SESSION_PATH_SIZE 256
@@ -49,6 +49,8 @@ static const ECSIFieldRule OPENECS_APP_RULES[] = {
     {"id", ECSIFieldType_String, true},
     {"name", ECSIFieldType_String, true},
     {"icon", ECSIFieldType_String, false},
+    {"categories", ECSIFieldType_Table, false},
+    {"mimeTypes", ECSIFieldType_Table, false},
 };
 
 /// @brief What the fields of a workspace must be.
@@ -162,6 +164,25 @@ static bool ECSISession_CheckFields(ECSISessionReader *reader, const ECSValue *t
     ECSISession_Report(reader, "%s", problem != nullptr ? problem : "out of memory");
     SDL_free(problem);
     return false;
+}
+
+/// @brief Checks that a field, if it is there, is a list of texts that a desktop entry can hold: no ';' and no line breaks (DESIGN 13.9).
+static bool ECSISession_CheckTexts(ECSISessionReader *reader, const ECSValue *table, const char *name)
+{
+    const ECSValue *list = ECSValue_GetTableField(table, name);
+
+    for (usz i = 0; i < ECSValue_GetListCount(list); i++)
+    {
+        const char *text = ECSValue_GetString(ECSValue_GetListItem(list, i), nullptr);
+
+        if (text == nullptr || text[0] == '\0' || SDL_strpbrk(text, ";\r\n") != nullptr)
+        {
+            ECSISession_Report(reader, "'%s' must be a list of texts without ';', such as { \"Graphics\" }", name);
+            return false;
+        }
+    }
+
+    return true;
 }
 
 /// @brief Checks the number fields of a node that must not be negative.
@@ -305,7 +326,9 @@ static bool ECSISession_Check(const char *path, const ECSValue *file)
     }
 
     usz length = ECSISession_Enter(&reader, "app", 0);
-    reader.valid = ECSISession_CheckFields(&reader, ECSValue_GetTableField(file, "app"), OPENECS_APP_RULES, SDL_arraysize(OPENECS_APP_RULES));
+    const ECSValue *app = ECSValue_GetTableField(file, "app");
+    reader.valid = ECSISession_CheckFields(&reader, app, OPENECS_APP_RULES, SDL_arraysize(OPENECS_APP_RULES));
+    reader.valid = reader.valid && ECSISession_CheckTexts(&reader, app, "categories") && ECSISession_CheckTexts(&reader, app, "mimeTypes");
     ECSISession_Leave(&reader, length);
 
     // depends names each plugin with a version

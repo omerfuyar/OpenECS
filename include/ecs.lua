@@ -686,7 +686,9 @@ function ecs.dialog.showMessage(title, message, buttons) end
 ---@class ecs.AppDesc
 ---@field id string Names the tool's last session and its .desktop file, such as "org.example.Paint".
 ---@field name string
----@field icon? string
+---@field icon? string The icon's path, relative to the preset's folder.
+---@field categories? string[] The categories of the tool's desktop entry, such as { "Graphics" }; OpenECS --install writes them.
+---@field mimeTypes? string[] The file types that the preset's open function takes, such as { "image/png" }, for the desktop's "Open with".
 
 ---A panel in a preset or session.
 ---@class ecs.PanelDesc

@@ -460,6 +460,25 @@ const ECSValue *ECSValue_GetTableField(const ECSValue *table, const char *name)
     return shget(((ECSValue *)table)->fields, name);
 }
 
+usz ECSValue_GetTableFieldCount(const ECSValue *table)
+{
+    return ECSValue_GetType(table) == ECSValueType_Table ? shlenu(table->fields) : 0;
+}
+
+const ECSValue *ECSValue_GetTableFieldAt(const ECSValue *table, usz index, const char **retName)
+{
+    SDL_assert(retName != nullptr);
+
+    if (index >= ECSValue_GetTableFieldCount(table))
+    {
+        *retName = nullptr;
+        return nullptr;
+    }
+
+    *retName = table->fields[index].key;
+    return table->fields[index].value;
+}
+
 void ECSValue_SetNil(ECSValue *value)
 {
     SDL_assert(value != nullptr);
