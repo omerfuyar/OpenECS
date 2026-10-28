@@ -38,32 +38,31 @@ Options:
   -s, --session FILE      Open a saved session
   -f, --fresh             Start from the preset, not from the tool's last session
   -t, --test FILE         Run a test; Debug builds only
-  -d, --definitions DIR   Write the definition files of every plugin found into DIR, and exit
+  -d, --definitions DIR   Write the plugin interface and every plugin's definitions into DIR, and exit
   -v, --version           Print the version and exit
   -h, --help              Print this help and exit
 ```
 
 ### Examples
 
-!!! todo change example format, make it core examples start with 'c' like c1_hello, std examples 's' like s1_media.
-The `examples/` folder shows how to write plugins, from simple to more advanced. `1_hello` to `12_sketch` the plugin interface, then the standard plugins. Its [README](https://github.com/omerfuyar/OpenECS-examples) says how to read and run them:
+The `examples/` folder shows how to write plugins, from simple to more advanced: `c1_hello` to `c13_workers` the plugin interface, then `s1_terminal` and on the standard plugins. Its [README](https://github.com/omerfuyar/OpenECS-examples) says how to read and run them:
 
 ``` shell
-./OpenECS --fresh --preset examples/1_hello/preset.lua
+./OpenECS --fresh --preset examples/c1_hello/preset.lua
 ```
 
-| `3_ui`: controls of the ui plugin                                                                                                                   | `22_gpu_model`: a glTF model with its own shaders                                       |
-| --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| ![The controls of 3_ui: a button, tabs, a checkbox, a switch, a slider, a selector, a dropdown, a number field and a list](docs/screenshots/ui.png) | ![The torus of 22_gpu_model, lit and shaded on the GPU](docs/screenshots/gpu-model.png) |
+| `c3_ui`: controls of the ui plugin                                                                                                                   | `s9_gpu_model`: a glTF model with its own shaders                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| ![The controls of c3_ui: a button, tabs, a checkbox, a switch, a slider, a selector, a dropdown, a number field and a list](docs/screenshots/ui.png) | ![The torus of s9_gpu_model, lit and shaded on the GPU](docs/screenshots/gpu-model.png) |
 
 ### Writing plugins
 
-The archive holds `include/`, the plugin interface: `OpenECS.h` for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`. `ecs.lua` also describes manifests, presets and settings files: write `---@type ecs.Manifest` or `---@type ecs.Preset` above the file's `return` to get completion and checks, as the examples do.
+The archive holds `include/`, the plugin interface: `OpenECS.h` and `shu.h`, which it includes, for plugins in C, and `ecs.lua`, which tells editors such as VS Code what the `ecs` module of Lua plugins holds. Add that folder to `workspace.library` in your plugin's `.luarc.json`. `ecs.lua` also describes manifests, presets and settings files: write `---@type ecs.Manifest` or `---@type ecs.Preset` above the file's `return` to get completion and checks, as the examples do.
 
-Plugins offer functions to each other. In Lua, `local draw = require("draw")` gives the functions of the plugin `draw`, if your manifest depends on it. The archive's `include/` also holds the definition files of the standard plugins, so with that folder in `workspace.library` your editor completes and checks their functions with no more setup; a C plugin includes the header of the same name, such as `draw.h`. For the functions of other plugins, `--definitions` writes the same files for every plugin it finds, or for a preset's plugins with `--preset`; add their folder to `workspace.library` too:
+Plugins offer functions to each other. In Lua, `local draw = require("draw")` gives the functions of the plugin `draw`, if your manifest depends on it. The archive's `include/` also holds the definition files of the standard plugins, so with that folder in `workspace.library` your editor completes and checks their functions with no more setup; a C plugin includes the header of the same name, such as `draw.h`. `--definitions` writes the same folder again, with the definition files of every plugin it finds, your own and those you installed among them, or of a preset's plugins with `--preset`:
 
 ``` shell
-./OpenECS --definitions definitions/
+./OpenECS --definitions include/
 ```
 
 ## Development
@@ -165,55 +164,61 @@ clang shuild.c -o shuild.ignore.exe -O3
 Usage: ./shuild.ignore [FLAG...]
 
 Flags:
-  -b, --build TYPE   Debug (Default) | Release | RelWithDebInfo | MinSizeRel
+  -b, --build TYPE   Build type: debug (the default), with the static analyzer and the sanitizers;
+                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release
   -n, --no-std       Do not build the standard plugins of std/
   -e, --examples     Also build the examples of examples/, into bin/examples/
+  -t, --test [EXAMPLE...]
+                     Build in Debug with the examples, then run the tests of the examples named, such as c12_sketch,
+                     or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report
   -c, --compiler CC  The compiler: gcc (the default), clang, or on Windows LLVM-MinGW's clang (the default there).
                      A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/
   -h, --help         Show this help
 ```
 
-A cross compiler builds for Windows on Linux, into `build/Debug-Windows/`, for example. A program built for another system cannot run where it was built, so that build writes no definition files, and its examples' C plugins, which include the standard plugins' headers, need them written there first: run that build's `OpenECS.exe --definitions build/Debug-Windows/definitions/`, with Wine on Linux.
+A cross compiler builds for Windows on Linux, into `build/Debug-Windows/`, for example. A program built for another system cannot run where it was built, so that build writes no definition files, and its examples' C plugins, which include the standard plugins' headers, need them written there first: run that build's `OpenECS.exe --definitions build/Debug-Windows/include/`, with Wine on Linux.
 
-The build puts the executable, SDL's shared libraries, the standard plugins, the first-party presets and the examples in `build/<TYPE>/bin/`, such as `build/Release/bin/`. SDL and SDL_ttf are shared libraries; Lua, Clay, libffi and stb are linked into the executable.
+The build puts the executable, SDL's shared libraries, the standard plugins, the first-party presets and the examples in `build/<TYPE>/bin/`, such as `build/Release/bin/`, and the plugin interface with every plugin's definition files in `build/<TYPE>/include/`: what plugin authors use. SDL and SDL_ttf are shared libraries; Lua, Clay, libffi and stb are linked into the executable. What only the build uses, such as the dependencies' headers and libraries, stays in `.shu/<TYPE>/`.
 
 The standard plugins and the examples are in their own repositories, checked out in `std/` and `examples/`. Each has its own `shuild.c`, which this build compiles into `shuild.ignore` in that folder and runs, so they build with the same type into the same folder. `-n` leaves the standard plugins out, and `-e` adds the examples.
 
-Dependencies are built the first time only. To build one again, delete its library from `build/<TYPE>/lib/` and the `.shu/` folder; shuild does not make a library again while its compiled files are unchanged.
+Dependencies are built the first time only. To build one again, delete its library from `.shu/<TYPE>/dependencies/lib/`; shuild does not make a library again while its compiled files are unchanged.
 
 Shuild compiles again only the files that changed. After changing compiler flags in `shuild.c`, delete `.shu/` (or run `sudo git clean -Xfd` to delete all ignored files) to compile everything again.
 
-The build also writes the definition files of the plugins it built into `build/<TYPE>/definitions/`, and a `.luarc.json` in this folder, `std/` and `examples/` that names them with `include/`. So an editor with LuaLS, such as VS Code with the Lua extension, completes and checks the `ecs` module and `require("ui")` in every Lua file of the three repositories.
+The build also writes the definition files of the plugins it built into `build/<TYPE>/include/`, and a `.luarc.json` in this folder, `std/` and `examples/` that names that folder. So an editor with LuaLS, such as VS Code with the Lua extension, completes and checks the `ecs` module and `require("ui")` in every Lua file of the three repositories.
 
 Debug builds run the static analyzer while compiling, and the sanitizers while the program runs. A sanitizer prints its report to standard error, and the program exits with an error.
 
 ### Testing
 
-The examples are the tests. Each example has a test, which Debug builds run with `--test`. The build copies the examples into `bin/examples/`, so build again after changing one. A test needs no display, and prints "The test passed." or the reason it failed. These commands build with the examples and run every test, and name the ones that fail:
+The examples are the tests. Each example has a test, which Debug builds run with `--test`. A test needs no display, and prints "The test passed." or the reason it failed. `-t` builds in Debug with the examples, runs every test, and names the ones that fail; named examples, such as `-t c12_sketch`, run their tests alone:
 
 ``` shell
-./shuild.ignore -b debug -e
-.github/scripts/test.sh build/Debug/bin/OpenECS
+./shuild.ignore -t
 ```
 
-A test needs a Vulkan driver too, for the GPU panels of 21_gpu: one for your graphics card, or Mesa's software one, which Debian and Ubuntu install with `sudo apt-get install mesa-vulkan-drivers`.
+A test needs a Vulkan driver too, for the GPU panels of s8_gpu: one for your graphics card, or Mesa's software one, which Debian and Ubuntu install with `sudo apt-get install mesa-vulkan-drivers`.
 
-To see why a test fails, run it alone: `./build/Debug/bin/OpenECS --test build/Debug/bin/examples/3_ui/test.lua`. DESIGN.md section 17.5 explains how to write one.
+To see why a test fails, run it alone: `./build/Debug/bin/OpenECS --test build/Debug/bin/examples/c3_ui/test.lua`. DESIGN.md section 17.5 explains how to write one.
 
-`.github/scripts/test-wayland.sh` runs the tests on Wayland, in a headless sway, where popups and pop-out windows are windows of their own. It needs sway: `sudo apt-get install sway`.
+On Wayland, popups and pop-out windows are windows of their own. To test them there, run the tests from a Wayland session:
+
+``` shell
+SDL_VIDEO_DRIVER=wayland ./shuild.ignore -t
+```
 
 ### Checks
 
-GitHub checks every pull request (DESIGN.md section 19.3). These commands run the same checks on your computer:
+GitHub checks every pull request (DESIGN.md section 19.3). These commands run the same builds and tests on your computer:
 
 ``` shell
-.github/scripts/compilers.sh
-.github/scripts/build.sh D
-.github/scripts/test.sh build/Debug/bin/OpenECS
-.github/scripts/test-wayland.sh build/Debug/bin/OpenECS
-.github/scripts/build.sh R
-.github/scripts/definitions.sh build/Debug/bin/OpenECS
+./shuild.ignore -t
+SDL_VIDEO_DRIVER=wayland ./shuild.ignore -t
+./shuild.ignore -b release -e
 ```
+
+The checks also format the C files with clang-format 18, as `.clang-format` says.
 
 ## License
 
