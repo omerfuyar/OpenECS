@@ -132,7 +132,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Timers     | Functions that run on the main thread after a time, once or again and again (3.2).                                                                             |
 | runtime   | Plugins    | Finding, ordering and loading plugins. Logging for plugins.                                                                                                    |
 |           | Settings   | Declarations, layers, explanations.                                                                                                                            |
-|           | Events     | Core and plugin events, the event queue, worker threads.                                                                                                       |
+|           | Events     | Core and plugin events, the event queue, the plugins' timers on base/Timers, worker threads.                                                                   |
 |           | Services   | Function registry, signatures, calls between C and Lua, definition files (10.10). The only module that calls libffi.                                           |
 | interface | Panels     | Panel types, panels, and the pixels each panel draws.                                                                                                          |
 |           | Layout     | Workspaces and their layout trees: operations, tidying, sizes, focus, closed panels and saving.                                                                |
