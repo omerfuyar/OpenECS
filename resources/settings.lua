@@ -56,8 +56,12 @@ return {
       ["Shift+9"] = "ecs.layout.moveToWorkspace9",
       ["Shift+0"] = "ecs.layout.moveToWorkspace10",
       ["W"] = "ecs.workspace.menu",
+      ["A"] = "ecs.app.menu",
     },
   },
+
+  -- the functions that the tool's menu shows first, which a right click on the title bar opens; then come the workspaces, reset the layout and quit
+  ["ecs.toolMenu"] = { "settings.open", "panels.open", "launcher.open", "ecs.session.save", "ecs.session.open" },
 
   -- save the tool's session when it quits, and start from it the next time; --fresh still starts from the preset
   ["ecs.keepSession"] = false,

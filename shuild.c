@@ -15,25 +15,42 @@ typedef enum BuildType
 static const char *const BUILD_TYPE_STRINGS[] = {"Debug", "Release", "RelWithDebInfo", "MinSizeRel"};
 #define BuildType_String(buildType) BUILD_TYPE_STRINGS[(buildType)]
 
-/// @brief What the flags choose.
+/// @brief What the build does and where it goes, in groups, as shuild keeps its own state.
 static struct
-{ // todo group them like we did in shuild !!!
-    BuildType type;
-    bool std;              // also build the standard plugins, from std/
-    bool examples;         // also build the examples, from examples/
-    bool test;             // run the examples' tests after the build
-    char **testedExamples; // the examples whose tests run, as the command line names them, or none for every example
-    int testedExampleCount;
-    bool help; // print the help, and build nothing
-    const char *compiler;
-    const char *badArgument; // the first argument that cannot be read, and why
-    const char *badArgumentReason;
-    bool windows;          // the compiler compiles for Windows
-    char *buildDir;        // shuild's cache, such as .shu/Debug/
-    char *dependenciesDir; // the built dependencies, which only the build uses: their headers in include/ and their libraries in lib/, such as .shu/Debug/dependencies/
-    char *cmakeDir;        // the CMake builds, a folder for each compiler, as CMake keeps the compiler it configured with, such as .shu/Debug/cmake/gcc/
-    char *outputDir;       // what people use: the program in bin/, the plugin interface in include/, and on Windows OpenECS's import library in lib/
-} CONFIG = {.type = BuildType_Debug, .std = true, .compiler = SHUM_HOST_WINDOWS || SHUM_HOST_MACOS ? "clang" : "gcc"};
+{
+    // what the command line chooses
+    struct
+    {
+        BuildType type;
+        const char *compiler;
+        bool std;              // also build the standard plugins, from std/
+        bool examples;         // also build the examples, from examples/
+        bool test;             // run the examples' tests after the build
+        char **testedExamples; // the examples whose tests run, as the command line names them, or none for every example
+        int testedExampleCount;
+        bool help;                     // print the help, and build nothing
+        const char *badArgument;       // the first argument that cannot be read
+        const char *badArgumentReason; // and why
+    } FLAGS;
+
+    // the build's folders, from the build type and the system the compiler compiles for
+    struct
+    {
+        char *build;        // shuild's cache, such as .shu/Debug/
+        char *dependencies; // the built dependencies, which only the build uses: their headers in include/ and their libraries in lib/, such as .shu/Debug/dependencies/
+        char *cmake;        // the CMake builds, a folder for each compiler, as CMake keeps the compiler it configured with, such as .shu/Debug/cmake/gcc/
+        char *output;       // what people use: the program in bin/, the plugin interface in include/, and on Windows OpenECS's import library in lib/
+    } DIRS;
+
+    bool windows; // the compiler compiles for Windows
+
+    // the examples' tests that ran, and those that failed
+    struct
+    {
+        int run;
+        int failed;
+    } TESTS;
+} CONFIG = {.FLAGS = {.type = BuildType_Debug, .std = true, .compiler = SHUM_HOST_WINDOWS || SHUM_HOST_MACOS ? "clang" : "gcc"}};
 
 #pragma endregion Setup
 
@@ -58,18 +75,18 @@ static void RunTests(void);
 int main(int argc, char **argv)
 {
     ReadArguments(argc, argv);
-    SHU_CompilerConfigureTry(CONFIG.compiler);
+    SHU_CompilerConfigureTry(CONFIG.FLAGS.compiler);
 
     // a changed shuild.c is compiled again and run with the same arguments, so a bad argument is reported after it, by the new program
     SHU_UtilAutomate(argc, argv);
 
-    if (CONFIG.badArgument != NULL)
+    if (CONFIG.FLAGS.badArgument != NULL)
     {
         PrintUsage();
-        SHU_UtilFail("%s: " SHUM_LOG_VALUE("%s"), CONFIG.badArgumentReason, CONFIG.badArgument);
+        SHU_UtilFail("%s: " SHUM_LOG_VALUE("%s"), CONFIG.FLAGS.badArgumentReason, CONFIG.FLAGS.badArgument);
     }
 
-    if (CONFIG.help)
+    if (CONFIG.FLAGS.help)
     {
         PrintUsage();
         return 0;
@@ -113,7 +130,7 @@ int main(int argc, char **argv)
     Shuild_OpenECS();
     Shuild_Plugins();
 
-    if (CONFIG.test)
+    if (CONFIG.FLAGS.test)
     {
         RunTests();
     }
@@ -121,21 +138,15 @@ int main(int argc, char **argv)
     return 0;
 }
 
-/// @brief Deletes a file or folder if it exists.
-static void DeleteIfExists(const char *path)
-{ // todo either inline it or add it to shuild dont create functions or structs for very few usage in functionality. functions like PrintUsage keep a data inside so they are fine. !!!
-    if (SHU_UtilFileExists(path) != SHUFileType_Invalid)
-    {
-        SHU_UtilDeleteFile(path);
-    }
-}
-
 static void PrintUsage(void)
 {
     printf("Usage: ./shuild.ignore [FLAG...]\n\n"
            "Flags:\n"
-           "  -b, --build TYPE   Build type: debug (the default), with the static analyzer and the sanitizers;\n" // todo list line by line instead of separating them with commas, better readability !!!
-           "                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release\n"
+           "  -b, --build TYPE   Build type:\n"
+           "                       debug           the default, with the static analyzer and the sanitizers\n"
+           "                       release         an optimized build\n"
+           "                       relwithdebinfo  a release with debug information\n"
+           "                       minsizerel      a small release\n"
            "  -n, --no-std       Do not build the standard plugins of std/\n"
            "  -e, --examples     Also build the examples of examples/, into bin/examples/\n"
            "  -t, --test [EXAMPLE...]\n"
@@ -149,10 +160,10 @@ static void PrintUsage(void)
 /// @brief Notes the first argument that cannot be read. main reports it, after shuild.c is compiled again if it changed.
 static void NoteBadArgument(const char *reason, const char *argument)
 {
-    if (CONFIG.badArgument == NULL)
+    if (CONFIG.FLAGS.badArgument == NULL)
     {
-        CONFIG.badArgumentReason = reason;
-        CONFIG.badArgument = argument;
+        CONFIG.FLAGS.badArgumentReason = reason;
+        CONFIG.FLAGS.badArgument = argument;
     }
 }
 
@@ -188,27 +199,27 @@ static void ReadArguments(int argc, char **argv)
                 return;
             }
 
-            CONFIG.type = (BuildType)type;
+            CONFIG.FLAGS.type = (BuildType)type;
             buildTypeNamed = true;
         }
         else if (!strcmp(flag, "-c") || !strcmp(flag, "--compiler"))
         {
-            CONFIG.compiler = argv[++i];
+            CONFIG.FLAGS.compiler = argv[++i];
         }
         else if (!strcmp(flag, "-n") || !strcmp(flag, "--no-std"))
         {
-            CONFIG.std = false;
+            CONFIG.FLAGS.std = false;
         }
         else if (!strcmp(flag, "-e") || !strcmp(flag, "--examples"))
         {
-            CONFIG.examples = true;
+            CONFIG.FLAGS.examples = true;
         }
         else if (!strcmp(flag, "-t") || !strcmp(flag, "--test"))
         {
-            CONFIG.test = true;
+            CONFIG.FLAGS.test = true;
 
             // the arguments after it that are no flags name examples, such as c12_sketch
-            CONFIG.testedExamples = &argv[i + 1];
+            CONFIG.FLAGS.testedExamples = &argv[i + 1];
 
             while (i + 1 < argc && argv[i + 1][0] != '-')
             {
@@ -218,13 +229,13 @@ static void ReadArguments(int argc, char **argv)
                     return;
                 }
 
-                CONFIG.testedExampleCount++;
+                CONFIG.FLAGS.testedExampleCount++;
                 i++;
             }
         }
         else if (!strcmp(flag, "-h") || !strcmp(flag, "--help"))
         {
-            CONFIG.help = true;
+            CONFIG.FLAGS.help = true;
         }
         else
         {
@@ -234,15 +245,15 @@ static void ReadArguments(int argc, char **argv)
     }
 
     // only Debug builds run tests, and the tests are the examples' (DESIGN 17.5)
-    if (CONFIG.test)
+    if (CONFIG.FLAGS.test)
     {
-        if (buildTypeNamed && CONFIG.type != BuildType_Debug)
+        if (buildTypeNamed && CONFIG.FLAGS.type != BuildType_Debug)
         {
-            NoteBadArgument("The tests run with a Debug build, not", BuildType_String(CONFIG.type));
+            NoteBadArgument("The tests run with a Debug build, not", BuildType_String(CONFIG.FLAGS.type));
             return;
         }
 
-        CONFIG.examples = true;
+        CONFIG.FLAGS.examples = true;
     }
 }
 
@@ -253,30 +264,30 @@ static void Configure(void)
     SHUPlatform target = SHU_CompilerGetTarget();
     const char *system = SHUM_PLATFORM_IS_HOST(target) ? "" : SHU_UtilFormat("-%s", SHUPlatform_GetString(target));
     CONFIG.windows = target == SHUPlatform_Windows;
-    CONFIG.buildDir = SHU_UtilFormat(".shu/%s%s/", BuildType_String(CONFIG.type), system);
-    CONFIG.outputDir = SHU_UtilFormat("build/%s%s/", BuildType_String(CONFIG.type), system);
-    CONFIG.dependenciesDir = SHU_UtilFormat("%sdependencies/", CONFIG.buildDir);
+    CONFIG.DIRS.build = SHU_UtilFormat(".shu/%s%s/", BuildType_String(CONFIG.FLAGS.type), system);
+    CONFIG.DIRS.output = SHU_UtilFormat("build/%s%s/", BuildType_String(CONFIG.FLAGS.type), system);
+    CONFIG.DIRS.dependencies = SHU_UtilFormat("%sdependencies/", CONFIG.DIRS.build);
 
     // a program built for another system cannot run here
-    if (CONFIG.test && !SHUM_PLATFORM_IS_HOST(target))
+    if (CONFIG.FLAGS.test && !SHUM_PLATFORM_IS_HOST(target))
     {
         SHU_UtilFail("the tests cannot run here, as OpenECS is built for " SHUM_LOG_VALUE("%s") ".", SHUPlatform_GetString(target));
     }
 
-    SHU_CacheConfigure(CONFIG.buildDir);
+    SHU_CacheConfigure(CONFIG.DIRS.build);
 
     // a compiler named by its path, such as /usr/bin/clang, has a folder of its name
-    const char *compilerName = CONFIG.compiler + strlen(CONFIG.compiler);
+    const char *compilerName = CONFIG.FLAGS.compiler + strlen(CONFIG.FLAGS.compiler);
 
-    while (compilerName > CONFIG.compiler && compilerName[-1] != '/' && compilerName[-1] != '\\')
+    while (compilerName > CONFIG.FLAGS.compiler && compilerName[-1] != '/' && compilerName[-1] != '\\')
     {
         compilerName--;
     }
 
-    CONFIG.cmakeDir = SHU_UtilFormat("%scmake/%s/", CONFIG.buildDir, compilerName);
+    CONFIG.DIRS.cmake = SHU_UtilFormat("%scmake/%s/", CONFIG.DIRS.build, compilerName);
 
     SHU_UtilLog("building " SHUM_LOG_VALUE("%s") " with " SHUM_LOG_VALUE("%s") " for " SHUM_LOG_VALUE("%s") "; standard plugins: " SHUM_LOG_VALUE("%s") ", examples: " SHUM_LOG_VALUE("%s"),
-                BuildType_String(CONFIG.type), CONFIG.compiler, SHUPlatform_GetString(target), CONFIG.std ? "yes" : "no", CONFIG.examples ? "yes" : "no");
+                BuildType_String(CONFIG.FLAGS.type), CONFIG.FLAGS.compiler, SHUPlatform_GetString(target), CONFIG.FLAGS.std ? "yes" : "no", CONFIG.FLAGS.examples ? "yes" : "no");
 }
 
 // our code gets warnings, and in Debug gcc's static analyzer and the address and undefined-behaviour sanitizers, which MinGW does not have;
@@ -292,7 +303,7 @@ static void SetBuildFlags(bool ownCode)
         SHU_CompilerAddFlags("-w");
     }
 
-    switch (CONFIG.type)
+    switch (CONFIG.FLAGS.type)
     {
     case BuildType_Debug:
         if (ownCode)
@@ -335,44 +346,44 @@ static bool IsBuilt(const char *library, bool shared)
 {
     // lib/ has the file a library is linked by: on Windows, a DLL's import library, as the DLL is in bin/
     char *file = SHU_UtilLibraryFile(library, shared ? SHUModuleType_LibraryDynamic : SHUModuleType_LibraryStatic);
-    return SHU_UtilFileExists(SHU_UtilFormat("%slib/%s", CONFIG.dependenciesDir, file)) == SHUFileType_Regular;
+    return SHU_UtilFileExists(SHU_UtilFormat("%slib/%s", CONFIG.DIRS.dependencies, file)) == SHUFileType_Regular;
 }
 
 /// @brief Builds a CMake project of dependencies/ and installs it into the dependencies' folder. The output of each step goes to a log in the cache folder,
 /// such as .shu/Debug/cmake/gcc/SDL3-build.log, and the end of the log shows when the step fails.
 static void Shuild_CMake(const char *name, const char *source, const char *options)
 {
-    SHU_UtilLog(SHUM_LOG_NAME("%s") " (CMake): building", name);
+    SHU_UtilLog(SHUM_LOG_NAME("%s") " (" SHUM_COLOR_BLUE("CMake") "): building", name);
 
     const char *root = SHU_UtilGetScriptDirectory();
 
     char *sourceDir = SHU_UtilFormat("%sdependencies/%s/", root, source);
-    char *buildDir = SHU_UtilFormat("%s%s%s/", root, CONFIG.cmakeDir, name);
-    char *outputPrefixDir = SHU_UtilFormat("%s%s", root, CONFIG.dependenciesDir);
+    char *buildDir = SHU_UtilFormat("%s%s%s/", root, CONFIG.DIRS.cmake, name);
+    char *outputPrefixDir = SHU_UtilFormat("%s%s", root, CONFIG.DIRS.dependencies);
 
     // CMake compiles with the same compiler, and a cross compiler builds for its system
-    char *compilers = SHU_UtilFormat("-DCMAKE_C_COMPILER=\"%s\" -DCMAKE_CXX_COMPILER=\"%s\"", CONFIG.compiler, SHU_CompilerGetTool("g++", "clang++"));
+    char *compilers = SHU_UtilFormat("-DCMAKE_C_COMPILER=\"%s\" -DCMAKE_CXX_COMPILER=\"%s\"", CONFIG.FLAGS.compiler, SHU_CompilerGetTool("g++", "clang++"));
 
     if (!SHUM_PLATFORM_IS_HOST(SHU_CompilerGetTarget()))
     {
         compilers = SHU_UtilFormat("%s -DCMAKE_SYSTEM_NAME=%s -DCMAKE_RC_COMPILER=\"%s\"", compilers, SHUPlatform_GetString(SHU_CompilerGetTarget()), SHU_CompilerGetTool("windres", "windres"));
     }
 
-    char *log = SHU_UtilFormat("%s%s-configure.log", CONFIG.cmakeDir, name);
+    char *log = SHU_UtilFormat("%s%s-configure.log", CONFIG.DIRS.cmake, name);
     SHU_UtilRunLogged(log,
                       "cmake -S \"%s\" -B \"%s\" -G Ninja -DCMAKE_BUILD_TYPE=%s %s "
                       "-DCMAKE_INSTALL_PREFIX=\"%s\" -DCMAKE_PREFIX_PATH=\"%s\" "
                       "-DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_POSITION_INDEPENDENT_CODE=ON %s",
-                      sourceDir, buildDir, BuildType_String(CONFIG.type), compilers,
+                      sourceDir, buildDir, BuildType_String(CONFIG.FLAGS.type), compilers,
                       outputPrefixDir, outputPrefixDir, options);
 
-    log = SHU_UtilFormat("%s%s-build.log", CONFIG.cmakeDir, name);
+    log = SHU_UtilFormat("%s%s-build.log", CONFIG.DIRS.cmake, name);
     SHU_UtilRunLogged(log, "cmake --build \"%s\" --parallel", buildDir);
 
-    log = SHU_UtilFormat("%s%s-install.log", CONFIG.cmakeDir, name);
+    log = SHU_UtilFormat("%s%s-install.log", CONFIG.DIRS.cmake, name);
     SHU_UtilRunLogged(log, "cmake --install \"%s\"", buildDir);
 
-    SHU_UtilLog(SHUM_LOG_NAME("%s") " (CMake): built", name);
+    SHU_UtilLog(SHUM_LOG_NAME("%s") " (" SHUM_COLOR_BLUE("CMake") "): built", name);
 }
 
 static void Shuild_SDL(void)
@@ -391,13 +402,13 @@ static void Shuild_SDL_ttf(void)
 
 static void Shuild_lua(void)
 {
-    char *headerOutputDir = SHU_UtilFormat("%sinclude/lua/", CONFIG.dependenciesDir);
+    char *headerOutputDir = SHU_UtilFormat("%sinclude/lua/", CONFIG.DIRS.dependencies);
     SHU_UtilCopyFile("dependencies/lua/lua.h", headerOutputDir);
     SHU_UtilCopyFile("dependencies/lua/lauxlib.h", headerOutputDir);
     SHU_UtilCopyFile("dependencies/lua/lualib.h", headerOutputDir);
     SHU_UtilCopyFile("dependencies/lua/luaconf.h", headerOutputDir);
 
-    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.dependenciesDir);
+    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.DIRS.dependencies);
 
     SHU_MODULE("lua", "dependencies/lua", SHUModuleType_LibraryStatic, binOutputDir)
     {
@@ -420,8 +431,8 @@ static void Shuild_lua(void)
 
 static void Shuild_clay(void)
 {
-    char *clayIncludeDir = SHU_UtilFormat("../../%sinclude/", CONFIG.dependenciesDir);
-    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.dependenciesDir);
+    char *clayIncludeDir = SHU_UtilFormat("../../%sinclude/", CONFIG.DIRS.dependencies);
+    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.DIRS.dependencies);
 
     SHU_MODULE("clay", "dependencies/clay", SHUModuleType_LibraryStatic, binOutputDir)
     {
@@ -431,7 +442,7 @@ static void Shuild_clay(void)
     }
 
     // clay.c includes the headers from the submodule, so they are copied for the core after it compiles
-    char *headerOutputDir = SHU_UtilFormat("%sinclude/clay/", CONFIG.dependenciesDir);
+    char *headerOutputDir = SHU_UtilFormat("%sinclude/clay/", CONFIG.DIRS.dependencies);
     SHU_UtilCopyFile("dependencies/clay/clay.h", headerOutputDir);
     SHU_UtilCopyFile("dependencies/other/clay/claySDL3.h", headerOutputDir);
 }
@@ -439,12 +450,12 @@ static void Shuild_clay(void)
 static void Shuild_stb(void)
 {
     // stb.c includes the copied glue header, so the headers are copied first
-    char *headerOutputDir = SHU_UtilFormat("%sinclude/stb/", CONFIG.dependenciesDir);
+    char *headerOutputDir = SHU_UtilFormat("%sinclude/stb/", CONFIG.DIRS.dependencies);
     SHU_UtilCopyFile("dependencies/stb/stb_ds.h", headerOutputDir);
     SHU_UtilCopyFile("dependencies/other/stb/stbSDL3.h", headerOutputDir);
 
-    char *includeDir = SHU_UtilFormat("../../../%sinclude/", CONFIG.dependenciesDir);
-    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.dependenciesDir);
+    char *includeDir = SHU_UtilFormat("../../../%sinclude/", CONFIG.DIRS.dependencies);
+    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.DIRS.dependencies);
 
     SHU_MODULE("stb", "dependencies/other/stb", SHUModuleType_LibraryStatic, binOutputDir)
     {
@@ -553,14 +564,14 @@ static void Shuild_libffi(void)
     }
 
     // the sources include ffi.h and ffitarget.h, so they are written to the build before libffi compiles; the copy makes the folder
-    char *headers = SHU_UtilFormat("%sinclude/libffi/", CONFIG.dependenciesDir);
+    char *headers = SHU_UtilFormat("%sinclude/libffi/", CONFIG.DIRS.dependencies);
     char *targetHeader = SHU_UtilFormat("dependencies/libffi/%sffitarget.h", targetDirectory);
     SHU_UtilCopyFile(targetHeader, headers);
     char *ffiHeader = SHU_UtilFormat("%sffi.h", headers);
     MakeFfiHeader(target, ffiHeader);
 
-    char *headersFromRoot = SHU_UtilFormat("../../%sinclude/libffi/", CONFIG.dependenciesDir);
-    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.dependenciesDir);
+    char *headersFromRoot = SHU_UtilFormat("../../%sinclude/libffi/", CONFIG.DIRS.dependencies);
+    char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.DIRS.dependencies);
 
     SHU_MODULE("ffi", "dependencies/libffi", SHUModuleType_LibraryStatic, binOutputDir)
     {
@@ -575,7 +586,7 @@ static void Shuild_libffi(void)
         }
 
         // libffi checks its arguments in Debug builds
-        if (CONFIG.type == BuildType_Debug)
+        if (CONFIG.FLAGS.type == BuildType_Debug)
         {
             SHU_CompilerAddDefinitions("FFI_DEBUG", NULL);
             SHU_ModuleAddSourceFiles("src/debug.c");
@@ -635,7 +646,7 @@ static char *WriteInterfaceSource(void)
 
     length += (usz)snprintf(source + length, size - length, "};\n\nconst usz ECSI_INTERFACE_FILE_COUNT = %zu;\n", count);
 
-    char *folder = SHU_UtilFormat("%sinterface/", CONFIG.buildDir);
+    char *folder = SHU_UtilFormat("%sinterface/", CONFIG.DIRS.build);
     char *path = SHU_UtilFormat("%sInterface.c", folder);
     SHU_UtilCreateDirectory(folder);
     SHU_UtilWriteFile(path, csv(cs(source, length)));
@@ -645,15 +656,15 @@ static char *WriteInterfaceSource(void)
 
 static void Shuild_OpenECS(void)
 {
-    char *dependenciesIncludeDir = SHU_UtilFormat("%s%sinclude/", SHU_UtilGetScriptDirectory(), CONFIG.dependenciesDir);
-    char *libraryDir = SHU_UtilFormat("%slib/", CONFIG.dependenciesDir);
-    char *binOutputDir = SHU_UtilFormat("%sbin/", CONFIG.outputDir);
+    char *dependenciesIncludeDir = SHU_UtilFormat("%s%sinclude/", SHU_UtilGetScriptDirectory(), CONFIG.DIRS.dependencies);
+    char *libraryDir = SHU_UtilFormat("%slib/", CONFIG.DIRS.dependencies);
+    char *binOutputDir = SHU_UtilFormat("%sbin/", CONFIG.DIRS.output);
     char *interfaceSource = WriteInterfaceSource();
 
     // a plugin's DLL on Windows links the executable's import library, in the build's lib/
     if (CONFIG.windows)
     {
-        SHU_UtilCreateDirectory(SHU_UtilFormat("%slib/", CONFIG.outputDir));
+        SHU_UtilCreateDirectory(SHU_UtilFormat("%slib/", CONFIG.DIRS.output));
     }
 
     SHU_MODULE("OpenECS", NULL, SHUModuleType_Executable, binOutputDir)
@@ -666,10 +677,10 @@ static void Shuild_OpenECS(void)
         if (CONFIG.windows)
         {
             // a plugin's DLL is linked with the executable's import library, as Windows finds a DLL's functions through it
-            SHU_CompilerAddLinkerFlags(SHU_UtilFormat("'-Wl,--out-implib,%s%slib/libOpenECS.a'", SHU_UtilGetScriptDirectory(), CONFIG.outputDir));
+            SHU_CompilerAddLinkerFlags(SHU_UtilFormat("'-Wl,--out-implib,%s%slib/libOpenECS.a'", SHU_UtilGetScriptDirectory(), CONFIG.DIRS.output));
 
             // only Debug builds open a console window; the others log to their log file, and to a console they are started from (DESIGN 14.4)
-            if (CONFIG.type != BuildType_Debug)
+            if (CONFIG.FLAGS.type != BuildType_Debug)
             {
                 SHU_CompilerAddLinkerFlags("-Wl,--subsystem,windows");
             }
@@ -682,7 +693,7 @@ static void Shuild_OpenECS(void)
             SHU_CompilerAddLinkerFlags("'-Wl,--export-dynamic-symbol=ECS*'", "'-Wl,-rpath,$ORIGIN'");
 
             // the sanitizers find their settings in src/base/Sanitizers.c by name, and its dlclose replaces the system's
-            if (CONFIG.type == BuildType_Debug)
+            if (CONFIG.FLAGS.type == BuildType_Debug)
             {
                 SHU_CompilerAddLinkerFlags("'-Wl,--export-dynamic-symbol=__*san_default_*'", "'-Wl,--export-dynamic-symbol=dlclose'");
             }
@@ -711,12 +722,12 @@ static void Shuild_OpenECS(void)
 
     for (usz i = 0; i < 2; i++)
     {
-        SHU_UtilCopyFile(SHU_UtilFormat("%s%s", CONFIG.dependenciesDir, CONFIG.windows ? windowsLibraries[i] : libraries[i]), binOutputDir);
+        SHU_UtilCopyFile(SHU_UtilFormat("%s%s", CONFIG.DIRS.dependencies, CONFIG.windows ? windowsLibraries[i] : libraries[i]), binOutputDir);
     }
 
     // the plugin interface goes to include/, where the standard plugins and the examples are built against it; OpenECS --definitions writes the same
     // files with the plugins' definitions, and a build for another system cannot run it
-    char *includeDir = SHU_UtilFormat("%sinclude/", CONFIG.outputDir);
+    char *includeDir = SHU_UtilFormat("%sinclude/", CONFIG.DIRS.output);
     SHU_UtilCopyFile("include/OpenECS.h", includeDir);
     SHU_UtilCopyFile("include/ecs.lua", includeDir);
     SHU_UtilCopyFile("dependencies/shu/shu.h", includeDir);
@@ -756,33 +767,32 @@ static void Shuild_Repository(const char *folder, const char *moreArguments)
     // shuild compiles it with shu and shuild from dependencies/, and runs it in its folder
     char *program = SHU_UtilFormat("%sshuild.ignore", folder);
     char *flags = SHU_UtilFormat("-I%sdependencies", SHU_UtilGetScriptDirectory());
-    char *arguments = SHU_UtilFormat("-b %s -o %s -c %s %s", BuildType_String(CONFIG.type), PathFromFolder(folder, CONFIG.outputDir), CONFIG.compiler, moreArguments);
+    char *arguments = SHU_UtilFormat("-b %s -o %s -c %s %s", BuildType_String(CONFIG.FLAGS.type), PathFromFolder(folder, CONFIG.DIRS.output), CONFIG.FLAGS.compiler, moreArguments);
 
-    SHU_UtilLog(SHUM_LOG_NAME("%.*s") " (build script): building", nameLength, folder);
-    SHU_UtilBuildScript(source, program, flags, arguments); // todo make shuild build script print its logs, also colorize that and (CMake) log here !!!
-    SHU_UtilLog(SHUM_LOG_NAME("%.*s") " (build script): built", nameLength, folder);
+    // shuild logs its build, with a line before it that sets it apart from the build here
+    SHU_UtilBuildScript(source, program, flags, arguments);
 }
 
 static void Shuild_Plugins(void)
 {
     // the examples are built when the flags ask for them; a copy from an earlier build is removed otherwise
-    if (!CONFIG.examples)
+    if (!CONFIG.FLAGS.examples)
     {
-        char *examples = SHU_UtilFormat("%sbin/examples/", CONFIG.outputDir);
-        DeleteIfExists(examples);
+        char *examples = SHU_UtilFormat("%sbin/examples/", CONFIG.DIRS.output);
+        SHU_UtilDeleteFile(examples);
     }
 
     // OpenECS-std builds the standard plugins into bin/plugins/ and their presets into bin/presets/, with the built dependencies that they reuse;
     // OpenECS-examples builds the examples into bin/examples/, with the plugin interface alone, as any plugin's author does
-    if (CONFIG.std)
-    { // todo print a splitter between repo builds !!!
-        Shuild_Repository("std/", SHU_UtilFormat("-d %s", PathFromFolder("std/", CONFIG.dependenciesDir)));
+    if (CONFIG.FLAGS.std)
+    {
+        Shuild_Repository("std/", SHU_UtilFormat("-d %s", PathFromFolder("std/", CONFIG.DIRS.dependencies)));
     }
 
     // the definitions come before the examples, so an example's C plugin includes the headers of the standard plugins, such as ui.h
     Shuild_Definitions();
 
-    if (CONFIG.examples)
+    if (CONFIG.FLAGS.examples)
     {
         Shuild_Repository("examples/", "");
     }
@@ -790,21 +800,8 @@ static void Shuild_Plugins(void)
 
 static void Shuild_other(void)
 {
-    char *resourcesDir = SHU_UtilFormat("%sbin/resources/", CONFIG.outputDir);
+    char *resourcesDir = SHU_UtilFormat("%sbin/resources/", CONFIG.DIRS.output);
     SHU_UtilCopyFile("resources/", resourcesDir);
-}
-
-/// @brief The built executable's path, to run with the shell. cmd.exe runs a program by a path with backslashes.
-static char *ProgramPath(void)
-{ // !!! why writing it here, cant you use already existing tool from shuild ???
-    char *program = SHU_UtilFormat("%sbin/OpenECS", CONFIG.outputDir);
-
-    for (char *c = program; SHUM_HOST_WINDOWS && *c != '\0'; c++)
-    {
-        *c = *c == '/' ? '\\' : *c;
-    }
-
-    return program;
 }
 
 /// @brief Writes a .luarc.json file that points LuaLS at the build's include/, with ecs.lua and the definition files, so editors complete what Lua code uses.
@@ -838,7 +835,7 @@ static void DeleteOldDefinition(const char *path, SHUFileType type, void *data)
 // the .luarc.json files, which git ignores, point LuaLS at them from OpenECS, std/ and examples/
 static void Shuild_Definitions(void)
 {
-    char *definitions = SHU_UtilFormat("%sinclude/", CONFIG.outputDir);
+    char *definitions = SHU_UtilFormat("%sinclude/", CONFIG.DIRS.output);
 
     // a program built for another system cannot run here to write them
     if (!SHUM_PLATFORM_IS_HOST(SHU_CompilerGetTarget()))
@@ -848,13 +845,13 @@ static void Shuild_Definitions(void)
     }
 
     // a program that fails to write them does not stop the build
-    char *newDefinitions = SHU_UtilFormat("%sdefinitions/", CONFIG.buildDir);
-    DeleteIfExists(newDefinitions);
-    SHU_UtilRunTry("%s --definitions %s > %sdefinitions.log 2>&1", ProgramPath(), newDefinitions, CONFIG.outputDir);
+    char *newDefinitions = SHU_UtilFormat("%sdefinitions/", CONFIG.DIRS.build);
+    SHU_UtilDeleteFile(newDefinitions);
+    SHU_UtilRunTry("\"%s\" --definitions %s > %sdefinitions.log 2>&1", SHU_UtilGetPath(SHU_UtilFormat("%sbin/OpenECS", CONFIG.DIRS.output)), newDefinitions, CONFIG.DIRS.output);
 
     if (SHU_UtilFileExists(newDefinitions) != SHUFileType_Directory)
     {
-        SHU_UtilWarn("the definition files are not written; " SHUM_LOG_PATH("%sdefinitions.log") " says why.", CONFIG.outputDir);
+        SHU_UtilWarn("the definition files are not written; " SHUM_LOG_PATH("%sdefinitions.log") " says why.", CONFIG.DIRS.output);
         return;
     }
 
@@ -871,13 +868,6 @@ static void Shuild_Definitions(void)
     WriteLuaConfig("std/", up, "\"plugins/*/types.lua\"");
     WriteLuaConfig("examples/", up, "");
 }
-
-/// @brief How many tests ran, and how many failed.
-typedef struct TestCount
-{ // !!! wtf man typedefing a struct for this ???
-    int run;
-    int failed;
-} TestCount;
 
 /// @brief Runs a file of an example, if it is a test: a Lua file whose name starts with test (DESIGN 17.5). Prints pass or FAIL, and the output of a test that fails.
 /// A test fails when the program fails, or when its output has a sanitizer's report.
@@ -903,14 +893,14 @@ static void RunTest(const char *path, SHUFileType type, void *data)
         *c = *c == '\\' ? '/' : *c;
     }
 
-    TestCount *count = data;
-    char *log = SHU_UtilFormat("%stest.log", CONFIG.outputDir);
-    bool passed = SHU_UtilRunTry("%s --test %s > %s 2>&1", ProgramPath(), test, log) == 0;
+    (void)data;
+    char *log = SHU_UtilFormat("%stest.log", CONFIG.DIRS.output);
+    bool passed = SHU_UtilRunTry("\"%s\" --test %s > %s 2>&1", SHU_UtilGetPath(SHU_UtilFormat("%sbin/OpenECS", CONFIG.DIRS.output)), test, log) == 0;
 
     SHUSlice output = SHU_UtilReadFile(log);
     passed = passed && strstr(output.data, "Sanitizer") == NULL && strstr(output.data, "runtime error:") == NULL;
 
-    count->run++;
+    CONFIG.TESTS.run++;
 
     if (passed)
     {
@@ -918,7 +908,7 @@ static void RunTest(const char *path, SHUFileType type, void *data)
     }
     else
     {
-        count->failed++;
+        CONFIG.TESTS.failed++;
         printf("FAIL %s\n%s\n", test, (char *)output.data);
     }
 
@@ -938,11 +928,11 @@ static bool IsTested(const char *path)
         start--;
     }
 
-    bool named = CONFIG.testedExampleCount == 0;
+    bool named = CONFIG.FLAGS.testedExampleCount == 0;
 
-    for (int i = 0; i < CONFIG.testedExampleCount && !named; i++)
+    for (int i = 0; i < CONFIG.FLAGS.testedExampleCount && !named; i++)
     {
-        named = (int)strlen(CONFIG.testedExamples[i]) == end - start && strncmp(path + start, CONFIG.testedExamples[i], (usz)(end - start)) == 0;
+        named = (int)strlen(CONFIG.FLAGS.testedExamples[i]) == end - start && strncmp(path + start, CONFIG.FLAGS.testedExamples[i], (usz)(end - start)) == 0;
     }
 
     return named;
@@ -961,19 +951,18 @@ static void RunExampleTests(const char *path, SHUFileType type, void *data)
 // unless SDL_VIDEO_DRIVER names another (DESIGN 17.5)
 static void RunTests(void)
 {
-    TestCount count = {0};
-    char *examples = SHU_UtilFormat("%sbin/examples/", CONFIG.outputDir);
-    SHU_UtilListDirectory(examples, false, RunExampleTests, &count);
+    char *examples = SHU_UtilFormat("%sbin/examples/", CONFIG.DIRS.output);
+    SHU_UtilListDirectory(examples, false, RunExampleTests, NULL);
 
-    if (count.run == 0)
+    if (CONFIG.TESTS.run == 0)
     {
         SHU_UtilFail("no test is found in " SHUM_LOG_PATH("%s") ".", examples);
     }
 
-    if (count.failed > 0)
+    if (CONFIG.TESTS.failed > 0)
     {
-        SHU_UtilFail("%d of %d tests failed.", count.failed, count.run);
+        SHU_UtilFail("%d of %d tests failed.", CONFIG.TESTS.failed, CONFIG.TESTS.run);
     }
 
-    SHU_UtilLog("all %d tests passed.", count.run);
+    SHU_UtilLog("all %d tests passed.", CONFIG.TESTS.run);
 }

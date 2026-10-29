@@ -15,6 +15,8 @@ What the owner wants worked on, in no fixed order. Each one is described further
 - **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
 - **Desktop entries on Windows.** `--install` and `--uninstall` work on Linux only (DESIGN 13.9). On Windows they would add a Start menu shortcut, and register the file types for "Open with".
 - **Import the rulesets.** The rulesets of OpenECS, OpenECS-std, OpenECS-examples and OpenECS-template require the Windows checks now, as the owner chose. The owner imports them in each repository's settings. OpenECS-examples' rulesets no longer require `Release (Linux)`, which it does not run.
+- **Lua's speed.** A Lua plugin that calls the core for each pixel slows down as its work grows: c12_sketch's Lua panel paints every stroke again on each draw with `surface:setPixel`, a call into the core per pixel, which its C twin makes as plain C calls. Each call from Lua costs about a microsecond in a Debug build; a method call finds its method first. Ways to speed it up, to weigh later: functions that take many pixels in one call, as `setRow` does; a panel that keeps its picture and draws only what changed; and LuaJIT, which runs Lua 5.1 code, so OpenECS would give up Lua 5.5's integers, bit operators and other features that plugins use.
+- **Worker threads in a module of their own.** Timers left Events for base/Timers. Events also runs the worker threads of `ECS_RunInBackground`, which hand their results to the main thread through its queue, and its shutdown frees what they left queued. Moving them to a module of their own needs the queue to free its own entries. Input holds the clipboard and dialogs beside SDL's input, which could be a module of their own the same way.
 
 ## Shuild
 
@@ -66,8 +68,3 @@ What would grow it most:
 - **A showcase** in README.md of plugins and tools others build.
 - **One place to talk**, Discord or Matrix, linked from README.md.
 
-??? I notice that lua plugins significantly slower than native ones, this is expected and not big of an issue but especially in sketch example after a few strokes  lua plugin starts lagging while native is not at all. is that a lua, OpenECS core or plugin issue? note that for later, lua performance optimizations, maybe consider LuaJIT ???
-
-todo also make the top system bar right clickable which will give the right click menu for general settings !!!
-
-todo try improving parse and compress std plugin with namespaces. like .json. for json functions or zip for archive. make this a principle. lua is where we read and write code easily, use its advantages if you can. do not follow blindly, advise me for it if it will cause problems or there is a better way

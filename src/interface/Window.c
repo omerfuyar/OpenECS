@@ -1766,6 +1766,10 @@ static void ECSIWindow_UpdatePopup(ECSPopup popup)
         rect.y = SDL_max(0.0f, SDL_min(rect.y, osWindow->height - rect.h));
     }
 
+    // its corner is on a whole pixel, so its pixels show one to one, as a panel's do
+    rect.x = SDL_roundf(rect.x);
+    rect.y = SDL_roundf(rect.y);
+
     if (view->window != nullptr && (rect.x != view->rect.x || rect.y != view->rect.y || rect.w != view->rect.w || rect.h != view->rect.h))
     {
         SDL_SetWindowPosition(view->window, (int)rect.x, (int)rect.y);
@@ -1812,7 +1816,10 @@ static void ECSIWindow_ShowPopupsIn(const ECSIOSWindow *osWindow)
 
         if (view != nullptr && view->window == nullptr && view->texture != nullptr && view->rootID == osWindow->rootID && ECSIWindow_FindByRoot(ECSILayout_RootOf(popups[i]->panel)) == osWindow)
         {
-            SDL_RenderTexture(osWindow->renderer, view->texture, nullptr, &view->rect);
+            // one to one, as panels show
+            SDL_FRect rect = {view->rect.x, view->rect.y, 0.0f, 0.0f};
+            SDL_GetTextureSize(view->texture, &rect.w, &rect.h);
+            SDL_RenderTexture(osWindow->renderer, view->texture, nullptr, &rect);
         }
     }
 }
@@ -2365,6 +2372,12 @@ SHUResult ECSIWindow_ReadPixel(usz number, f32 x, f32 y, ECSColor *retColor)
     SDL_DestroySurface(picture);
     ECSIWindow_Present();
     return read ? SHUResult_Ok : SHUResult_ErrBadData;
+}
+
+bool ECSIWindow_TitleBarAt(f32 x, f32 y)
+{
+    ECSIOSWindow *osWindow = WINDOW.eventWindow;
+    return WINDOW.titleBar && osWindow != nullptr && y < WINDOW.titleBarHeight && x < osWindow->width - 3.0f * ECSIWindow_GetTitleButtonWidth();
 }
 
 bool ECSIWindow_PointerDown(f32 x, f32 y)

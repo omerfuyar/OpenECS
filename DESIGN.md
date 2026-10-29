@@ -101,7 +101,7 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 ### 1.6 Style
 
-- Documentation comments use `///` with `@brief`, `@param`, `@return` and `@note`, on every public declaration. Each `@return` names the `SHUResult` values the function can return. A public function's comment ends with `@lua` (11.5).
+- Documentation comments use `///` with `@brief`, `@param`, `@return` and `@note`, on every public declaration. They say what a thing does and what it takes, not which modules or plugins use it, as that changes without the thing changing. Each `@return` names the `SHUResult` values the function can return. A public function's comment ends with `@lua` (11.5).
 - Allman braces and four spaces for indentation. clang-format formats the code as `.clang-format` says, and clang-tidy checks names (1.2), the length of names, how hard a function is to follow, and common bugs as `.clang-tidy` says.
 - A variable or parameter name has at least three letters; only `i`, `j`, `k`, `x`, `y`, `z`, `w`, `h` and `id` are shorter.
 - A function that grows long or nested is split into functions that each do one job and say it in their names.
@@ -122,8 +122,6 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 In order: a module includes only the modules above it (1.5). The modules are in four groups, each in its own folder.
 
-todo maybe move timer to its own base module if its used in a broader sense independent from event. also search for patterns like this to apply the same???
-
 | Group     | Module     | Job                                                                                                                                                            |
 | --------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | base      | Log        | Where SDL's log goes, and how its lines look (14.4).                                                                                                           |
@@ -131,9 +129,10 @@ todo maybe move timer to its own base module if its used in a broader sense inde
 |           | Sanitizers | The sanitizers' settings in Debug builds (17.3).                                                                                                               |
 |           | Values     | Generic values (10.3).                                                                                                                                         |
 |           | Lua        | The Lua state. Reads data files (11.2) and runs all Lua code in protected calls.                                                                               |
+|           | Timers     | Functions that run on the main thread after a time, once or again and again (3.2).                                                                             |
 | runtime   | Plugins    | Finding, ordering and loading plugins. Logging for plugins.                                                                                                    |
 |           | Settings   | Declarations, layers, explanations.                                                                                                                            |
-|           | Events     | Core and plugin events, the event queue, timers, worker threads.                                                                                               |
+|           | Events     | Core and plugin events, the event queue, worker threads.                                                                                                       |
 |           | Services   | Function registry, signatures, calls between C and Lua, definition files (10.10). The only module that calls libffi.                                           |
 | interface | Panels     | Panel types, panels, and the pixels each panel draws.                                                                                                          |
 |           | Layout     | Workspaces and their layout trees: operations, tidying, sizes, focus, closed panels and saving.                                                                |
@@ -320,6 +319,7 @@ typedef struct ECSPanelTypeDesc
 
 ### 5.1 Surfaces
 
+- A panel's corner, and a popup's, is on a whole pixel, and its pixels show one to one, so what it draws stays sharp at any place and size.
 - Pointer positions given to a panel are in its surface's pixels, so they match what it draws.
 - A panel must not keep its surface after `Draw` returns; every call receives the current one. So the core can recreate surfaces, for example on resize, without telling the panel.
 
@@ -440,7 +440,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The drop place is highlighted while the panel is dragged.
 - A panel that splits another takes half of the other's place. A panel docked along an edge of the OS window takes a quarter of it.
 
-### 6.8 Panel and group menus
+### 6.8 Menus
 
 - The core draws its menus itself, inside the OS window, with Clay. They are kept inside the OS window.
 - A right click on a tab or grip, or a click on a grip, opens the panel's menu. A right click on the rest of a tab row opens the group's menu. The panel, or the group's shown panel, gets the focus.
@@ -450,6 +450,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The panel's menu: close, restart, maximize, pop out, lock, reopen the last closed panel; the submenus Move (left, right, up, down) and To workspace (each other workspace, by number and name); the entries of the panel's type; then reset the layout and quit, which every menu ends with.
 - The entries of a type: `ECSPanelType_AddMenuEntry(plugin, type, function)`, or `ecs.panel.addMenuEntry(type, function)` in Lua, adds a service function whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and the key the plugin bound to the same function for the type.
 - The group's menu: the submenu Tabs, which shows any of its panels and marks the shown one with `•`; the submenu Workspaces; maximize, lock, close the group's panels, and reopen; then reset the layout and quit.
+- The tool's menu: the functions that the core's setting `ecs.toolMenu` names, a list of function names, without those no plugin of the tool registered; the submenu Workspaces; then reset the layout and quit. A right click on the title bar that OpenECS draws (6.11) opens it, and `ecs.app.menu` shows it near the focused panel's top left corner, also when the system draws the title bar. The core's settings file names the settings window, the panel list, the launcher, and saving and opening sessions.
 - The menu of workspaces lists each workspace by number and name, marks the current one with `•`, and switches to the one chosen. `ecs.workspace.menu` shows it near the focused panel's top left corner; it is also a submenu of the group's menu.
 - Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. Escape in the first menu, or a press outside the menus, closes them. While a menu is open, pointer and key events go to the menus only.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
@@ -475,7 +476,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 6.11 Window frame
 
 - OpenECS draws the OS windows' frames itself, so they look and work the same on every system and desktop: the setting `ecs.titleBar`, on by default, makes each OS window borderless, with a title bar `ecs.titleBarHeight` layout units tall above the layout.
-- The title bar shows the tool's name and the buttons minimize, maximize or restore, and close. Dragging the title bar moves the window.
+- The title bar shows the tool's name and the buttons minimize, maximize or restore, and close. Dragging the title bar moves the window, and a right click on it opens the tool's menu (6.8).
 - The window's edges and corners resize it. The core tells SDL which part of the window is under the pointer (`SDL_SetWindowHitTest`), so the system moves and resizes the window, also on Wayland.
 - With `ecs.titleBar` off, the system draws the frame.
 - `ecs.app.quit` quits as the main window's close button does, asking about unsaved work (4.5). In C: `ECSApp_Quit()`.
@@ -535,6 +536,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | `ecs.workspace.switch1` to `ecs.workspace.switch10`             | Switch to workspace 1 to 10                                                                              |
   | `ecs.layout.moveToWorkspace1` to `ecs.layout.moveToWorkspace10` | Move the focused panel to workspace 1 to 10                                                              |
   | `ecs.workspace.menu`                                            | Show the menu of workspaces (6.8)                                                                        |
+  | `ecs.app.menu`                                                  | Show the tool's menu (6.8)                                                                               |
 
 - Escape after the prefix cancels. It is not a function, so it always works.
 
@@ -715,6 +717,7 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 
 - Everything a plugin registers is named `<plugin name>.<local name>`: functions (`canvas.new`), panel types (`canvas.view`), handle types, events and settings (`canvas.grid`).
 - A plugin declares each of them by its local name, and the core adds the plugin's name and a dot: `ecs.setting.declare({ name = "grid", ... })` declares `canvas.grid`. A local name must not start with the plugin's own name and a dot.
+- A function's local name may have dots: its parts before the last dot are namespaces, such as `json` in `parse.json.read`. Lua's table of the plugin holds each namespace as a table, so `require("parse").json.read(text)` calls it; C looks it up by its full name, and the plugin's header (10.10) names it `json_read`. A plugin cannot have a function whose name is a namespace of another, such as `parse.json` beside `parse.json.read`.
 - Everything else takes full names, because it may name what another plugin declared: looking up, emitting, subscribing, binding keys, presets and settings files.
 - Core code never checks a plugin's name to decide what to do. First-party plugins get no special treatment.
 
@@ -832,7 +835,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 
 - `OpenECS --definitions FOLDER` writes the plugin interface, `OpenECS.h`, `shu.h` and `ecs.lua`, whose bytes the build puts into the executable so they always match it. Then it loads every plugin it finds, without a display, writes two definition files for each, and exits. Nothing is opened or saved. With `--preset`, it loads that preset's plugins only.
 - The build writes them into `build/<type>/include/`, after the standard plugins and before the examples, so an example's C plugin includes their headers, such as `ui.h`, with that folder alone, as any plugin's author does. It also writes a `.luarc.json` in OpenECS, `std/` and `examples/` that names that folder, so editors complete `require("ui")` there with no setup. A release's archive holds the same `include/`, so plugin authors get everything with it alone, and `--definitions` writes it again from any OpenECS, with the definitions of the plugins installed there.
-- `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, with what each parameter and result is (10.1), so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`. Each handle type of the plugin is a class there, with its methods, so an editor completes `connection:send` too.
+- `NAME.lua` is a LuaLS meta file. Its functions have the descriptions, parameter names and types of their signatures, with what each parameter and result is (10.1), so an editor that has `FOLDER` in `workspace.library` completes and checks `require("NAME")`. Each namespace (9.9) and each handle type of the plugin is a class there, with its functions or methods, so an editor completes `parse.json.read` and `connection:send` too.
 - `NAME.h` is a C header. Its structure is named after the plugin in PascalCase, such as `SketchCFunctions` for `sketch_c`, and has one typed function pointer for each function, with its description and what each parameter and the result are. `SketchCFunctions_Get(plugin, &functions)` looks them all up with their signatures.
 - A parameter without a name is called `arg1`, `arg2` and so on. In C, an output parameter is `ret` and its name with a capital first letter, such as `i32 *retWidth` for `out int width`; in Lua it is a result and keeps its name.
 - A plugin's folder may hold `types.lua`, a LuaLS meta file of annotations only, which the plugin never runs. `NAME.lua` ends with it, so the classes that `value<Type>` names are there, such as ui's `ui.ButtonProps` with its fields.

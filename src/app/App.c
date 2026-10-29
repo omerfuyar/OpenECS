@@ -7,6 +7,7 @@
 #include "base/Log.h"
 #include "base/Lua.h"
 #include "base/Sanitizers.h"
+#include "base/Timers.h"
 #include "interface/Input.h"
 #include "interface/Keys.h"
 #include "interface/Layout.h"
@@ -89,13 +90,13 @@ static char *ECSIApp_FindXdgFolder(const char *variable, const char *fallback)
 #endif
 }
 
-/// @brief Removes everything a failed plugin registered, for the Plugins module.
+/// @brief Removes everything a failed plugin registered: its panel types, functions, settings, timers, events and keys.
 static void ECSIApp_RemoveRegistrations(ECSPlugin plugin)
 {
     ECSIPanels_RemovePlugin(plugin);
     ECSIServices_RemovePlugin(plugin);
     ECSISettings_RemovePlugin(plugin);
-    ECSIEvents_StopTimersOfPlugin(plugin);
+    ECSITimers_StopPlugin(plugin);
     ECSIEvents_RemovePlugin(plugin);
     ECSIKeys_RemovePlugin(plugin);
 }
@@ -551,7 +552,7 @@ int ECSIApp_Run(void)
             break;
         }
 
-        ECSIEvents_RunTimers();
+        ECSITimers_Run();
         ECSIEvents_Deliver();
         ECSISettings_DeliverChanges();
 
@@ -617,6 +618,7 @@ ECSIRestart ECSIApp_Stop(void)
     ECSIWorkers_Terminate();
     ECSIServices_Terminate();
     ECSIEvents_Terminate();
+    ECSITimers_Terminate();
     ECSIPlugins_ReportRepeatedErrors();
     ECSIPlugins_Unload();
     ECSISettings_Terminate();

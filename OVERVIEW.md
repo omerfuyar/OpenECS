@@ -227,7 +227,7 @@ A preset or a user can lock parts of the layout, for example a toolbar or a 3D v
 
 ### 6.8 Menus
 
-A panel's menu, opened from its tab or grip, has the core's entries (close, maximize, pop out, move to workspace) plus entries that the panel's type adds for its own panels. A group's menu, opened from the rest of its tab row, lists its tabs and acts on the whole group. Menus offer only what can be done now, and group entries of one kind into submenus. Inside its own area, a panel shows its own menus with popups.
+A panel's menu, opened from its tab or grip, has the core's entries (close, maximize, pop out, move to workspace) plus entries that the panel's type adds for its own panels. A group's menu, opened from the rest of its tab row, lists its tabs and acts on the whole group. The tool's menu, opened from the title bar, holds what acts on the whole tool, such as the settings window, the panel list, sessions and workspaces. Menus offer only what can be done now, and group entries of one kind into submenus. Inside its own area, a panel shows its own menus with popups.
 
 ## 7. Keys and focus
 
@@ -383,6 +383,7 @@ The settings window changes the user's settings file, and the user can also edit
 12. **Errors stay local.** A broken script or panel affects only itself.
 13. **The core's own tools are plugins.** Rich windows, such as the settings window, are built on the plugin API, which proves that the API is complete.
 14. **Plugins stand alone.** A plugin uses only the libraries it brings, compiled into itself, and never another plugin's. Plugins depend on each other only through the services their manifests name in `depends`, so any plugin that no other one names can be left out of a tool on its own (DESIGN 20.1).
+15. **Written for Lua.** Lua is where tools are read and written most, so plugins' functions read well there: functions of one kind share a namespace, such as `parse.json.read`, and a handle's functions are its methods. C calls the same functions by their full names.
 
 ## Glossary
 

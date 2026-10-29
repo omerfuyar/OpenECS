@@ -1519,6 +1519,29 @@ static SHUResult ECSIServices_ReadDocumentation(ECSIFunction *function)
     return SHUResult_Ok;
 }
 
+/// @brief Tells whether a name is a namespace of another: the other starts with it and a dot, as parse.json is of parse.json.read.
+static bool ECSIServices_IsNamespaceOf(const char *name, const char *other)
+{
+    usz length = SDL_strlen(name);
+    return SDL_strncmp(name, other, length) == 0 && other[length] == '.';
+}
+
+/// @brief Finds a function of a plugin whose name is a namespace of a name, or has the name as its namespace; Lua's table of the plugin cannot hold both.
+static const ECSIFunction *ECSIServices_FindNamespaceClash(ECSPlugin plugin, const char *name)
+{
+    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
+    {
+        const ECSIFunction *function = SERVICES.functions[i].value;
+
+        if (function->plugin == plugin && (ECSIServices_IsNamespaceOf(function->name, name) || ECSIServices_IsNamespaceOf(name, function->name)))
+        {
+            return function;
+        }
+    }
+
+    return nullptr;
+}
+
 /// @brief Checks a function's name and makes its record, without its code.
 static SHUResult ECSIServices_CreateFunction(ECSPlugin plugin, const char *name, const char *signature, const char *description, ECSIFunction **retFunction)
 {
@@ -1531,6 +1554,14 @@ static SHUResult ECSIServices_CreateFunction(ECSPlugin plugin, const char *name,
     if (ECSIServices_FindFunction(name) != nullptr)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Function '%s' is already registered.", name);
+        return SHUResult_ErrBadData;
+    }
+
+    const ECSIFunction *clash = plugin == nullptr ? nullptr : ECSIServices_FindNamespaceClash(plugin, name);
+
+    if (clash != nullptr)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Function '%s' cannot be registered: '%s' is a function, and a name's part before a dot is a namespace.", name, clash->name);
         return SHUResult_ErrBadData;
     }
 
@@ -1906,19 +1937,8 @@ static void ECSIDefinition_AddLuaFunctionOf(ECSIText *lua, const ECSIFunction *f
         }
     }
 
-    // a local name with a dot is not a Lua name, so it is written as a key
-    if (method)
-    {
-        ECSIText_Add(lua, "function %s:%s(", owner, name);
-    }
-    else if (SDL_strchr(name, '.') == nullptr)
-    {
-        ECSIText_Add(lua, "function %s.%s(", owner, name);
-    }
-    else
-    {
-        ECSIText_Add(lua, "%s[\"%s\"] = function(", owner, name);
-    }
+    // a local name with dots is in the namespaces that its parts name, such as json.read
+    ECSIText_Add(lua, method ? "function %s:%s(" : "function %s.%s(", owner, name);
 
     const char *separator = "";
 
@@ -1932,6 +1952,26 @@ static void ECSIDefinition_AddLuaFunctionOf(ECSIText *lua, const ECSIFunction *f
     }
 
     ECSIText_Add(lua, ") end\n");
+}
+
+/// @brief Declares the namespaces of a function's name that the function before it, in sorted order, did not declare: each a class, such as parse.json, and a table of the plugin's table.
+static void ECSIDefinition_AddLuaNamespaces(ECSIText *lua, const char *owner, const char *name, const char *previous)
+{
+    const char *local = SDL_strchr(name, '.') + 1;
+
+    for (const char *dot = SDL_strchr(local, '.'); dot != nullptr; dot = SDL_strchr(dot + 1, '.'))
+    {
+        usz length = (usz)(dot - name);
+
+        // the previous function has this namespace too, so it is declared already
+        if (SDL_strncmp(name, previous, length) == 0 && previous[length] == '.')
+        {
+            continue;
+        }
+
+        const char *plugin = SDL_strchr(name, '.');
+        ECSIText_Add(lua, "\n---The functions of %.*s.\n---@class %.*s\n%s%.*s = {}\n", (int)length, name, (int)length, name, owner, (int)(dot - plugin), plugin);
+    }
 }
 
 /// @brief Writes the Lua definitions of a plugin's functions and handle types, for editors.
@@ -1971,7 +2011,9 @@ static SHUResult ECSIDefinition_WriteLua(ECSPlugin provider, const char *folder)
 
     for (usz i = 0; i < arrlenu(functions); i++)
     {
-        ECSIDefinition_AddLuaFunctionOf(&lua, functions[i], pascal, SDL_strchr(functions[i]->name, '.') + 1, false);
+        const char *local = SDL_strchr(functions[i]->name, '.') + 1;
+        ECSIDefinition_AddLuaNamespaces(&lua, pascal, functions[i]->name, i > 0 ? functions[i - 1]->name : "");
+        ECSIDefinition_AddLuaFunctionOf(&lua, functions[i], pascal, local, false);
     }
 
     arrfree(functions);
@@ -2693,6 +2735,35 @@ void ECSService_ReleaseCallback(ECSFunction callback)
     }
 }
 
+/// @brief Sets the function on top of the stack into a table by its local name, whose parts before dots are nested tables, such as json.read; pops the function.
+static void ECSIServices_SetByLocalName(lua_State *state, int table, const char *local)
+{
+    int function = lua_gettop(state);
+    lua_pushvalue(state, table);
+
+    for (const char *dot = SDL_strchr(local, '.'); dot != nullptr; dot = SDL_strchr(local, '.'))
+    {
+        // the namespace's table, made the first time one of its functions comes
+        lua_pushlstring(state, local, (usz)(dot - local));
+
+        if (lua_rawget(state, -2) != LUA_TTABLE)
+        {
+            lua_pop(state, 1);
+            lua_newtable(state);
+            lua_pushlstring(state, local, (usz)(dot - local));
+            lua_pushvalue(state, -2);
+            lua_rawset(state, -4);
+        }
+
+        lua_remove(state, -2);
+        local = dot + 1;
+    }
+
+    lua_pushvalue(state, function);
+    lua_setfield(state, -2, local);
+    lua_pop(state, 2);
+}
+
 SHUResult ECSIServices_PushPlugin(ECSPlugin plugin, ECSPlugin provider)
 {
     SDL_assert(plugin != nullptr);
@@ -2706,6 +2777,7 @@ SHUResult ECSIServices_PushPlugin(ECSPlugin plugin, ECSPlugin provider)
 
     lua_State *state = ECSILua_GetState();
     lua_newtable(state);
+    int table = lua_gettop(state);
 
     for (usz i = 0; i < shlenu(SERVICES.functions); i++)
     {
@@ -2714,7 +2786,7 @@ SHUResult ECSIServices_PushPlugin(ECSPlugin plugin, ECSPlugin provider)
         if (function->plugin == provider)
         {
             SHU_ReturnResult(ECSIServices_PushFunction(plugin, function->name, nullptr), lua_pop(state, 1););
-            lua_setfield(state, -2, SDL_strchr(function->name, '.') + 1);
+            ECSIServices_SetByLocalName(state, table, SDL_strchr(function->name, '.') + 1);
         }
     }
 

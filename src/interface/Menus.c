@@ -5,6 +5,7 @@
 #include "interface/Panels.h"
 #include "interface/Window.h"
 #include "runtime/Services.h"
+#include "runtime/Settings.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -19,6 +20,9 @@
 
 /// @brief How far from the focused panel's corner a menu that keys open is, in layout units.
 #define OPENECS_MENU_OFFSET 24.0f
+
+/// @brief The setting that names the functions of the tool's menu.
+#define OPENECS_TOOL_MENU "ecs.toolMenu"
 
 /// @brief Most workspaces that have their own functions: keys 1 to 9 and 0.
 #define OPENECS_WORKSPACE_FUNCTION_COUNT 10
@@ -393,6 +397,38 @@ static void ECSIMenus_Restart(void)
     }
 }
 
+/// @brief Builds the tool's menu: the functions that ecs.toolMenu names and that are registered, the submenu Workspaces, then reset the layout and quit.
+static ECSIMenuEntry *ECSIMenus_BuildToolMenu(void)
+{
+    ECSIMenuEntry *entries = nullptr;
+    ECSPanel focus = ECSILayout_GetFocus();
+    const ECSValue *functions = ECSSetting_Get(OPENECS_TOOL_MENU);
+
+    for (usz i = 0; i < ECSValue_GetListCount(functions); i++)
+    {
+        const char *function = ECSValue_GetString(ECSValue_GetListItem(functions, i), nullptr);
+
+        // a function of a plugin that the tool does not load is left out
+        if (function != nullptr && ECSIServices_GetDescription(function) != nullptr)
+        {
+            ECSIMenus_AddFunction(&entries, function, nullptr, focus);
+        }
+    }
+
+    ECSIMenus_AddSubmenu(&entries, "Workspaces", ECSIMenus_BuildWorkspaceMenu());
+    ECSIMenus_AddToolEntries(&entries, focus);
+    return entries;
+}
+
+/// @brief Shows the tool's menu near the top left of the focused panel, or of the window without one.
+static void ECSIMenus_ShowTool(void)
+{
+    ECSPanel focus = ECSILayout_GetFocus();
+    f32 x = (focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET;
+    f32 y = (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET;
+    ECSIMenus_Show(ECSIMenus_BuildToolMenu(), x, y);
+}
+
 /// @brief Shows the menu of workspaces near the top left of the focused panel, or of the window without one.
 static void ECSIMenus_ShowWorkspaces(void)
 {
@@ -468,6 +504,7 @@ static const struct
     ECSIMenus_WorkspaceEntries(9),
     ECSIMenus_WorkspaceEntries(10),
     {"ecs.workspace.menu", ECSIMenus_ShowWorkspaces, "Workspaces"},
+    {"ecs.app.menu", ECSIMenus_ShowTool, "Tool menu"},
 };
 
 #pragma endregion Core Functions
@@ -476,6 +513,9 @@ static const struct
 
 SHUResult ECSIMenus_Initialize(void)
 {
+    const ECSSettingDesc toolMenu = {.name = OPENECS_TOOL_MENU, .type = ECSSettingType_List, .description = "The functions that the tool's menu shows first, by name, such as \"settings.open\"; the title bar opens the menu with a right click"};
+    SHU_ReturnResult(ECSISettings_DeclareCore(&toolMenu));
+
     for (usz i = 0; i < SDL_arraysize(OPENECS_CORE_FUNCTIONS); i++)
     {
         SHU_ReturnResult(ECSIServices_RegisterCore(OPENECS_CORE_FUNCTIONS[i].name, OPENECS_CORE_FUNCTIONS[i].Function, "void()", OPENECS_CORE_FUNCTIONS[i].description));
@@ -557,6 +597,11 @@ void ECSIMenus_OpenGroupMenu(ECSPanel shownPanel, f32 x, f32 y)
 {
     ECSILayout_SetFocus(shownPanel);
     ECSIMenus_Show(ECSIMenus_BuildGroupMenu(shownPanel), x, y);
+}
+
+void ECSIMenus_OpenToolMenu(f32 x, f32 y)
+{
+    ECSIMenus_Show(ECSIMenus_BuildToolMenu(), x, y);
 }
 
 bool ECSIMenus_Handle(const SDL_Event *event)
