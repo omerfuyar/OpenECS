@@ -141,7 +141,7 @@ static void PrintUsage(void)
            "  -t, --test [EXAMPLE...]\n"
            "                     Build in Debug with the examples, then run the tests of the examples named, such as c12_sketch,\n"
            "                     or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report\n"
-           "  -c, --compiler CC  The compiler: gcc (the default), clang, or on Windows LLVM-MinGW's clang (the default there).\n"
+           "  -c, --compiler CC  The compiler: gcc (default for linux), clang, or on Windows LLVM-MinGW's clang (default for windows).\n"
            "                     A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/\n"
            "  -h, --help         Show this help\n");
 }
