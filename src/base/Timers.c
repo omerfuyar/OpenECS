@@ -7,7 +7,6 @@
 
 typedef struct ECSITimer
 {
-    ECSPlugin plugin;
     u64 dueNanoseconds; // as SDL_GetTicksNS
     u64 intervalNanoseconds;
     bool repeat;
@@ -71,9 +70,8 @@ static void ECSITimers_FreeStopped(void)
 
 #pragma endregion Source Only
 
-SHUResult ECSITimers_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data)
+SHUResult ECSITimers_Start(ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data)
 {
-    SDL_assert(plugin != nullptr);
     SDL_assert(retTimer != nullptr);
     SDL_assert(function != nullptr);
     SDL_assert(seconds > 0.0 || (seconds == 0.0 && !repeat));
@@ -88,7 +86,6 @@ SHUResult ECSITimers_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bo
     u64 intervalNanoseconds = (u64)(seconds * (f64)SDL_NS_PER_SECOND);
 
     *timer = (ECSITimer){
-        .plugin = plugin,
         .dueNanoseconds = SDL_GetTicksNS() + intervalNanoseconds,
         .intervalNanoseconds = intervalNanoseconds,
         .repeat = repeat,
@@ -102,18 +99,11 @@ SHUResult ECSITimers_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bo
     return SHUResult_Ok;
 }
 
-void ECSITimers_StopPlugin(ECSPlugin plugin)
+void ECSITimers_Stop(ECSTimer timer)
 {
-    SDL_assert(plugin != nullptr);
+    SDL_assert(timer != nullptr);
 
-    for (usz i = 0; i < arrlenu(TIMERS.timers); i++)
-    {
-        if (TIMERS.timers[i]->plugin == plugin)
-        {
-            TIMERS.timers[i]->stopped = true;
-        }
-    }
-
+    timer->stopped = true;
     ECSITimers_FreeStopped();
 }
 
@@ -190,23 +180,4 @@ void ECSITimers_Terminate(void)
 
     arrfree(TIMERS.timers);
     SDL_zero(TIMERS);
-}
-
-SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
-{
-    return ECSITimers_Start(plugin, retTimer, seconds, repeat, function, nullptr, data);
-}
-
-void ECSTimer_Stop(ECSTimer *timer)
-{
-    SDL_assert(timer != nullptr);
-
-    if (*timer == nullptr)
-    {
-        return;
-    }
-
-    (*timer)->stopped = true;
-    *timer = nullptr;
-    ECSITimers_FreeStopped();
 }

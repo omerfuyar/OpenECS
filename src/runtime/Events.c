@@ -7,6 +7,22 @@
 
 #pragma region Source Only
 
+/// @brief A timer that a plugin started: base/Timers runs it, and this record says whose it is, so a plugin's timers stop with it.
+typedef struct ECSIPluginTimer
+{
+    ECSPlugin plugin;
+    ECSTimer timer;
+    ECSTimerFunction Function;
+    ECSTimerFunction Release; // nullptr if the data needs no release
+    void *data;
+} ECSIPluginTimer;
+
+/// @brief The timers that plugins started, apart from EVENTS because their records go when base/Timers frees the timers, after Events stops.
+static struct
+{
+    ECSIPluginTimer **timers; // stb_ds array
+} PLUGIN_TIMERS = {0};
+
 /// @brief An event waiting in the queue.
 typedef struct ECSIQueuedEvent
 {
@@ -516,6 +532,108 @@ void ECSIEvents_Terminate(void)
 
     shfree(EVENTS.named);
     SDL_zero(EVENTS);
+}
+
+static void ECSIEvents_RunPluginTimer(void *data)
+{
+    ECSIPluginTimer *record = data;
+    record->Function(record->data);
+}
+
+/// @brief Forgets a plugin's timer when base/Timers frees it, and releases its data.
+static void ECSIEvents_ReleasePluginTimer(void *data)
+{
+    ECSIPluginTimer *record = data;
+
+    for (usz i = 0; i < arrlenu(PLUGIN_TIMERS.timers); i++)
+    {
+        if (PLUGIN_TIMERS.timers[i] == record)
+        {
+            arrdel(PLUGIN_TIMERS.timers, i);
+            break;
+        }
+    }
+
+    if (record->Release != nullptr)
+    {
+        record->Release(record->data);
+    }
+
+    SDL_free(record);
+
+    // the last timer gone, the list goes too, also after Events stops
+    if (arrlenu(PLUGIN_TIMERS.timers) == 0)
+    {
+        arrfree(PLUGIN_TIMERS.timers);
+    }
+}
+
+SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data)
+{
+    SDL_assert(plugin != nullptr);
+    SDL_assert(retTimer != nullptr);
+    SDL_assert(function != nullptr);
+
+    ECSIPluginTimer *record = SDL_malloc(sizeof(ECSIPluginTimer));
+
+    if (record == nullptr)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    *record = (ECSIPluginTimer){.plugin = plugin, .Function = function, .Release = release, .data = data};
+
+    if (ECSITimers_Start(&record->timer, seconds, repeat, ECSIEvents_RunPluginTimer, ECSIEvents_ReleasePluginTimer, record))
+    {
+        SDL_free(record);
+        return SHUResult_ErrAllocation;
+    }
+
+    arrput(PLUGIN_TIMERS.timers, record);
+    *retTimer = record->timer;
+    return SHUResult_Ok;
+}
+
+void ECSIEvents_StopTimersOfPlugin(ECSPlugin plugin)
+{
+    SDL_assert(plugin != nullptr);
+
+    // stopping may free a timer, which takes its record off the list, so the plugin's timers are found first
+    ECSTimer *stopped = nullptr;
+
+    for (usz i = 0; i < arrlenu(PLUGIN_TIMERS.timers); i++)
+    {
+        if (PLUGIN_TIMERS.timers[i]->plugin == plugin)
+        {
+            arrput(stopped, PLUGIN_TIMERS.timers[i]->timer);
+        }
+    }
+
+    for (usz i = 0; i < arrlenu(stopped); i++)
+    {
+        ECSITimers_Stop(stopped[i]);
+    }
+
+    arrfree(stopped);
+}
+
+SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
+{
+    return ECSIEvents_StartTimer(plugin, retTimer, seconds, repeat, function, nullptr, data);
+}
+
+void ECSTimer_Stop(ECSTimer *timer)
+{
+    SDL_assert(timer != nullptr);
+
+    // the handle is cleared first, as stopping may free the memory that holds it, such as a Lua timer's
+    ECSTimer stopped = *timer;
+    *timer = nullptr;
+
+    if (stopped != nullptr)
+    {
+        ECSITimers_Stop(stopped);
+    }
 }
 
 SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data)

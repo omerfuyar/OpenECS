@@ -96,7 +96,7 @@ static void ECSIApp_RemoveRegistrations(ECSPlugin plugin)
     ECSIPanels_RemovePlugin(plugin);
     ECSIServices_RemovePlugin(plugin);
     ECSISettings_RemovePlugin(plugin);
-    ECSITimers_StopPlugin(plugin);
+    ECSIEvents_StopTimersOfPlugin(plugin);
     ECSIEvents_RemovePlugin(plugin);
     ECSIKeys_RemovePlugin(plugin);
 }
@@ -617,8 +617,8 @@ ECSIRestart ECSIApp_Stop(void)
     ECSIWindow_DestroyDevice();
     ECSIWorkers_Terminate();
     ECSIServices_Terminate();
-    ECSIEvents_Terminate();
     ECSITimers_Terminate();
+    ECSIEvents_Terminate();
     ECSIPlugins_ReportRepeatedErrors();
     ECSIPlugins_Unload();
     ECSISettings_Terminate();

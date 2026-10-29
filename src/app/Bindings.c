@@ -2,7 +2,6 @@
 
 #include "app/Workers.h"
 #include "base/Lua.h"
-#include "base/Timers.h"
 #include "interface/Input.h"
 #include "interface/Panels.h"
 #include "runtime/Events.h"
@@ -371,7 +370,7 @@ static int ECSIBindings_TimerStart(lua_State *state)
     timer->handle = luaL_ref(state, LUA_REGISTRYINDEX);
     timer->plugin = ECSIBindings_GetPlugin(state);
 
-    if (ECSITimers_Start(timer->plugin, &timer->timer, seconds, repeat, ECSIBindings_TimerTick, ECSIBindings_TimerRelease, timer))
+    if (ECSIEvents_StartTimer(timer->plugin, &timer->timer, seconds, repeat, ECSIBindings_TimerTick, ECSIBindings_TimerRelease, timer))
     {
         ECSIBindings_TimerRelease(timer);
         return luaL_error(state, "out of memory");

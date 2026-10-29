@@ -1,6 +1,6 @@
 #pragma once
 
-// Events: named events, the event queue, and work on worker threads.
+// Events: named events, the event queue, the plugins' timers, and work on worker threads.
 
 #include "runtime/Plugins.h"
 
@@ -34,6 +34,21 @@ void ECSIEvents_Post(ECSIEventDeliverFunction deliver, void *target, const ECSPa
 
 /// @brief Delivers the queued events in order, and the events queued while they are delivered, until the queue is empty.
 void ECSIEvents_Deliver(void);
+
+/// @brief Starts a plugin's timer on base/Timers, which stops when the plugin's timers stop.
+/// @param plugin The plugin that owns the timer.
+/// @param retTimer The new timer.
+/// @param seconds Time until the first call, and between repeated calls. Must be positive for a repeating timer.
+/// @param repeat true to call the function until the timer is stopped.
+/// @param function Function to call.
+/// @param release Function called with the data when the timer is freed, after it stops, or nullptr.
+/// @param data Passed to the functions.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data);
+
+/// @brief Stops every timer of a plugin. Their handles become invalid.
+/// @param plugin The plugin.
+void ECSIEvents_StopTimersOfPlugin(ECSPlugin plugin);
 
 /// @brief Gets how long the main loop may wait for input, for SDL_WaitEventTimeout.
 /// @return 0 if events are queued; otherwise the time until the next timer is due, in milliseconds rounded up, or -1 if no timer runs (base/Timers).

@@ -7,7 +7,6 @@
 #pragma region Declarations
 
 /// @brief Starts a timer.
-/// @param plugin The plugin that owns the timer.
 /// @param retTimer The new timer.
 /// @param seconds Time until the first call, and between repeated calls. Must be positive for a repeating timer.
 /// @param repeat true to call the function until the timer is stopped.
@@ -15,11 +14,11 @@
 /// @param release Function called with the data when the timer is freed, after it stops, or nullptr.
 /// @param data Passed to the functions.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSITimers_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data);
+SHUWUR SHUResult ECSITimers_Start(ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data);
 
-/// @brief Stops every timer of a plugin. Their handles become invalid.
-/// @param plugin The plugin.
-void ECSITimers_StopPlugin(ECSPlugin plugin);
+/// @brief Stops a timer. Its handle becomes invalid; its release runs once no timer runs.
+/// @param timer The timer.
+void ECSITimers_Stop(ECSTimer timer);
 
 /// @brief Gets the time until the next timer is due.
 /// @return The time in milliseconds, rounded up, or -1 if no timer runs.
