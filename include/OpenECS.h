@@ -678,7 +678,7 @@ OPENECS_EXPORT const ECSValue *ECSSetting_Get(const char *name);
 /// @param plugin The plugin that provides the function.
 /// @param name The function's local name, such as "play"; the core adds the plugin's name and a dot, so others call it "mixer.play".
 /// @param function The function, cast to ECSFunction. Its real type must match the signature; the core cannot check that.
-/// @param signature The function's signature, such as "int(string, out float)". Types: void (result only), bool, int, int64, float, double, color (ECSColor in C, a colour text in Lua), string, buffer, value, handle<name>, fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
+/// @param signature The function's signature, such as "int(string, out float)". Types: void (result only), bool, int, int64, float, double, color (ECSColor in C, a colour text in Lua), string, buffer, value, handle<name>, struct<name> (a pointer to the struct; never the result), fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
 /// @param description One line that says what the function does, which menus show. Lines after it say what its parameters and result are, for the definition files:
 ///                    "@param name text" for a parameter the signature names, and "@return text" for the result. A line that names no such parameter is reported.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the name or signature is invalid or the name is taken, or SHUResult_ErrAllocation.
@@ -735,6 +735,23 @@ OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const c
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the type or the function is not the plugin's, the function's first parameter is not such a handle, or the method exists, or SHUResult_ErrAllocation.
 /// @lua ecs.handle.addMethod
 OPENECS_EXPORT SHUWUR SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function);
+
+/// @brief Registers a struct type: plain data with fixed fields, which functions take and give by value. C passes it by pointer, as a struct that the plugin's definition header declares; Lua gets a table of its fields, with the type's methods and operators. Main thread only.
+/// @param plugin The plugin that provides the type.
+/// @param name The type's local name, such as "vec3"; the core adds the plugin's name and a dot, so signatures name it "struct<cglm.vec3>".
+/// @param fields Its fields in order, as a signature writes parameters: "float x, float y, float z". A field may be a list of a fixed length, "float m[16]", or another struct, "struct<cglm.vec3> position"; a struct of one list without a name, "float[16]", is that list in Lua. Fields are bool, int, int64, float, double, color or struct.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the name is invalid or taken, or the fields cannot be read, or SHUResult_ErrAllocation.
+/// @lua ecs.struct.register
+OPENECS_EXPORT SHUWUR SHUResult ECSStruct_Register(ECSPlugin plugin, const char *name, const char *fields);
+
+/// @brief Makes a function of the plugin a method of one of its struct types, so Lua calls it on a struct: a:dot(b) calls the function with the struct first. A method named add, sub, mul, div, unm, eq, lt, le, len or tostring is also Lua's operator: a + b calls add. C calls the function itself. Main thread only.
+/// @param plugin The plugin that provides the struct type and the function.
+/// @param type The struct type's local name, such as "vec3".
+/// @param method The method's name in Lua, such as "dot".
+/// @param function The local name of a function of the plugin whose first parameter is a struct of the type, such as "vec3Dot".
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the type or the function is not the plugin's, the function's first parameter is not such a struct, or the method exists, or SHUResult_ErrAllocation.
+/// @lua ecs.struct.addMethod
+OPENECS_EXPORT SHUWUR SHUResult ECSStruct_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function);
 
 /// @brief Tells the core that a plugin frees an object of one of its handle types now, such as from a free function of its service, so Lua's handle of it is invalid from now on and its Destroy is not called for it. Main thread only.
 /// @param object The object.

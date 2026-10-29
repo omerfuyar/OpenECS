@@ -44,10 +44,6 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
   - **gamepad:** game controllers, through SDL's gamepad functions.
   - **video:** playing video files, such as MPEG-1 with pl_mpeg.
 
-## Questions
-
-- **Vectors in cglm.** cglm's Lua functions pass vectors and matrices as strings of packed floats. Decided: Lua gets tables with `x`, `y`, `z` and `w` that it may change, with operators; a matrix is 16 numbers, column by column; a vector times a vector is an error, and `dot` and `cross` are methods; the types belong to the cglm plugin, and cglm's own headers stay inside it. Open: how a plugin's value type, such as `struct<cglm.vec3>`, gets its operators and crosses signatures. A generic core feature like handle types (DESIGN 10.6) was proposed; the owner thinks handles may already cover it. The owner decides it later.
-
 ## Reaching users
 
 What helps people find OpenECS and stay. Before announcing a release widely:

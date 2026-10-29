@@ -41,6 +41,17 @@ void ECSIServices_PushHandleMetatable(const char *type);
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the name is taken or not the plugin's, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIServices_RegisterLuaHandleType(ECSPlugin plugin, const char *name);
 
+/// @brief Registers one of the core's struct types, whose name starts with "ecs." (10.11).
+/// @param name Full name of the type, such as "ecs.rect".
+/// @param fields Its fields, as ECSStruct_Register takes them.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the name is taken or the fields cannot be read, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSIServices_RegisterCoreStruct(const char *name, const char *fields);
+
+/// @brief Pushes a new struct of a type made from the table at an index of the stack: its fields checked and copied, with the type's metatable. Raises a Lua error if the type is not registered, or a field is missing or of another type.
+/// @param index Stack index of the table.
+/// @param type Full name of the struct type.
+void ECSIServices_PushStruct(int index, const char *type);
+
 /// @brief Pushes a new handle of a type that a Lua plugin provides, standing for a Lua value. Raises a Lua error if the type is not the plugin's.
 /// @param plugin The plugin that calls.
 /// @param name Name of the handle type.
