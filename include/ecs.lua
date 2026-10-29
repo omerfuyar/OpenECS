@@ -455,6 +455,7 @@ function ecs.workspace.switch(number) end
 -- App
 
 ---@class ecs.app
+---@field menu fun() Shows the tool's menu: the functions that the setting ecs.toolMenu names, the workspaces, then reset the layout and quit. A right click on the title bar opens it too. Keys can run it.
 ecs.app = {}
 
 ---Quits, as the main window's close button does: the user is asked about unsaved work first and may cancel. Keys can run it.

@@ -905,6 +905,13 @@ static void ECSIInput_PressPointer(const SDL_MouseButtonEvent *button)
         return;
     }
 
+    // a right click on the title bar opens the tool's menu
+    if (button->button == SDL_BUTTON_RIGHT && ECSIWindow_TitleBarAt(button->x, button->y))
+    {
+        ECSIMenus_OpenToolMenu(button->x, button->y);
+        return;
+    }
+
     f32 x = 0.0f;
     f32 y = 0.0f;
     ECSPanel panel = ECSIWindow_PanelAt(button->x, button->y, &x, &y);

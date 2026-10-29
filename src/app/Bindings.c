@@ -2,6 +2,7 @@
 
 #include "app/Workers.h"
 #include "base/Lua.h"
+#include "base/Timers.h"
 #include "interface/Input.h"
 #include "interface/Panels.h"
 #include "runtime/Events.h"
@@ -370,7 +371,7 @@ static int ECSIBindings_TimerStart(lua_State *state)
     timer->handle = luaL_ref(state, LUA_REGISTRYINDEX);
     timer->plugin = ECSIBindings_GetPlugin(state);
 
-    if (ECSIEvents_StartTimer(timer->plugin, &timer->timer, seconds, repeat, ECSIBindings_TimerTick, ECSIBindings_TimerRelease, timer))
+    if (ECSITimers_Start(timer->plugin, &timer->timer, seconds, repeat, ECSIBindings_TimerTick, ECSIBindings_TimerRelease, timer))
     {
         ECSIBindings_TimerRelease(timer);
         return luaL_error(state, "out of memory");
@@ -1938,8 +1939,14 @@ static int ECSIBindings_SurfaceFill(lua_State *state)
 
 static int ECSIBindings_SurfaceIndex(lua_State *state)
 {
+    // the methods are the upvalue; they come first, as a panel's draw calls them for many pixels, and check the surface themselves
+    if (lua_getfield(state, lua_upvalueindex(1), luaL_checkstring(state, 2)) != LUA_TNIL)
+    {
+        return 1;
+    }
+
     ECSSurface *surface = ECSIBindings_CheckSurface(1);
-    const char *key = luaL_checkstring(state, 2);
+    const char *key = lua_tostring(state, 2);
 
     if (SDL_strcmp(key, "width") == 0)
     {
@@ -1959,8 +1966,7 @@ static int ECSIBindings_SurfaceIndex(lua_State *state)
     }
     else
     {
-        // the methods are the upvalue
-        lua_getfield(state, lua_upvalueindex(1), key);
+        lua_pushnil(state);
     }
 
     return 1;

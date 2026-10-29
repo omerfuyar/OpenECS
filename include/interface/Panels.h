@@ -56,7 +56,7 @@ struct ECSIPanel
 /// @brief Gets the number of pixels that a size in layout units takes: rounded, and at least 1.
 i32 ECSIPanel_ToPixels(f32 size);
 
-/// @brief Registers a panel type like ECSPanelType_Register, with data for the Bindings module.
+/// @brief Registers a panel type like ECSPanelType_Register, with data kept in the type.
 /// @param plugin The plugin that provides the panel type.
 /// @param desc Description of the panel type.
 /// @param typeData Kept in the type, or nullptr.

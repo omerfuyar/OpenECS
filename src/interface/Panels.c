@@ -505,8 +505,9 @@ void ECSIPanel_SetRect(ECSPanel panel, f32 x, f32 y, f32 width, f32 height)
         panel->needsDraw = true;
     }
 
-    panel->x = x;
-    panel->y = y;
+    // a panel's corner is on a whole pixel, so its pixels show one to one and pointer positions match them
+    panel->x = SDL_roundf(x);
+    panel->y = SDL_roundf(y);
     panel->width = width;
     panel->height = height;
 }
@@ -632,7 +633,9 @@ void ECSIPanel_Show(ECSPanel panel, SDL_Renderer *renderer)
 
     if (panel->texture != nullptr && panel->fault == nullptr)
     {
-        SDL_FRect rect = {panel->x, panel->y, panel->width, panel->height};
+        // the pixels show one to one, so text and lines stay sharp at any place and size
+        SDL_FRect rect = {panel->x, panel->y, 0.0f, 0.0f};
+        SDL_GetTextureSize(panel->texture, &rect.w, &rect.h);
         SDL_RenderTexture(renderer, panel->texture, nullptr, &rect);
     }
 }

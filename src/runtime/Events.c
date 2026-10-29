@@ -1,21 +1,11 @@
 #include "runtime/Events.h"
 
+#include "base/Timers.h"
+
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
 
 #pragma region Source Only
-
-typedef struct ECSITimer
-{
-    ECSPlugin plugin;
-    u64 dueNanoseconds; // as SDL_GetTicksNS
-    u64 intervalNanoseconds;
-    bool repeat;
-    bool stopped; // freed when no timer is running
-    ECSTimerFunction Function;
-    ECSTimerFunction Release; // nullptr if the data needs no release
-    void *data;
-} ECSITimer;
 
 /// @brief An event waiting in the queue.
 typedef struct ECSIQueuedEvent
@@ -94,9 +84,6 @@ static struct
 {
     ECSIQueuedEvent *queue; // stb_ds array
     bool delivering;
-    ECSITimer **timers; // stb_ds array; handles point to the timers, so each is allocated on its own
-    bool runningTimers;
-    bool freeingTimers;
     struct
     {
         char *key;
@@ -206,51 +193,6 @@ static SHUResult ECSIEvents_Emit(const char *name, const ECSValue *value)
 
     ECSIEvents_Post(ECSIEvents_DeliverEmission, emission, &(ECSPanelEvent){0});
     return SHUResult_Ok;
-}
-
-static void ECSIEvents_FreeTimer(ECSITimer *timer)
-{
-    if (timer->Release != nullptr)
-    {
-        timer->Release(timer->data);
-    }
-
-    SDL_free(timer);
-}
-
-/// @brief Frees the stopped timers, unless timers are running and may still be read.
-static void ECSIEvents_FreeStoppedTimers(void)
-{
-    if (EVENTS.runningTimers || EVENTS.freeingTimers)
-    {
-        return;
-    }
-
-    // a release may stop more timers, so the list is walked until nothing is freed
-    EVENTS.freeingTimers = true;
-    bool freed = true;
-
-    while (freed)
-    {
-        freed = false;
-
-        for (usz i = 0; i < arrlenu(EVENTS.timers);)
-        {
-            ECSITimer *timer = EVENTS.timers[i];
-
-            if (!timer->stopped)
-            {
-                i++;
-                continue;
-            }
-
-            arrdel(EVENTS.timers, i);
-            ECSIEvents_FreeTimer(timer);
-            freed = true;
-        }
-    }
-
-    EVENTS.freeingTimers = false;
 }
 
 /// @brief Wakes the main loop with an event that does nothing, so it makes a pass after a task ran.
@@ -514,119 +456,14 @@ void ECSIEvents_Deliver(void)
     ECSIEvents_FreeCancelled();
 }
 
-SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data)
-{
-    SDL_assert(plugin != nullptr);
-    SDL_assert(retTimer != nullptr);
-    SDL_assert(function != nullptr);
-    SDL_assert(seconds > 0.0 || (seconds == 0.0 && !repeat));
-
-    ECSITimer *timer = SDL_malloc(sizeof(ECSITimer));
-
-    if (timer == nullptr)
-    {
-        return SHUResult_ErrAllocation;
-    }
-
-    u64 intervalNanoseconds = (u64)(seconds * (f64)SDL_NS_PER_SECOND);
-
-    *timer = (ECSITimer){
-        .plugin = plugin,
-        .dueNanoseconds = SDL_GetTicksNS() + intervalNanoseconds,
-        .intervalNanoseconds = intervalNanoseconds,
-        .repeat = repeat,
-        .Function = function,
-        .Release = release,
-        .data = data,
-    };
-
-    arrput(EVENTS.timers, timer);
-    *retTimer = timer;
-    return SHUResult_Ok;
-}
-
-void ECSIEvents_StopTimersOfPlugin(ECSPlugin plugin)
-{
-    SDL_assert(plugin != nullptr);
-
-    for (usz i = 0; i < arrlenu(EVENTS.timers); i++)
-    {
-        if (EVENTS.timers[i]->plugin == plugin)
-        {
-            EVENTS.timers[i]->stopped = true;
-        }
-    }
-
-    ECSIEvents_FreeStoppedTimers();
-}
-
 i32 ECSIEvents_GetWait(void)
 {
-    if (arrlenu(EVENTS.queue) > 0)
-    {
-        return 0;
-    }
-
-    u64 now = SDL_GetTicksNS();
-    u64 wait = UINT64_MAX;
-
-    for (usz i = 0; i < arrlenu(EVENTS.timers); i++)
-    {
-        ECSITimer *timer = EVENTS.timers[i];
-
-        if (!timer->stopped)
-        {
-            wait = SDL_min(wait, timer->dueNanoseconds > now ? timer->dueNanoseconds - now : 0);
-        }
-    }
-
-    if (wait == UINT64_MAX)
-    {
-        return -1;
-    }
-
-    // rounded up, so the loop does not wake up just before the timer is due
-    return (i32)SDL_min((wait + SDL_NS_PER_MS - 1) / SDL_NS_PER_MS, (u64)SDL_MAX_SINT32);
-}
-
-void ECSIEvents_RunTimers(void)
-{
-    u64 now = SDL_GetTicksNS();
-    EVENTS.runningTimers = true;
-
-    // timers started by the functions wait for the next call
-    usz count = arrlenu(EVENTS.timers);
-
-    for (usz i = 0; i < count; i++)
-    {
-        ECSITimer *timer = EVENTS.timers[i];
-
-        if (timer->stopped || timer->dueNanoseconds > now)
-        {
-            continue;
-        }
-
-        if (!timer->repeat)
-        {
-            timer->stopped = true;
-        }
-        else
-        {
-            // calls missed while the program was busy are skipped
-            timer->dueNanoseconds += timer->intervalNanoseconds;
-            timer->dueNanoseconds = timer->dueNanoseconds <= now ? now + timer->intervalNanoseconds : timer->dueNanoseconds;
-        }
-
-        timer->Function(timer->data);
-    }
-
-    EVENTS.runningTimers = false;
-    ECSIEvents_FreeStoppedTimers();
+    return arrlenu(EVENTS.queue) > 0 ? 0 : ECSITimers_GetWait();
 }
 
 void ECSIEvents_Terminate(void)
 {
-    SDL_assert(!EVENTS.runningTimers && !EVENTS.delivering);
+    SDL_assert(!EVENTS.delivering);
 
     // running work finishes, waiting work is dropped, and no task reaches the main thread any more
     SDL_LockMutex(WORKERS.lock);
@@ -646,16 +483,6 @@ void ECSIEvents_Terminate(void)
     SDL_DestroyMutex(WORKERS.lock);
     WORKERS.lock = nullptr;
     WORKERS.ready = nullptr;
-
-    // a release that stops another timer frees nothing here; every timer is freed in this loop
-    EVENTS.freeingTimers = true;
-
-    for (usz i = 0; i < arrlenu(EVENTS.timers); i++)
-    {
-        ECSIEvents_FreeTimer(EVENTS.timers[i]);
-    }
-
-    arrfree(EVENTS.timers);
 
     // named events and main-thread tasks still queued hold their copies
     for (usz i = 0; i < arrlenu(EVENTS.queue); i++)
@@ -689,25 +516,6 @@ void ECSIEvents_Terminate(void)
 
     shfree(EVENTS.named);
     SDL_zero(EVENTS);
-}
-
-SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
-{
-    return ECSIEvents_StartTimer(plugin, retTimer, seconds, repeat, function, nullptr, data);
-}
-
-void ECSTimer_Stop(ECSTimer *timer)
-{
-    SDL_assert(timer != nullptr);
-
-    if (*timer == nullptr)
-    {
-        return;
-    }
-
-    (*timer)->stopped = true;
-    *timer = nullptr;
-    ECSIEvents_FreeStoppedTimers();
 }
 
 SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data)

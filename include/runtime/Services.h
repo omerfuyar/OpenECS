@@ -98,14 +98,14 @@ const char *ECSIServices_GetDescription(const char *name);
 /// @return SHUResult_Ok with the Lua function on top of the stack popped, or an error of ECSService_RegisterFunction with the stack unchanged.
 SHUWUR SHUResult ECSIServices_RegisterLua(ECSPlugin plugin, const char *name, const char *signature, const char *description);
 
-/// @brief Pushes a Lua function that calls a registered function, for the Bindings module. A C function is called through libffi; a Lua function is pushed as it is.
+/// @brief Pushes a Lua function that calls a registered function. A C function is called through libffi; a Lua function is pushed as it is.
 /// @param plugin The plugin that asks. It may look up its own functions and those of the plugins its manifest depends on.
 /// @param name Name of the function.
 /// @param signature The signature the caller expects, or nullptr to take any.
 /// @return SHUResult_Ok with the function pushed, or the error of ECSService_GetFunction with nothing pushed.
 SHUWUR SHUResult ECSIServices_PushFunction(ECSPlugin plugin, const char *name, const char *signature);
 
-/// @brief Pushes a table of every function a plugin registered, by local name, for the Bindings module's require.
+/// @brief Pushes a table of every function a plugin registered, by local name, as require gives it.
 /// @param plugin The plugin that asks. It may ask for itself and for the plugins its manifest depends on.
 /// @param provider The plugin whose functions are pushed.
 /// @return SHUResult_Ok with the table pushed, or SHUResult_ErrPrivileges or SHUResult_ErrAllocation with nothing pushed.
