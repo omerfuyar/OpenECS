@@ -7,6 +7,7 @@
 #pragma region Declarations
 
 /// @brief The Lua state, as lua.h declares it. Only the Bindings, Workers and Test modules use it.
+// todo stop writing such docs, remove specific strict restrictions like 'only ... uses / does this and that' . what if its changed in the future? how are you going to find and update these? just explain what this thing does, wtf am I going to do with such information? !!!
 typedef struct lua_State lua_State;
 
 /// @brief Starts the Lua state.

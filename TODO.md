@@ -66,3 +66,8 @@ What would grow it most:
 - **A showcase** in README.md of plugins and tools others build.
 - **One place to talk**, Discord or Matrix, linked from README.md.
 
+??? I notice that lua plugins significantly slower than native ones, this is expected and not big of an issue but especially in sketch example after a few strokes  lua plugin starts lagging while native is not at all. is that a lua, OpenECS core or plugin issue? note that for later, lua performance optimizations, maybe consider LuaJIT ???
+
+todo also make the top system bar right clickable which will give the right click menu for general settings !!!
+
+todo try improving parse and compress std plugin with namespaces. like .json. for json functions or zip for archive. make this a principle. lua is where we read and write code easily, use its advantages if you can. do not follow blindly, advise me for it if it will cause problems or there is a better way

@@ -17,7 +17,7 @@ static const char *const BUILD_TYPE_STRINGS[] = {"Debug", "Release", "RelWithDeb
 
 /// @brief What the flags choose.
 static struct
-{
+{ // todo group them like we did in shuild !!!
     BuildType type;
     bool std;              // also build the standard plugins, from std/
     bool examples;         // also build the examples, from examples/
@@ -33,7 +33,7 @@ static struct
     char *dependenciesDir; // the built dependencies, which only the build uses: their headers in include/ and their libraries in lib/, such as .shu/Debug/dependencies/
     char *cmakeDir;        // the CMake builds, a folder for each compiler, as CMake keeps the compiler it configured with, such as .shu/Debug/cmake/gcc/
     char *outputDir;       // what people use: the program in bin/, the plugin interface in include/, and on Windows OpenECS's import library in lib/
-} CONFIG = {.type = BuildType_Debug, .std = true, .compiler = SHUM_HOST_WINDOWS ? "clang" : "gcc"};
+} CONFIG = {.type = BuildType_Debug, .std = true, .compiler = SHUM_HOST_WINDOWS || SHUM_HOST_MACOS ? "clang" : "gcc"};
 
 #pragma endregion Setup
 
@@ -123,7 +123,7 @@ int main(int argc, char **argv)
 
 /// @brief Deletes a file or folder if it exists.
 static void DeleteIfExists(const char *path)
-{
+{ // todo either inline it or add it to shuild dont create functions or structs for very few usage in functionality. functions like PrintUsage keep a data inside so they are fine. !!!
     if (SHU_UtilFileExists(path) != SHUFileType_Invalid)
     {
         SHU_UtilDeleteFile(path);
@@ -134,7 +134,7 @@ static void PrintUsage(void)
 {
     printf("Usage: ./shuild.ignore [FLAG...]\n\n"
            "Flags:\n"
-           "  -b, --build TYPE   Build type: debug (the default), with the static analyzer and the sanitizers;\n"
+           "  -b, --build TYPE   Build type: debug (the default), with the static analyzer and the sanitizers;\n" // todo list line by line instead of separating them with commas, better readability !!!
            "                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release\n"
            "  -n, --no-std       Do not build the standard plugins of std/\n"
            "  -e, --examples     Also build the examples of examples/, into bin/examples/\n"
@@ -759,7 +759,7 @@ static void Shuild_Repository(const char *folder, const char *moreArguments)
     char *arguments = SHU_UtilFormat("-b %s -o %s -c %s %s", BuildType_String(CONFIG.type), PathFromFolder(folder, CONFIG.outputDir), CONFIG.compiler, moreArguments);
 
     SHU_UtilLog(SHUM_LOG_NAME("%.*s") " (build script): building", nameLength, folder);
-    SHU_UtilBuildScript(source, program, flags, arguments);
+    SHU_UtilBuildScript(source, program, flags, arguments); // todo make shuild build script print its logs, also colorize that and (CMake) log here !!!
     SHU_UtilLog(SHUM_LOG_NAME("%.*s") " (build script): built", nameLength, folder);
 }
 
@@ -775,7 +775,7 @@ static void Shuild_Plugins(void)
     // OpenECS-std builds the standard plugins into bin/plugins/ and their presets into bin/presets/, with the built dependencies that they reuse;
     // OpenECS-examples builds the examples into bin/examples/, with the plugin interface alone, as any plugin's author does
     if (CONFIG.std)
-    {
+    { // todo print a splitter between repo builds !!!
         Shuild_Repository("std/", SHU_UtilFormat("-d %s", PathFromFolder("std/", CONFIG.dependenciesDir)));
     }
 
@@ -796,7 +796,7 @@ static void Shuild_other(void)
 
 /// @brief The built executable's path, to run with the shell. cmd.exe runs a program by a path with backslashes.
 static char *ProgramPath(void)
-{
+{ // !!! why writing it here, cant you use already existing tool from shuild ???
     char *program = SHU_UtilFormat("%sbin/OpenECS", CONFIG.outputDir);
 
     for (char *c = program; SHUM_HOST_WINDOWS && *c != '\0'; c++)
@@ -874,7 +874,7 @@ static void Shuild_Definitions(void)
 
 /// @brief How many tests ran, and how many failed.
 typedef struct TestCount
-{
+{ // !!! wtf man typedefing a struct for this ???
     int run;
     int failed;
 } TestCount;

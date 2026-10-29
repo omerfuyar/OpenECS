@@ -122,10 +122,12 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 In order: a module includes only the modules above it (1.5). The modules are in four groups, each in its own folder.
 
+todo maybe move timer to its own base module if its used in a broader sense independent from event. also search for patterns like this to apply the same???
+
 | Group     | Module     | Job                                                                                                                                                            |
 | --------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | base      | Log        | Where SDL's log goes, and how its lines look (14.4).                                                                                                           |
-|           | Paths      | What a path looks like on each system, and paths relative to the program's folder or to a file.                                                               |
+|           | Paths      | What a path looks like on each system, and paths relative to the program's folder or to a file.                                                                |
 |           | Sanitizers | The sanitizers' settings in Debug builds (17.3).                                                                                                               |
 |           | Values     | Generic values (10.3).                                                                                                                                         |
 |           | Lua        | The Lua state. Reads data files (11.2) and runs all Lua code in protected calls.                                                                               |
@@ -742,21 +744,21 @@ ecs.service.register({
 
 ### 10.2 Signature types
 
-| Type              | Meaning                                            |
-| ----------------- | -------------------------------------------------- |
-| `void`            | no value (return only)                             |
-| `bool`            | true or false                                      |
-| `int`, `int64`    | whole numbers                                      |
-| `float`, `double` | decimal numbers                                    |
-| `color`           | a colour (5.2): an `ECSColor` in C, a text in Lua  |
-| `string`          | text ending in a zero byte                         |
-| `buffer`          | a `SHUSlice`, passed by value                      |
-| `handle<name>`    | a typed handle (10.6)                              |
-| `value`           | a generic value (10.3): a `const ECSValue *` in C  |
-| `value<Type>`     | a generic value whose Lua type is `Type`, such as `value<ui.Props>`; for definition files only (10.10) |
-| `fn<signature>`   | a function to call back (10.4)                     |
-| `out <type>`      | an output parameter; in Lua, an extra return value |
-| `keep fn<signature>` | a callback that the function keeps after it returns (10.4) |
+| Type                 | Meaning                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------ |
+| `void`               | no value (return only)                                                                                 |
+| `bool`               | true or false                                                                                          |
+| `int`, `int64`       | whole numbers                                                                                          |
+| `float`, `double`    | decimal numbers                                                                                        |
+| `color`              | a colour (5.2): an `ECSColor` in C, a text in Lua                                                      |
+| `string`             | text ending in a zero byte                                                                             |
+| `buffer`             | a `SHUSlice`, passed by value                                                                          |
+| `handle<name>`       | a typed handle (10.6)                                                                                  |
+| `value`              | a generic value (10.3): a `const ECSValue *` in C                                                      |
+| `value<Type>`        | a generic value whose Lua type is `Type`, such as `value<ui.Props>`; for definition files only (10.10) |
+| `fn<signature>`      | a function to call back (10.4)                                                                         |
+| `out <type>`         | an output parameter; in Lua, an extra return value                                                     |
+| `keep fn<signature>` | a callback that the function keeps after it returns (10.4)                                             |
 
 - A parameter may have a name after its type: `void(string path, float volume)`. Names only document; they never change how signatures compare. Definition files use them (10.10).
 - A value may name its Lua type: `value<ui.Element>(value<ui.ButtonProps> props)`. Like a name, the type only documents, so `value<ui.Props>` and `value` compare the same, and C still gets an `ECSValue`. The type is a LuaLS type, such as a class, `string[]` or `ui.Rect?`, without `<` or `>` in it; an alias names a type that needs them.
@@ -1057,15 +1059,15 @@ When the command line names no preset and no session, OpenECS starts with the fi
 - `OpenECS --preset paint --install` writes the tool's desktop entry, so the system's launcher lists the tool, and offers it in "Open with" for the file types its `open` function takes. Without `--preset`, it installs the launcher (13.8). `--uninstall` removes the entry.
 - The entry is `$XDG_DATA_HOME/applications/<app id>.desktop` (default `~/.local/share`), as the Desktop Entry specification says. It holds:
 
-  | Key              | From the preset                                                                                         |
-  | ---------------- | ------------------------------------------------------------------------------------------------------- |
-  | `Name`           | `app.name`                                                                                              |
-  | `Comment`        | `hint`, if it has one                                                                                   |
-  | `Icon`           | the full path of `app.icon`, if it has one                                                              |
+  | Key              | From the preset                                                                                                |
+  | ---------------- | -------------------------------------------------------------------------------------------------------------- |
+  | `Name`           | `app.name`                                                                                                     |
+  | `Comment`        | `hint`, if it has one                                                                                          |
+  | `Icon`           | the full path of `app.icon`, if it has one                                                                     |
   | `Exec`           | the full path of the program, `--preset` with the preset's name, or its full path if a path named it, and `%F` |
-  | `StartupWMClass` | `app.id`, so the launcher matches the tool's windows to its entry                                       |
-  | `Categories`     | `app.categories`, such as `{ "Graphics" }`                                                              |
-  | `MimeType`       | `app.mimeTypes`, such as `{ "image/png" }`                                                              |
+  | `StartupWMClass` | `app.id`, so the launcher matches the tool's windows to its entry                                              |
+  | `Categories`     | `app.categories`, such as `{ "Graphics" }`                                                                     |
+  | `MimeType`       | `app.mimeTypes`, such as `{ "image/png" }`                                                                     |
 
 - A preset named by its name stays found when the program moves; the entry names the program by its full path, so moving the program needs `--install` again.
 - Windows has no desktop entries yet: `--install` and `--uninstall` report it and exit with status 1.
@@ -1200,7 +1202,7 @@ OpenECS follows the XDG Base Directory specification:
   | `window(number)`                                                     | Chooses the OS window that later input goes to, and that `screenshot` saves: 1 for the main window, then the current workspace's pop-out windows in the order they were made. It is 1 at start. Gives the window's position on the screen, `x, y`. |
   | `close()`                                                            | Asks the chosen OS window to close, as its close button does.                                                                                                                                                                                      |
   | `call(name)`                                                         | Runs a bound function (7.8), such as `"ecs.layout.maximize"`, as a key would.                                                                                                                                                                      |
-  | `keyEvent(combination, down, ms, repeat)`                            | Sends one press or release of a key without modifiers as SDL gives it, with its time in milliseconds and whether it is SDL's repeat, such as an input method's own repeat (4.6). |
+  | `keyEvent(combination, down, ms, repeat)`                            | Sends one press or release of a key without modifiers as SDL gives it, with its time in milliseconds and whether it is SDL's repeat, such as an input method's own repeat (4.6).                                                                   |
   | `wait(seconds)`                                                      | Lets the program run, for timers. Without seconds, it waits one pass of the loop.                                                                                                                                                                  |
   | `session()`                                                          | The session that quitting would save now, as a Lua table (13.2).                                                                                                                                                                                   |
   | `rect(id)`                                                           | The rectangle of the shown panel with that id: `x`, `y`, `width` and `height`, and `window`, the number of its OS window.                                                                                                                          |
@@ -1208,9 +1210,9 @@ OpenECS follows the XDG Base Directory specification:
   | `panels()`                                                           | Every panel, by workspace, OS window and place in the layout tree: its `id`, `type` and `title`, and the numbers of its `workspace` and `window`.                                                                                                  |
   | `setting(name)`                                                      | A setting's value in effect (12), such as a colour of the theme.                                                                                                                                                                                   |
   | `screenshot(path)`                                                   | Draws a frame and saves the chosen OS window's picture as a PNG file.                                                                                                                                                                              |
-  | `pixel(x, y)`                                                        | Draws a frame and gives the colour that the chosen OS window shows at a position in its layout units, as `"#RRGGBB"`, such as a GPU panel's (5.4).                                                                                               |
-  | `popup(number)`                                                      | An open popup, the oldest first: its rectangle `x`, `y`, `width` and `height` in its OS window, and `window`, the number of that window (4.6).                                                                                                   |
-  | `dialog()`                                                           | The message dialog that waits for an answer (7.7), or nil: its `title`, `message` and `buttons`, the number of the `selected` button, and `rects`, each button's rectangle in its OS window. A test answers it with `key` or `click`.            |
+  | `pixel(x, y)`                                                        | Draws a frame and gives the colour that the chosen OS window shows at a position in its layout units, as `"#RRGGBB"`, such as a GPU panel's (5.4).                                                                                                 |
+  | `popup(number)`                                                      | An open popup, the oldest first: its rectangle `x`, `y`, `width` and `height` in its OS window, and `window`, the number of that window (4.6).                                                                                                     |
+  | `dialog()`                                                           | The message dialog that waits for an answer (7.7), or nil: its `title`, `message` and `buttons`, the number of the `selected` button, and `rects`, each button's rectangle in its OS window. A test answers it with `key` or `click`.              |
   | `match(actual, expected, message)`                                   | Checks that `actual` has the same number of list items as `expected`, and each item and field it names.                                                                                                                                            |
 
 - Before `run` goes on, each OS window gets the size the system gives it, as a tiling compositor does, and the layout follows it.
@@ -1243,12 +1245,12 @@ OpenECS follows the XDG Base Directory specification:
 - Each repository has a build of its own, `shuild.c`, which OpenECS's build runs. OpenECS's build compiles it with shu and shuild from OpenECS's `dependencies/` into `shuild.ignore` in the repository's folder, because shuild finds every path from the folder of the program it runs in. It runs it there with the build type and OpenECS's build folder as seen from that folder, and OpenECS-std's also with the folder of OpenECS's built dependencies, `.shu/<type>/dependencies/`, with `-d` (17.2).
 - OpenECS's build builds the standard plugins unless it is given `--no-std`, and the examples when it is given `--examples`:
 
-  | Flag of OpenECS's build | Runs                                                                                                                                                        |
-  | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | Flag of OpenECS's build | Runs                                                                                            |
+  | ----------------------- | ----------------------------------------------------------------------------------------------- |
   | (none)                  | `std/shuild.c`: the standard plugins into `bin/plugins/`, and their presets into `bin/presets/` |
-  | `-n`, `--no-std`        | not `std/shuild.c`, so the build holds the core alone                                                                                                       |
-  | `-e`, `--examples`      | `examples/shuild.c`: the examples into `bin/examples/`                                                                                                      |
-  | `-t`, `--test`          | a Debug build with the examples, then the examples' tests, or the named examples' (17.5)                                                                    |
+  | `-n`, `--no-std`        | not `std/shuild.c`, so the build holds the core alone                                           |
+  | `-e`, `--examples`      | `examples/shuild.c`: the examples into `bin/examples/`                                          |
+  | `-t`, `--test`          | a Debug build with the examples, then the examples' tests, or the named examples' (17.5)        |
 
 - A repository that is not checked out is skipped with a warning.
 - Each repository has its own checks (19.3). They check out OpenECS's `dev` with its submodules, put the repository's own commit in its folder, build OpenECS with it and the examples, and run the examples' tests.
@@ -1285,13 +1287,13 @@ OpenECS follows the XDG Base Directory specification:
 
 - `.github/workflows/checks.yml` runs on every push and pull request to `dev` and `main`:
 
-  | Check             | Does                                                                                                                                                                                                                                                                                               |
-  | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `Format`          | Checks that clang-format leaves the core's C files as they are (1.6).                                                                                                                                                                                                                              |
+  | Check             | Does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+  | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `Format`          | Checks that clang-format leaves the core's C files as they are (1.6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
   | `Debug (Linux)`   | Builds and runs shuild's example `16_compiler_detection`, so shuild's compiler detection runs; it fails when shuild finds no compiler for the system. Then builds in Debug, which runs the static analyzer (17.3); an error or warning in OpenECS's own files fails it. Then runs the examples' tests (17.5) under the sanitizers, on SDL's offscreen driver and then on Wayland; a failed test or a report fails it. Then writes the definition files of the plugins of the example `c5_services` (10.10) and compiles each C header, and checks that every function of the standard plugins says what each parameter and its result are (10.1). |
-  | `Release (Linux)` | Builds in Release, so code that only Release builds compile or link fails before a release.                                                                                                                                                                                                        |
-  | `Windows`         | Runs shuild's compiler detection, as `Debug (Linux)` does. Then builds on Windows with LLVM-MinGW: in Debug, then runs the examples' tests and writes the definition files, as `Debug (Linux)` does; then in Release. It has no static analyzer or sanitizers, which MinGW lacks.                                                                                  |
-  | `Lua (LuaLS)`     | Checks every Lua file with LuaLS, so code that misuses the `ecs` module, and mistakes in `ecs.lua`, fail it (9.6).                                                                                                                                                                                 |
+  | `Release (Linux)` | Builds in Release, so code that only Release builds compile or link fails before a release.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+  | `Windows`         | Runs shuild's compiler detection, as `Debug (Linux)` does. Then builds on Windows with LLVM-MinGW: in Debug, then runs the examples' tests and writes the definition files, as `Debug (Linux)` does; then in Release. It has no static analyzer or sanitizers, which MinGW lacks.                                                                                                                                                                                                                                                                                                                                                                 |
+  | `Lua (LuaLS)`     | Checks every Lua file with LuaLS, so code that misuses the `ecs` module, and mistakes in `ecs.lua`, fail it (9.6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 - The steps are scripts in `.github/scripts/`, for CI. Each builds or tests with shuild, so a contributor runs the same build and tests with `shuild.c`: `-b debug -e`, `-b release -e` and `-t`.
 - A new push to a branch or a pull request cancels its older run of the checks.
