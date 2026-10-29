@@ -574,10 +574,35 @@ function ecs.handle.new(name, value) end
 ---@return any value The Lua value the handle stands for.
 function ecs.handle.value(handle, name) end
 
+-- Structs
+
+---Plain data with fixed fields, typed by name, such as "geometry.vec2": a table of its fields, with its type's methods and operators.
+---@class ecs.Struct: { [string]: any }
+
+---@class ecs.struct
+ecs.struct = {}
+
+---Registers a struct type of the plugin, before the functions whose signatures name it.
+---@param name string The local name, such as "vec2"; signatures name it "struct<geometry.vec2>".
+---@param fields string Its fields in order, as a signature writes parameters: "float x, float y". A field may be a list of a fixed length, "float m[16]", or another struct, "struct<geometry.vec2> position"; a struct of one list without a name, "float[16]", is that list. Fields are bool, int, int64, float, double, color or struct.
+function ecs.struct.register(name, fields) end
+
+---Makes a function of the plugin a method of one of its struct types, so Lua calls it on a struct: `a:length()`. A method named add, sub, mul, div, unm, eq, lt, le, len or tostring is also Lua's operator: `a + b` calls add.
+---@param type string The struct type's local name, such as "vec2".
+---@param method string The method's name, such as "length".
+---@param functionName string The local name of one of the plugin's functions, registered with ecs.service.register, whose first parameter is a struct of the type.
+function ecs.struct.addMethod(type, method, functionName) end
+
+---Makes a struct from a table of its fields, with the methods of its type. Other fields of the table are left out.
+---@param name string The struct type, by its full name, such as "geometry.vec2".
+---@param fields table A table with every field of the type.
+---@return ecs.Struct struct The new struct.
+function ecs.struct.new(name, fields) end
+
 -- Services
 
 ---@class ecs.ServiceFunction
----@field sig string The signature, such as "int(string count, float scale)". Types: void, bool, int, int64, float, double, color, string, buffer, value, handle<name>, fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
+---@field sig string The signature, such as "int(string count, float scale)". Types: void, bool, int, int64, float, double, color, string, buffer, value, handle<name>, struct<name>, fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
 ---@field doc? string One line that says what the function does, which menus show. Lines after it say what its parameters and result are: "@param name text" for a parameter the signature names, and "@return text".
 ---@field fn function
 

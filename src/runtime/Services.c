@@ -28,14 +28,32 @@ typedef enum ECSIParameterType
     ECSIParameterType_Value,
     ECSIParameterType_Handle,
     ECSIParameterType_Callback,
+    ECSIParameterType_Struct,
     ECSIParameterType_Count,
 } ECSIParameterType;
 
 /// @brief Names of the parameter types in signatures.
-static const char *const OPENECS_PARAMETER_TYPE_NAMES[ECSIParameterType_Count] = {"void", "bool", "int", "int64", "float", "double", "color", "string", "buffer", "value", "handle", "fn"};
+static const char *const OPENECS_PARAMETER_TYPE_NAMES[ECSIParameterType_Count] = {"void", "bool", "int", "int64", "float", "double", "color", "string", "buffer", "value", "handle", "fn", "struct"};
 
 /// @brief Prefix of the names of handle types' metatables.
 #define OPENECS_HANDLE_METATABLE "ecs.handle:"
+
+/// @brief Prefix of the names of struct types' metatables.
+#define OPENECS_STRUCT_METATABLE "ecs.struct:"
+
+/// @brief The methods whose names make them Lua's operators too, with the metatable fields of those operators: a struct type's add is also its +.
+static const char *const OPENECS_STRUCT_OPERATORS[][2] = {
+    {"add", "__add"},
+    {"sub", "__sub"},
+    {"mul", "__mul"},
+    {"div", "__div"},
+    {"unm", "__unm"},
+    {"eq", "__eq"},
+    {"lt", "__lt"},
+    {"le", "__le"},
+    {"len", "__len"},
+    {"tostring", "__tostring"},
+};
 
 /// @brief A bound function that takes the focused panel: void(handle<ecs.panel>).
 typedef void (*ECSIPanelFunction)(ECSPanel panel);
@@ -53,6 +71,29 @@ typedef struct ECSIHandleType
     char **methods;                      // stb_ds array: the names of its methods in Lua
     const struct ECSIFunction **targets; // stb_ds array: the function each method calls, in the same order
 } ECSIHandleType;
+
+/// @brief A field of a struct type: one value, or a list of a fixed length.
+typedef struct ECSIStructField
+{
+    char *name;                              // nullptr for the list that a list struct is
+    ECSIParameterType type;                  // bool, int, int64, float, double, color or struct
+    const struct ECSIStructType *structType; // structs: the field's type
+    usz count;                               // 0 for one value; the length of a list
+    usz offset;                              // in the C struct
+} ECSIStructField;
+
+/// @brief A registered struct type: plain data that crosses between C and Lua by value, a C struct in C and a table in Lua (10.11).
+typedef struct ECSIStructType
+{
+    char *name;
+    char *metatable;         // name of its metatable in the registry
+    ECSPlugin plugin;        // nullptr for the core
+    ECSIStructField *fields; // stb_ds array, in the order of the C struct
+    usz size;
+    usz alignment;
+    char **methods;                      // stb_ds array: the names of its methods in Lua
+    const struct ECSIFunction **targets; // stb_ds array: the function each method calls, in the same order
+} ECSIStructType;
 
 /// @brief A Lua handle: the userdata that stands for an object.
 typedef struct ECSIHandle
@@ -83,6 +124,7 @@ typedef struct ECSIParameter
     bool out;                       // an output parameter: a pointer in C, an extra result in Lua
     bool keep;                      // a callback that stays valid after the call, until the function that took it releases it
     ECSIHandleType *handle;         // handles: their type
+    ECSIStructType *structType;     // structs: their type
     struct ECSISignature *callback; // callbacks: their signature, owned by the parameter
     char *luaType;                  // values: the Lua type that value<...> names for editors, or nullptr; only for documentation, as names are
     char *documentation;            // what the parameter or result is, from the function's description, or nullptr; only for documentation
@@ -162,6 +204,11 @@ static struct
         char *key; // the type's own copy of its name
         ECSIHandleType *value;
     } *handleTypes; // stb_ds hash map; handles point to their type
+    struct
+    {
+        char *key; // the type's own copy of its name
+        ECSIStructType *value;
+    } *structTypes; // stb_ds hash map; parameters and fields point to their type
     int handles;    // registry reference of the weak table that maps each object to its Lua handle
     struct
     {
@@ -210,6 +257,12 @@ static ECSIHandleType *ECSIServices_FindHandleType(const char *name)
 {
     // shget would allocate a map that is missing
     return SERVICES.handleTypes == nullptr ? nullptr : shget(SERVICES.handleTypes, name);
+}
+
+static ECSIStructType *ECSIServices_FindStructType(const char *name)
+{
+    // shget would allocate a map that is missing
+    return SERVICES.structTypes == nullptr ? nullptr : shget(SERVICES.structTypes, name);
 }
 
 static struct ECSIFunction *ECSIServices_FindFunction(const char *name)
@@ -334,6 +387,31 @@ static bool ECSISignature_ReadHandle(const char **cursor, ECSIParameter *retPara
     return retParameter->handle != nullptr;
 }
 
+/// @brief Reads the type of a struct, "<name>", after the word "struct". The type must be registered.
+static bool ECSISignature_ReadStruct(const char **cursor, ECSIParameter *retParameter)
+{
+    const char *start = *cursor + 1;
+    const char *end = SDL_strchr(start, '>');
+
+    if (**cursor != '<' || end == nullptr || end == start)
+    {
+        return false;
+    }
+
+    char *name = SDL_strndup(start, (usz)(end - start));
+    retParameter->structType = name == nullptr ? nullptr : ECSIServices_FindStructType(name);
+
+    if (name != nullptr && retParameter->structType == nullptr)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Struct type '%s' is not registered.", name);
+    }
+
+    SDL_free(name);
+    *cursor = end + 1;
+    ECSISignature_SkipSpaces(cursor);
+    return retParameter->structType != nullptr;
+}
+
 /// @brief Reads the signature of a callback, "<signature>", after the word "fn". A callback's signature has no callbacks.
 static bool ECSISignature_ReadCallback(const char **cursor, ECSIParameter *retParameter)
 {
@@ -440,6 +518,8 @@ static bool ECSISignature_ReadParameter(const char **cursor, ECSIParameter *retP
             {
             case ECSIParameterType_Handle:
                 return ECSISignature_ReadHandle(cursor, retParameter);
+            case ECSIParameterType_Struct:
+                return ECSISignature_ReadStruct(cursor, retParameter);
             case ECSIParameterType_Callback:
                 return ECSISignature_ReadCallback(cursor, retParameter);
             case ECSIParameterType_Value:
@@ -471,6 +551,10 @@ static void ECSISignature_AddParameter(ECSIText *text, ECSIParameter parameter)
     if (parameter.type == ECSIParameterType_Handle)
     {
         ECSIText_Add(text, "<%s>", parameter.handle->name);
+    }
+    else if (parameter.type == ECSIParameterType_Struct)
+    {
+        ECSIText_Add(text, "<%s>", parameter.structType->name);
     }
     else if (parameter.type == ECSIParameterType_Callback)
     {
@@ -534,8 +618,9 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
     const char *cursor = text;
     ECSISignature_SkipSpaces(&cursor);
 
-    // a callback is a parameter only; it is never an output or a result
-    bool valid = ECSISignature_ReadParameter(&cursor, &retSignature->result) && !retSignature->result.out && retSignature->result.type != ECSIParameterType_Callback && *cursor++ == '(';
+    // a callback is a parameter only; it is never an output or a result; a struct comes back as an output, as C passes structs by pointer
+    bool valid = ECSISignature_ReadParameter(&cursor, &retSignature->result) && !retSignature->result.out && retSignature->result.type != ECSIParameterType_Callback &&
+                 retSignature->result.type != ECSIParameterType_Struct && *cursor++ == '(';
     ECSISignature_SkipSpaces(&cursor);
 
     while (valid && *cursor != ')')
@@ -634,6 +719,381 @@ static void ECSIServices_FreeCallback(ECSIFunction **callback);
 
 static void ECSIServices_PushArgument(lua_State *state, ECSIParameter parameter, const void *argument);
 
+#pragma region Structs
+
+/// @brief The size of one value of a field, which is also its alignment, as C lays out these types.
+static usz ECSIStructs_GetFieldSize(const ECSIStructField *field)
+{
+    switch (field->type)
+    {
+    case ECSIParameterType_Bool:
+        return sizeof(bool);
+    case ECSIParameterType_Int:
+        return sizeof(i32);
+    case ECSIParameterType_Int64:
+        return sizeof(i64);
+    case ECSIParameterType_Float:
+        return sizeof(f32);
+    case ECSIParameterType_Double:
+        return sizeof(f64);
+    case ECSIParameterType_Color:
+        return sizeof(ECSColor);
+    default:
+        return field->structType->size;
+    }
+}
+
+static usz ECSIStructs_GetFieldAlignment(const ECSIStructField *field)
+{
+    return field->type == ECSIParameterType_Struct ? field->structType->alignment : ECSIStructs_GetFieldSize(field);
+}
+
+/// @brief Reads one field of a struct's fields, such as "float x", "struct<cglm.vec3> position" or "float m[16]"; a list struct's only field has no name, as "float[16]".
+static bool ECSIStructs_ReadField(const char **cursor, ECSIStructField *retField)
+{
+    ECSIParameter parameter = {0};
+
+    if (!ECSISignature_ReadParameter(cursor, &parameter) || parameter.out || parameter.keep)
+    {
+        ECSIParameter_Free(&parameter);
+        return false;
+    }
+
+    retField->type = parameter.type;
+    retField->structType = parameter.structType;
+    ECSIParameter_Free(&parameter);
+
+    if (retField->type < ECSIParameterType_Bool || (retField->type > ECSIParameterType_Color && retField->type != ECSIParameterType_Struct))
+    {
+        return false;
+    }
+
+    if (SDL_isalpha((unsigned char)**cursor) || **cursor == '_')
+    {
+        const char *word = nullptr;
+        usz length = ECSISignature_ReadWord(cursor, &word);
+        retField->name = SDL_strndup(word, length);
+
+        if (retField->name == nullptr)
+        {
+            return false;
+        }
+    }
+
+    // a list of a fixed length, such as [16]
+    if (**cursor == '[')
+    {
+        char *end = nullptr;
+        long count = SDL_strtol(*cursor + 1, &end, 10);
+
+        if (count <= 0 || *end != ']')
+        {
+            return false;
+        }
+
+        retField->count = (usz)count;
+        *cursor = end + 1;
+        ECSISignature_SkipSpaces(cursor);
+    }
+
+    return retField->name != nullptr || retField->count > 0;
+}
+
+static void ECSIStructs_FreeFields(ECSIStructField **fields)
+{
+    for (usz i = 0; i < arrlenu(*fields); i++)
+    {
+        SDL_free((*fields)[i].name);
+    }
+
+    arrfree(*fields);
+}
+
+/// @brief Reads a struct's fields, separated by commas, and lays them out as C does: each at a multiple of its alignment, and the size a multiple of the largest.
+static bool ECSIStructs_ReadFields(const char *text, ECSIStructType *type)
+{
+    const char *cursor = text;
+    ECSISignature_SkipSpaces(&cursor);
+    type->alignment = 1;
+
+    while (*cursor != '\0')
+    {
+        ECSIStructField field = {0};
+        bool valid = ECSIStructs_ReadField(&cursor, &field) && (*cursor == ',' || *cursor == '\0');
+
+        // a field without a name is the list that the struct is, so it is the only one
+        valid = valid && (field.name != nullptr || (arrlenu(type->fields) == 0 && *cursor == '\0'));
+
+        if (!valid)
+        {
+            SDL_free(field.name);
+            return false;
+        }
+
+        usz size = ECSIStructs_GetFieldSize(&field);
+        usz alignment = ECSIStructs_GetFieldAlignment(&field);
+        field.offset = (type->size + alignment - 1) / alignment * alignment;
+        type->size = field.offset + size * SDL_max(field.count, 1);
+        type->alignment = SDL_max(type->alignment, alignment);
+        arrput(type->fields, field);
+
+        cursor += *cursor == ',' ? 1 : 0;
+        ECSISignature_SkipSpaces(&cursor);
+    }
+
+    type->size = (type->size + type->alignment - 1) / type->alignment * type->alignment;
+    return arrlenu(type->fields) > 0;
+}
+
+static bool ECSIStructs_Read(lua_State *state, int index, const ECSIStructType *type, void *retMemory, const char **retField);
+
+/// @brief Reads one Lua value of a field's type into memory.
+static bool ECSIStructs_ReadValue(lua_State *state, int index, const ECSIStructField *field, void *retMemory)
+{
+    int isNumber = 0;
+    const char *nested = nullptr;
+
+    switch (field->type)
+    {
+    case ECSIParameterType_Bool:
+        *(bool *)retMemory = lua_toboolean(state, index) != 0;
+        return lua_isboolean(state, index);
+    case ECSIParameterType_Int:
+    {
+        lua_Integer integer = lua_tointegerx(state, index, &isNumber);
+        *(i32 *)retMemory = (i32)integer;
+        return isNumber && integer >= SDL_MIN_SINT32 && integer <= SDL_MAX_SINT32;
+    }
+    case ECSIParameterType_Int64:
+        *(i64 *)retMemory = (i64)lua_tointegerx(state, index, &isNumber);
+        return isNumber;
+    case ECSIParameterType_Float:
+        *(f32 *)retMemory = (f32)lua_tonumberx(state, index, &isNumber);
+        return isNumber;
+    case ECSIParameterType_Double:
+        *(f64 *)retMemory = (f64)lua_tonumberx(state, index, &isNumber);
+        return isNumber;
+    case ECSIParameterType_Color:
+        return lua_type(state, index) == LUA_TSTRING && ECSColor_Parse(lua_tostring(state, index), retMemory);
+    default:
+        return ECSIStructs_Read(state, index, field->structType, retMemory, &nested);
+    }
+}
+
+/// @brief Reads a table, at an index of the stack, into a struct's memory: each field by its name, and a list's values by their positions. Any table with the fields will do.
+/// @param retField The name of the first field that is missing or of another type, or nullptr if the value is not a table.
+/// @return false if the value is not a table, or a field is missing or of another type.
+static bool ECSIStructs_Read(lua_State *state, int index, const ECSIStructType *type, void *retMemory, const char **retField)
+{
+    *retField = nullptr;
+
+    if (!lua_istable(state, index))
+    {
+        return false;
+    }
+
+    index = lua_absindex(state, index);
+
+    for (usz i = 0; i < arrlenu(type->fields); i++)
+    {
+        const ECSIStructField *field = &type->fields[i];
+        u8 *memory = (u8 *)retMemory + field->offset;
+        bool valid = true;
+
+        // a list struct's list is the table itself
+        if (field->name != nullptr)
+        {
+            lua_getfield(state, index, field->name);
+        }
+        else
+        {
+            lua_pushvalue(state, index);
+        }
+
+        if (field->count == 0)
+        {
+            valid = ECSIStructs_ReadValue(state, -1, field, memory);
+        }
+        else
+        {
+            valid = lua_istable(state, -1);
+
+            for (usz j = 0; valid && j < field->count; j++)
+            {
+                lua_rawgeti(state, -1, (lua_Integer)j + 1);
+                valid = ECSIStructs_ReadValue(state, -1, field, memory + j * ECSIStructs_GetFieldSize(field));
+                lua_pop(state, 1);
+            }
+        }
+
+        lua_pop(state, 1);
+
+        if (!valid)
+        {
+            *retField = field->name != nullptr ? field->name : "list";
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static void ECSIStructs_Push(lua_State *state, const ECSIStructType *type, const void *memory);
+
+static void ECSIServices_PushColor(lua_State *state, ECSColor color);
+
+/// @brief Pushes one value of a field's type from memory.
+static void ECSIStructs_PushValue(lua_State *state, const ECSIStructField *field, const void *memory)
+{
+    switch (field->type)
+    {
+    case ECSIParameterType_Bool:
+        lua_pushboolean(state, *(const bool *)memory);
+        break;
+    case ECSIParameterType_Int:
+        lua_pushinteger(state, (lua_Integer) * (const i32 *)memory);
+        break;
+    case ECSIParameterType_Int64:
+        lua_pushinteger(state, (lua_Integer) * (const i64 *)memory);
+        break;
+    case ECSIParameterType_Float:
+        lua_pushnumber(state, (lua_Number) * (const f32 *)memory);
+        break;
+    case ECSIParameterType_Double:
+        lua_pushnumber(state, (lua_Number) * (const f64 *)memory);
+        break;
+    case ECSIParameterType_Color:
+        ECSIServices_PushColor(state, *(const ECSColor *)memory);
+        break;
+    default:
+        ECSIStructs_Push(state, field->structType, memory);
+        break;
+    }
+}
+
+/// @brief Pushes a struct's memory as a new table of its fields, with the type's metatable, which gives its methods and operators.
+static void ECSIStructs_Push(lua_State *state, const ECSIStructType *type, const void *memory)
+{
+    bool list = type->fields[0].name == nullptr;
+    lua_createtable(state, list ? (int)type->fields[0].count : 0, list ? 0 : (int)arrlenu(type->fields));
+
+    for (usz i = 0; i < arrlenu(type->fields); i++)
+    {
+        const ECSIStructField *field = &type->fields[i];
+        const u8 *start = (const u8 *)memory + field->offset;
+
+        if (field->count == 0)
+        {
+            ECSIStructs_PushValue(state, field, start);
+            lua_setfield(state, -2, field->name);
+            continue;
+        }
+
+        // a list struct's values go into the struct's table, a list field's into a table of its own
+        if (field->name != nullptr)
+        {
+            lua_createtable(state, (int)field->count, 0);
+        }
+
+        for (usz j = 0; j < field->count; j++)
+        {
+            ECSIStructs_PushValue(state, field, start + j * ECSIStructs_GetFieldSize(field));
+            lua_rawseti(state, -2, (lua_Integer)j + 1);
+        }
+
+        if (field->name != nullptr)
+        {
+            lua_setfield(state, -2, field->name);
+        }
+    }
+
+    luaL_setmetatable(state, type->metatable);
+}
+
+static void ECSIStructs_FreeType(ECSIStructType *type)
+{
+    ECSIStructs_FreeFields(&type->fields);
+
+    for (usz i = 0; i < arrlenu(type->methods); i++)
+    {
+        SDL_free(type->methods[i]);
+    }
+
+    arrfree(type->methods);
+    arrfree(type->targets);
+    SDL_free(type->name);
+    SDL_free(type->metatable);
+    SDL_free(type);
+}
+
+/// @brief Registers a struct type by its full name.
+static SHUResult ECSIStructs_Register(ECSPlugin plugin, const char *name, const char *fields)
+{
+    // handles and structs share the names of types, so a parameter names one of them
+    if (ECSIServices_FindStructType(name) != nullptr || ECSIServices_FindHandleType(name) != nullptr)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Type '%s' is already registered.", name);
+        return SHUResult_ErrBadData;
+    }
+
+    ECSIStructType *type = SDL_calloc(1, sizeof(ECSIStructType));
+
+    if (type == nullptr || (type->name = SDL_strdup(name)) == nullptr || SDL_asprintf(&type->metatable, "%s%s", OPENECS_STRUCT_METATABLE, name) < 0)
+    {
+        if (type != nullptr)
+        {
+            SDL_free(type->name);
+        }
+
+        SDL_free(type);
+        return SHUResult_ErrAllocation;
+    }
+
+    type->plugin = plugin;
+
+    if (!ECSIStructs_ReadFields(fields, type))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' are not the fields of a struct, such as \"float x, float y\" or \"float[16]\".", fields);
+        ECSIStructs_FreeType(type);
+        return SHUResult_ErrBadData;
+    }
+
+    // the methods go into __index once there are some
+    lua_State *state = ECSILua_GetState();
+    luaL_newmetatable(state, type->metatable);
+    lua_pop(state, 1);
+
+    shput(SERVICES.structTypes, type->name, type);
+    return SHUResult_Ok;
+}
+
+/// @brief Takes a struct type's methods away, when the plugin whose functions they call goes.
+static void ECSIStructs_DropMethods(ECSIStructType *type)
+{
+    lua_State *state = ECSILua_GetState();
+    luaL_getmetatable(state, type->metatable);
+    lua_pushnil(state);
+    lua_setfield(state, -2, "__index");
+
+    for (usz i = 0; i < SDL_arraysize(OPENECS_STRUCT_OPERATORS); i++)
+    {
+        lua_pushnil(state);
+        lua_setfield(state, -2, OPENECS_STRUCT_OPERATORS[i][1]);
+    }
+
+    lua_pop(state, 1);
+
+    for (usz i = 0; i < arrlenu(type->methods); i++)
+    {
+        SDL_free(type->methods[i]);
+    }
+
+    arrfree(type->methods);
+    arrfree(type->targets);
+}
+
+#pragma endregion Structs
+
 #pragma region Lua Calls C
 
 /// @brief Pushes a colour for Lua, as "#RRGGBBAA".
@@ -687,6 +1147,23 @@ static void ECSIServices_CheckArgument(lua_State *state, int index, ECSIParamete
 
         retSlot->pointer = nullptr;
         break;
+    case ECSIParameterType_Struct:
+    {
+        // the struct's memory is a userdata, so it lives on the stack during the call; C gets a pointer to it
+        const char *field = nullptr;
+        void *memory = lua_newuserdatauv(state, parameter.structType->size, 0);
+        SDL_memset(memory, 0, parameter.structType->size);
+
+        if (!ECSIStructs_Read(state, index, parameter.structType, memory, &field))
+        {
+            const char *problem = field == nullptr ? lua_pushfstring(state, "is not a %s, a table of its fields", parameter.structType->name)
+                                                   : lua_pushfstring(state, "is not a %s: its field '%s' is missing or of another type", parameter.structType->name, field);
+            luaL_argerror(state, index, problem);
+        }
+
+        retSlot->pointer = memory;
+        break;
+    }
     case ECSIParameterType_Buffer:
     {
         // a copy, because the function may write into a buffer and Lua strings must not change
@@ -732,7 +1209,15 @@ static void ECSIServices_CheckArguments(lua_State *state, const ECSISignature *s
         *call = (ECSICallParameter){0};
         arguments[i] = &call->slot;
 
-        if (signature->parameters[i].out)
+        if (signature->parameters[i].out && signature->parameters[i].type == ECSIParameterType_Struct)
+        {
+            // an output struct is memory of its size, which C fills through the pointer it gets
+            void *memory = lua_newuserdatauv(state, signature->parameters[i].structType->size, 0);
+            SDL_memset(memory, 0, signature->parameters[i].structType->size);
+            call->slot.pointer = memory;
+            call->output.pointer = memory;
+        }
+        else if (signature->parameters[i].out)
         {
             call->slot.pointer = &call->output;
         }
@@ -1001,9 +1486,9 @@ static void ECSIServices_CheckLuaHandleType(lua_State *state, ECSPlugin plugin, 
 
 static SHUResult ECSIServices_RegisterHandleType(ECSPlugin plugin, const char *name, ECSHandleDestroyFunction Destroy)
 {
-    if (ECSIServices_FindHandleType(name) != nullptr)
+    if (ECSIServices_FindHandleType(name) != nullptr || ECSIServices_FindStructType(name) != nullptr)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Handle type '%s' is already registered.", name);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Type '%s' is already registered.", name);
         return SHUResult_ErrBadData;
     }
 
@@ -1103,6 +1588,10 @@ static void ECSIServices_PushArgument(lua_State *state, ECSIParameter parameter,
     }
     case ECSIParameterType_Value:
         ECSILua_PushValue(state, *(const ECSValue *const *)argument);
+        break;
+    case ECSIParameterType_Struct:
+        // C passes a struct by its pointer; an output's storage holds the pointer too
+        ECSIStructs_Push(state, parameter.structType, *(const void *const *)argument);
         break;
     default:
         lua_pushnil(state);
@@ -1229,6 +1718,12 @@ static bool ECSIServices_WriteOutput(lua_State *state, ECSIFunction *function, i
         }
 
         return value != nullptr && ECSILua_GetValue(state, index, value) == SHUResult_Ok;
+    }
+    case ECSIParameterType_Struct:
+    {
+        // an output struct is the caller's memory, which the table's fields fill
+        const char *field = nullptr;
+        return ECSIStructs_Read(state, index, parameter.structType, retTarget, &field);
     }
     default:
         return true;
@@ -1685,6 +2180,9 @@ static const char *ECSIDefinition_GetCName(ECSIParameter parameter, usz index, S
 
 static void ECSIDefinition_AddLuaType(ECSIText *text, ECSIParameter parameter);
 
+/// @brief Writes a name in PascalCase, such as CglmVec3 for cglm.vec3, for C's names of plugins and types.
+static void ECSIDefinition_ToPascalCase(const char *name, SHUSlice retName);
+
 /// @brief Adds the result and the outputs of a Lua function: the result first, then each output.
 /// @param separator What comes before the first of them.
 static void ECSIDefinition_AddLuaResults(ECSIText *text, const ECSISignature *signature, const char *separator)
@@ -1731,7 +2229,7 @@ static void ECSIDefinition_AddLuaFunction(ECSIText *text, const ECSISignature *s
 /// @brief Adds a parameter's type for LuaLS.
 static void ECSIDefinition_AddLuaType(ECSIText *text, ECSIParameter parameter)
 {
-    static const char *const types[ECSIParameterType_Count] = {"nil", "boolean", "integer", "integer", "number", "number", "ecs.Color", "string", "string", "any", "userdata", "function"};
+    static const char *const types[ECSIParameterType_Count] = {"nil", "boolean", "integer", "integer", "number", "number", "ecs.Color", "string", "string", "any", "userdata", "function", "table"};
 
     if (parameter.type == ECSIParameterType_Callback)
     {
@@ -1748,6 +2246,11 @@ static void ECSIDefinition_AddLuaType(ECSIText *text, ECSIParameter parameter)
     else if (parameter.type == ECSIParameterType_Value && parameter.luaType != nullptr)
     {
         ECSIText_Add(text, "%s", parameter.luaType);
+    }
+    else if (parameter.type == ECSIParameterType_Struct)
+    {
+        // a struct type is a class of its plugin's definitions, with its fields and methods
+        ECSIText_Add(text, "%s", parameter.structType->name);
     }
     else
     {
@@ -1775,7 +2278,7 @@ static void ECSIDefinition_AddCParameters(ECSIText *text, const ECSISignature *s
 
 static void ECSIDefinition_AddCDeclaration(ECSIText *text, ECSIParameter parameter, const char *name)
 {
-    static const char *const types[ECSIParameterType_Count] = {"void", "bool", "i32", "i64", "f32", "f64", "ECSColor", "const char *", "SHUSlice ", "const ECSValue *", "void *", ""};
+    static const char *const types[ECSIParameterType_Count] = {"void", "bool", "i32", "i64", "f32", "f64", "ECSColor", "const char *", "SHUSlice ", "const ECSValue *", "void *", "", ""};
     const char *type = types[parameter.type];
 
     if (parameter.type == ECSIParameterType_Callback)
@@ -1796,6 +2299,14 @@ static void ECSIDefinition_AddCDeclaration(ECSIText *text, ECSIParameter paramet
     {
         // an out value is a value that the caller gives and the function fills
         ECSIText_Add(text, "ECSValue *%s", name);
+        return;
+    }
+    else if (parameter.type == ECSIParameterType_Struct)
+    {
+        // a struct passes by its pointer: one the function reads, or for an output one it fills
+        char structName[256];
+        ECSIDefinition_ToPascalCase(parameter.structType->name, cs(structName, sizeof(structName)));
+        ECSIText_Add(text, "%s%s *%s", parameter.out ? "" : "const ", structName, name);
         return;
     }
 
@@ -1974,6 +2485,72 @@ static void ECSIDefinition_AddLuaNamespaces(ECSIText *lua, const char *owner, co
     }
 }
 
+/// @brief Adds the Lua type of a struct field's one value.
+static void ECSIDefinition_AddLuaFieldType(ECSIText *lua, const ECSIStructField *field)
+{
+    ECSIParameter parameter = {.type = field->type, .structType = (ECSIStructType *)field->structType};
+    ECSIDefinition_AddLuaType(lua, parameter);
+}
+
+/// @brief Adds a struct type's class: its fields, a list's values, the operators its methods make, and its methods.
+static void ECSIDefinition_AddLuaStruct(ECSIText *lua, const ECSIStructType *type)
+{
+    char className[256];
+    ECSIDefinition_ToPascalCase(type->name, cs(className, sizeof(className)));
+    bool list = type->fields[0].name == nullptr;
+    ECSIText_Add(lua, "\n---A struct of the type %s: plain data, which a table of its fields stands for.\n---@class %s", type->name, type->name);
+
+    if (list)
+    {
+        ECSIText_Add(lua, ": { [integer]: ");
+        ECSIDefinition_AddLuaFieldType(lua, &type->fields[0]);
+        ECSIText_Add(lua, " }");
+    }
+
+    ECSIText_Add(lua, "\n");
+
+    for (usz i = 0; !list && i < arrlenu(type->fields); i++)
+    {
+        ECSIText_Add(lua, "---@field %s ", type->fields[i].name);
+        ECSIDefinition_AddLuaFieldType(lua, &type->fields[i]);
+        ECSIText_Add(lua, "%s\n", type->fields[i].count > 0 ? "[]" : "");
+    }
+
+    // an operator's result is its function's first output, or its result, as Lua gets it
+    for (usz i = 0; i < arrlenu(type->methods); i++)
+    {
+        for (usz j = 0; j < SDL_arraysize(OPENECS_STRUCT_OPERATORS); j++)
+        {
+            const ECSISignature *signature = &type->targets[i]->signature;
+
+            if (SDL_strcmp(type->methods[i], OPENECS_STRUCT_OPERATORS[j][0]) != 0 || SDL_strcmp(type->methods[i], "tostring") == 0 || SDL_strcmp(type->methods[i], "eq") == 0)
+            {
+                continue;
+            }
+
+            ECSIText_Add(lua, "---@operator %s", type->methods[i]);
+
+            if (arrlenu(signature->parameters) > 1 && !signature->parameters[1].out)
+            {
+                ECSIText_Add(lua, "(");
+                ECSIDefinition_AddLuaType(lua, signature->parameters[1]);
+                ECSIText_Add(lua, ")");
+            }
+
+            ECSIText_Add(lua, ": ");
+            ECSIDefinition_AddLuaResults(lua, signature, "");
+            ECSIText_Add(lua, "\n");
+        }
+    }
+
+    ECSIText_Add(lua, "local %s = {}\n", className);
+
+    for (usz i = 0; i < arrlenu(type->methods); i++)
+    {
+        ECSIDefinition_AddLuaFunctionOf(lua, type->targets[i], className, type->methods[i], true);
+    }
+}
+
 /// @brief Writes the Lua definitions of a plugin's functions and handle types, for editors.
 static int ECSIDefinition_CompareFunctions(const void *first, const void *second)
 {
@@ -2018,6 +2595,17 @@ static SHUResult ECSIDefinition_WriteLua(ECSPlugin provider, const char *folder)
 
     arrfree(functions);
 
+    // each of the plugin's struct types is a class of its fields, with its operators and methods
+    for (usz i = 0; i < shlenu(SERVICES.structTypes); i++)
+    {
+        const ECSIStructType *type = SERVICES.structTypes[i].value;
+
+        if (type->plugin == provider)
+        {
+            ECSIDefinition_AddLuaStruct(&lua, type);
+        }
+    }
+
     // each of the plugin's handle types is a class, with its methods
     for (usz i = 0; i < shlenu(SERVICES.handleTypes); i++)
     {
@@ -2045,6 +2633,41 @@ static SHUResult ECSIDefinition_WriteLua(ECSPlugin provider, const char *folder)
 }
 
 /// @brief Writes the C header of a plugin's functions: a struct of function pointers, and the function that fills it.
+/// @brief Adds a struct type's C declaration, such as "typedef struct CglmVec3 { f32 x; f32 y; f32 z; } CglmVec3;", with a list's length after its field.
+static void ECSIDefinition_AddCStruct(ECSIText *header, const ECSIStructType *type)
+{
+    char className[256];
+    ECSIDefinition_ToPascalCase(type->name, cs(className, sizeof(className)));
+    ECSIText_Add(header, "\n/// @brief A struct of the type %s: plain data, which the plugin's functions take and give by pointer.\ntypedef struct %s\n{\n", type->name, className);
+
+    for (usz i = 0; i < arrlenu(type->fields); i++)
+    {
+        const ECSIStructField *field = &type->fields[i];
+        char fieldName[80];
+        SDL_snprintf(fieldName, sizeof(fieldName), "%s", field->name != nullptr ? field->name : "values");
+
+        if (field->count > 0)
+        {
+            SDL_snprintf(fieldName + SDL_strlen(fieldName), sizeof(fieldName) - SDL_strlen(fieldName), "[%zu]", field->count);
+        }
+
+        if (field->type == ECSIParameterType_Struct)
+        {
+            char nestedName[256];
+            ECSIDefinition_ToPascalCase(field->structType->name, cs(nestedName, sizeof(nestedName)));
+            ECSIText_Add(header, "    %s %s;\n", nestedName, fieldName);
+        }
+        else
+        {
+            ECSIText_Add(header, "    ");
+            ECSIDefinition_AddCDeclaration(header, (ECSIParameter){.type = field->type}, fieldName);
+            ECSIText_Add(header, ";\n");
+        }
+    }
+
+    ECSIText_Add(header, "} %s;\n", className);
+}
+
 static SHUResult ECSIDefinition_WriteC(ECSPlugin provider, const char *folder)
 {
     const char *plugin = ECSIPlugin_GetName(provider);
@@ -2053,7 +2676,18 @@ static SHUResult ECSIDefinition_WriteC(ECSPlugin provider, const char *folder)
     ECSIDefinition_ToPascalCase(plugin, cs(pascal, sizeof(pascal)));
 
     ECSIText header = {0};
-    ECSIText_Add(&header, "// The functions of the plugin %s, for plugins in C. OpenECS --definitions wrote this file.\n#pragma once\n\n#include \"OpenECS.h\"\n\n/// @brief The functions of the plugin %s. %sFunctions_Get fills them.\ntypedef struct %sFunctions\n{\n", plugin, plugin, pascal, pascal);
+    ECSIText_Add(&header, "// The functions of the plugin %s, for plugins in C. OpenECS --definitions wrote this file.\n#pragma once\n\n#include \"OpenECS.h\"\n", plugin);
+
+    // each of the plugin's struct types, laid out as the core lays it out
+    for (usz i = 0; i < shlenu(SERVICES.structTypes); i++)
+    {
+        if (SERVICES.structTypes[i].value->plugin == provider)
+        {
+            ECSIDefinition_AddCStruct(&header, SERVICES.structTypes[i].value);
+        }
+    }
+
+    ECSIText_Add(&header, "\n/// @brief The functions of the plugin %s. %sFunctions_Get fills them.\ntypedef struct %sFunctions\n{\n", plugin, pascal, pascal);
 
     const ECSIFunction **functions = ECSIDefinition_GetFunctions(provider);
 
@@ -2299,6 +2933,13 @@ void ECSIServices_Terminate(void)
     shfree(SERVICES.handleTypes);
     hmfree(SERVICES.objects);
 
+    for (usz i = 0; i < shlenu(SERVICES.structTypes); i++)
+    {
+        ECSIStructs_FreeType(SERVICES.structTypes[i].value);
+    }
+
+    shfree(SERVICES.structTypes);
+
     for (usz i = 0; i < shlenu(SERVICES.functions); i++)
     {
         ECSIFunction_Free(SERVICES.functions[i].value);
@@ -2316,6 +2957,18 @@ void ECSIServices_Terminate(void)
     arrfree(SERVICES.drawn);
     ECSILua_SetHandleFunctions(nullptr, nullptr);
     SDL_zero(SERVICES);
+}
+
+/// @brief Drops the methods of a plugin's struct types. The types stay, as tables and other types may still have their fields, but the methods call the plugin's functions, which go with it.
+static void ECSIStructs_DropPluginMethods(ECSPlugin plugin)
+{
+    for (usz i = 0; i < shlenu(SERVICES.structTypes); i++)
+    {
+        if (SERVICES.structTypes[i].value->plugin == plugin)
+        {
+            ECSIStructs_DropMethods(SERVICES.structTypes[i].value);
+        }
+    }
 }
 
 void ECSIServices_RemovePlugin(ECSPlugin plugin)
@@ -2357,6 +3010,8 @@ void ECSIServices_RemovePlugin(ECSPlugin plugin)
             arrfree(type->targets);
         }
     }
+
+    ECSIStructs_DropPluginMethods(plugin);
 
     // the callbacks that a failed plugin kept are never called again, so they are freed; those it gave another plugin stay, since that plugin may still call them, but they run nothing
     for (usz i = hmlenu(SERVICES.kept); i > 0; i--)
@@ -2623,6 +3278,129 @@ SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char *type, const char *me
     SDL_free(typeName);
     SDL_free(functionName);
     return result;
+}
+
+SHUResult ECSStruct_Register(ECSPlugin plugin, const char *name, const char *fields)
+{
+    SDL_assert(plugin != nullptr);
+    SDL_assert(name != nullptr);
+    SDL_assert(fields != nullptr);
+
+    char *fullName = ECSIPlugin_MakeFullName(plugin, name);
+    SHUResult result = fullName == nullptr ? SHUResult_ErrBadData : ECSIStructs_Register(plugin, fullName, fields);
+    SDL_free(fullName);
+    return result;
+}
+
+SHUResult ECSIServices_RegisterCoreStruct(const char *name, const char *fields)
+{
+    SDL_assert(SDL_strncmp(name, "ecs.", 4) == 0);
+    SDL_assert(fields != nullptr);
+
+    return ECSIStructs_Register(nullptr, name, fields);
+}
+
+/// @brief Sets the function on top of the stack as a method, and as an operator if the method's name makes one, of a struct type's metatable; pops it.
+static void ECSIStructs_SetMethod(lua_State *state, const ECSIStructType *type, const char *method)
+{
+    luaL_getmetatable(state, type->metatable);
+
+    if (lua_getfield(state, -1, "__index") != LUA_TTABLE)
+    {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_pushvalue(state, -1);
+        lua_setfield(state, -3, "__index");
+    }
+
+    lua_pushvalue(state, -3);
+    lua_setfield(state, -2, method);
+    lua_pop(state, 1);
+
+    for (usz i = 0; i < SDL_arraysize(OPENECS_STRUCT_OPERATORS); i++)
+    {
+        if (SDL_strcmp(method, OPENECS_STRUCT_OPERATORS[i][0]) == 0)
+        {
+            lua_pushvalue(state, -2);
+            lua_setfield(state, -2, OPENECS_STRUCT_OPERATORS[i][1]);
+        }
+    }
+
+    lua_pop(state, 2);
+}
+
+SHUResult ECSStruct_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function)
+{
+    SDL_assert(plugin != nullptr);
+    SDL_assert(type != nullptr);
+    SDL_assert(method != nullptr);
+    SDL_assert(function != nullptr);
+
+    char *typeName = ECSIPlugin_MakeFullName(plugin, type);
+    char *functionName = ECSIPlugin_MakeFullName(plugin, function);
+    ECSIStructType *structType = typeName == nullptr ? nullptr : ECSIServices_FindStructType(typeName);
+    ECSIFunction *target = functionName == nullptr ? nullptr : ECSIServices_FindFunction(functionName);
+    SHUResult result = SHUResult_Ok;
+
+    // the method is a function of the same plugin whose first parameter is a struct of the type, which the struct itself gives
+    if (structType == nullptr || structType->plugin != plugin || target == nullptr || arrlenu(target->signature.parameters) == 0 ||
+        target->signature.parameters[0].type != ECSIParameterType_Struct || target->signature.parameters[0].out || target->signature.parameters[0].structType != structType)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' cannot be a method of '%s': it needs to be a function of the plugin whose first parameter is a struct<%s>.", functionName != nullptr ? functionName : function, typeName != nullptr ? typeName : type, typeName != nullptr ? typeName : type);
+        result = SHUResult_ErrBadData;
+    }
+
+    for (usz i = 0; !result && i < arrlenu(structType->methods); i++)
+    {
+        if (SDL_strcmp(structType->methods[i], method) == 0)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Struct type '%s' already has a method '%s'.", typeName, method);
+            result = SHUResult_ErrBadData;
+        }
+    }
+
+    char *copy = result ? nullptr : SDL_strdup(method);
+    result = result || copy != nullptr ? result : SHUResult_ErrAllocation;
+    result = result ? result : ECSIServices_PushFunction(plugin, functionName, nullptr);
+
+    if (!result)
+    {
+        ECSIStructs_SetMethod(ECSILua_GetState(), structType, method);
+        arrput(structType->methods, copy);
+        arrput(structType->targets, target);
+        copy = nullptr;
+    }
+
+    SDL_free(copy);
+    SDL_free(typeName);
+    SDL_free(functionName);
+    return result;
+}
+
+void ECSIServices_PushStruct(int index, const char *type)
+{
+    lua_State *state = ECSILua_GetState();
+    const ECSIStructType *structType = ECSIServices_FindStructType(type);
+
+    if (structType == nullptr)
+    {
+        luaL_error(state, "struct type '%s' is not registered", type);
+        return;
+    }
+
+    // the fields are checked and copied, so the new struct holds only its own fields, with its type's methods
+    const char *field = nullptr;
+    void *memory = lua_newuserdatauv(state, structType->size, 0);
+    SDL_memset(memory, 0, structType->size);
+
+    if (!ECSIStructs_Read(state, index, structType, memory, &field))
+    {
+        luaL_error(state, field == nullptr ? "a %s is made from a table of its fields" : "a %s needs its field '%s', of its type", type, field);
+        return;
+    }
+
+    ECSIStructs_Push(state, structType, memory);
+    lua_remove(state, -2);
 }
 
 SHUResult ECSIServices_RegisterLuaHandleType(ECSPlugin plugin, const char *name)

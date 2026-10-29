@@ -456,6 +456,51 @@ static const luaL_Reg OPENECS_BINDINGS_HANDLE[] = {
 
 #pragma endregion Handles
 
+#pragma region Structs
+
+static int ECSIBindings_StructRegister(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+
+    if (ECSStruct_Register(ECSIBindings_GetPlugin(state), name, luaL_checkstring(state, 2)))
+    {
+        return luaL_error(state, "struct type '%s' cannot be registered", name);
+    }
+
+    return 0;
+}
+
+static int ECSIBindings_StructAddMethod(lua_State *state)
+{
+    const char *type = luaL_checkstring(state, 1);
+    const char *method = luaL_checkstring(state, 2);
+    const char *function = luaL_checkstring(state, 3);
+
+    if (ECSStruct_AddMethod(ECSIBindings_GetPlugin(state), type, method, function))
+    {
+        return luaL_error(state, "'%s' cannot be the method '%s' of '%s'", function, method, type);
+    }
+
+    return 0;
+}
+
+static int ECSIBindings_StructNew(lua_State *state)
+{
+    const char *type = luaL_checkstring(state, 1);
+    luaL_checktype(state, 2, LUA_TTABLE);
+    ECSIServices_PushStruct(2, type);
+    return 1;
+}
+
+static const luaL_Reg OPENECS_BINDINGS_STRUCT[] = {
+    {"register", ECSIBindings_StructRegister},
+    {"addMethod", ECSIBindings_StructAddMethod},
+    {"new", ECSIBindings_StructNew},
+    {nullptr, nullptr},
+};
+
+#pragma endregion Structs
+
 #pragma region Plugin
 
 static SHUResult ECSIBindings_PluginSaveState(void *data, ECSValue *retSavedState)
@@ -2051,6 +2096,7 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIBindings_AddTable(state, plugin, "dialog", OPENECS_BINDINGS_DIALOG);
     ECSIBindings_AddTable(state, plugin, "event", OPENECS_BINDINGS_EVENT);
     ECSIBindings_AddTable(state, plugin, "handle", OPENECS_BINDINGS_HANDLE);
+    ECSIBindings_AddTable(state, plugin, "struct", OPENECS_BINDINGS_STRUCT);
     ECSIWorkers_PushTable(state, plugin);
     lua_setfield(state, -2, "worker");
 

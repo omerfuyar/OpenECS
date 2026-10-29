@@ -757,6 +757,7 @@ ecs.service.register({
 | `string`             | text ending in a zero byte                                                                             |
 | `buffer`             | a `SHUSlice`, passed by value                                                                          |
 | `handle<name>`       | a typed handle (10.6)                                                                                  |
+| `struct<name>`       | a struct (10.11): a pointer to it in C, a table in Lua                                                 |
 | `value`              | a generic value (10.3): a `const ECSValue *` in C                                                      |
 | `value<Type>`        | a generic value whose Lua type is `Type`, such as `value<ui.Props>`; for definition files only (10.10) |
 | `fn<signature>`      | a function to call back (10.4)                                                                         |
@@ -765,7 +766,7 @@ ecs.service.register({
 
 - A parameter may have a name after its type: `void(string path, float volume)`. Names only document; they never change how signatures compare. Definition files use them (10.10).
 - A value may name its Lua type: `value<ui.Element>(value<ui.ButtonProps> props)`. Like a name, the type only documents, so `value<ui.Props>` and `value` compare the same, and C still gets an `ECSValue`. The type is a LuaLS type, such as a class, `string[]` or `ui.Rect?`, without `<` or `>` in it; an alias names a type that needs them.
-- Structures are passed as handles or buffers, never by value.
+- An object that its provider owns and frees is a handle (10.6). Plain data with fixed fields, which anyone can make, copy and keep, is a struct (10.11).
 - In C, an `out` parameter is a pointer to its type. An `out value` is a value that the caller gives and the function fills.
 - There is no fixed limit on the number of parameters.
 
@@ -840,7 +841,19 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - A parameter without a name is called `arg1`, `arg2` and so on. In C, an output parameter is `ret` and its name with a capital first letter, such as `i32 *retWidth` for `out int width`; in Lua it is a result and keeps its name.
 - A plugin's folder may hold `types.lua`, a LuaLS meta file of annotations only, which the plugin never runs. `NAME.lua` ends with it, so the classes that `value<Type>` names are there, such as ui's `ui.ButtonProps` with its fields.
 - A plugin's folder may also hold `header.h`, which `NAME.h` ends with. It gives C plugins what the functions alone do not, such as types, inline functions and macros that call the functions, like ui's `UI_COLUMN`. It may use the structure and the functions above it.
+- A struct type (10.11) is a class in `NAME.lua`, with its fields, methods and operators, and a structure in `NAME.h`, named after its full name in PascalCase, such as `GeometryVec2` for `geometry.vec2`. Its fields are in their order, so it has the core's layout. A `struct<geometry.vec2>` parameter is `const GeometryVec2 *`, and an `out struct<geometry.vec2>` is `GeometryVec2 *`.
 - Types: `int` and `int64` are `integer` in Lua and `i32` and `i64` in C, `float` and `double` are `number` and `f32` and `f64`, `color` is `ecs.Color` and `ECSColor`, `buffer` is `string` and `SHUSlice`, and `value` is `any` and `const ECSValue *`, or the type that `value<Type>` names in Lua. The core's handles are `ecs.Panel`, `ecs.Popup` and `ecs.Surface` in Lua and `ECSPanel`, `ECSPopup` and `ECSSurface *` in C; other handles are their type in Lua, such as `net.connection`, and `void *` in C.
+
+### 10.11 Structs
+
+- A struct is plain data with fixed fields, such as a vector or a rectangle. A function takes and gives it by value: a copy goes in and a copy comes out, so nobody owns it and it has no destructor.
+- A provider registers a struct type with its fields, before the functions whose signatures name it: `ECSStruct_Register(plugin, "vec2", "float x, float y")` by the plugin `geometry`, which signatures name `struct<geometry.vec2>`. A Lua plugin calls `ecs.struct.register(name, fields)`. Struct types and handle types share their names, so a name is one or the other.
+- A field is `bool`, `int`, `int64`, `float`, `double`, `color` or another struct, `struct<name>`. A field may be a list of a fixed length: `float m[16]`. A struct of one list without a name, `"float[16]"`, is that list itself in Lua, such as a matrix.
+- In C, a struct is a structure with the fields in their order, laid out as C lays them out, with each field at its natural alignment. A `struct<name>` parameter is a pointer to it, valid only during the call, and an `out struct<name>` a pointer to the struct that the function fills. A struct is never a result, as C returns structures in registers that differ on each system; an `out` parameter gives it.
+- In Lua, a struct is a table of its fields, whose metatable, `ecs.struct:<name>`, gives its type's methods. A function takes any table with the fields, so `geometry.length({ x = 3, y = 4 })` works, and reads only those fields. A missing field, or one of another type, raises an error that names it. A function gives a new table with the metatable.
+- `ecs.struct.new(name, fields)` makes a struct from a table of its fields, with the methods of its type. A struct that Lua code gives, such as a Lua provider's result or a saved state that was read back, is a plain table until it goes through a function or `ecs.struct.new`.
+- A struct has methods as a handle has (10.6): `ECSStruct_AddMethod(plugin, "vec2", "length", "length")`, or `ecs.struct.addMethod` in Lua, makes the function `length`, whose first parameter is a struct of the type, the method `length`. A method named after one of Lua's operators is that operator too: `add` is `a + b`, `sub` is `a - b`, `mul`, `div`, `unm`, `eq`, `lt`, `le`, `len` and `tostring` likewise. C calls the functions.
+- A struct is a table of numbers, texts and booleans, so values (10.3), saved state and files hold it as any such table.
 
 ## 11. Lua
 
@@ -863,6 +876,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 | `ecs.key`                     | key bindings                                     |
 | `ecs.event`                   | declare, emit and subscribe                      |
 | `ecs.handle`                  | handle types of Lua plugins (10.6)               |
+| `ecs.struct`                  | struct types (10.11)                             |
 | `ecs.timer`                   | timers                                           |
 | `ecs.worker`                  | Lua scripts on threads of their own (3.4)        |
 | `ecs.service`                 | register and look up functions                   |
