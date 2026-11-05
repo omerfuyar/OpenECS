@@ -20,6 +20,7 @@ cp $std/zlib/LICENSE "$folder/zlib.txt"
 cp $std/zstd/LICENSE "$folder/zstd.txt"
 cp $std/yyjson/LICENSE "$folder/yyjson.txt"
 cp $std/tomlc17/LICENSE "$folder/tomlc17.txt"
+cp $std/xxHash/LICENSE "$folder/xxHash.txt"
 cp std/plugins/draw/fonts/OFL.txt "$folder/RobotoMono.txt"
 
 cat << NOTICE
@@ -37,5 +38,7 @@ zlib, with its minizip: zlib license
 zstd: BSD license, chosen of its BSD or GPL 2.0 licenses
 yyjson: MIT license
 tomlc17: MIT license
+xxHash: BSD 2-Clause license
+SQLite: public domain
 Roboto Mono font: SIL Open Font License 1.1
 NOTICE
