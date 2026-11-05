@@ -16,6 +16,9 @@ void ECSIServices_DestroyHandles(void);
 /// @brief Frees every registered function, handle type and kept callback, once the plugins have shut down, since their Destroy may still call functions.
 void ECSIServices_Terminate(void);
 
+/// @brief Destroys the objects of a plugin's handle types with their Destroy, as at exit, and makes their Lua handles invalid; for a plugin that is disabled.
+void ECSIServices_DestroyHandlesOfPlugin(ECSPlugin plugin);
+
 /// @brief Pushes the Lua handle of an object: the one Lua already has, or a new one.
 /// @param type Name of the object's handle type.
 /// @param object The object, or nullptr for nil. Nil is pushed too if the type is gone, because its plugin was removed.

@@ -15,6 +15,9 @@ void ECSIWorkers_Initialize(void);
 /// @brief Stops every worker and waits for its thread, then frees it, without calling its functions. Call it while Lua still runs.
 void ECSIWorkers_Terminate(void);
 
+/// @brief Stops a plugin's workers and waits for them; their message and done functions are not called again.
+void ECSIWorkers_StopPlugin(ECSPlugin plugin);
+
 /// @brief Pushes the table worker of a plugin's ecs table, whose start function starts workers for the plugin.
 /// @param state The core's Lua state.
 /// @param plugin The plugin.

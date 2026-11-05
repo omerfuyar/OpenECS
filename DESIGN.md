@@ -132,15 +132,18 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Timers     | Functions that run on the main thread after a time, once or again and again (3.2).                                                                             |
 | runtime   | Plugins    | Finding, ordering and loading plugins. Logging for plugins.                                                                                                    |
 |           | Settings   | Declarations, layers, explanations.                                                                                                                            |
-|           | Events     | Core and plugin events, the event queue, the plugins' timers on base/Timers, worker threads.                                                                   |
+|           | Events     | Core and plugin events, the event queue, the plugins' timers on base/Timers.                                                                                   |
+|           | Tasks      | Work on worker threads, and functions that other threads send to the main thread (3.3).                                                                        |
 |           | Services   | Function registry, signatures, calls between C and Lua, definition files (10.10). The only module that calls libffi.                                           |
 | interface | Panels     | Panel types, panels, and the pixels each panel draws.                                                                                                          |
 |           | Layout     | Workspaces and their layout trees: operations, tidying, sizes, focus, closed panels and saving.                                                                |
 |           | Popups     | Popups, the pixels each popup draws, and its events (4.6).                                                                                                     |
 |           | Window     | OS windows and their renderers, frame pacing, and the core's own interface: tab rows, grips, menus, dragging and hit testing. The only module that calls Clay. |
+|           | Clipboard  | Texts and typed data on the system's clipboard.                                                                                                                |
+|           | Dialogs    | The system's file dialogs, and the message dialogs that the core draws (7.7).                                                                                  |
 |           | Keys       | Key combinations, the core prefix and the keys after it, and every key binding (7.3 to 7.5, 7.8).                                                              |
 |           | Menus      | The core's bindable functions, and the panel and group menus that offer them (6.8).                                                                            |
-|           | Input      | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input, the clipboard, dialogs.                                         |
+|           | Input      | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input.                                                                 |
 | app       | Session    | Reading presets and sessions, applying them, writing them.                                                                                                     |
 |           | Desktop    | The tools' entries in the system's application launcher (13.9).                                                                                                |
 |           | Workers    | Lua scripts on threads of their own, and the messages between them and the main thread (3.4).                                                                  |
@@ -450,7 +453,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The panel's menu: close, restart, maximize, pop out, lock, reopen the last closed panel; the submenus Move (left, right, up, down) and To workspace (each other workspace, by number and name); the entries of the panel's type; then reset the layout and quit, which every menu ends with.
 - The entries of a type: `ECSPanelType_AddMenuEntry(plugin, type, function)`, or `ecs.panel.addMenuEntry(type, function)` in Lua, adds a service function whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and the key the plugin bound to the same function for the type.
 - The group's menu: the submenu Tabs, which shows any of its panels and marks the shown one with `•`; the submenu Workspaces; maximize, lock, close the group's panels, and reopen; then reset the layout and quit.
-- The tool's menu: the functions that the core's setting `ecs.toolMenu` names, a list of function names, without those no plugin of the tool registered; the submenu Workspaces; then reset the layout and quit. A right click on the title bar that OpenECS draws (6.11) opens it, and `ecs.app.menu` shows it near the focused panel's top left corner, also when the system draws the title bar. The core's settings file names the settings window, the panel list, the launcher, and saving and opening sessions.
+- The tool's menu: the functions that the core's setting `ecs.toolMenu` names, a list of function names, without those no plugin of the tool registered; the submenu Workspaces; then reset the layout and quit. A right click on the title bar that OpenECS draws (6.11) opens it, and `ecs.app.menu` shows it near the focused panel's top left corner, also when the system draws the title bar. The core's settings file names the settings window, the panel list, the plugin list, the launcher, and saving and opening sessions.
 - The menu of workspaces lists each workspace by number and name, marks the current one with `•`, and switches to the one chosen. `ecs.workspace.menu` shows it near the focused panel's top left corner; it is also a submenu of the group's menu.
 - Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. Escape in the first menu, or a press outside the menus, closes them. While a menu is open, pointer and key events go to the menus only.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
@@ -514,7 +517,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - The prefix is the setting `ecs.prefix`. It is one key combination, never a whole modifier.
 - The keys after the prefix are the `prefix` tables of the keys tables (7.8). Each layer adds to the keys of the layers below, and `false` removes a key. So presets and the user can add keys that run service functions.
-- While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's functions on the focused panel), Layout (closing a group, locking it and resetting the layout), Session (saving and opening sessions, and quitting) and More (service functions, such as the settings, the panel list and the launcher). Within a section, the keys follow the order of the core's functions below. Like the menus (6.8), the list leaves out what cannot be done now.
+- While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's functions on the focused panel), Layout (closing a group, locking it and resetting the layout), Session (saving and opening sessions, and quitting) and More (service functions, such as the settings, the panel list, the plugin list and the launcher). Within a section, the keys follow the order of the core's functions below. Like the menus (6.8), the list leaves out what cannot be done now.
 - Keys of one kind share a line. The keys that switch workspaces show the first workspace's key to the last one's: `1...0`, and the keys that move the focused panel to a workspace the same way: `Shift+1...0`. Focus and move show `Arrows` and `Shift+Arrows` when their four functions are on the four arrows with the same modifiers.
 - The prefix and the key after it are the only key sequence the core handles.
 - The core's functions after the prefix, in the order the list shows them. Their keys are in the `prefix` table of the core's settings file (12.1).
@@ -626,6 +629,7 @@ Panels are named by their id (`ECSPanel_GetID`, `panel:getId()`); `ECSLayout_Fin
 | `ecs.workspaceSwitched` | `{ workspace = number }`           | Another workspace is shown                              |
 | `ecs.layoutChanged`     | nil                                | Panels are moved, grouped, closed, maximized or locked  |
 | `ecs.settingChanged`    | `{ name = full name }`             | A setting's value in effect changes                     |
+| `ecs.pluginsChanged`    | `{}`                               | Plugins were enabled or disabled (9.10)                 |
 
 ## 9. Plugins
 
@@ -704,8 +708,8 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 
 ### 9.7 Lifecycle
 
-- Native plugins are never unloaded before exit, because their function pointers, threads and static data may still be in use.
 - The core records everything each plugin registers. If `ECSPlugin_Init` fails, the plugin's registrations are removed and it is marked failed.
+- A native plugin's library is unloaded when the plugin is disabled (9.10), and at exit. Its `Destroy` stops the threads it started and waits for them, so none of its code runs after it.
 
 ### 9.8 The GPU device
 
@@ -720,6 +724,20 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 - A function's local name may have dots: its parts before the last dot are namespaces, such as `json` in `parse.json.read`. Lua's table of the plugin holds each namespace as a table, so `require("parse").json.read(text)` calls it; C looks it up by its full name, and the plugin's header (10.10) names it `json_read`. A plugin cannot have a function whose name is a namespace of another, such as `parse.json` beside `parse.json.read`.
 - Everything else takes full names, because it may name what another plugin declared: looking up, emitting, subscribing, binding keys, presets and settings files.
 - Core code never checks a plugin's name to decide what to do. First-party plugins get no special treatment.
+
+### 9.10 Enabling and disabling plugins
+
+- A plugin that loaded is enabled. While OpenECS runs, `ECSPlugins_Disable(name)` and `ECSPlugins_Enable(name)` disable and enable it, and `ECSPlugins_List` lists every plugin in the plugin folders (9.3), loaded or not. Lua: `ecs.plugins.disable`, `ecs.plugins.enable` and `ecs.plugins.list`.
+- The change happens when the current pass of the main loop ends, so no plugin's code is running, and a plugin may disable itself. Then the core emits `ecs.pluginsChanged`.
+- Disabling a plugin disables every plugin that depends on it too, the last loaded first. The core asks once about the unsaved work in their panels (4.5); Cancel keeps them enabled. Then every popup closes, and for each plugin:
+  1. Each of its panels saves its state, and becomes a placeholder that keeps it (14.2) and says that its plugin is disabled.
+  2. Its Lua workers stop (3.4). Its background work that waits is dropped, its running work finishes, and the `done` functions of its work are not called.
+  3. The objects of its handle types are destroyed, and their handles become invalid (10.6).
+  4. Its `SaveState` runs, and the core keeps the state. Then its `Destroy` runs (9.4).
+  5. Everything it registered is removed, as for a plugin that failed (9.7), and its library is unloaded.
+- Enabling a plugin loads it as at start, after the plugins it depends on, which are enabled too. It gets back the state it kept. Then the placeholders of its panel types are created again from their saved state. A plugin that cannot be enabled is reported, and stays disabled.
+- A plugin that is not loaded, such as one the user installed (16), is enabled the same way.
+- A session keeps the change (13.2): `disabled` lists the disabled plugins, and `enabled` the plugins the user enabled that the preset does not depend on. The next start loads the preset's plugins and `enabled`, and records the plugins of `disabled`, and the plugins that depend on them, without loading their code.
 
 ## 10. Services
 
@@ -939,7 +957,7 @@ return {
 }
 ```
 
-- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.5), `panels`, the list of panel types (12.6), and `launcher`, the list of presets and sessions (13.8), so every tool can go to another one.
+- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.5), `panels`, the list of panel types (12.6), `plugins`, the list of plugins (12.7), and `launcher`, the list of presets and sessions (13.8), so every tool can go to another one.
 
 ### 12.4 Themes
 
@@ -956,6 +974,10 @@ The settings window is the first-party Lua plugin `settings`, in OpenECS-std (17
 
 The panel list is the first-party Lua plugin `panels`, in OpenECS-std (17.7). It lists the panel types of the tool by plugin, from `ECSPanelType_List` (`ecs.panel.listTypes` in Lua), and opens the one the user chooses. Its design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The panel list.
 
+### 12.7 The plugin list
+
+The plugin list is the first-party Lua plugin `plugins`, in OpenECS-std (17.7). It lists every plugin in the plugin folders with `ECSPlugins_List` (`ecs.plugins.list` in Lua), and enables or disables the one the user chooses (9.10). Its design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The plugin list.
+
 ## 13. Presets and sessions
 
 ### 13.1 Format
@@ -966,7 +988,7 @@ Presets and sessions share one format: a Lua file that returns a table.
 
 ```lua
 return {
-  format = 2,                                -- version of this file format
+  format = 3,                                -- version of this file format
   name = "paint",
   version = "1.0.0",
   app = { id = "org.example.Paint", name = "Paint", icon = "paint.png",
@@ -995,10 +1017,11 @@ return {
 - A workspace can have its own `keys`, a keys table (7.8).
 - A panel's saved state is its `state` field, and the state's version is `stateVersion`.
 - Sessions also store each panel's `id`, each workspace's `focus` (a panel id), each group's `shown` panel and `maximized` mark, the `currentWorkspace`, and `pluginState`: for each plugin's name, its `state` and `stateVersion`.
+- `enabled` and `disabled` are lists of plugins' names, which enabling and disabling plugins write (9.10).
 - A plugin saves state of its own, apart from its panels', with the `SaveState` and `RestoreState` functions of its description (9.4). The state of a plugin that is not loaded stays in the session.
 - The app id matches the name of the tool's `.desktop` file (13.9).
 - `app.icon` is a path relative to the preset's folder. `app.categories` and `app.mimeTypes` are lists of texts for the tool's desktop entry (13.9).
-- OpenECS reads format 1 and 2, and writes format 2. Format 2 adds `app.categories` and `app.mimeTypes`.
+- OpenECS reads formats 1 to 3, and writes format 3. Format 2 adds `app.categories` and `app.mimeTypes`, and format 3 adds `enabled` and `disabled`.
 - A preset with `listed = false` is left out of the list of presets (13.7), as the launcher's own preset is.
 - A preset's `hint` tells a new user what to try first, such as the keys to press. The title bar that OpenECS draws (6.10) shows it after the tool's name, in dim text, cut at the buttons when the window is narrow. With the system's title bar, it does not show. A session keeps it, as it keeps the preset's other fields.
 

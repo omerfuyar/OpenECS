@@ -2905,6 +2905,22 @@ void ECSIServices_DestroyHandles(void)
     ECSIServices_DropHandles(nullptr);
 }
 
+void ECSIServices_DestroyHandlesOfPlugin(ECSPlugin plugin)
+{
+    SDL_assert(plugin != nullptr);
+
+    // as at exit: finalizers that wait run first, while the plugin's code is loaded
+    lua_gc(ECSILua_GetState(), LUA_GCCOLLECT);
+
+    for (usz i = 0; i < shlenu(SERVICES.handleTypes); i++)
+    {
+        if (SERVICES.handleTypes[i].value->plugin == plugin)
+        {
+            ECSIServices_DropHandles(SERVICES.handleTypes[i].value);
+        }
+    }
+}
+
 void ECSIServices_Terminate(void)
 {
     // handles that plugins made while they shut down are only forgotten, as their plugins' state is gone

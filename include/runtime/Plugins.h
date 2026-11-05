@@ -115,4 +115,35 @@ typedef SHUResult (*ECSIPluginsVisitFunction)(ECSPlugin plugin, void *data);
 /// @return SHUResult_Ok, or the first error that the function gave; every plugin is visited still.
 SHUResult ECSIPlugins_ForEach(ECSIPluginsVisitFunction Visit, void *data);
 
+/// @brief Tells whether a plugin's code runs: it loaded, did not fail and is not disabled.
+bool ECSIPlugin_IsEnabled(ECSPlugin plugin);
+
+/// @brief Gets the number of a plugin's load: it grows each time the plugin's code is loaded or unloaded, so work that an earlier load sent is dropped.
+u32 ECSIPlugin_GetGeneration(ECSPlugin plugin);
+
+/// @brief Names the plugins that a session disabled, before ECSIPlugins_Load: they, and the plugins that depend on them, are recorded without loading their code.
+/// @param names The names; the caller keeps them while plugins load.
+void ECSIPlugins_SetDisabled(const char *const *names, usz count);
+
+/// @brief Gets a plugin and every enabled plugin that depends on it, through others too, the last loaded first: the plugins that disabling it disables.
+/// @return stb_ds array of the plugins. Free it with arrfree.
+ECSPlugin *ECSIPlugins_GetDependents(ECSPlugin plugin);
+
+/// @brief Disables an enabled plugin: keeps the state its SaveState gives, runs its Destroy, removes what it registered and unloads its library. The caller first deals with its panels, workers, background work and handles.
+void ECSIPlugins_Disable(ECSPlugin plugin);
+
+/// @brief Enables a plugin, and the plugins it depends on, as at start: a disabled plugin or one that never loaded. It gets back the state it kept.
+/// @param folders Folders that hold plugins, as for ECSIPlugins_Load.
+/// @return SHUResult_Ok, or the error of the plugin or of a plugin it needs, which is reported.
+SHUWUR SHUResult ECSIPlugins_Enable(const char *const *folders, usz folderCount, const char *name);
+
+/// @brief Lists every plugin in some folders of plugins, as ECSPlugins_List gives them.
+SHUWUR SHUResult ECSIPlugins_List(const char *const *folders, usz folderCount, ECSValue *retList);
+
+/// @brief Tells whether a plugin is disabled, by its name or by a name it owns, such as a panel type's.
+bool ECSIPlugins_IsDisabled(const char *name);
+
+/// @brief Lists the names of the disabled plugins, for the session.
+SHUWUR SHUResult ECSIPlugins_GetDisabled(ECSValue *retList);
+
 #pragma endregion Declarations

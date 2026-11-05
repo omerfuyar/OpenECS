@@ -968,7 +968,8 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
             .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {panel->x, panel->y}},
         })
         {
-            Clay_String heading = panel->fault != nullptr ? CLAY_STRING("Panel failed") : CLAY_STRING("Missing panel type");
+            Clay_String heading = panel->fault != nullptr ? CLAY_STRING("Panel failed") : ECSIPlugins_IsDisabled(panel->typeName) ? CLAY_STRING("Plugin disabled")
+                                                                                                                                  : CLAY_STRING("Missing panel type");
             CLAY_TEXT(heading, CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize}));
             CLAY_TEXT(ECSIWindow_ClayText(panel->typeName), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize}));
 

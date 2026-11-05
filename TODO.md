@@ -16,14 +16,12 @@ What the owner wants worked on, in no fixed order. Each one is described further
 - **Desktop entries on Windows.** `--install` and `--uninstall` work on Linux only (DESIGN 13.9). On Windows they would add a Start menu shortcut, and register the file types for "Open with".
 - **Import the rulesets.** The rulesets of OpenECS, OpenECS-std, OpenECS-examples and OpenECS-template require the Windows checks now, as the owner chose. The owner imports them in each repository's settings. OpenECS-examples' rulesets no longer require `Release (Linux)`, which it does not run.
 - **Lua's speed.** A Lua plugin that calls the core for each pixel slows down as its work grows: c12_sketch's Lua panel paints every stroke again on each draw with `surface:setPixel`, a call into the core per pixel, which its C twin makes as plain C calls. Each call from Lua costs about a microsecond in a Debug build; a method call finds its method first. Ways to speed it up, to weigh later: functions that take many pixels in one call, as `setRow` does; a panel that keeps its picture and draws only what changed; and LuaJIT, which runs Lua 5.1 code, so OpenECS would give up Lua 5.5's integers, bit operators and other features that plugins use.
-- **Worker threads in a module of their own.** Timers left Events for base/Timers. Events also runs the worker threads of `ECS_RunInBackground`, which hand their results to the main thread through its queue, and its shutdown frees what they left queued. Moving them to a module of their own needs the queue to free its own entries. Input holds the clipboard and dialogs beside SDL's input, which could be a module of their own the same way.
 
 ## Shuild
 
 [Shuild](https://github.com/omerfuyar/shuild) is the build tool, a single header at `dependencies/shuild`. Shu, at `dependencies/shu`, holds the types and macros it uses. The owner allows changes to both, in their style, through pull requests into their main branches. These repositories have no CI, so a pull request is merged with a merge commit once it is tested locally: shuild's examples, and OpenECS built from scratch with its checks. Then an OpenECS pull request moves the submodule. Work found in it:
 
 - **Windows and macOS.** Shuild names libraries for the system its compiler compiles for, and cross-compiles for Windows with MinGW (omerfuyar/shuild#23). Its Windows host code runs in OpenECS's Windows checks, which build OpenECS on Windows. `SHU_UtilRun` runs commands with the system's shell, which is `cmd.exe` on Windows.
-- **Its own todo.** The header lists a module macro, like Clay's. The owner leaves it for later.
 - **A relink with nothing compiled.** The owner saw the core link again in a build that compiled 0 files. It did not happen again in builds without changes, with `-t`, after a changed `shuild.c`, or with clang. Shuild links a module again when a library it links is newer than its output. The owner looks at it later.
 
 ## Standard plugins
@@ -32,10 +30,8 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
 - **The core's libraries.** The standard plugins still use the core's SDL, SDL_ttf and stb_ds (DESIGN 17.2), against the principle that plugins stand alone (OVERVIEW 12). To remove: each plugin would bring what it uses.
-- **A plugin manager.** Enabling and disabling plugins while OpenECS runs, by loading and unloading them, so a user tries a plugin without starting the tool again. Today plugins load only at the start (OVERVIEW 8.3). It needs the core to unload a plugin's panels, services, settings, keys and handles, and the plugins that depend on it first.
 - **Ideas for more standard plugins**, to choose from later:
   - **notify:** desktop notifications and a tray icon, which OVERVIEW 11 gives to plugins.
-  - **process:** running programs, with their input and output as streams, for terminals, build tools and linters.
   - **sqlite:** SQLite databases, for tools that keep many records.
   - **regex:** searching text with regular expressions, such as PCRE2's.
   - **hash:** checksums and hashes, such as CRC32, SHA-256 and xxHash.

@@ -476,6 +476,24 @@ OPENECS_EXPORT void ECSPath_Free(char *path);
 /// @lua ecs.plugin.register
 OPENECS_EXPORT SHUWUR SHUResult ECSPlugin_Register(ECSPlugin plugin, const ECSPluginDesc *desc);
 
+/// @brief Lists every plugin in the plugin folders (DESIGN 9.3), loaded or not: for each, a table of its name, version, description, enabled, failed, and depends, a list of the names it depends on. Main thread only.
+/// @param retList The value to fill with the list.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.plugins.list
+OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_List(ECSValue *retList);
+
+/// @brief Enables a plugin, and the plugins it depends on, when the current pass of the main loop ends, so no plugin code runs then (DESIGN 9.10). The core emits ecs.pluginsChanged after it. Main thread only.
+/// @param name The plugin's name.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation. A plugin that cannot be enabled is reported then.
+/// @lua ecs.plugins.enable
+OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Enable(const char *name);
+
+/// @brief Disables a plugin, and the plugins that depend on it, when the current pass of the main loop ends, after asking about the unsaved work of their panels, which become placeholders (DESIGN 9.10). The core emits ecs.pluginsChanged after it. Main thread only.
+/// @param name The plugin's name.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation. Cancel keeps the plugins enabled.
+/// @lua ecs.plugins.disable
+OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Disable(const char *name);
+
 /// @brief Writes a message to the log, with the plugin's name. Thread-safe.
 /// @param plugin The plugin that writes the message.
 /// @param level Level of the message.

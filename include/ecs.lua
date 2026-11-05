@@ -461,6 +461,32 @@ ecs.app = {}
 ---Quits, as the main window's close button does: the user is asked about unsaved work first and may cancel. Keys can run it.
 function ecs.app.quit() end
 
+-- Plugins
+
+---A plugin in the plugin folders, as ecs.plugins.list gives it.
+---@class ecs.PluginInfo
+---@field name string
+---@field version string
+---@field description string
+---@field enabled boolean Its code runs.
+---@field failed boolean Its code failed to start.
+---@field depends string[] The names of the plugins it depends on.
+
+---@class ecs.plugins
+ecs.plugins = {}
+
+---Lists every plugin in the plugin folders, loaded or not.
+---@return ecs.PluginInfo[] plugins
+function ecs.plugins.list() end
+
+---Enables a plugin, and the plugins it depends on, when the current pass of the main loop ends. The core emits ecs.pluginsChanged after it.
+---@param name string The plugin's name.
+function ecs.plugins.enable(name) end
+
+---Disables a plugin, and the plugins that depend on it, when the current pass of the main loop ends, after asking about the unsaved work of their panels, which become placeholders. The core emits ecs.pluginsChanged after it.
+---@param name string The plugin's name.
+function ecs.plugins.disable(name) end
+
 -- Session
 
 ---@class ecs.session
@@ -768,6 +794,8 @@ function ecs.dialog.showMessage(title, message, buttons) end
 ---@class ecs.Session: ecs.Preset
 ---@field currentWorkspace? integer
 ---@field pluginState? table<string, { state: any, stateVersion: integer }> Each plugin's own state.
+---@field enabled? string[] Plugins the user enabled that the preset does not depend on.
+---@field disabled? string[] Plugins the user disabled, with the plugins that depend on them.
 
 ---The user's settings file, or the core's settings file. A field whose name has a dot is a setting.
 ---@class ecs.SettingsFile

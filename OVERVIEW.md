@@ -288,7 +288,7 @@ A plugin is a folder that holds its manifest and its code. OpenECS looks for plu
 
 ### 8.3 Loading
 
-At start-up, OpenECS reads the plugin manifests, works out the order from the dependencies, and loads the plugins the preset needs, together with the plugins they depend on. Missing and circular dependencies are reported clearly. Plugin authors never manage the order themselves. Each plugin registers what it provides when it starts. Plugins are not enabled or disabled while OpenECS runs.
+At start-up, OpenECS reads the plugin manifests, works out the order from the dependencies, and loads the plugins the preset needs, together with the plugins they depend on. Missing and circular dependencies are reported clearly. Plugin authors never manage the order themselves. Each plugin registers what it provides when it starts. The user enables and disables plugins while OpenECS runs, without starting the tool again, and the session remembers it.
 
 ### 8.4 What a plugin may do
 
