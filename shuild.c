@@ -715,6 +715,11 @@ static void Shuild_OpenECS(void)
         {
             SHU_ModuleLinkLibraries("m");
         }
+        else
+        {
+            // the Start menu's shortcuts and "Open with" of --install, and the app id of the taskbar (DESIGN 13.9)
+            SHU_ModuleLinkLibraries("ole32", "uuid", "shell32", "advapi32");
+        }
     }
 
     // the shared libraries go next to the executable under the names it asks for, as files rather than links

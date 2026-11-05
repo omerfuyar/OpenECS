@@ -1110,7 +1110,10 @@ When the command line names no preset and no session, OpenECS starts with the fi
   | `MimeType`       | `app.mimeTypes`, such as `{ "image/png" }`                                                                     |
 
 - A preset named by its name stays found when the program moves; the entry names the program by its full path, so moving the program needs `--install` again.
-- Windows has no desktop entries yet: `--install` and `--uninstall` report it and exit with status 1.
+- On Windows, `--install` writes a shortcut in the Start menu's programs, `<app name>.lnk`, without the characters a file name cannot hold. It runs the program with `--preset` as `Exec` does, starts in the program's folder, and has the hint as its description and `app.id` as its AppUserModelID. The program gives itself the same id when it starts, so the taskbar groups the tool's windows under the shortcut, as SDL's notifications use that id too.
+- A PNG `app.icon` becomes the icon file `%LOCALAPPDATA%\OpenECS\icons\<app id>.ico`, which holds the PNG as it is, as shortcuts take no PNG; another kind of image leaves the tool without an icon.
+- For "Open with", it registers the class `OpenECS.<app id>` in the user's classes in the registry, whose command opens a file with the tool, and adds the class to the `OpenWithProgids` of each file extension whose content type in the registry is one of `app.mimeTypes`, such as `.jpg` and `.jpeg` for `image/jpeg`.
+- `--uninstall` removes the shortcut, the class, its places in "Open with" and the icon file.
 
 ## 14. Errors and logging
 

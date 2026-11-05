@@ -10,12 +10,16 @@
 /// @param info What ECSISession_ReadInfo read from the preset.
 /// @param presetPath The preset's file.
 /// @param presetName The name the command line gave the preset, or nullptr if it gave a path; the entry starts the tool by that name.
-/// @return SHUResult_Ok, SHUResult_ErrNotFound if there is no folder for desktop entries, SHUResult_ErrAllocation, SHUResult_ErrFile, or SHUResult_Err on Windows, which has no desktop entries yet.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if there is no folder for desktop entries, SHUResult_ErrAllocation, SHUResult_ErrFile.
 SHUWUR SHUResult ECSIDesktop_Install(const ECSIPresetInfo *info, const char *presetPath, const char *presetName);
 
 /// @brief Removes the desktop entry of a preset's tool.
 /// @param info What ECSISession_ReadInfo read from the preset.
-/// @return SHUResult_Ok, SHUResult_ErrNotFound if the tool has no entry, SHUResult_ErrAllocation, SHUResult_ErrFile, or SHUResult_Err on Windows, which has no desktop entries yet.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if the tool has no entry, SHUResult_ErrAllocation, SHUResult_ErrFile.
 SHUWUR SHUResult ECSIDesktop_Uninstall(const ECSIPresetInfo *info);
+
+/// @brief Gives the process the tool's app id as its AppUserModelID on Windows, as its shortcut has, so the taskbar groups the tool's windows under the shortcut; nothing on other systems.
+/// @param appID The preset's app.id.
+void ECSIDesktop_SetAppID(const char *appID);
 
 #pragma endregion Declarations
