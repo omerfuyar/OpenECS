@@ -1107,6 +1107,9 @@ void ECSIPlugins_Disable(ECSPlugin plugin)
     PLUGINS.hooks.RemoveRegistrations(plugin);
     ECSIPlugin_Forget(plugin);
 
+    // the functions that the plugin's threads sent to the main thread before Destroy stopped them run now, while their code is loaded
+    SDL_PumpEvents();
+
     if (plugin->library != nullptr)
     {
         SDL_UnloadObject(plugin->library);

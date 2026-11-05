@@ -709,7 +709,7 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 ### 9.7 Lifecycle
 
 - The core records everything each plugin registers. If `ECSPlugin_Init` fails, the plugin's registrations are removed and it is marked failed.
-- A native plugin's library is unloaded when the plugin is disabled (9.10), and at exit. Its `Destroy` stops the threads it started and waits for them, so none of its code runs after it.
+- A native plugin's library is unloaded when the plugin is disabled (9.10), and at exit. Its `Destroy` stops the threads it started and waits for them, so none of its code runs after it. The functions that those threads sent with `ECS_RunOnMainThread` run after `Destroy` and before the library is unloaded.
 
 ### 9.8 The GPU device
 

@@ -517,7 +517,7 @@ OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel l
 /// @lua none: Lua code never runs on worker threads; Lua plugins use services that work in the background
 OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data);
 
-/// @brief Runs a function on the main thread, between passes of the main loop. Thread-safe.
+/// @brief Runs a function on the main thread, between passes of the main loop. Thread-safe. A function that a plugin's thread sent runs before the plugin's library is unloaded, after its Destroy.
 /// @param function The function.
 /// @param data Passed to the function.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
