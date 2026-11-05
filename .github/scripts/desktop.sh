@@ -19,6 +19,7 @@ return {
 }
 PRESET
 
+# reg is run with MSYS_NO_PATHCONV, so Git Bash leaves its /v as it is, not turning it into a path
 fail() {
     echo "$1"
     cat build/desktop.log
@@ -29,14 +30,12 @@ fail() {
 
 case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*)
-    # Git Bash would turn reg's /v into a path
-    export MSYS_NO_PATHCONV=1
     shortcut="$(cygpath "$APPDATA")/Microsoft/Windows/Start Menu/Programs/Desktop Check.lnk"
     icon="$(cygpath "$LOCALAPPDATA")/OpenECS/icons/openecs.check.desktop.ico"
     [ -f "$shortcut" ] || fail "--install wrote no shortcut."
     [ -f "$icon" ] || fail "--install wrote no icon file."
-    reg query 'HKCU\Software\Classes\OpenECS.openecs.check.desktop\shell\open\command' > /dev/null || fail "--install registered no class."
-    reg query 'HKCU\Software\Classes\.png\OpenWithProgids' /v OpenECS.openecs.check.desktop > /dev/null || fail "--install added nothing to \"Open with\" of .png."
+    MSYS_NO_PATHCONV=1 reg query 'HKCU\Software\Classes\OpenECS.openecs.check.desktop\shell\open\command' > /dev/null || fail "--install registered no class."
+    MSYS_NO_PATHCONV=1 reg query 'HKCU\Software\Classes\.png\OpenWithProgids' /v OpenECS.openecs.check.desktop > /dev/null || fail "--install added nothing to \"Open with\" of .png."
     ;;
 *)
     entry="${XDG_DATA_HOME:-$HOME/.local/share}/applications/openecs.check.desktop.desktop"
@@ -51,8 +50,8 @@ case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*)
     [ ! -e "$shortcut" ] || fail "--uninstall left the shortcut."
     [ ! -e "$icon" ] || fail "--uninstall left the icon file."
-    ! reg query 'HKCU\Software\Classes\OpenECS.openecs.check.desktop' > /dev/null 2>&1 || fail "--uninstall left the class."
-    ! reg query 'HKCU\Software\Classes\.png\OpenWithProgids' /v OpenECS.openecs.check.desktop > /dev/null 2>&1 || fail "--uninstall left \"Open with\" of .png."
+    ! MSYS_NO_PATHCONV=1 reg query 'HKCU\Software\Classes\OpenECS.openecs.check.desktop' > /dev/null 2>&1 || fail "--uninstall left the class."
+    ! MSYS_NO_PATHCONV=1 reg query 'HKCU\Software\Classes\.png\OpenWithProgids' /v OpenECS.openecs.check.desktop > /dev/null 2>&1 || fail "--uninstall left \"Open with\" of .png."
     ;;
 *)
     [ ! -e "$entry" ] || fail "--uninstall left the desktop entry."
