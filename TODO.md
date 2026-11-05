@@ -32,7 +32,6 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 - **The core's libraries.** The standard plugins still use the core's SDL, SDL_ttf and stb_ds (DESIGN 17.2), against the principle that plugins stand alone (OVERVIEW 12). To remove: each plugin would bring what it uses.
 - **Ideas for more standard plugins**, to choose from later:
   - **notify:** desktop notifications and a tray icon, which OVERVIEW 11 gives to plugins.
-  - **process:** running programs, with their input and output as streams, for terminals, build tools and linters.
   - **sqlite:** SQLite databases, for tools that keep many records.
   - **regex:** searching text with regular expressions, such as PCRE2's.
   - **hash:** checksums and hashes, such as CRC32, SHA-256 and xxHash.
