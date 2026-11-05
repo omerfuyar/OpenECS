@@ -456,6 +456,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     const char *sourcePath = APP.sessionPath != nullptr ? APP.sessionPath : APP.presetPath;
 
     SDL_SetAppMetadata(APP.preset.appName, nullptr, APP.preset.appID);
+    ECSIDesktop_SetAppID(APP.preset.appID);
 
     ECSIApp_StartSDL();
 

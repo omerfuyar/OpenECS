@@ -13,9 +13,8 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **GLSL shaders on Direct3D 12.** gpu compiles GLSL to SPIR-V, and for Direct3D 12 turns it into DXBC through SPIRV-Cross's HLSL and Windows' d3dcompiler_47.dll (OpenECS-std DESIGN 15). The checks run no GPU on Windows; to confirm with s9_gpu_model on Windows.
 - **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
-- **Desktop entries on Windows.** `--install` and `--uninstall` work on Linux only (DESIGN 13.9). On Windows they would add a Start menu shortcut, and register the file types for "Open with".
 - **Import the rulesets.** The rulesets of OpenECS, OpenECS-std, OpenECS-examples and OpenECS-template require the Windows checks now, as the owner chose. The owner imports them in each repository's settings. OpenECS-examples' rulesets no longer require `Release (Linux)`, which it does not run.
-- **Lua's speed.** A Lua plugin that calls the core for each pixel slows down as its work grows: c12_sketch's Lua panel paints every stroke again on each draw with `surface:setPixel`, a call into the core per pixel, which its C twin makes as plain C calls. Each call from Lua costs about a microsecond in a Debug build; a method call finds its method first. Ways to speed it up, to weigh later: functions that take many pixels in one call, as `setRow` does; a panel that keeps its picture and draws only what changed; and LuaJIT, which runs Lua 5.1 code, so OpenECS would give up Lua 5.5's integers, bit operators and other features that plugins use.
+- **Lua's speed.** Each call from Lua into the core costs about a third of a microsecond in a Debug build, so a Lua panel draws runs of pixels with `surface:fill` and rows with `setRow`, as c12_sketch's Lua panel paints each row of a dab with one `fill`; the surface's methods keep the colour of the last colour text they read. Ways to go further, to weigh later: a panel that keeps its picture between draws and draws only what changed, which the surface's contract does not allow now (DESIGN 5.1); and LuaJIT, which runs Lua 5.1 code, so OpenECS would give up Lua 5.5's integers, bit operators and other features that plugins use.
 
 ## Shuild
 
@@ -31,13 +30,9 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
 - **The core's libraries.** The standard plugins still use the core's SDL, SDL_ttf and stb_ds (DESIGN 17.2), against the principle that plugins stand alone (OVERVIEW 12). To remove: each plugin would bring what it uses.
 - **Ideas for more standard plugins**, to choose from later:
-  - **notify:** desktop notifications and a tray icon, which OVERVIEW 11 gives to plugins.
-  - **sqlite:** SQLite databases, for tools that keep many records.
   - **regex:** searching text with regular expressions, such as PCRE2's.
-  - **hash:** checksums and hashes, such as CRC32, SHA-256 and xxHash.
   - **markdown:** Markdown into ui's elements, for notes and help panels.
   - **syntax:** syntax highlighting with tree-sitter, for code editors.
-  - **gamepad:** game controllers, through SDL's gamepad functions.
   - **video:** playing video files, such as MPEG-1 with pl_mpeg.
 
 ## Reaching users
