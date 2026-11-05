@@ -91,6 +91,8 @@ static struct
 {
     ECSILuaPanelType **types;    // stb_ds array
     ECSILuaListener **listeners; // stb_ds array
+    const char *lastColorText;   // the last colour text that a surface's method parsed, which the registry of the Lua state that gave it keeps
+    ECSColor lastColor;
 } BINDINGS = {0};
 
 /// @brief Names of the event types in Lua, in the order of ECSPanelEventType.
@@ -1950,13 +1952,40 @@ static ECSSurface *ECSIBindings_CheckPixelSurface(lua_State *state, int index)
     return surface;
 }
 
+/// @brief Reads a colour text argument of a surface's method. A draw sets many pixels in few colours, so the last text's colour is kept: the
+/// text is kept in the state's registry, so while it is there no other string has its address. Theme colours are parsed each time, as the theme changes.
+static ECSColor ECSIBindings_CheckColor(lua_State *state, int index)
+{
+    const char *text = luaL_checkstring(state, index);
+    lua_rawgetp(state, LUA_REGISTRYINDEX, &BINDINGS.lastColor);
+    bool kept = lua_tostring(state, -1) == text && text == BINDINGS.lastColorText;
+    lua_pop(state, 1);
+
+    if (kept)
+    {
+        return BINDINGS.lastColor;
+    }
+
+    ECSColor color = 0;
+    luaL_argcheck(state, ECSColor_Parse(text, &color), index, "is not a colour: \"#RRGGBB\", \"#RRGGBBAA\" or a colour of the theme");
+
+    if (text[0] == '#')
+    {
+        lua_pushvalue(state, index);
+        lua_rawsetp(state, LUA_REGISTRYINDEX, &BINDINGS.lastColor);
+        BINDINGS.lastColorText = text;
+        BINDINGS.lastColor = color;
+    }
+
+    return color;
+}
+
 static int ECSIBindings_SurfaceSetPixel(lua_State *state)
 {
     ECSSurface *surface = ECSIBindings_CheckPixelSurface(state, 1);
     u32 *pixel = ECSIBindings_GetPixelAddress(surface, luaL_checkinteger(state, 2), luaL_checkinteger(state, 3));
 
-    ECSColor color = 0;
-    luaL_argcheck(state, ECSColor_Parse(luaL_checkstring(state, 4), &color), 4, "is not a colour: \"#RRGGBB\", \"#RRGGBBAA\" or a colour of the theme");
+    ECSColor color = ECSIBindings_CheckColor(state, 4);
 
     // pixels outside the surface are clipped; surfaces hold premultiplied colours
     if (pixel != nullptr)
@@ -2021,8 +2050,7 @@ static int ECSIBindings_SurfaceFill(lua_State *state)
         values[i] = SDL_clamp(luaL_checkinteger(state, i + 2), -(lua_Integer)SDL_MAX_SINT32, (lua_Integer)SDL_MAX_SINT32);
     }
 
-    ECSColor color = 0;
-    luaL_argcheck(state, ECSColor_Parse(luaL_checkstring(state, 6), &color), 6, "is not a colour: \"#RRGGBB\", \"#RRGGBBAA\" or a colour of the theme");
+    ECSColor color = ECSIBindings_CheckColor(state, 6);
     ECSSurface_Fill(surface, (i32)values[0], (i32)values[1], (i32)values[2], (i32)values[3], color);
     return 0;
 }
