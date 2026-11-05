@@ -1,5 +1,6 @@
 #define SHU_IMPLEMENTATION
 #define SHUC_ENABLE_INCREMENTAL
+#define SHUC_COMPILE_DATABASE // compile_commands.json, which clangd and check.sh's clang-tidy read
 #include "dependencies/shuild/shuild.h"
 
 #pragma region Setup
