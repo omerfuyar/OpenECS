@@ -4,7 +4,7 @@ Notes for agents and the owner that belong in no other document: why the tools a
 
 ## Tools
 
-- shuild writes `compile_commands.json` in each repository's folder: the command that compiles each C file, of the last build. `.github/scripts/check.sh` runs clang-tidy on it, through a copy in `build/tidy/` without gcc's `-fanalyzer`, which clang does not have. clangd reads the same database, so editors with clangd, and Claude Code through a clangd plugin, see each file's real flags; git ignores `.clangd`, so each person's own drops gcc's flags with `CompileFlags: { Remove: [-fanalyzer, -fno-analyzer] }`.
+- The build scripts define `SHUC_COMPILE_DATABASE`, so shuild writes `compile_commands.json` in each repository's folder: the command that compiles each C file, of the last build. `.github/scripts/check.sh` runs clang-tidy on it, through a copy in `build/tidy/` without gcc's `-fanalyzer`, which clang does not have. clangd reads the same database, so editors with clangd, and Claude Code through a clangd plugin, see each file's real flags; git ignores `.clangd`, so each person's own drops gcc's flags with `CompileFlags: { Remove: [-fanalyzer, -fno-analyzer] }`.
 - OpenECS's `.luarc.json` leaves `include/ecs.lua` out of the workspace, as the build's copy is in its library and LuaLS would see each class twice; the check `Lua (LuaLS)`, which runs without a build, checks it.
 - The core's build gives the dependencies' headers as system headers (`-isystem`), so clang-tidy leaves their macros alone, such as stb_ds's `arrput`.
 - In a cloud session, `.claude/hooks/session-start.sh` installs at its start what the build, `check.sh` and the tests need, and checks out the submodules; elsewhere it does nothing.
