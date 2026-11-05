@@ -621,6 +621,27 @@ void ECSIWorkers_Terminate(void)
     SDL_zero(WORKERS);
 }
 
+void ECSIWorkers_StopPlugin(ECSPlugin plugin)
+{
+    SDL_assert(plugin != nullptr);
+
+    for (usz i = 0; i < arrlenu(WORKERS.workers);)
+    {
+        ECSIWorker *worker = WORKERS.workers[i];
+
+        if (worker->plugin != plugin)
+        {
+            i++;
+            continue;
+        }
+
+        ECSIWorkers_Stop(worker);
+        SDL_WaitThread(worker->thread, nullptr);
+        arrdel(WORKERS.workers, i);
+        ECSIWorkers_Free(worker);
+    }
+}
+
 void ECSIWorkers_PushTable(lua_State *state, ECSPlugin plugin)
 {
     SDL_assert(state != nullptr);

@@ -921,6 +921,52 @@ static int ECSIBindings_SessionListSessions(lua_State *state)
     return ECSIBindings_PushFilled(state, ECSSession_ListSessions);
 }
 
+#pragma region Plugins
+
+static int ECSIBindings_PluginsList(lua_State *state)
+{
+    ECSValue *list = nullptr;
+
+    if (ECSValue_Create(&list) || ECSPlugins_List(list))
+    {
+        ECSValue_Destroy(&list);
+        return luaL_error(state, "the plugins cannot be listed: out of memory");
+    }
+
+    ECSILua_PushValue(state, list);
+    ECSValue_Destroy(&list);
+    return 1;
+}
+
+static int ECSIBindings_PluginsEnable(lua_State *state)
+{
+    if (ECSPlugins_Enable(luaL_checkstring(state, 1)))
+    {
+        return luaL_error(state, "out of memory");
+    }
+
+    return 0;
+}
+
+static int ECSIBindings_PluginsDisable(lua_State *state)
+{
+    if (ECSPlugins_Disable(luaL_checkstring(state, 1)))
+    {
+        return luaL_error(state, "out of memory");
+    }
+
+    return 0;
+}
+
+static const luaL_Reg OPENECS_BINDINGS_PLUGINS[] = {
+    {"list", ECSIBindings_PluginsList},
+    {"enable", ECSIBindings_PluginsEnable},
+    {"disable", ECSIBindings_PluginsDisable},
+    {nullptr, nullptr},
+};
+
+#pragma endregion Plugins
+
 static const luaL_Reg OPENECS_BINDINGS_SESSION[] = {
     {"save", ECSIBindings_SessionSave},
     {"open", ECSIBindings_SessionOpen},
@@ -2092,6 +2138,7 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIBindings_AddTable(state, plugin, "layout", OPENECS_BINDINGS_LAYOUT);
     ECSIBindings_AddTable(state, plugin, "workspace", OPENECS_BINDINGS_WORKSPACE);
     ECSIBindings_AddTable(state, plugin, "session", OPENECS_BINDINGS_SESSION);
+    ECSIBindings_AddTable(state, plugin, "plugins", OPENECS_BINDINGS_PLUGINS);
     ECSIBindings_AddTable(state, plugin, "clipboard", OPENECS_BINDINGS_CLIPBOARD);
     ECSIBindings_AddTable(state, plugin, "dialog", OPENECS_BINDINGS_DIALOG);
     ECSIBindings_AddTable(state, plugin, "event", OPENECS_BINDINGS_EVENT);

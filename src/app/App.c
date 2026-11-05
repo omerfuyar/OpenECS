@@ -46,14 +46,23 @@ static struct
 {
     ECSIPresetInfo preset; // identity and contents of the preset, or of the session that replaced it
     char *presetPath;
-    char *sessionPath;   // nullptr when OpenECS starts from the preset
-    char *lastSession;   // where the session is saved on quit, or nullptr if there is no state folder
-    char *configFolder;  // nullptr if there is none
-    char *presetsFolder; // the user's presets, or nullptr if there is no configuration folder
-    char *stateFolder;   // nullptr if there is none
-    char *dataFolder;    // the user's plugins and saved sessions are in it; nullptr if there is none, as in a test
-    bool test;           // true when the program runs a test: no user files, no last session, nothing saved
-    bool definitions;    // true when the program only writes definition files: no display, nothing opened or saved
+    char *sessionPath;       // nullptr when OpenECS starts from the preset
+    char *lastSession;       // where the session is saved on quit, or nullptr if there is no state folder
+    char *configFolder;      // nullptr if there is none
+    char *presetsFolder;     // the user's presets, or nullptr if there is no configuration folder
+    char *stateFolder;       // nullptr if there is none
+    char *dataFolder;        // the user's plugins and saved sessions are in it; nullptr if there is none, as in a test
+    bool test;               // true when the program runs a test: no user files, no last session, nothing saved
+    bool definitions;        // true when the program only writes definition files: no display, nothing opened or saved
+    char *userPlugins;       // the user's plugin folder, or nullptr
+    char *firstPartyPlugins; // the first-party plugins shipped with OpenECS
+    const char *pluginFolders[3];
+    usz pluginFolderCount;
+    struct
+    {
+        char *name;
+        bool enable;
+    } *pluginRequests; // stb_ds array of plugins to enable or disable when the current pass of the main loop ends
 } APP = {0};
 
 /// @brief Finds an XDG base folder for OpenECS: $variable/OpenECS/, or ~/fallback/OpenECS/ if the variable is not set.
@@ -206,30 +215,40 @@ static SHUResult ECSIApp_LoadEveryPlugin(const char *const *folders, usz folderC
 /// @brief Loads the plugins a preset names. Search order: the preset's plugins folder, the user's plugins, the first-party plugins.
 static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
 {
-    char *userPlugins = nullptr;
-    char *firstPartyPlugins = nullptr;
-
-    if (APP.dataFolder != nullptr && SDL_asprintf(&userPlugins, "%splugins/", APP.dataFolder) < 0)
+    if (APP.dataFolder != nullptr && SDL_asprintf(&APP.userPlugins, "%splugins/", APP.dataFolder) < 0)
     {
-        userPlugins = nullptr;
+        APP.userPlugins = nullptr;
     }
 
-    if (SDL_asprintf(&firstPartyPlugins, "%splugins/", SDL_GetBasePath()) < 0)
+    if (SDL_asprintf(&APP.firstPartyPlugins, "%splugins/", SDL_GetBasePath()) < 0)
     {
-        firstPartyPlugins = nullptr;
+        APP.firstPartyPlugins = nullptr;
     }
 
-    const char *folders[3];
-    usz folderCount = 0;
-    const char *candidates[] = {preset->pluginsFolder, userPlugins, firstPartyPlugins};
+    // the folders are kept, as plugins are enabled later too
+    const char *const *folders = APP.pluginFolders;
+    const char *candidates[] = {preset->pluginsFolder, APP.userPlugins, APP.firstPartyPlugins};
 
     for (usz i = 0; i < SDL_arraysize(candidates); i++)
     {
         if (candidates[i] != nullptr)
         {
-            folders[folderCount++] = candidates[i];
+            APP.pluginFolders[APP.pluginFolderCount++] = candidates[i];
         }
     }
+
+    usz folderCount = APP.pluginFolderCount;
+
+    // the plugins that the session disabled start disabled, and those that it enabled load after the preset's
+    const ECSValue *disabled = ECSValue_GetTableField(preset->file, "disabled");
+    const char **disabledNames = nullptr;
+
+    for (usz i = 0; i < ECSValue_GetListCount(disabled); i++)
+    {
+        arrput(disabledNames, ECSValue_GetString(ECSValue_GetListItem(disabled, i), ""));
+    }
+
+    ECSIPlugins_SetDisabled(disabledNames, arrlenu(disabledNames));
 
     // reports name the file that asks for a plugin
     bool lastSession = APP.sessionPath != nullptr && APP.lastSession != nullptr && SDL_strcmp(APP.sessionPath, APP.lastSession) == 0;
@@ -237,7 +256,11 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
 
     // the preset's plugins first, then the plugins that the settings files name for every tool; a test loads only what its preset names, and writing definitions loads every plugin it finds
     SHUResult result = ECSIPlugins_Load(folders, folderCount, ECSValue_GetTableField(preset->file, "depends"), neededBy != nullptr ? neededBy : "the preset");
+    SHUResult enabledResult = ECSIPlugins_Load(folders, folderCount, ECSValue_GetTableField(preset->file, "enabled"), "the plugins the session enabled");
+    result = result ? result : enabledResult;
     SHUResult extraResult = APP.test ? SHUResult_Ok : ECSIPlugins_Load(folders, folderCount, ECSISettings_GetPlugins(), "the settings files");
+    ECSIPlugins_SetDisabled(nullptr, 0);
+    arrfree(disabledNames);
 
     if (APP.definitions)
     {
@@ -257,8 +280,6 @@ static void ECSIApp_LoadPlugins(const ECSIPresetInfo *preset)
     }
 
     SDL_free(neededBy);
-    SDL_free(userPlugins);
-    SDL_free(firstPartyPlugins);
 
     // a manifest that is not valid, or a cycle of dependencies, is a mistake in the tool's files, so it stops the start; a missing or failed plugin only loses its panels
     ECSIApp_ExitOnFailure(result == SHUResult_ErrBadData || extraResult == SHUResult_ErrBadData ? SHUResult_ErrBadData : SHUResult_Ok, "loading the plugins", nullptr);
@@ -533,6 +554,207 @@ SHUResult ECSIApp_WriteDefinitions(const char *folder)
     return result;
 }
 
+/// @brief Tells whether a panel's type belongs to one of some plugins.
+static bool ECSIApp_PanelOfPlugins(ECSPanel panel, const ECSPlugin *plugins)
+{
+    for (usz i = 0; panel->type != nullptr && i < arrlenu(plugins); i++)
+    {
+        if (panel->type->plugin == plugins[i])
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/// @brief Sets whether the session names a plugin in its enabled list: a plugin the user enables that the preset does not load.
+static void ECSIApp_NoteEnabled(const char *name, bool enabled)
+{
+    ECSValue *file = APP.preset.file;
+    ECSValue *list = nullptr;
+    const ECSValue *old = ECSValue_GetTableField(file, "enabled");
+    char **kept = nullptr;
+
+    for (usz i = 0; i < ECSValue_GetListCount(old); i++)
+    {
+        const char *item = ECSValue_GetString(ECSValue_GetListItem(old, i), "");
+
+        if (SDL_strcmp(item, name) != 0)
+        {
+            arrput(kept, SDL_strdup(item));
+        }
+    }
+
+    if (enabled && ECSValue_GetTableField(ECSValue_GetTableField(file, "depends"), name) == nullptr)
+    {
+        arrput(kept, SDL_strdup(name));
+    }
+
+    // the list is written again without the name, and with it if it is enabled
+    if (!ECSValue_SetTableField(file, "enabled", &list))
+    {
+        ECSValue_SetTable(list);
+
+        for (usz i = 0; i < arrlenu(kept); i++)
+        {
+            ECSValue *item = nullptr;
+
+            if (kept[i] != nullptr && (ECSValue_AddListItem(list, &item) || ECSValue_SetString(item, kept[i])))
+            {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The session cannot name the plugin '%s': out of memory.", kept[i]);
+            }
+        }
+    }
+
+    for (usz i = 0; i < arrlenu(kept); i++)
+    {
+        SDL_free(kept[i]);
+    }
+
+    arrfree(kept);
+}
+
+/// @brief Disables a plugin and the plugins that depend on it, after asking about the unsaved work of their panels, which become placeholders.
+static void ECSIApp_DisablePlugin(const char *name)
+{
+    ECSPlugin target = ECSIPlugins_Get(name);
+
+    if (target == nullptr)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not enabled, so it is not disabled.", name);
+        return;
+    }
+
+    ECSPlugin *plugins = ECSIPlugins_GetDependents(target);
+    ECSPanel *panels = ECSILayout_GetPanels();
+    ECSPanel *affected = nullptr;
+
+    for (usz i = 0; i < arrlenu(panels); i++)
+    {
+        if (ECSIApp_PanelOfPlugins(panels[i], plugins))
+        {
+            arrput(affected, panels[i]);
+        }
+    }
+
+    // Cancel keeps every plugin enabled
+    if (ECSIPanels_ConfirmClose(affected, arrlenu(affected), false))
+    {
+        // popups may belong to the plugins' panels, so every popup closes, and their Closed functions run while the plugins' code is loaded
+        ECSIPopups_CloseAll();
+        ECSIEvents_Deliver();
+        ECSIPopups_DestroyClosed();
+
+        for (usz i = 0; i < arrlenu(plugins); i++)
+        {
+            for (usz j = 0; j < arrlenu(affected); j++)
+            {
+                if (affected[j]->type != nullptr && affected[j]->type->plugin == plugins[i])
+                {
+                    ECSIPanel_Unload(affected[j]);
+                }
+            }
+
+            ECSIWorkers_StopPlugin(plugins[i]);
+            ECSITasks_ForgetPlugin(plugins[i]);
+            ECSIServices_DestroyHandlesOfPlugin(plugins[i]);
+            ECSIApp_NoteEnabled(ECSIPlugin_GetName(plugins[i]), false);
+            ECSIPlugins_Disable(plugins[i]);
+        }
+
+        ECSIEvents_EmitCore("ecs.pluginsChanged", nullptr);
+        ECSILayout_RequestFrame();
+    }
+
+    arrfree(affected);
+    arrfree(panels);
+    arrfree(plugins);
+}
+
+/// @brief Enables a plugin and the plugins it depends on, and creates again the placeholders of their panels.
+static void ECSIApp_EnablePlugin(const char *name)
+{
+    if (ECSIPlugins_Get(name) != nullptr)
+    {
+        return;
+    }
+
+    if (ECSIPlugins_Enable(APP.pluginFolders, APP.pluginFolderCount, name))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not be enabled.", name);
+        return;
+    }
+
+    ECSIApp_NoteEnabled(name, true);
+    ECSPanel *panels = ECSILayout_GetPanels();
+
+    // the placeholders of the panel types that now run come back, from the state they kept; panels that failed stay as they are
+    for (usz i = 0; i < arrlenu(panels); i++)
+    {
+        if (panels[i]->type == nullptr && panels[i]->fault == nullptr && ECSIPlugins_OwnerRuns(panels[i]->typeName))
+        {
+            (void)ECSIPanel_Restart(panels[i]);
+        }
+    }
+
+    arrfree(panels);
+    ECSIEvents_EmitCore("ecs.pluginsChanged", nullptr);
+    ECSILayout_RequestFrame();
+}
+
+/// @brief Makes the changes to plugins that were asked for during the pass, now that no plugin's code runs.
+static void ECSIApp_ChangePlugins(void)
+{
+    for (usz i = 0; i < arrlenu(APP.pluginRequests); i++)
+    {
+        if (APP.pluginRequests[i].enable)
+        {
+            ECSIApp_EnablePlugin(APP.pluginRequests[i].name);
+        }
+        else
+        {
+            ECSIApp_DisablePlugin(APP.pluginRequests[i].name);
+        }
+
+        SDL_free(APP.pluginRequests[i].name);
+    }
+
+    arrfree(APP.pluginRequests);
+}
+
+/// @brief Asks for a plugin to be enabled or disabled when the current pass of the main loop ends.
+static SHUResult ECSIApp_RequestPlugin(const char *name, bool enable)
+{
+    SDL_assert(name != nullptr);
+
+    char *copy = SDL_strdup(name);
+
+    if (copy == nullptr)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    arrput(APP.pluginRequests, ((typeof(*APP.pluginRequests)){.name = copy, .enable = enable}));
+    return SHUResult_Ok;
+}
+
+SHUResult ECSPlugins_Enable(const char *name)
+{
+    return ECSIApp_RequestPlugin(name, true);
+}
+
+SHUResult ECSPlugins_Disable(const char *name)
+{
+    return ECSIApp_RequestPlugin(name, false);
+}
+
+SHUResult ECSPlugins_List(ECSValue *retList)
+{
+    SDL_assert(retList != nullptr);
+    return ECSIPlugins_List(APP.pluginFolders, APP.pluginFolderCount, retList);
+}
+
 int ECSIApp_Run(void)
 {
     // event-driven loop: it waits for input, the next timer, queued events, the next frame or the test's next step
@@ -566,6 +788,7 @@ int ECSIApp_Run(void)
         ECSIEvents_Deliver();
         ECSIPanels_DestroyClosed();
         ECSIPopups_DestroyClosed();
+        ECSIApp_ChangePlugins();
 
         // closing the last panel quits, as nothing is left to show
         if (ECSILayout_WasEmptied())
@@ -642,6 +865,15 @@ ECSIRestart ECSIApp_Stop(void)
     SDL_free(APP.presetsFolder);
     SDL_free(APP.stateFolder);
     SDL_free(APP.dataFolder);
+    SDL_free(APP.userPlugins);
+    SDL_free(APP.firstPartyPlugins);
+
+    for (usz i = 0; i < arrlenu(APP.pluginRequests); i++)
+    {
+        SDL_free(APP.pluginRequests[i].name);
+    }
+
+    arrfree(APP.pluginRequests);
     ECSILua_Terminate();
 
     // Debug builds check for leaks here, when OpenECS has freed its memory but SDL still holds its own

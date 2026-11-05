@@ -85,6 +85,9 @@ bool ECSIPanel_Restart(ECSPanel panel);
 /// @brief Checks whether a panel can be restarted: it is faulted, or a placeholder.
 bool ECSIPanel_CanRestart(ECSPanel panel);
 
+/// @brief Makes a panel a placeholder that keeps the state it saves now, for a plugin that is disabled: its type's Destroy runs. ECSIPanel_Restart creates it again.
+void ECSIPanel_Unload(ECSPanel panel);
+
 /// @brief Gets the functions that a panel's type adds to its menu.
 /// @param panel The panel.
 /// @param retCount Number of functions.

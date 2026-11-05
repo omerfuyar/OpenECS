@@ -929,6 +929,36 @@ u32 ECSIPanels_GetStateVersion(const char *typeName)
     return type == nullptr ? 0 : type->desc.stateVersion;
 }
 
+void ECSIPanel_Unload(ECSPanel panel)
+{
+    SDL_assert(panel != nullptr);
+
+    if (panel->type == nullptr)
+    {
+        return;
+    }
+
+    // the panel saves its state first, which it keeps as a placeholder and gets back when its plugin is enabled again
+    ECSValue *saved = nullptr;
+
+    if (ECSValue_Create(&saved) || ECSIPanel_Save(panel, saved))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' could not save its state; it keeps the state it had.", panel->title);
+    }
+
+    ECSValue_Destroy(&saved);
+
+    panel->type->desc.Destroy(panel->state);
+    ECSIPanel_ClearAccepts(panel);
+    panel->textInput = false;
+    SDL_free(panel->fault);
+    panel->fault = nullptr;
+    panel->state = nullptr;
+    panel->type = nullptr;
+    panel->unsaved = false;
+    panel->needsDraw = true;
+}
+
 bool ECSIPanel_CanRestart(ECSPanel panel)
 {
     SDL_assert(panel != nullptr);

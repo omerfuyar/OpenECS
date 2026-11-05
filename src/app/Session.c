@@ -16,7 +16,7 @@
 #pragma region Source Only
 
 /// @brief Version of the preset and session format that this core writes.
-#define OPENECS_SESSION_FORMAT 2
+#define OPENECS_SESSION_FORMAT 3
 
 /// @brief Longest path to a part of a file that a problem report names.
 #define OPENECS_SESSION_PATH_SIZE 256
@@ -43,6 +43,8 @@ static const ECSIFieldRule OPENECS_PRESET_RULES[] = {
     {"workspaces", ECSIFieldType_Table, true},
     {"currentWorkspace", ECSIFieldType_Integer, false},
     {"pluginState", ECSIFieldType_Table, false},
+    {"enabled", ECSIFieldType_Table, false},
+    {"disabled", ECSIFieldType_Table, false},
 };
 
 /// @brief What the fields of a preset's app table must be.
@@ -179,6 +181,25 @@ static bool ECSISession_CheckTexts(ECSISessionReader *reader, const ECSValue *ta
         if (text == nullptr || text[0] == '\0' || SDL_strpbrk(text, ";\r\n") != nullptr)
         {
             ECSISession_Report(reader, "'%s' must be a list of texts without ';', such as { \"Graphics\" }", name);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/// @brief Checks that a field, if it is there, is a list of plugins' names, such as { "notes" }.
+static bool ECSISession_CheckNames(ECSISessionReader *reader, const ECSValue *table, const char *name)
+{
+    const ECSValue *list = ECSValue_GetTableField(table, name);
+
+    for (usz i = 0; i < ECSValue_GetListCount(list); i++)
+    {
+        const char *text = ECSValue_GetString(ECSValue_GetListItem(list, i), nullptr);
+
+        if (text == nullptr || text[0] == '\0')
+        {
+            ECSISession_Report(reader, "'%s' must be a list of plugins' names, such as { \"notes\" }", name);
             return false;
         }
     }
@@ -344,6 +365,7 @@ static bool ECSISession_Check(const char *path, const ECSValue *file)
 
     ECSIValue_TableForEachField(depends, ECSISession_CheckDependency, &reader);
     ECSISession_Leave(&reader, length);
+    reader.valid = reader.valid && ECSISession_CheckNames(&reader, file, "enabled") && ECSISession_CheckNames(&reader, file, "disabled");
     return reader.valid && ECSISession_CheckList(&reader, "workspaces", ECSValue_GetTableField(file, "workspaces"), ECSISession_CheckWorkspace);
 }
 
@@ -953,6 +975,8 @@ SHUResult ECSISession_Build(ECSValue *retSession)
 
     result = result ? result : ECSValue_SetTableField(retSession, "pluginState", &field);
     result = result ? result : ECSIPlugins_SaveStates(field);
+    result = result ? result : ECSValue_SetTableField(retSession, "disabled", &field);
+    result = result ? result : ECSIPlugins_GetDisabled(field);
     result = result ? result : ECSValue_SetTableField(retSession, "workspaces", &field);
     result = result ? result : ECSILayout_Save(field, &current);
 

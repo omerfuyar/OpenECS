@@ -30,7 +30,6 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
 - **The core's libraries.** The standard plugins still use the core's SDL, SDL_ttf and stb_ds (DESIGN 17.2), against the principle that plugins stand alone (OVERVIEW 12). To remove: each plugin would bring what it uses.
-- **A plugin manager.** Enabling and disabling plugins while OpenECS runs, by loading and unloading them, so a user tries a plugin without starting the tool again. Today plugins load only at the start (OVERVIEW 8.3). It needs the core to unload a plugin's panels, services, settings, keys and handles, and the plugins that depend on it first.
 - **Ideas for more standard plugins**, to choose from later:
   - **notify:** desktop notifications and a tray icon, which OVERVIEW 11 gives to plugins.
   - **process:** running programs, with their input and output as streams, for terminals, build tools and linters.
