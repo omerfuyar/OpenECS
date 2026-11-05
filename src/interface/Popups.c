@@ -206,7 +206,7 @@ void ECSIPopup_PostEvent(ECSPopup popup, const ECSPanelEvent *event)
     SDL_assert(popup != nullptr);
     SDL_assert(event != nullptr);
 
-    ECSIEvents_Post(ECSIPopup_DeliverEvent, popup, event);
+    ECSIEvents_Post(ECSIPopup_DeliverEvent, nullptr, popup, event);
 }
 
 SHUResult ECSPopup_Open(ECSPanel panel, ECSPopup *retPopup, const ECSPopupDesc *desc)
@@ -268,7 +268,7 @@ void ECSPopup_Close(ECSPopup *popup)
     arrput(POPUPS.closed, closing);
     ECSILayout_RequestFrame();
     ECSPanelEvent event = {0};
-    ECSIEvents_Post(ECSIPopup_DeliverClosed, closing, &event);
+    ECSIEvents_Post(ECSIPopup_DeliverClosed, nullptr, closing, &event);
 }
 
 void ECSPopup_Redraw(ECSPopup popup)

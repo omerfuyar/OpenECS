@@ -3,6 +3,7 @@
 #include "base/Lua.h"
 #include "base/Paths.h"
 #include "base/Values.h"
+#include "interface/Dialogs.h"
 #include "interface/Input.h"
 #include "interface/Keys.h"
 #include "interface/Layout.h"
@@ -592,7 +593,7 @@ static SHUResult ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunctio
 
     ECSDialogFilter filter = {"OpenECS sessions", "lua"};
     ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = location != nullptr ? location : SESSION.sessions, .Done = Done};
-    SHUResult result = ECSIInput_ShowDialog(nullptr, &desc);
+    SHUResult result = ECSIDialogs_Show(nullptr, &desc);
     SDL_free(location);
     return result;
 }

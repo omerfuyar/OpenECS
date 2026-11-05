@@ -132,15 +132,18 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Timers     | Functions that run on the main thread after a time, once or again and again (3.2).                                                                             |
 | runtime   | Plugins    | Finding, ordering and loading plugins. Logging for plugins.                                                                                                    |
 |           | Settings   | Declarations, layers, explanations.                                                                                                                            |
-|           | Events     | Core and plugin events, the event queue, the plugins' timers on base/Timers, worker threads.                                                                   |
+|           | Events     | Core and plugin events, the event queue, the plugins' timers on base/Timers.                                                                                   |
+|           | Tasks      | Work on worker threads, and functions that other threads send to the main thread (3.3).                                                                        |
 |           | Services   | Function registry, signatures, calls between C and Lua, definition files (10.10). The only module that calls libffi.                                           |
 | interface | Panels     | Panel types, panels, and the pixels each panel draws.                                                                                                          |
 |           | Layout     | Workspaces and their layout trees: operations, tidying, sizes, focus, closed panels and saving.                                                                |
 |           | Popups     | Popups, the pixels each popup draws, and its events (4.6).                                                                                                     |
 |           | Window     | OS windows and their renderers, frame pacing, and the core's own interface: tab rows, grips, menus, dragging and hit testing. The only module that calls Clay. |
+|           | Clipboard  | Texts and typed data on the system's clipboard.                                                                                                                |
+|           | Dialogs    | The system's file dialogs, and the message dialogs that the core draws (7.7).                                                                                  |
 |           | Keys       | Key combinations, the core prefix and the keys after it, and every key binding (7.3 to 7.5, 7.8).                                                              |
 |           | Menus      | The core's bindable functions, and the panel and group menus that offer them (6.8).                                                                            |
-|           | Input      | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input, the clipboard, dialogs.                                         |
+|           | Input      | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input.                                                                 |
 | app       | Session    | Reading presets and sessions, applying them, writing them.                                                                                                     |
 |           | Desktop    | The tools' entries in the system's application launcher (13.9).                                                                                                |
 |           | Workers    | Lua scripts on threads of their own, and the messages between them and the main thread (3.4).                                                                  |

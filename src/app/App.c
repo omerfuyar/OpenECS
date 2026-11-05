@@ -8,6 +8,8 @@
 #include "base/Lua.h"
 #include "base/Sanitizers.h"
 #include "base/Timers.h"
+#include "interface/Clipboard.h"
+#include "interface/Dialogs.h"
 #include "interface/Input.h"
 #include "interface/Keys.h"
 #include "interface/Layout.h"
@@ -19,6 +21,7 @@
 #include "runtime/Plugins.h"
 #include "runtime/Services.h"
 #include "runtime/Settings.h"
+#include "runtime/Tasks.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -386,7 +389,8 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 
     // read the preset first, because SDL needs the tool's identity before it starts
     ECSIApp_ExitOnFailure(ECSILua_Initialize(), "starting Lua", nullptr);
-    ECSIApp_ExitOnFailure(ECSIEvents_Initialize(), "preparing worker threads", nullptr);
+    ECSIApp_ExitOnFailure(ECSIEvents_Initialize(), "declaring the core's events", nullptr);
+    ECSIApp_ExitOnFailure(ECSITasks_Initialize(), "preparing worker threads", nullptr);
     ECSIApp_ExitOnFailure(ECSIServices_Initialize(), "preparing services", nullptr);
     ECSIApp_ExitOnFailure(ECSIServices_RegisterCore("ecs.app.quit", (ECSFunction)ECSApp_Quit, "void()", "Quit"), "registering the core's functions", nullptr);
 
@@ -442,6 +446,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_ExitOnFailure(ECSIKeys_Initialize(), "reading the keys", nullptr);
     ECSIApp_ExitOnFailure(ECSIMenus_Initialize(), "registering the core's functions", nullptr);
     ECSIApp_ExitOnFailure(ECSIInput_Initialize(), "declaring the input settings", nullptr);
+    ECSIDialogs_Initialize();
 
     char *sessionsFolder = ECSIApp_FindSessionsFolder();
 
@@ -604,6 +609,8 @@ ECSIRestart ECSIApp_Stop(void)
 
     // popups close before their panels; panels are destroyed before the renderer that made their textures and before their types, handles' objects before their plugins shut down, and plugins before they are unloaded
     ECSIInput_Terminate();
+    ECSIDialogs_Terminate();
+    ECSIClipboard_Terminate();
     ECSIMenus_Terminate();
     ECSIKeys_Terminate();
     ECSIPopups_Terminate();
@@ -618,6 +625,7 @@ ECSIRestart ECSIApp_Stop(void)
     ECSIWorkers_Terminate();
     ECSIServices_Terminate();
     ECSITimers_Terminate();
+    ECSITasks_Terminate();
     ECSIEvents_Terminate();
     ECSIPlugins_ReportRepeatedErrors();
     ECSIPlugins_Unload();

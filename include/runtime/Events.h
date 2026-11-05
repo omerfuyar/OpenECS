@@ -1,6 +1,6 @@
 #pragma once
 
-// Events: named events, the event queue, the plugins' timers, and work on worker threads.
+// Events: named events, the event queue, and the plugins' timers.
 
 #include "runtime/Plugins.h"
 
@@ -9,7 +9,7 @@
 /// @brief Function that delivers a queued event to its target.
 typedef void (*ECSIEventDeliverFunction)(void *target, const ECSPanelEvent *event);
 
-/// @brief Prepares the lock and condition of the worker threads, which start when background work first comes, and declares the core's named events.
+/// @brief Declares the core's named events.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIEvents_Initialize(void);
 
@@ -28,9 +28,10 @@ void ECSIEvents_RemovePlugin(ECSPlugin plugin);
 
 /// @brief Queues an event. ECSIEvents_Deliver delivers it, after the current callback returns.
 /// @param deliver Function that delivers the event.
-/// @param target Passed to the function.
+/// @param release Function that frees the target if the event is never delivered, as at exit, or nullptr.
+/// @param target Passed to the functions.
 /// @param event The event. The queue keeps a copy.
-void ECSIEvents_Post(ECSIEventDeliverFunction deliver, void *target, const ECSPanelEvent *event);
+void ECSIEvents_Post(ECSIEventDeliverFunction deliver, ECSTimerFunction release, void *target, const ECSPanelEvent *event);
 
 /// @brief Delivers the queued events in order, and the events queued while they are delivered, until the queue is empty.
 void ECSIEvents_Deliver(void);
@@ -54,7 +55,7 @@ void ECSIEvents_StopTimersOfPlugin(ECSPlugin plugin);
 /// @return 0 if events are queued; otherwise the time until the next timer is due, in milliseconds rounded up, or -1 if no timer runs (base/Timers).
 i32 ECSIEvents_GetWait(void);
 
-/// @brief Waits for running background work, drops waiting work and drops the queued events. Tasks that reach the main thread after this are dropped.
+/// @brief Frees the queued events, which are never delivered, the subscriptions and the named events.
 void ECSIEvents_Terminate(void);
 
 #pragma endregion Declarations

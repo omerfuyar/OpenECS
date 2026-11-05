@@ -274,6 +274,12 @@ typedef struct ECSITypedText
 } ECSITypedText;
 
 /// @brief Delivers a Text event, then frees its copy of the text.
+/// @brief Frees typed text that is never delivered.
+static void ECSIPanel_FreeText(void *target)
+{
+    SDL_free(target);
+}
+
 static void ECSIPanel_DeliverText(void *target, const ECSPanelEvent *event)
 {
     ECSITypedText *typed = target;
@@ -292,15 +298,21 @@ static void ECSIPanel_ClearAccepts(ECSPanel panel)
     arrfree(panel->accepts);
 }
 
+/// @brief Frees a drop's data.
+static void ECSIPanel_FreeDrop(void *target)
+{
+    ECSDropData data = target;
+    SDL_free(data->type);
+    ECSValue_Destroy(&data->value);
+    SDL_free(data);
+}
+
 /// @brief Delivers a Drop event, then frees its data.
 static void ECSIPanel_DeliverDrop(void *target, const ECSPanelEvent *event)
 {
     ECSDropData data = target;
     ECSIPanel_DeliverEvent(data->panel, event);
-
-    SDL_free(data->type);
-    ECSValue_Destroy(&data->value);
-    SDL_free(data);
+    ECSIPanel_FreeDrop(data);
 }
 
 #pragma endregion Source Only
@@ -692,7 +704,7 @@ void ECSIPanel_PostEvent(ECSPanel panel, const ECSPanelEvent *event)
     SDL_assert(panel != nullptr);
     SDL_assert(event != nullptr);
 
-    ECSIEvents_Post(ECSIPanel_DeliverEvent, panel, event);
+    ECSIEvents_Post(ECSIPanel_DeliverEvent, nullptr, panel, event);
 }
 
 bool ECSIPanel_Accepts(ECSPanel panel, const char *type)
@@ -743,7 +755,7 @@ void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const EC
     }
 
     ECSPanelEvent event = {.type = ECSPanelEventType_Drop, .modifiers = modifiers, .drop = {.x = x, .y = y, .data = data}};
-    ECSIEvents_Post(ECSIPanel_DeliverDrop, data, &event);
+    ECSIEvents_Post(ECSIPanel_DeliverDrop, ECSIPanel_FreeDrop, data, &event);
 }
 
 void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers)
@@ -764,7 +776,7 @@ void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers)
     SDL_memcpy(typed->text, text, size);
 
     ECSPanelEvent event = {.type = ECSPanelEventType_Text, .modifiers = modifiers, .text = {.text = typed->text}};
-    ECSIEvents_Post(ECSIPanel_DeliverText, typed, &event);
+    ECSIEvents_Post(ECSIPanel_DeliverText, ECSIPanel_FreeText, typed, &event);
 }
 
 void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f32 y, f32 width, f32 height)
