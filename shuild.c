@@ -410,7 +410,7 @@ static void Shuild_lua(void)
 
     char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.DIRS.dependencies);
 
-    SHU_MODULE("lua", "dependencies/lua", SHUModuleType_LibraryStatic, binOutputDir)
+    SHU_Module("lua", "dependencies/lua", SHUModuleType_LibraryStatic, binOutputDir)
     {
         SetBuildFlags(false);
 
@@ -434,7 +434,7 @@ static void Shuild_clay(void)
     char *clayIncludeDir = SHU_UtilFormat("../../%sinclude/", CONFIG.DIRS.dependencies);
     char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.DIRS.dependencies);
 
-    SHU_MODULE("clay", "dependencies/clay", SHUModuleType_LibraryStatic, binOutputDir)
+    SHU_Module("clay", "dependencies/clay", SHUModuleType_LibraryStatic, binOutputDir)
     {
         SetBuildFlags(false);
         SHU_ModuleAddSourceFiles("../other/clay/clay.c");
@@ -457,7 +457,7 @@ static void Shuild_stb(void)
     char *includeDir = SHU_UtilFormat("../../../%sinclude/", CONFIG.DIRS.dependencies);
     char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.DIRS.dependencies);
 
-    SHU_MODULE("stb", "dependencies/other/stb", SHUModuleType_LibraryStatic, binOutputDir)
+    SHU_Module("stb", "dependencies/other/stb", SHUModuleType_LibraryStatic, binOutputDir)
     {
         SetBuildFlags(false);
         SHU_ModuleAddSourceFiles("stb.c");
@@ -573,7 +573,7 @@ static void Shuild_libffi(void)
     char *headersFromRoot = SHU_UtilFormat("../../%sinclude/libffi/", CONFIG.DIRS.dependencies);
     char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.DIRS.dependencies);
 
-    SHU_MODULE("ffi", "dependencies/libffi", SHUModuleType_LibraryStatic, binOutputDir)
+    SHU_Module("ffi", "dependencies/libffi", SHUModuleType_LibraryStatic, binOutputDir)
     {
         SetBuildFlags(false);
         SHU_CompilerAddDefinitions("HAVE_CONFIG_H", NULL);
@@ -667,7 +667,7 @@ static void Shuild_OpenECS(void)
         SHU_UtilCreateDirectory(SHU_UtilFormat("%slib/", CONFIG.DIRS.output));
     }
 
-    SHU_MODULE("OpenECS", NULL, SHUModuleType_Executable, binOutputDir)
+    SHU_Module("OpenECS", NULL, SHUModuleType_Executable, binOutputDir)
     {
         SetBuildFlags(true);
 
@@ -770,7 +770,7 @@ static void Shuild_Repository(const char *folder, const char *moreArguments)
     char *arguments = SHU_UtilFormat("-b %s -o %s -c %s %s", BuildType_String(CONFIG.FLAGS.type), PathFromFolder(folder, CONFIG.DIRS.output), CONFIG.FLAGS.compiler, moreArguments);
 
     // shuild logs its build, with a line before it that sets it apart from the build here
-    SHU_UtilBuildScript(source, program, flags, arguments);
+    SHU_Shuild(source, program, flags, arguments);
 }
 
 static void Shuild_Plugins(void)
