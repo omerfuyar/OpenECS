@@ -205,7 +205,16 @@ function Panel:openPopup(desc) end
 ---@field height integer
 ---@field scale number Pixels per layout unit.
 ---@field type "pixels"|"gpu" The panel type's surface.
+---@field kept boolean The pixels still hold the picture of the last draw, so draw may change only what changed. False for a new surface, such as after a resize, and for a GPU surface.
 local Surface = {}
+
+---Tells the core which rectangle the draw changed, so it shows only that; the core takes the rectangle around every one given.
+---A draw that tells none changed the whole surface; one that tells an empty rectangle changed nothing.
+---@param x integer The rectangle's left, in pixels.
+---@param y integer The rectangle's top, in pixels.
+---@param width integer The rectangle's width, in pixels.
+---@param height integer The rectangle's height, in pixels.
+function Surface:changed(x, y, width, height) end
 
 ---Fills a rectangle with one colour, such as to clear the surface. The rectangle is in pixels, and clipped to the surface.
 ---@param x integer The rectangle's left, in pixels.
