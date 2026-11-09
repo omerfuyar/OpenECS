@@ -11,7 +11,6 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 ## Tasks
 
-- **GLSL shaders on Direct3D 12.** gpu compiles GLSL to SPIR-V, and for Direct3D 12 turns it into DXBC through SPIRV-Cross's HLSL and Windows' d3dcompiler_47.dll (OpenECS-std DESIGN 15). The checks run no GPU on Windows; to confirm with s9_gpu_model on Windows.
 - **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
 - **Import the rulesets.** The rulesets of OpenECS, OpenECS-std, OpenECS-examples and OpenECS-template require the Windows checks now, as the owner chose. The owner imports them in each repository's settings. OpenECS-examples' rulesets no longer require `Release (Linux)`, which it does not run.
 - **Lua's speed.** Each call from Lua into the core costs about a third of a microsecond in a Debug build, so a Lua panel draws runs of pixels with `surface:fill` and rows with `setRow`, as c12_sketch's Lua panel paints each row of a dab with one `fill`; the surface's methods keep the colour of the last colour text they read. Ways to go further, to weigh later: a panel that keeps its picture between draws and draws only what changed, which the surface's contract does not allow now (DESIGN 5.1); and LuaJIT, which runs Lua 5.1 code, so OpenECS would give up Lua 5.5's integers, bit operators and other features that plugins use.

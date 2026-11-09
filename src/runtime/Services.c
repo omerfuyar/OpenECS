@@ -70,6 +70,7 @@ typedef struct ECSIHandleType
     ECSHandleDestroyFunction Destroy;
     char **methods;                      // stb_ds array: the names of its methods in Lua
     const struct ECSIFunction **targets; // stb_ds array: the function each method calls, in the same order
+    bool kept;                           // its plugin went; it takes the type back when it registers it again
 } ECSIHandleType;
 
 /// @brief A field of a struct type: one value, or a list of a fixed length.
@@ -93,6 +94,7 @@ typedef struct ECSIStructType
     usz alignment;
     char **methods;                      // stb_ds array: the names of its methods in Lua
     const struct ECSIFunction **targets; // stb_ds array: the function each method calls, in the same order
+    bool kept;                           // its plugin went; it takes the type back when it registers it again
 } ECSIStructType;
 
 /// @brief A Lua handle: the userdata that stands for an object.
@@ -1026,11 +1028,44 @@ static void ECSIStructs_FreeType(ECSIStructType *type)
     SDL_free(type);
 }
 
+/// @brief Gives a struct type back to its plugin, which registers it again after it was disabled. The fields must be the same, as other plugins' functions and tables may use them.
+static SHUResult ECSIStructs_TakeBack(ECSIStructType *type, const char *fields)
+{
+    ECSIStructType read = {0};
+    bool same = ECSIStructs_ReadFields(fields, &read) && read.size == type->size && arrlenu(read.fields) == arrlenu(type->fields);
+
+    for (usz i = 0; same && i < arrlenu(read.fields); i++)
+    {
+        const ECSIStructField *a = &read.fields[i];
+        const ECSIStructField *b = &type->fields[i];
+        same = a->type == b->type && a->structType == b->structType && a->count == b->count && a->offset == b->offset &&
+               (a->name == nullptr ? b->name == nullptr : b->name != nullptr && SDL_strcmp(a->name, b->name) == 0);
+    }
+
+    ECSIStructs_FreeFields(&read.fields);
+
+    if (!same)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Struct type '%s' must keep the fields it had before its plugin was disabled.", type->name);
+        return SHUResult_ErrBadData;
+    }
+
+    type->kept = false;
+    return SHUResult_Ok;
+}
+
 /// @brief Registers a struct type by its full name.
 static SHUResult ECSIStructs_Register(ECSPlugin plugin, const char *name, const char *fields)
 {
+    ECSIStructType *kept = ECSIServices_FindStructType(name);
+
+    if (kept != nullptr && kept->kept && kept->plugin == plugin)
+    {
+        return ECSIStructs_TakeBack(kept, fields);
+    }
+
     // handles and structs share the names of types, so a parameter names one of them
-    if (ECSIServices_FindStructType(name) != nullptr || ECSIServices_FindHandleType(name) != nullptr)
+    if (kept != nullptr || ECSIServices_FindHandleType(name) != nullptr)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Type '%s' is already registered.", name);
         return SHUResult_ErrBadData;
@@ -1486,7 +1521,17 @@ static void ECSIServices_CheckLuaHandleType(lua_State *state, ECSPlugin plugin, 
 
 static SHUResult ECSIServices_RegisterHandleType(ECSPlugin plugin, const char *name, ECSHandleDestroyFunction Destroy)
 {
-    if (ECSIServices_FindHandleType(name) != nullptr || ECSIServices_FindStructType(name) != nullptr)
+    ECSIHandleType *kept = ECSIServices_FindHandleType(name);
+
+    // a plugin that was disabled takes its type back, with the metatable that Lua's invalid handles of it still have
+    if (kept != nullptr && kept->kept && kept->plugin == plugin)
+    {
+        kept->Destroy = Destroy;
+        kept->kept = false;
+        return SHUResult_Ok;
+    }
+
+    if (kept != nullptr || ECSIServices_FindStructType(name) != nullptr)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Type '%s' is already registered.", name);
         return SHUResult_ErrBadData;
@@ -2983,6 +3028,7 @@ static void ECSIStructs_DropPluginMethods(ECSPlugin plugin)
         if (SERVICES.structTypes[i].value->plugin == plugin)
         {
             ECSIStructs_DropMethods(SERVICES.structTypes[i].value);
+            SERVICES.structTypes[i].value->kept = true;
         }
     }
 }
@@ -3024,6 +3070,7 @@ void ECSIServices_RemovePlugin(ECSPlugin plugin)
 
             arrfree(type->methods);
             arrfree(type->targets);
+            type->kept = true;
         }
     }
 

@@ -734,8 +734,8 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
   2. Its Lua workers stop (3.4). Its background work that waits is dropped, its running work finishes, and the `done` functions of its work are not called.
   3. The objects of its handle types are destroyed, and their handles become invalid (10.6).
   4. Its `SaveState` runs, and the core keeps the state. Then its `Destroy` runs (9.4).
-  5. Everything it registered is removed, as for a plugin that failed (9.7), and its library is unloaded.
-- Enabling a plugin loads it as at start, after the plugins it depends on, which are enabled too. It gets back the state it kept. Then the placeholders of its panel types are created again from their saved state. A plugin that cannot be enabled is reported, and stays disabled.
+  5. Everything it registered is removed, as for a plugin that failed (9.7), and its library is unloaded. Its handle types and struct types stay without their methods, as other plugins' signatures and Lua's values name them.
+- Enabling a plugin loads it as at start, after the plugins it depends on, which are enabled too. When it registers its handle types and struct types again, it gets them back; a struct type must have the same fields. It gets back the state it kept. Then the placeholders of its panel types are created again from their saved state. A plugin that cannot be enabled is reported, and stays disabled.
 - A plugin that is not loaded, such as one the user installed (16), is enabled the same way.
 - A session keeps the change (13.2): `disabled` lists the disabled plugins, and `enabled` the plugins the user enabled that the preset does not depend on. The next start loads the preset's plugins and `enabled`, and records the plugins of `disabled`, and the plugins that depend on them, without loading their code.
 
