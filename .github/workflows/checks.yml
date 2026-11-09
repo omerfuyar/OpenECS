@@ -1,6 +1,7 @@
 # Checks every change to dev and main: the C files' format, a Debug build with the static analyzer, the examples' tests under the sanitizers, on SDL's offscreen driver and on Wayland, a Release build, and the Lua annotations.
 # Windows builds Debug and Release with LLVM-MinGW, and runs the examples' tests, without the analyzer and the sanitizers, which MinGW does not have.
 # The examples are the tests: each one's test runs its preset, so they check the core and the standard plugins together.
+# The Release builds, on Linux and Windows, run only for a release: on pull requests into main, pushes to main and by hand.
 name: Checks
 
 on:
@@ -49,7 +50,7 @@ jobs:
       # OpenECS's own files are compiled every time, so the analyzer sees all of them
       - name: Name the dependencies' versions
         id: dependencies
-        run: echo "key=$( (git submodule status --recursive; sha256sum shuild.c dependencies/other/*/*) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+        run: echo "key=$( (git submodule status --recursive dependencies; sha256sum shuild.c dependencies/other/*/*) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
 
       - name: Restore the built dependencies
         uses: actions/cache@v4
@@ -96,8 +97,10 @@ jobs:
           name: debug-linux-logs
           path: build/*.log
 
+  # the Release builds run for a release: on pull requests into main, pushes to main and by hand; a skipped job counts as passed
   release-linux:
     name: Release (Linux)
+    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -109,7 +112,7 @@ jobs:
 
       - name: Name the dependencies' versions
         id: dependencies
-        run: echo "key=$( (git submodule status --recursive; sha256sum shuild.c dependencies/other/*/*) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+        run: echo "key=$( (git submodule status --recursive dependencies; sha256sum shuild.c dependencies/other/*/*) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
 
       - name: Restore the built dependencies
         uses: actions/cache@v4
@@ -154,7 +157,7 @@ jobs:
       # SDL's DLLs and import libraries are installed with the other dependencies, and the build copies the DLLs beside the executable
       - name: Name the dependencies' versions
         id: dependencies
-        run: echo "key=$( (git submodule status --recursive; sha256sum shuild.c dependencies/other/*/*) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+        run: echo "key=$( (git submodule status --recursive dependencies; sha256sum shuild.c dependencies/other/*/*) | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
 
       - name: Restore the built dependencies
         uses: actions/cache@v4
@@ -193,6 +196,7 @@ jobs:
         run: .github/scripts/definitions.sh build/Debug/bin/OpenECS.exe
 
       - name: Build Release with LLVM-MinGW
+        if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.ref == 'refs/heads/main'
         run: .github/scripts/build.sh R
 
       - name: Keep the build log
