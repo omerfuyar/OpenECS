@@ -11,6 +11,14 @@
 
 #pragma region Source Only
 
+/// @brief The rectangle around what a panel's Draw said it changed (5.1).
+typedef struct ECSIDrawing
+{
+    const ECSSurface *surface;
+    SDL_Rect area;
+    bool changed;
+} ECSIDrawing;
+
 static struct
 {
     struct
@@ -21,6 +29,7 @@ static struct
     ECSPanel *closed; // stb_ds array
     u32 nextPanelID;
     ECSIAskFunction Ask; // asks about unsaved work; Input gives it
+    ECSIDrawing drawing; // the pixels surface that a panel draws into now
 } PANELS = {0};
 
 static void ECSIPanelType_Free(ECSIPanelType *type)
@@ -55,6 +64,7 @@ static bool ECSIPanel_ResizePixels(ECSPanel panel)
 
     SDL_DestroySurface(panel->pixels);
     panel->pixels = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_ARGB8888);
+    panel->drawn = false;
 
     if (panel->texture != nullptr)
     {
@@ -536,6 +546,44 @@ bool ECSIPanel_WantsFrame(ECSPanel panel)
     return panel->needsDraw || (panel->fault == nullptr && panel->type != nullptr && panel->type->desc.continuous);
 }
 
+/// @brief Calls a pixels panel's Draw, and sends to its texture what it changed.
+/// @param upload The texture is new, so it takes the whole picture.
+static void ECSIPanel_DrawPixels(ECSPanel panel, bool upload, u64 nowTicks, f64 seconds)
+{
+    SDL_Surface *pixels = panel->pixels;
+
+    ECSSurface surface = {
+        .type = ECSSurfaceType_Pixels,
+        .width = pixels->w,
+        .height = pixels->h,
+        .scale = 1.0f,
+        .pixels = cs(pixels->pixels, (usz)pixels->pitch * (usz)pixels->h),
+        .pitch = pixels->pitch,
+        .kept = panel->drawn, // the pixels hold the last picture while they stay the same
+    };
+
+    panel->lastDrawTicks = nowTicks;
+    panel->needsDraw = false;
+    PANELS.drawing = (ECSIDrawing){.surface = &surface};
+
+    panel->type->desc.Draw(panel->state, &surface, seconds);
+    panel->drawn = true;
+
+    // the services that drew into the surface finish, and its Lua handle goes
+    ECSIServices_EndSurface(&surface);
+
+    // only the rectangle around what changed goes to the texture, if the panel told it and the texture has the rest
+    SDL_Rect area = PANELS.drawing.area;
+    SDL_Rect *changed = !upload && PANELS.drawing.changed ? &area : nullptr;
+    u8 *start = changed == nullptr ? pixels->pixels : (u8 *)pixels->pixels + (usz)changed->y * (usz)pixels->pitch + (usz)changed->x * 4U;
+    PANELS.drawing = (ECSIDrawing){0};
+
+    if (changed == nullptr || (changed->w > 0 && changed->h > 0))
+    {
+        SDL_UpdateTexture(panel->texture, changed, start, pixels->pitch);
+    }
+}
+
 void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
 {
     SDL_assert(panel != nullptr);
@@ -602,6 +650,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         }
 
         SDL_Surface *pixels = panel->pixels;
+        bool upload = panel->texture == nullptr;
 
         if (panel->texture == nullptr)
         {
@@ -618,23 +667,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
             SDL_SetTextureBlendMode(panel->texture, SDL_BLENDMODE_NONE);
         }
 
-        ECSSurface surface = {
-            .type = ECSSurfaceType_Pixels,
-            .width = pixels->w,
-            .height = pixels->h,
-            .scale = 1.0f,
-            .pixels = cs(pixels->pixels, (usz)pixels->pitch * (usz)pixels->h),
-            .pitch = pixels->pitch,
-        };
-
-        panel->lastDrawTicks = nowTicks;
-        panel->needsDraw = false;
-
-        panel->type->desc.Draw(panel->state, &surface, seconds);
-
-        // the services that drew into the surface finish, and its Lua handle goes
-        ECSIServices_EndSurface(&surface);
-        SDL_UpdateTexture(panel->texture, nullptr, pixels->pixels, pixels->pitch);
+        ECSIPanel_DrawPixels(panel, upload, nowTicks, seconds);
     }
 }
 
@@ -1192,6 +1225,45 @@ void ECSPanel_Redraw(ECSPanel panel)
     SDL_assert(panel != nullptr);
 
     panel->needsDraw = true;
+}
+
+void ECSSurface_Changed(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height)
+{
+    SDL_assert(surface != nullptr);
+
+    // a surface that is not a panel's pixels, such as a popup's, is uploaded whole
+    if (PANELS.drawing.surface != surface)
+    {
+        return;
+    }
+
+    SDL_Rect bounds = {0, 0, surface->width, surface->height};
+    SDL_Rect given = {x, y, width, height};
+    SDL_Rect area = {0};
+
+    if (!SDL_GetRectIntersection(&given, &bounds, &area))
+    {
+        area = (SDL_Rect){0};
+    }
+
+    if (!PANELS.drawing.changed)
+    {
+        PANELS.drawing.area = area;
+        PANELS.drawing.changed = true;
+    }
+    else if (area.w > 0 && area.h > 0)
+    {
+        if (PANELS.drawing.area.w > 0 && PANELS.drawing.area.h > 0)
+        {
+            SDL_Rect around = {0};
+            SDL_GetRectUnion(&PANELS.drawing.area, &area, &around);
+            PANELS.drawing.area = around;
+        }
+        else
+        {
+            PANELS.drawing.area = area;
+        }
+    }
 }
 
 void ECSSurface_Fill(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height, ECSColor color)

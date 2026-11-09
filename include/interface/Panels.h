@@ -29,6 +29,7 @@ struct ECSIPanel
     ECSValue *savedState; // the saved state the panel was created with; a placeholder keeps it to save it again
     u32 stateVersion;     // version of savedState
     bool needsDraw;
+    bool drawn;   // pixels type: its pixels hold the picture of its last Draw
     bool unsaved; // the panel has unsaved work
     f32 x;        // rectangle in layout units, set by the layout
     f32 y;

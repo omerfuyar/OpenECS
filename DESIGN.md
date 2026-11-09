@@ -325,6 +325,8 @@ typedef struct ECSPanelTypeDesc
 - A panel's corner, and a popup's, is on a whole pixel, and its pixels show one to one, so what it draws stays sharp at any place and size.
 - Pointer positions given to a panel are in its surface's pixels, so they match what it draws.
 - A panel must not keep its surface after `Draw` returns; every call receives the current one. So the core can recreate surfaces, for example on resize, without telling the panel.
+- A pixels surface keeps its pixels between draws while its size stays the same. `kept` tells `Draw` that they still hold the picture of the last `Draw`, so it may change only what changed, such as the new part of a stroke. It is false for a new surface, after a resize or a change of scale, and always for a GPU surface.
+- `ECSSurface_Changed(surface, x, y, width, height)`, `surface:changed` in Lua, tells the core which rectangle `Draw` changed. The core uploads only the rectangle around every one given; a `Draw` that tells none changed the whole surface. A popup's surface is always uploaded whole.
 
 ```c
 /// @brief The picture a panel draws into. Valid only during the Draw call.
@@ -339,6 +341,7 @@ typedef struct ECSSurface
     i32 pitch;               // pixels type: bytes per row
 
     void *texture;           // GPU type: the SDL_GPUTexture to draw into, on the device that ECSGpu_GetDevice gives
+    bool kept;               // pixels type: the pixels still hold the picture of the last Draw
 } ECSSurface;
 ```
 
@@ -348,7 +351,6 @@ typedef struct ECSSurface
 - Panels are opaque, so alpha is ignored for panels. It matters only for popups.
 - A colour that a plugin gives is an `ECSColor`, `0xAARRGGBB`, not premultiplied; the core premultiplies it where it writes pixels. Lua, settings and presets write colours as texts: `"#RRGGBB"`, `"#RRGGBBAA"`, or the name of a colour of the theme, such as `"text"` for `ecs.colorText` (12.4). `ECSColor_Parse` reads such a text, and the signature type `color` (10.2) turns texts into `ECSColor` between Lua and C.
 - The names of the theme's colours are the core's colour settings, `ecs.colorBackground` to `ecs.colorSelected` (12.4), each without `ecs.color` and with a small first letter, such as `"tabRow"`. The type `ecs.Color` in `ecs.lua` lists them, so editors complete them wherever a colour goes, and it changes with the core's colour settings.
-- A panel may report which rectangles changed. If it reports none, the whole surface is uploaded.
 
 ### 5.3 The renderer
 

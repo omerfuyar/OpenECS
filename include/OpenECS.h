@@ -110,6 +110,7 @@ typedef struct ECSSurface
     SHUSlice pixels; // pixels type: ARGB8888 in native byte order, premultiplied alpha
     i32 pitch;       // pixels type: bytes per row
     void *texture;   // GPU type: the SDL_GPUTexture to draw into, B8G8R8A8_UNORM, on the device that ECSGpu_GetDevice gives
+    bool kept;       // pixels type: the pixels still hold the picture of the last Draw, so Draw may change only what changed
 } ECSSurface;
 
 /// @brief Where a panel goes, next to a target panel.
@@ -1011,6 +1012,16 @@ typedef void (*ECSSurfaceDrawnFunction)(ECSSurface *surface, void *data);
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 /// @lua none: a Lua plugin's draw finishes its own work before it returns
 OPENECS_EXPORT SHUWUR SHUResult ECSSurface_OnDrawn(ECSSurface *surface, ECSSurfaceDrawnFunction Drawn, void *data);
+
+/// @brief Tells the core which rectangle of a panel's pixels the Draw changed, so it shows only that: the core takes the rectangle around every one given.
+/// A Draw that tells none changed the whole surface. A Draw that tells an empty rectangle changed nothing. Main thread only.
+/// @param surface Surface from a Draw function.
+/// @param x Left edge, in pixels. The rectangle is clipped to the surface.
+/// @param y Top edge, in pixels.
+/// @param width Width, in pixels.
+/// @param height Height, in pixels.
+/// @lua surface:changed
+OPENECS_EXPORT void ECSSurface_Changed(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height);
 
 /// @brief Fills a rectangle of a pixels surface with one colour, such as to clear it. Main thread only.
 /// @param surface Surface to fill, from a Draw function.

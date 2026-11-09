@@ -2055,6 +2055,20 @@ static int ECSIBindings_SurfaceFill(lua_State *state)
     return 0;
 }
 
+static int ECSIBindings_SurfaceChanged(lua_State *state)
+{
+    ECSSurface *surface = ECSIBindings_CheckPixelSurface(state, 1);
+    lua_Integer values[4];
+
+    for (int i = 0; i < 4; i++)
+    {
+        values[i] = SDL_clamp(luaL_checkinteger(state, i + 2), -(lua_Integer)SDL_MAX_SINT32, (lua_Integer)SDL_MAX_SINT32);
+    }
+
+    ECSSurface_Changed(surface, (i32)values[0], (i32)values[1], (i32)values[2], (i32)values[3]);
+    return 0;
+}
+
 static int ECSIBindings_SurfaceIndex(lua_State *state)
 {
     // the methods are the upvalue; they come first, as a panel's draw calls them for many pixels, and check the surface themselves
@@ -2082,6 +2096,10 @@ static int ECSIBindings_SurfaceIndex(lua_State *state)
     {
         lua_pushstring(state, surface->type == ECSSurfaceType_Gpu ? "gpu" : "pixels");
     }
+    else if (SDL_strcmp(key, "kept") == 0)
+    {
+        lua_pushboolean(state, surface->kept);
+    }
     else
     {
         lua_pushnil(state);
@@ -2095,6 +2113,7 @@ static const luaL_Reg OPENECS_BINDINGS_SURFACE_METHODS[] = {
     {"getPixel", ECSIBindings_SurfaceGetPixel},
     {"setRow", ECSIBindings_SurfaceSetRow},
     {"fill", ECSIBindings_SurfaceFill},
+    {"changed", ECSIBindings_SurfaceChanged},
     {nullptr, nullptr},
 };
 
