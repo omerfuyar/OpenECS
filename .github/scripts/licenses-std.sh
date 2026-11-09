@@ -21,6 +21,8 @@ cp $std/zstd/LICENSE "$folder/zstd.txt"
 cp $std/yyjson/LICENSE "$folder/yyjson.txt"
 cp $std/tomlc17/LICENSE "$folder/tomlc17.txt"
 cp $std/xxHash/LICENSE "$folder/xxHash.txt"
+cp $std/pcre2/LICENCE.md "$folder/PCRE2.txt"
+cp $std/md4c/LICENSE.md "$folder/md4c.txt"
 cp std/plugins/draw/fonts/OFL.txt "$folder/RobotoMono.txt"
 
 cat << NOTICE
@@ -40,5 +42,7 @@ yyjson: MIT license
 tomlc17: MIT license
 xxHash: BSD 2-Clause license
 SQLite: public domain
+PCRE2: BSD 3-Clause license, with its exception for binary copies
+md4c: MIT license
 Roboto Mono font: SIL Open Font License 1.1
 NOTICE
