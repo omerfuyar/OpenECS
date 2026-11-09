@@ -1036,10 +1036,10 @@ static SHUResult ECSIStructs_TakeBack(ECSIStructType *type, const char *fields)
 
     for (usz i = 0; same && i < arrlenu(read.fields); i++)
     {
-        const ECSIStructField *a = &read.fields[i];
-        const ECSIStructField *b = &type->fields[i];
-        same = a->type == b->type && a->structType == b->structType && a->count == b->count && a->offset == b->offset &&
-               (a->name == nullptr ? b->name == nullptr : b->name != nullptr && SDL_strcmp(a->name, b->name) == 0);
+        const ECSIStructField *now = &read.fields[i];
+        const ECSIStructField *before = &type->fields[i];
+        same = now->type == before->type && now->structType == before->structType && now->count == before->count && now->offset == before->offset &&
+               (now->name == nullptr ? before->name == nullptr : before->name != nullptr && SDL_strcmp(now->name, before->name) == 0);
     }
 
     ECSIStructs_FreeFields(&read.fields);
