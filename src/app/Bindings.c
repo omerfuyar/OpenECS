@@ -91,6 +91,8 @@ static struct
 {
     ECSILuaPanelType **types;    // stb_ds array
     ECSILuaListener **listeners; // stb_ds array
+    const char *lastColorText;   // the last colour text that a surface's method parsed, which the registry of the Lua state that gave it keeps
+    ECSColor lastColor;
 } BINDINGS = {0};
 
 /// @brief Names of the event types in Lua, in the order of ECSPanelEventType.
@@ -455,6 +457,51 @@ static const luaL_Reg OPENECS_BINDINGS_HANDLE[] = {
 };
 
 #pragma endregion Handles
+
+#pragma region Structs
+
+static int ECSIBindings_StructRegister(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+
+    if (ECSStruct_Register(ECSIBindings_GetPlugin(state), name, luaL_checkstring(state, 2)))
+    {
+        return luaL_error(state, "struct type '%s' cannot be registered", name);
+    }
+
+    return 0;
+}
+
+static int ECSIBindings_StructAddMethod(lua_State *state)
+{
+    const char *type = luaL_checkstring(state, 1);
+    const char *method = luaL_checkstring(state, 2);
+    const char *function = luaL_checkstring(state, 3);
+
+    if (ECSStruct_AddMethod(ECSIBindings_GetPlugin(state), type, method, function))
+    {
+        return luaL_error(state, "'%s' cannot be the method '%s' of '%s'", function, method, type);
+    }
+
+    return 0;
+}
+
+static int ECSIBindings_StructNew(lua_State *state)
+{
+    const char *type = luaL_checkstring(state, 1);
+    luaL_checktype(state, 2, LUA_TTABLE);
+    ECSIServices_PushStruct(2, type);
+    return 1;
+}
+
+static const luaL_Reg OPENECS_BINDINGS_STRUCT[] = {
+    {"register", ECSIBindings_StructRegister},
+    {"addMethod", ECSIBindings_StructAddMethod},
+    {"new", ECSIBindings_StructNew},
+    {nullptr, nullptr},
+};
+
+#pragma endregion Structs
 
 #pragma region Plugin
 
@@ -875,6 +922,52 @@ static int ECSIBindings_SessionListSessions(lua_State *state)
 {
     return ECSIBindings_PushFilled(state, ECSSession_ListSessions);
 }
+
+#pragma region Plugins
+
+static int ECSIBindings_PluginsList(lua_State *state)
+{
+    ECSValue *list = nullptr;
+
+    if (ECSValue_Create(&list) || ECSPlugins_List(list))
+    {
+        ECSValue_Destroy(&list);
+        return luaL_error(state, "the plugins cannot be listed: out of memory");
+    }
+
+    ECSILua_PushValue(state, list);
+    ECSValue_Destroy(&list);
+    return 1;
+}
+
+static int ECSIBindings_PluginsEnable(lua_State *state)
+{
+    if (ECSPlugins_Enable(luaL_checkstring(state, 1)))
+    {
+        return luaL_error(state, "out of memory");
+    }
+
+    return 0;
+}
+
+static int ECSIBindings_PluginsDisable(lua_State *state)
+{
+    if (ECSPlugins_Disable(luaL_checkstring(state, 1)))
+    {
+        return luaL_error(state, "out of memory");
+    }
+
+    return 0;
+}
+
+static const luaL_Reg OPENECS_BINDINGS_PLUGINS[] = {
+    {"list", ECSIBindings_PluginsList},
+    {"enable", ECSIBindings_PluginsEnable},
+    {"disable", ECSIBindings_PluginsDisable},
+    {nullptr, nullptr},
+};
+
+#pragma endregion Plugins
 
 static const luaL_Reg OPENECS_BINDINGS_SESSION[] = {
     {"save", ECSIBindings_SessionSave},
@@ -1859,13 +1952,40 @@ static ECSSurface *ECSIBindings_CheckPixelSurface(lua_State *state, int index)
     return surface;
 }
 
+/// @brief Reads a colour text argument of a surface's method. A draw sets many pixels in few colours, so the last text's colour is kept: the
+/// text is kept in the state's registry, so while it is there no other string has its address. Theme colours are parsed each time, as the theme changes.
+static ECSColor ECSIBindings_CheckColor(lua_State *state, int index)
+{
+    const char *text = luaL_checkstring(state, index);
+    lua_rawgetp(state, LUA_REGISTRYINDEX, &BINDINGS.lastColor);
+    bool kept = lua_tostring(state, -1) == text && text == BINDINGS.lastColorText;
+    lua_pop(state, 1);
+
+    if (kept)
+    {
+        return BINDINGS.lastColor;
+    }
+
+    ECSColor color = 0;
+    luaL_argcheck(state, ECSColor_Parse(text, &color), index, "is not a colour: \"#RRGGBB\", \"#RRGGBBAA\" or a colour of the theme");
+
+    if (text[0] == '#')
+    {
+        lua_pushvalue(state, index);
+        lua_rawsetp(state, LUA_REGISTRYINDEX, &BINDINGS.lastColor);
+        BINDINGS.lastColorText = text;
+        BINDINGS.lastColor = color;
+    }
+
+    return color;
+}
+
 static int ECSIBindings_SurfaceSetPixel(lua_State *state)
 {
     ECSSurface *surface = ECSIBindings_CheckPixelSurface(state, 1);
     u32 *pixel = ECSIBindings_GetPixelAddress(surface, luaL_checkinteger(state, 2), luaL_checkinteger(state, 3));
 
-    ECSColor color = 0;
-    luaL_argcheck(state, ECSColor_Parse(luaL_checkstring(state, 4), &color), 4, "is not a colour: \"#RRGGBB\", \"#RRGGBBAA\" or a colour of the theme");
+    ECSColor color = ECSIBindings_CheckColor(state, 4);
 
     // pixels outside the surface are clipped; surfaces hold premultiplied colours
     if (pixel != nullptr)
@@ -1930,16 +2050,21 @@ static int ECSIBindings_SurfaceFill(lua_State *state)
         values[i] = SDL_clamp(luaL_checkinteger(state, i + 2), -(lua_Integer)SDL_MAX_SINT32, (lua_Integer)SDL_MAX_SINT32);
     }
 
-    ECSColor color = 0;
-    luaL_argcheck(state, ECSColor_Parse(luaL_checkstring(state, 6), &color), 6, "is not a colour: \"#RRGGBB\", \"#RRGGBBAA\" or a colour of the theme");
+    ECSColor color = ECSIBindings_CheckColor(state, 6);
     ECSSurface_Fill(surface, (i32)values[0], (i32)values[1], (i32)values[2], (i32)values[3], color);
     return 0;
 }
 
 static int ECSIBindings_SurfaceIndex(lua_State *state)
 {
+    // the methods are the upvalue; they come first, as a panel's draw calls them for many pixels, and check the surface themselves
+    if (lua_getfield(state, lua_upvalueindex(1), luaL_checkstring(state, 2)) != LUA_TNIL)
+    {
+        return 1;
+    }
+
     ECSSurface *surface = ECSIBindings_CheckSurface(1);
-    const char *key = luaL_checkstring(state, 2);
+    const char *key = lua_tostring(state, 2);
 
     if (SDL_strcmp(key, "width") == 0)
     {
@@ -1959,8 +2084,7 @@ static int ECSIBindings_SurfaceIndex(lua_State *state)
     }
     else
     {
-        // the methods are the upvalue
-        lua_getfield(state, lua_upvalueindex(1), key);
+        lua_pushnil(state);
     }
 
     return 1;
@@ -2042,10 +2166,12 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIBindings_AddTable(state, plugin, "layout", OPENECS_BINDINGS_LAYOUT);
     ECSIBindings_AddTable(state, plugin, "workspace", OPENECS_BINDINGS_WORKSPACE);
     ECSIBindings_AddTable(state, plugin, "session", OPENECS_BINDINGS_SESSION);
+    ECSIBindings_AddTable(state, plugin, "plugins", OPENECS_BINDINGS_PLUGINS);
     ECSIBindings_AddTable(state, plugin, "clipboard", OPENECS_BINDINGS_CLIPBOARD);
     ECSIBindings_AddTable(state, plugin, "dialog", OPENECS_BINDINGS_DIALOG);
     ECSIBindings_AddTable(state, plugin, "event", OPENECS_BINDINGS_EVENT);
     ECSIBindings_AddTable(state, plugin, "handle", OPENECS_BINDINGS_HANDLE);
+    ECSIBindings_AddTable(state, plugin, "struct", OPENECS_BINDINGS_STRUCT);
     ECSIWorkers_PushTable(state, plugin);
     lua_setfield(state, -2, "worker");
 

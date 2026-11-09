@@ -16,6 +16,9 @@ void ECSIServices_DestroyHandles(void);
 /// @brief Frees every registered function, handle type and kept callback, once the plugins have shut down, since their Destroy may still call functions.
 void ECSIServices_Terminate(void);
 
+/// @brief Destroys the objects of a plugin's handle types with their Destroy, as at exit, and makes their Lua handles invalid; for a plugin that is disabled.
+void ECSIServices_DestroyHandlesOfPlugin(ECSPlugin plugin);
+
 /// @brief Pushes the Lua handle of an object: the one Lua already has, or a new one.
 /// @param type Name of the object's handle type.
 /// @param object The object, or nullptr for nil. Nil is pushed too if the type is gone, because its plugin was removed.
@@ -40,6 +43,17 @@ void ECSIServices_PushHandleMetatable(const char *type);
 /// @param name Name of the type; it starts with the plugin's name.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the name is taken or not the plugin's, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIServices_RegisterLuaHandleType(ECSPlugin plugin, const char *name);
+
+/// @brief Registers one of the core's struct types, whose name starts with "ecs." (10.11).
+/// @param name Full name of the type, such as "ecs.rect".
+/// @param fields Its fields, as ECSStruct_Register takes them.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the name is taken or the fields cannot be read, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSIServices_RegisterCoreStruct(const char *name, const char *fields);
+
+/// @brief Pushes a new struct of a type made from the table at an index of the stack: its fields checked and copied, with the type's metatable. Raises a Lua error if the type is not registered, or a field is missing or of another type.
+/// @param index Stack index of the table.
+/// @param type Full name of the struct type.
+void ECSIServices_PushStruct(int index, const char *type);
 
 /// @brief Pushes a new handle of a type that a Lua plugin provides, standing for a Lua value. Raises a Lua error if the type is not the plugin's.
 /// @param plugin The plugin that calls.
@@ -98,14 +112,14 @@ const char *ECSIServices_GetDescription(const char *name);
 /// @return SHUResult_Ok with the Lua function on top of the stack popped, or an error of ECSService_RegisterFunction with the stack unchanged.
 SHUWUR SHUResult ECSIServices_RegisterLua(ECSPlugin plugin, const char *name, const char *signature, const char *description);
 
-/// @brief Pushes a Lua function that calls a registered function, for the Bindings module. A C function is called through libffi; a Lua function is pushed as it is.
+/// @brief Pushes a Lua function that calls a registered function. A C function is called through libffi; a Lua function is pushed as it is.
 /// @param plugin The plugin that asks. It may look up its own functions and those of the plugins its manifest depends on.
 /// @param name Name of the function.
 /// @param signature The signature the caller expects, or nullptr to take any.
 /// @return SHUResult_Ok with the function pushed, or the error of ECSService_GetFunction with nothing pushed.
 SHUWUR SHUResult ECSIServices_PushFunction(ECSPlugin plugin, const char *name, const char *signature);
 
-/// @brief Pushes a table of every function a plugin registered, by local name, for the Bindings module's require.
+/// @brief Pushes a table of every function a plugin registered, by local name, as require gives it.
 /// @param plugin The plugin that asks. It may ask for itself and for the plugins its manifest depends on.
 /// @param provider The plugin whose functions are pushed.
 /// @return SHUResult_Ok with the table pushed, or SHUResult_ErrPrivileges or SHUResult_ErrAllocation with nothing pushed.

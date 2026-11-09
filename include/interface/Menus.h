@@ -44,6 +44,11 @@ void ECSIMenus_OpenPanelMenu(ECSPanel panel, f32 x, f32 y);
 /// @param y Vertical position in layout units.
 void ECSIMenus_OpenGroupMenu(ECSPanel shownPanel, f32 x, f32 y);
 
+/// @brief Opens the tool's menu at a point: the functions that the setting ecs.toolMenu names, the workspaces, then reset the layout and quit.
+/// @param x Horizontal position in layout units.
+/// @param y Vertical position in layout units.
+void ECSIMenus_OpenToolMenu(f32 x, f32 y);
+
 /// @brief Gives an event to the open menus. Pointer and key events go to the menus only; keys go to the deepest one.
 /// @param event The event.
 /// @return true if the menus used the event.

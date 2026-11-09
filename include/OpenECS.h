@@ -7,7 +7,7 @@
 #pragma region Macros
 
 /// @brief Version of OpenECS (DESIGN 19.1). Between releases it is the next release with "-dev".
-#define OPENECS_VERSION "0.5.0"
+#define OPENECS_VERSION "0.6.0"
 
 /// @brief Version of this plugin interface. The core refuses a plugin whose manifest names another version.
 #define OPENECS_API_VERSION 2
@@ -476,6 +476,24 @@ OPENECS_EXPORT void ECSPath_Free(char *path);
 /// @lua ecs.plugin.register
 OPENECS_EXPORT SHUWUR SHUResult ECSPlugin_Register(ECSPlugin plugin, const ECSPluginDesc *desc);
 
+/// @brief Lists every plugin in the plugin folders (DESIGN 9.3), loaded or not: for each, a table of its name, version, description, enabled, failed, and depends, a list of the names it depends on. Main thread only.
+/// @param retList The value to fill with the list.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.plugins.list
+OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_List(ECSValue *retList);
+
+/// @brief Enables a plugin, and the plugins it depends on, when the current pass of the main loop ends, so no plugin code runs then (DESIGN 9.10). The core emits ecs.pluginsChanged after it. Main thread only.
+/// @param name The plugin's name.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation. A plugin that cannot be enabled is reported then.
+/// @lua ecs.plugins.enable
+OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Enable(const char *name);
+
+/// @brief Disables a plugin, and the plugins that depend on it, when the current pass of the main loop ends, after asking about the unsaved work of their panels, which become placeholders (DESIGN 9.10). The core emits ecs.pluginsChanged after it. Main thread only.
+/// @param name The plugin's name.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation. Cancel keeps the plugins enabled.
+/// @lua ecs.plugins.disable
+OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Disable(const char *name);
+
 /// @brief Writes a message to the log, with the plugin's name. Thread-safe.
 /// @param plugin The plugin that writes the message.
 /// @param level Level of the message.
@@ -499,7 +517,7 @@ OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel l
 /// @lua none: Lua code never runs on worker threads; Lua plugins use services that work in the background
 OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data);
 
-/// @brief Runs a function on the main thread, between passes of the main loop. Thread-safe.
+/// @brief Runs a function on the main thread, between passes of the main loop. Thread-safe. A function that a plugin's thread sent runs before the plugin's library is unloaded, after its Destroy.
 /// @param function The function.
 /// @param data Passed to the function.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
@@ -594,6 +612,18 @@ OPENECS_EXPORT const ECSValue *ECSValue_GetListItem(const ECSValue *table, usz i
 /// @return The field, or nullptr if the value is not a table or has no such field.
 OPENECS_EXPORT const ECSValue *ECSValue_GetTableField(const ECSValue *table, const char *name);
 
+/// @brief Counts the named fields of a table.
+/// @param table The table, or nullptr.
+/// @return Number of named fields; 0 if the value is not a table.
+OPENECS_EXPORT usz ECSValue_GetTableFieldCount(const ECSValue *table);
+
+/// @brief Gets a named field of a table by its position, to go through every field.
+/// @param table The table, or nullptr.
+/// @param index Position of the field, starting at 0, below ECSValue_GetTableFieldCount. Fields keep the order they were set in, as long as none is removed.
+/// @param retName The field's name, valid while the table does not change; nullptr if there is no such field.
+/// @return The field, or nullptr if the value is not a table or has no such field.
+OPENECS_EXPORT const ECSValue *ECSValue_GetTableFieldAt(const ECSValue *table, usz index, const char **retName);
+
 /// @brief Makes a value nil.
 /// @param value The value.
 OPENECS_EXPORT void ECSValue_SetNil(ECSValue *value);
@@ -666,7 +696,7 @@ OPENECS_EXPORT const ECSValue *ECSSetting_Get(const char *name);
 /// @param plugin The plugin that provides the function.
 /// @param name The function's local name, such as "play"; the core adds the plugin's name and a dot, so others call it "mixer.play".
 /// @param function The function, cast to ECSFunction. Its real type must match the signature; the core cannot check that.
-/// @param signature The function's signature, such as "int(string, out float)". Types: void (result only), bool, int, int64, float, double, color (ECSColor in C, a colour text in Lua), string, buffer, value, handle<name>, fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
+/// @param signature The function's signature, such as "int(string, out float)". Types: void (result only), bool, int, int64, float, double, color (ECSColor in C, a colour text in Lua), string, buffer, value, handle<name>, struct<name> (a pointer to the struct; never the result), fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
 /// @param description One line that says what the function does, which menus show. Lines after it say what its parameters and result are, for the definition files:
 ///                    "@param name text" for a parameter the signature names, and "@return text" for the result. A line that names no such parameter is reported.
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the name or signature is invalid or the name is taken, or SHUResult_ErrAllocation.
@@ -723,6 +753,23 @@ OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const c
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the type or the function is not the plugin's, the function's first parameter is not such a handle, or the method exists, or SHUResult_ErrAllocation.
 /// @lua ecs.handle.addMethod
 OPENECS_EXPORT SHUWUR SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function);
+
+/// @brief Registers a struct type: plain data with fixed fields, which functions take and give by value. C passes it by pointer, as a struct that the plugin's definition header declares; Lua gets a table of its fields, with the type's methods and operators. Main thread only.
+/// @param plugin The plugin that provides the type.
+/// @param name The type's local name, such as "vec3"; the core adds the plugin's name and a dot, so signatures name it "struct<cglm.vec3>".
+/// @param fields Its fields in order, as a signature writes parameters: "float x, float y, float z". A field may be a list of a fixed length, "float m[16]", or another struct, "struct<cglm.vec3> position"; a struct of one list without a name, "float[16]", is that list in Lua. Fields are bool, int, int64, float, double, color or struct.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the name is invalid or taken, or the fields cannot be read, or SHUResult_ErrAllocation.
+/// @lua ecs.struct.register
+OPENECS_EXPORT SHUWUR SHUResult ECSStruct_Register(ECSPlugin plugin, const char *name, const char *fields);
+
+/// @brief Makes a function of the plugin a method of one of its struct types, so Lua calls it on a struct: a:dot(b) calls the function with the struct first. A method named add, sub, mul, div, unm, eq, lt, le, len or tostring is also Lua's operator: a + b calls add. C calls the function itself. Main thread only.
+/// @param plugin The plugin that provides the struct type and the function.
+/// @param type The struct type's local name, such as "vec3".
+/// @param method The method's name in Lua, such as "dot".
+/// @param function The local name of a function of the plugin whose first parameter is a struct of the type, such as "vec3Dot".
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the type or the function is not the plugin's, the function's first parameter is not such a struct, or the method exists, or SHUResult_ErrAllocation.
+/// @lua ecs.struct.addMethod
+OPENECS_EXPORT SHUWUR SHUResult ECSStruct_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function);
 
 /// @brief Tells the core that a plugin frees an object of one of its handle types now, such as from a free function of its service, so Lua's handle of it is invalid from now on and its Destroy is not called for it. Main thread only.
 /// @param object The object.

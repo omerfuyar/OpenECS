@@ -56,7 +56,7 @@ struct ECSIPanel
 /// @brief Gets the number of pixels that a size in layout units takes: rounded, and at least 1.
 i32 ECSIPanel_ToPixels(f32 size);
 
-/// @brief Registers a panel type like ECSPanelType_Register, with data for the Bindings module.
+/// @brief Registers a panel type like ECSPanelType_Register, with data kept in the type.
 /// @param plugin The plugin that provides the panel type.
 /// @param desc Description of the panel type.
 /// @param typeData Kept in the type, or nullptr.
@@ -84,6 +84,9 @@ bool ECSIPanel_Restart(ECSPanel panel);
 
 /// @brief Checks whether a panel can be restarted: it is faulted, or a placeholder.
 bool ECSIPanel_CanRestart(ECSPanel panel);
+
+/// @brief Makes a panel a placeholder that keeps the state it saves now, for a plugin that is disabled: its type's Destroy runs. ECSIPanel_Restart creates it again.
+void ECSIPanel_Unload(ECSPanel panel);
 
 /// @brief Gets the functions that a panel's type adds to its menu.
 /// @param panel The panel.

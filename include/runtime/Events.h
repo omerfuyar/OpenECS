@@ -1,6 +1,6 @@
 #pragma once
 
-// Events: the event queue and timers.
+// Events: named events, the event queue, and the plugins' timers.
 
 #include "runtime/Plugins.h"
 
@@ -9,7 +9,7 @@
 /// @brief Function that delivers a queued event to its target.
 typedef void (*ECSIEventDeliverFunction)(void *target, const ECSPanelEvent *event);
 
-/// @brief Prepares the lock and condition of the worker threads, which start when background work first comes, and declares the core's named events.
+/// @brief Declares the core's named events.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIEvents_Initialize(void);
 
@@ -18,7 +18,7 @@ SHUWUR SHUResult ECSIEvents_Initialize(void);
 /// @param value What the event carries, or nullptr. The core copies it.
 void ECSIEvents_EmitCore(const char *name, const ECSValue *value);
 
-/// @brief Subscribes to a named event like ECSEvent_Subscribe, with a function that releases the data when the subscription is freed. The Bindings module uses it for Lua.
+/// @brief Subscribes to a named event like ECSEvent_Subscribe, with a function that releases the data when the subscription is freed.
 /// @param release Function called with the data when the subscription is freed, or nullptr.
 SHUWUR SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscription, const char *name, ECSEventFunction function, ECSTimerFunction release, void *data);
 
@@ -28,14 +28,15 @@ void ECSIEvents_RemovePlugin(ECSPlugin plugin);
 
 /// @brief Queues an event. ECSIEvents_Deliver delivers it, after the current callback returns.
 /// @param deliver Function that delivers the event.
-/// @param target Passed to the function.
+/// @param release Function that frees the target if the event is never delivered, as at exit, or nullptr.
+/// @param target Passed to the functions.
 /// @param event The event. The queue keeps a copy.
-void ECSIEvents_Post(ECSIEventDeliverFunction deliver, void *target, const ECSPanelEvent *event);
+void ECSIEvents_Post(ECSIEventDeliverFunction deliver, ECSTimerFunction release, void *target, const ECSPanelEvent *event);
 
 /// @brief Delivers the queued events in order, and the events queued while they are delivered, until the queue is empty.
 void ECSIEvents_Deliver(void);
 
-/// @brief Starts a timer.
+/// @brief Starts a plugin's timer on base/Timers, which stops when the plugin's timers stop.
 /// @param plugin The plugin that owns the timer.
 /// @param retTimer The new timer.
 /// @param seconds Time until the first call, and between repeated calls. Must be positive for a repeating timer.
@@ -51,13 +52,10 @@ SHUWUR SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, ECSTimer *retTimer, f64
 void ECSIEvents_StopTimersOfPlugin(ECSPlugin plugin);
 
 /// @brief Gets how long the main loop may wait for input, for SDL_WaitEventTimeout.
-/// @return 0 if events are queued; otherwise the time until the next timer is due, in milliseconds rounded up, or -1 if no timer runs.
+/// @return 0 if events are queued; otherwise the time until the next timer is due, in milliseconds rounded up, or -1 if no timer runs (base/Timers).
 i32 ECSIEvents_GetWait(void);
 
-/// @brief Runs the timers that are due. A repeating timer runs at most once per call.
-void ECSIEvents_RunTimers(void);
-
-/// @brief Waits for running background work, drops waiting work, stops every timer and drops the queued events. Tasks that reach the main thread after this are dropped.
+/// @brief Frees the queued events, which are never delivered, the subscriptions and the named events.
 void ECSIEvents_Terminate(void);
 
 #pragma endregion Declarations

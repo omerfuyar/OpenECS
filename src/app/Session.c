@@ -3,6 +3,7 @@
 #include "base/Lua.h"
 #include "base/Paths.h"
 #include "base/Values.h"
+#include "interface/Dialogs.h"
 #include "interface/Input.h"
 #include "interface/Keys.h"
 #include "interface/Layout.h"
@@ -15,7 +16,7 @@
 #pragma region Source Only
 
 /// @brief Version of the preset and session format that this core writes.
-#define OPENECS_SESSION_FORMAT 1
+#define OPENECS_SESSION_FORMAT 3
 
 /// @brief Longest path to a part of a file that a problem report names.
 #define OPENECS_SESSION_PATH_SIZE 256
@@ -42,6 +43,8 @@ static const ECSIFieldRule OPENECS_PRESET_RULES[] = {
     {"workspaces", ECSIFieldType_Table, true},
     {"currentWorkspace", ECSIFieldType_Integer, false},
     {"pluginState", ECSIFieldType_Table, false},
+    {"enabled", ECSIFieldType_Table, false},
+    {"disabled", ECSIFieldType_Table, false},
 };
 
 /// @brief What the fields of a preset's app table must be.
@@ -49,6 +52,8 @@ static const ECSIFieldRule OPENECS_APP_RULES[] = {
     {"id", ECSIFieldType_String, true},
     {"name", ECSIFieldType_String, true},
     {"icon", ECSIFieldType_String, false},
+    {"categories", ECSIFieldType_Table, false},
+    {"mimeTypes", ECSIFieldType_Table, false},
 };
 
 /// @brief What the fields of a workspace must be.
@@ -162,6 +167,44 @@ static bool ECSISession_CheckFields(ECSISessionReader *reader, const ECSValue *t
     ECSISession_Report(reader, "%s", problem != nullptr ? problem : "out of memory");
     SDL_free(problem);
     return false;
+}
+
+/// @brief Checks that a field, if it is there, is a list of texts that a desktop entry can hold: no ';' and no line breaks (DESIGN 13.9).
+static bool ECSISession_CheckTexts(ECSISessionReader *reader, const ECSValue *table, const char *name)
+{
+    const ECSValue *list = ECSValue_GetTableField(table, name);
+
+    for (usz i = 0; i < ECSValue_GetListCount(list); i++)
+    {
+        const char *text = ECSValue_GetString(ECSValue_GetListItem(list, i), nullptr);
+
+        if (text == nullptr || text[0] == '\0' || SDL_strpbrk(text, ";\r\n") != nullptr)
+        {
+            ECSISession_Report(reader, "'%s' must be a list of texts without ';', such as { \"Graphics\" }", name);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/// @brief Checks that a field, if it is there, is a list of plugins' names, such as { "notes" }.
+static bool ECSISession_CheckNames(ECSISessionReader *reader, const ECSValue *table, const char *name)
+{
+    const ECSValue *list = ECSValue_GetTableField(table, name);
+
+    for (usz i = 0; i < ECSValue_GetListCount(list); i++)
+    {
+        const char *text = ECSValue_GetString(ECSValue_GetListItem(list, i), nullptr);
+
+        if (text == nullptr || text[0] == '\0')
+        {
+            ECSISession_Report(reader, "'%s' must be a list of plugins' names, such as { \"notes\" }", name);
+            return false;
+        }
+    }
+
+    return true;
 }
 
 /// @brief Checks the number fields of a node that must not be negative.
@@ -305,7 +348,9 @@ static bool ECSISession_Check(const char *path, const ECSValue *file)
     }
 
     usz length = ECSISession_Enter(&reader, "app", 0);
-    reader.valid = ECSISession_CheckFields(&reader, ECSValue_GetTableField(file, "app"), OPENECS_APP_RULES, SDL_arraysize(OPENECS_APP_RULES));
+    const ECSValue *app = ECSValue_GetTableField(file, "app");
+    reader.valid = ECSISession_CheckFields(&reader, app, OPENECS_APP_RULES, SDL_arraysize(OPENECS_APP_RULES));
+    reader.valid = reader.valid && ECSISession_CheckTexts(&reader, app, "categories") && ECSISession_CheckTexts(&reader, app, "mimeTypes");
     ECSISession_Leave(&reader, length);
 
     // depends names each plugin with a version
@@ -320,6 +365,7 @@ static bool ECSISession_Check(const char *path, const ECSValue *file)
 
     ECSIValue_TableForEachField(depends, ECSISession_CheckDependency, &reader);
     ECSISession_Leave(&reader, length);
+    reader.valid = reader.valid && ECSISession_CheckNames(&reader, file, "enabled") && ECSISession_CheckNames(&reader, file, "disabled");
     return reader.valid && ECSISession_CheckList(&reader, "workspaces", ECSValue_GetTableField(file, "workspaces"), ECSISession_CheckWorkspace);
 }
 
@@ -569,7 +615,7 @@ static SHUResult ECSISession_ShowDialog(ECSDialogType type, ECSDialogDoneFunctio
 
     ECSDialogFilter filter = {"OpenECS sessions", "lua"};
     ECSDialogDesc desc = {.type = type, .filters = &filter, .filterCount = 1, .location = location != nullptr ? location : SESSION.sessions, .Done = Done};
-    SHUResult result = ECSIInput_ShowDialog(nullptr, &desc);
+    SHUResult result = ECSIDialogs_Show(nullptr, &desc);
     SDL_free(location);
     return result;
 }
@@ -929,6 +975,8 @@ SHUResult ECSISession_Build(ECSValue *retSession)
 
     result = result ? result : ECSValue_SetTableField(retSession, "pluginState", &field);
     result = result ? result : ECSIPlugins_SaveStates(field);
+    result = result ? result : ECSValue_SetTableField(retSession, "disabled", &field);
+    result = result ? result : ECSIPlugins_GetDisabled(field);
     result = result ? result : ECSValue_SetTableField(retSession, "workspaces", &field);
     result = result ? result : ECSILayout_Save(field, &current);
 

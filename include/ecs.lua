@@ -455,10 +455,37 @@ function ecs.workspace.switch(number) end
 -- App
 
 ---@class ecs.app
+---@field menu fun() Shows the tool's menu: the functions that the setting ecs.toolMenu names, the workspaces, then reset the layout and quit. A right click on the title bar opens it too. Keys can run it.
 ecs.app = {}
 
 ---Quits, as the main window's close button does: the user is asked about unsaved work first and may cancel. Keys can run it.
 function ecs.app.quit() end
+
+-- Plugins
+
+---A plugin in the plugin folders, as ecs.plugins.list gives it.
+---@class ecs.PluginInfo
+---@field name string
+---@field version string
+---@field description string
+---@field enabled boolean Its code runs.
+---@field failed boolean Its code failed to start.
+---@field depends string[] The names of the plugins it depends on.
+
+---@class ecs.plugins
+ecs.plugins = {}
+
+---Lists every plugin in the plugin folders, loaded or not.
+---@return ecs.PluginInfo[] plugins
+function ecs.plugins.list() end
+
+---Enables a plugin, and the plugins it depends on, when the current pass of the main loop ends. The core emits ecs.pluginsChanged after it.
+---@param name string The plugin's name.
+function ecs.plugins.enable(name) end
+
+---Disables a plugin, and the plugins that depend on it, when the current pass of the main loop ends, after asking about the unsaved work of their panels, which become placeholders. The core emits ecs.pluginsChanged after it.
+---@param name string The plugin's name.
+function ecs.plugins.disable(name) end
 
 -- Session
 
@@ -573,10 +600,35 @@ function ecs.handle.new(name, value) end
 ---@return any value The Lua value the handle stands for.
 function ecs.handle.value(handle, name) end
 
+-- Structs
+
+---Plain data with fixed fields, typed by name, such as "geometry.vec2": a table of its fields, with its type's methods and operators.
+---@class ecs.Struct: { [string]: any }
+
+---@class ecs.struct
+ecs.struct = {}
+
+---Registers a struct type of the plugin, before the functions whose signatures name it.
+---@param name string The local name, such as "vec2"; signatures name it "struct<geometry.vec2>".
+---@param fields string Its fields in order, as a signature writes parameters: "float x, float y". A field may be a list of a fixed length, "float m[16]", or another struct, "struct<geometry.vec2> position"; a struct of one list without a name, "float[16]", is that list. Fields are bool, int, int64, float, double, color or struct.
+function ecs.struct.register(name, fields) end
+
+---Makes a function of the plugin a method of one of its struct types, so Lua calls it on a struct: `a:length()`. A method named add, sub, mul, div, unm, eq, lt, le, len or tostring is also Lua's operator: `a + b` calls add.
+---@param type string The struct type's local name, such as "vec2".
+---@param method string The method's name, such as "length".
+---@param functionName string The local name of one of the plugin's functions, registered with ecs.service.register, whose first parameter is a struct of the type.
+function ecs.struct.addMethod(type, method, functionName) end
+
+---Makes a struct from a table of its fields, with the methods of its type. Other fields of the table are left out.
+---@param name string The struct type, by its full name, such as "geometry.vec2".
+---@param fields table A table with every field of the type.
+---@return ecs.Struct struct The new struct.
+function ecs.struct.new(name, fields) end
+
 -- Services
 
 ---@class ecs.ServiceFunction
----@field sig string The signature, such as "int(string count, float scale)". Types: void, bool, int, int64, float, double, color, string, buffer, value, handle<name>, fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
+---@field sig string The signature, such as "int(string count, float scale)". Types: void, bool, int, int64, float, double, color, string, buffer, value, handle<name>, struct<name>, fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
 ---@field doc? string One line that says what the function does, which menus show. Lines after it say what its parameters and result are: "@param name text" for a parameter the signature names, and "@return text".
 ---@field fn function
 
@@ -686,7 +738,9 @@ function ecs.dialog.showMessage(title, message, buttons) end
 ---@class ecs.AppDesc
 ---@field id string Names the tool's last session and its .desktop file, such as "org.example.Paint".
 ---@field name string
----@field icon? string
+---@field icon? string The icon's path, relative to the preset's folder.
+---@field categories? string[] The categories of the tool's desktop entry, such as { "Graphics" }; OpenECS --install writes them.
+---@field mimeTypes? string[] The file types that the preset's open function takes, such as { "image/png" }, for the desktop's "Open with".
 
 ---A panel in a preset or session.
 ---@class ecs.PanelDesc
@@ -740,6 +794,8 @@ function ecs.dialog.showMessage(title, message, buttons) end
 ---@class ecs.Session: ecs.Preset
 ---@field currentWorkspace? integer
 ---@field pluginState? table<string, { state: any, stateVersion: integer }> Each plugin's own state.
+---@field enabled? string[] Plugins the user enabled that the preset does not depend on.
+---@field disabled? string[] Plugins the user disabled, with the plugins that depend on them.
 
 ---The user's settings file, or the core's settings file. A field whose name has a dot is a setting.
 ---@class ecs.SettingsFile

@@ -2,8 +2,8 @@
 -- The preset and the user's settings file override them.
 ---@type ecs.SettingsFile
 return {
-  -- plugins that every tool loads: the settings window, the list of panel types to open, and the launcher, which goes to another tool
-  plugins = { "settings", "panels", "launcher" },
+  -- plugins that every tool loads: the settings window, the list of panel types to open, the list of plugins to enable or disable, and the launcher, which goes to another tool
+  plugins = { "settings", "panels", "plugins", "launcher" },
 
   -- the key combination before a core action
   ["ecs.prefix"] = "Alt+W",
@@ -35,6 +35,7 @@ return {
       ["/"] = "launcher.open",
       [","] = "settings.open",
       ["."] = "panels.open",
+      [";"] = "plugins.open",
       ["1"] = "ecs.workspace.switch1",
       ["2"] = "ecs.workspace.switch2",
       ["3"] = "ecs.workspace.switch3",
@@ -56,8 +57,12 @@ return {
       ["Shift+9"] = "ecs.layout.moveToWorkspace9",
       ["Shift+0"] = "ecs.layout.moveToWorkspace10",
       ["W"] = "ecs.workspace.menu",
+      ["A"] = "ecs.app.menu",
     },
   },
+
+  -- the functions that the tool's menu shows first, which a right click on the title bar opens; then come the workspaces, reset the layout and quit
+  ["ecs.toolMenu"] = { "settings.open", "panels.open", "plugins.open", "launcher.open", "ecs.session.save", "ecs.session.open" },
 
   -- save the tool's session when it quits, and start from it the next time; --fresh still starts from the preset
   ["ecs.keepSession"] = false,

@@ -39,6 +39,8 @@ Options:
   -f, --fresh             Start from the preset, not from the tool's last session
   -t, --test FILE         Run a test; Debug builds only
   -d, --definitions DIR   Write the plugin interface and every plugin's definitions into DIR, and exit
+  -i, --install           Add the preset's tool to the system's launcher, and exit
+  -u, --uninstall         Remove the preset's tool from the system's launcher, and exit
   -v, --version           Print the version and exit
   -h, --help              Print this help and exit
 ```
@@ -164,14 +166,17 @@ clang shuild.c -o shuild.ignore.exe -O3
 Usage: ./shuild.ignore [FLAG...]
 
 Flags:
-  -b, --build TYPE   Build type: debug (the default), with the static analyzer and the sanitizers;
-                     release; relwithdebinfo, a release with debug information; or minsizerel, a small release
+  -b, --build TYPE   Build type:
+                       debug           the default, with the static analyzer and the sanitizers
+                       release         an optimized build
+                       relwithdebinfo  a release with debug information
+                       minsizerel      a small release
   -n, --no-std       Do not build the standard plugins of std/
   -e, --examples     Also build the examples of examples/, into bin/examples/
   -t, --test [EXAMPLE...]
                      Build in Debug with the examples, then run the tests of the examples named, such as c12_sketch,
                      or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report
-  -c, --compiler CC  The compiler: gcc (the default), clang, or on Windows LLVM-MinGW's clang (the default there).
+  -c, --compiler CC  The compiler: gcc (default for linux), clang, or on Windows LLVM-MinGW's clang (default for windows).
                      A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/
   -h, --help         Show this help
 ```

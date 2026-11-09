@@ -19,6 +19,9 @@
 #define OPENECS_LIBRARY_FORMAT "%slib%s.so"
 #endif
 
+/// @brief What loading a plugin gives when it is disabled, or depends on a disabled plugin: it is known but its code does not run, and that is no error.
+#define OPENECS_PLUGIN_DISABLED SHUResult_Pending
+
 /// @brief The file a Lua plugin's code starts in, in its folder.
 #define OPENECS_LUA_ENTRY "init.lua"
 
@@ -43,10 +46,14 @@ typedef struct ECSIPlugin
     char *folder;              // ends with a separator
     SDL_SharedObject *library; // nullptr if the plugin has no native code
     bool failed;               // its code failed to start; plugins that depend on it are skipped
-    char **dependencies;       // stb_ds array of the names its manifest depends on
-    bool registered;           // it registered desc
-    ECSPluginDesc desc;        // its own state and its Destroy, from ECSPlugin_Register
-    ECSTaskFunction release;   // releases desc's data when the plugin goes away, or nullptr
+    bool disabled;             // the user disabled it, or a plugin it depends on; its code is not loaded
+    u32 generation;            // grows each time its code is loaded or unloaded, so work of an earlier load is dropped
+    ECSValue *keptState;       // the state it saved when it was disabled, or that a session gave it while disabled; nullptr if none
+    u32 keptStateVersion;
+    char **dependencies;     // stb_ds array of the names its manifest depends on
+    bool registered;         // it registered desc
+    ECSPluginDesc desc;      // its own state and its Destroy, from ECSPlugin_Register
+    ECSTaskFunction release; // releases desc's data when the plugin goes away, or nullptr
 } ECSIPlugin;
 
 /// @brief State while the plugins of a table are loaded.
@@ -72,9 +79,12 @@ static struct
     } *plugins; // stb_ds hash map in load order, because nothing is deleted from it; handles point to the plugins
     const char *const *folders;
     usz folderCount;
-    const char *neededBy; // what names the plugins being loaded, for reports
-    const char **loading; // stb_ds array of the plugins being loaded, to find dependency cycles
-    bool invalid;         // a manifest is not valid or plugins depend on each other in a cycle, so the start fails
+    const char *neededBy;             // what names the plugins being loaded, for reports
+    const char **loading;             // stb_ds array of the plugins being loaded, to find dependency cycles
+    bool invalid;                     // a manifest is not valid or plugins depend on each other in a cycle, so the start fails
+    const char *const *disabledNames; // plugins that a session disabled, which start disabled
+    usz disabledCount;
+    bool enabling; // disabled plugins that loading meets are enabled
     struct
     {
         char *key; // "plugin: message"
@@ -82,6 +92,12 @@ static struct
     } *errors;     // stb_ds hash map with copied keys
     ECSIPluginHooks hooks;
 } PLUGINS = {0};
+
+/// @brief Tells whether a plugin's code runs: it loaded, did not fail and is not disabled.
+static bool ECSIPlugin_Runs(const ECSIPlugin *plugin)
+{
+    return !plugin->failed && !plugin->disabled;
+}
 
 static ECSIPlugin *ECSIPlugin_Find(const char *name)
 {
@@ -102,7 +118,8 @@ static void ECSIPlugin_Forget(ECSIPlugin *plugin)
     plugin->release = nullptr;
 }
 
-static void ECSIPlugin_Free(ECSIPlugin *plugin)
+/// @brief Frees what a plugin's manifest gave it, apart from its name, which keys the map of plugins.
+static void ECSIPlugin_FreeManifestFields(ECSIPlugin *plugin)
 {
     for (usz i = 0; i < arrlenu(plugin->dependencies); i++)
     {
@@ -110,10 +127,19 @@ static void ECSIPlugin_Free(ECSIPlugin *plugin)
     }
 
     arrfree(plugin->dependencies);
-    SDL_free(plugin->name);
     SDL_free(plugin->description);
     SDL_free(plugin->version);
     SDL_free(plugin->folder);
+    plugin->description = nullptr;
+    plugin->version = nullptr;
+    plugin->folder = nullptr;
+}
+
+static void ECSIPlugin_Free(ECSIPlugin *plugin)
+{
+    ECSIPlugin_FreeManifestFields(plugin);
+    ECSValue_Destroy(&plugin->keptState);
+    SDL_free(plugin->name);
 }
 
 /// @brief Gives a plugin folder as a full path, so it stays right if the working folder changes.
@@ -371,7 +397,73 @@ static SHUResult ECSIPlugin_Fail(ECSIPlugin *plugin, const char *what, SHUResult
     return result;
 }
 
-/// @brief Loads the plugins a manifest depends on, then the plugin itself, and runs its ECSPlugin_Init or its Lua code.
+/// @brief Fills a plugin's fields from its manifest: its version, description, folder and dependencies.
+static SHUResult ECSIPlugin_ReadManifest(ECSIPlugin *plugin, const ECSIManifest *manifest)
+{
+    const ECSValue *file = manifest->file;
+    ECSIPlugin_FreeManifestFields(plugin);
+    plugin->version = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "version"), "0.0.0"));
+    plugin->description = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "description"), ""));
+    plugin->folder = ECSIPlugin_GetAbsoluteFolder(manifest->folder);
+    ECSIValue_TableForEachField(ECSValue_GetTableField(file, "depends"), ECSIPlugin_AddDependency, plugin);
+    return plugin->version == nullptr || plugin->description == nullptr || plugin->folder == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
+}
+
+/// @brief Gives a plugin's record, made from its manifest if the plugin is new, or read again from it if the plugin was disabled.
+/// @return The record, or nullptr if out of memory.
+static ECSIPlugin *ECSIPlugin_Record(const char *name, const ECSIManifest *manifest)
+{
+    ECSIPlugin *plugin = ECSIPlugin_Find(name);
+
+    if (plugin != nullptr)
+    {
+        return ECSIPlugin_ReadManifest(plugin, manifest) ? nullptr : plugin;
+    }
+
+    plugin = SDL_calloc(1, sizeof(ECSIPlugin));
+
+    if (plugin == nullptr || (plugin->name = SDL_strdup(name)) == nullptr || ECSIPlugin_ReadManifest(plugin, manifest))
+    {
+        if (plugin != nullptr)
+        {
+            ECSIPlugin_Free(plugin);
+            SDL_free(plugin);
+        }
+
+        return nullptr;
+    }
+
+    // the plugin is recorded before its code runs, so the core knows it while it registers things
+    shput(PLUGINS.plugins, plugin->name, plugin);
+    return plugin;
+}
+
+/// @brief Tells whether a session disabled a plugin, so it starts disabled.
+static bool ECSIPlugins_IsDisabledName(const char *name)
+{
+    for (usz i = 0; i < PLUGINS.disabledCount; i++)
+    {
+        if (SDL_strcmp(PLUGINS.disabledNames[i], name) == 0)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/// @brief Gives a plugin the state it kept while it was disabled, and forgets it.
+static void ECSIPlugin_RestoreKeptState(ECSIPlugin *plugin)
+{
+    if (plugin->keptState != nullptr && plugin->desc.RestoreState != nullptr && plugin->desc.RestoreState(plugin->desc.data, plugin->keptState, plugin->keptStateVersion))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not restore its state.", plugin->name);
+    }
+
+    ECSValue_Destroy(&plugin->keptState);
+}
+
+/// @brief Loads the plugins a manifest depends on, then the plugin itself, and runs its ECSPlugin_Init or its Lua code. A disabled plugin, and one that depends on a disabled plugin, is recorded without its code.
 static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest)
 {
     const ECSValue *file = manifest->file;
@@ -384,12 +476,27 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
         return SHUResult_ErrBadData;
     }
 
-    arrput(PLUGINS.loading, name);
-    SHUResult dependencies = ECSIPlugins_LoadAll(ECSValue_GetTableField(file, "depends"), name);
-    (void)arrpop(PLUGINS.loading);
+    SHUResult dependencies = OPENECS_PLUGIN_DISABLED;
+
+    if (PLUGINS.enabling || !ECSIPlugins_IsDisabledName(name))
+    {
+        arrput(PLUGINS.loading, name);
+        dependencies = ECSIPlugins_LoadAll(ECSValue_GetTableField(file, "depends"), name);
+        (void)arrpop(PLUGINS.loading);
+    }
+
+    if (dependencies == OPENECS_PLUGIN_DISABLED)
+    {
+        ECSIPlugin *plugin = ECSIPlugin_Record(name, manifest);
+        SHU_ReturnResult(plugin == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok);
+        plugin->disabled = true;
+        SDL_Log("Plugin '%s' is disabled.", name);
+        return OPENECS_PLUGIN_DISABLED;
+    }
+
     SHU_ReturnResult(dependencies);
 
-    // a native plugin's library loads first, so a plugin whose code is missing is not recorded
+    // a native plugin's library loads first, so a new plugin whose code is missing is not recorded
     SDL_SharedObject *library = nullptr;
     ECSIPluginInitFunction Init = nullptr;
 
@@ -398,26 +505,10 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
         SHU_ReturnResult(ECSIPlugin_LoadLibrary(name, manifest->folder, &library, &Init));
     }
 
-    ECSIPlugin *plugin = SDL_calloc(1, sizeof(ECSIPlugin));
+    ECSIPlugin *plugin = ECSIPlugin_Record(name, manifest);
 
-    if (plugin != nullptr)
+    if (plugin == nullptr)
     {
-        plugin->name = SDL_strdup(name);
-        plugin->version = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "version"), "0.0.0"));
-        plugin->description = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(file, "description"), ""));
-        plugin->folder = ECSIPlugin_GetAbsoluteFolder(manifest->folder);
-        plugin->library = library;
-        ECSIValue_TableForEachField(ECSValue_GetTableField(file, "depends"), ECSIPlugin_AddDependency, plugin);
-    }
-
-    if (plugin == nullptr || plugin->name == nullptr || plugin->version == nullptr || plugin->description == nullptr || plugin->folder == nullptr)
-    {
-        if (plugin != nullptr)
-        {
-            ECSIPlugin_Free(plugin);
-            SDL_free(plugin);
-        }
-
         if (library != nullptr)
         {
             SDL_UnloadObject(library);
@@ -426,8 +517,10 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
         return SHUResult_ErrAllocation;
     }
 
-    // the plugin is recorded before its code runs, so the core knows it while it registers things
-    shput(PLUGINS.plugins, plugin->name, plugin);
+    plugin->library = library;
+    plugin->disabled = false;
+    plugin->failed = false;
+    plugin->generation++;
 
     if (native)
     {
@@ -442,6 +535,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
         SHU_ReturnResult(result, ECSIPlugin_Fail(plugin, "failed to start its Lua code", result););
     }
 
+    ECSIPlugin_RestoreKeptState(plugin);
     SDL_Log("Plugin '%s' %s loaded from '%s'.", plugin->name, plugin->version, manifest->folder);
     return SHUResult_Ok;
 }
@@ -467,8 +561,14 @@ static SHUResult ECSIPlugin_Load(const char *name, const char *minimum)
 {
     ECSIPlugin *plugin = ECSIPlugin_Find(name);
 
-    if (plugin != nullptr)
+    // a disabled plugin stays disabled, unless the user enables it or a plugin that depends on it
+    if (plugin != nullptr && !(plugin->disabled && PLUGINS.enabling))
     {
+        if (plugin->disabled)
+        {
+            return OPENECS_PLUGIN_DISABLED;
+        }
+
         return ECSIPlugin_CheckVersion(name, plugin->version, minimum) && !plugin->failed ? SHUResult_Ok : SHUResult_ErrBadData;
     }
 
@@ -502,6 +602,13 @@ static void ECSIPlugin_LoadField(const char *name, const ECSValue *field, void *
     }
 
     SHUResult result = ECSIPlugin_Load(name, ECSValue_GetString(field, nullptr));
+
+    // a disabled dependency disables the plugin that needs it, which is no error; a disabled plugin that a preset names is none either
+    if (result == OPENECS_PLUGIN_DISABLED)
+    {
+        loader->result = loader->dependent != nullptr ? result : loader->result;
+        return;
+    }
 
     if (result)
     {
@@ -669,13 +776,26 @@ void ECSIPlugins_RestoreStates(const ECSValue *states)
     {
         ECSIPlugin *plugin = PLUGINS.plugins[i].value;
         const ECSValue *entry = ECSValue_GetTableField(states, plugin->name);
+        i64 version = ECSValue_GetInteger(ECSValue_GetTableField(entry, "stateVersion"), 0);
+
+        // a disabled plugin keeps its state until it is enabled
+        if (plugin->disabled && entry != nullptr)
+        {
+            ECSValue_Destroy(&plugin->keptState);
+
+            if (ECSValue_Create(&plugin->keptState) || ECSIValue_Copy(plugin->keptState, ECSValue_GetTableField(entry, "state")))
+            {
+                ECSValue_Destroy(&plugin->keptState);
+            }
+
+            plugin->keptStateVersion = version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0;
+            continue;
+        }
 
         if (plugin->desc.RestoreState == nullptr || entry == nullptr)
         {
             continue;
         }
-
-        i64 version = ECSValue_GetInteger(ECSValue_GetTableField(entry, "stateVersion"), 0);
 
         if (plugin->desc.RestoreState(plugin->desc.data, ECSValue_GetTableField(entry, "state"), version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0))
         {
@@ -701,14 +821,14 @@ SHUResult ECSIPlugins_SaveStates(ECSValue *states)
         ECSValue *entry = nullptr;
         ECSValue *field = nullptr;
 
-        if (plugin->desc.SaveState == nullptr)
+        if (plugin->desc.SaveState == nullptr && plugin->keptState == nullptr)
         {
             continue;
         }
 
         SHU_ReturnResult(ECSValue_Create(&saved));
 
-        if (plugin->desc.SaveState(plugin->desc.data, saved))
+        if (plugin->keptState != nullptr ? ECSIValue_Copy(saved, plugin->keptState) : plugin->desc.SaveState(plugin->desc.data, saved))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not save its state.", plugin->name);
             ECSValue_Destroy(&saved);
@@ -728,7 +848,7 @@ SHUResult ECSIPlugins_SaveStates(ECSValue *states)
 
         if (!result)
         {
-            ECSValue_SetInteger(field, plugin->desc.stateVersion);
+            ECSValue_SetInteger(field, plugin->keptState != nullptr ? plugin->keptStateVersion : plugin->desc.stateVersion);
         }
 
         ECSValue_Destroy(&saved);
@@ -803,7 +923,7 @@ bool ECSIPlugins_OwnerRuns(const char *name)
     char *owner = SDL_strndup(name, length);
     ECSIPlugin *plugin = owner == nullptr ? nullptr : ECSIPlugin_Find(owner);
     SDL_free(owner);
-    return plugin != nullptr && !plugin->failed;
+    return plugin != nullptr && ECSIPlugin_Runs(plugin);
 }
 
 char *ECSIPlugin_MakeFullName(ECSPlugin plugin, const char *localName)
@@ -882,7 +1002,7 @@ ECSPlugin ECSIPlugins_Get(const char *name)
     SDL_assert(name != nullptr);
 
     ECSIPlugin *plugin = ECSIPlugin_Find(name);
-    return plugin == nullptr || plugin->failed ? nullptr : plugin;
+    return plugin == nullptr || !ECSIPlugin_Runs(plugin) ? nullptr : plugin;
 }
 
 SHUResult ECSIPlugins_ForEach(ECSIPluginsVisitFunction Visit, void *data)
@@ -893,7 +1013,7 @@ SHUResult ECSIPlugins_ForEach(ECSIPluginsVisitFunction Visit, void *data)
 
     for (usz i = 0; i < shlenu(PLUGINS.plugins); i++)
     {
-        if (!PLUGINS.plugins[i].value->failed)
+        if (ECSIPlugin_Runs(PLUGINS.plugins[i].value))
         {
             SHUResult visited = Visit(PLUGINS.plugins[i].value, data);
             result = result ? result : visited;
@@ -901,4 +1021,269 @@ SHUResult ECSIPlugins_ForEach(ECSIPluginsVisitFunction Visit, void *data)
     }
 
     return result;
+}
+
+bool ECSIPlugin_IsEnabled(ECSPlugin plugin)
+{
+    SDL_assert(plugin != nullptr);
+    return ECSIPlugin_Runs(plugin);
+}
+
+u32 ECSIPlugin_GetGeneration(ECSPlugin plugin)
+{
+    SDL_assert(plugin != nullptr);
+    return plugin->generation;
+}
+
+void ECSIPlugins_SetDisabled(const char *const *names, usz count)
+{
+    SDL_assert(names != nullptr || count == 0);
+
+    PLUGINS.disabledNames = names;
+    PLUGINS.disabledCount = count;
+}
+
+ECSPlugin *ECSIPlugins_GetDependents(ECSPlugin plugin)
+{
+    SDL_assert(plugin != nullptr);
+
+    // the load order puts a plugin after the plugins it depends on, so one pass finds every plugin that needs another, through others too
+    ECSPlugin *found = nullptr;
+    arrput(found, plugin);
+
+    for (usz i = 0; i < shlenu(PLUGINS.plugins); i++)
+    {
+        ECSIPlugin *candidate = PLUGINS.plugins[i].value;
+
+        for (usz j = 0; ECSIPlugin_Runs(candidate) && candidate != plugin && j < arrlenu(found); j++)
+        {
+            if (ECSIPlugin_DependsOn(candidate, found[j]))
+            {
+                arrput(found, candidate);
+                break;
+            }
+        }
+    }
+
+    // the last loaded goes first, as at exit
+    for (usz i = 0; i < arrlenu(found) / 2; i++)
+    {
+        ECSPlugin swapped = found[i];
+        found[i] = found[arrlenu(found) - 1 - i];
+        found[arrlenu(found) - 1 - i] = swapped;
+    }
+
+    return found;
+}
+
+void ECSIPlugins_Disable(ECSPlugin plugin)
+{
+    SDL_assert(plugin != nullptr);
+
+    if (!ECSIPlugin_Runs(plugin))
+    {
+        return;
+    }
+
+    // its state is kept for when it is enabled again, and for the session
+    if (plugin->desc.SaveState != nullptr)
+    {
+        ECSValue_Destroy(&plugin->keptState);
+
+        if (ECSValue_Create(&plugin->keptState) || plugin->desc.SaveState(plugin->desc.data, plugin->keptState))
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not save its state.", plugin->name);
+            ECSValue_Destroy(&plugin->keptState);
+        }
+
+        plugin->keptStateVersion = plugin->desc.stateVersion;
+    }
+
+    if (plugin->desc.Destroy != nullptr)
+    {
+        plugin->desc.Destroy(plugin->desc.data);
+    }
+
+    PLUGINS.hooks.RemoveRegistrations(plugin);
+    ECSIPlugin_Forget(plugin);
+
+    // the functions that the plugin's threads sent to the main thread before Destroy stopped them run now, while their code is loaded
+    SDL_PumpEvents();
+
+    if (plugin->library != nullptr)
+    {
+        SDL_UnloadObject(plugin->library);
+        plugin->library = nullptr;
+    }
+
+    plugin->disabled = true;
+    plugin->generation++;
+    SDL_Log("Plugin '%s' is disabled.", plugin->name);
+}
+
+SHUResult ECSIPlugins_Enable(const char *const *folders, usz folderCount, const char *name)
+{
+    SDL_assert(folders != nullptr);
+    SDL_assert(name != nullptr);
+
+    PLUGINS.folders = folders;
+    PLUGINS.folderCount = folderCount;
+    PLUGINS.neededBy = "the user";
+    PLUGINS.enabling = true;
+    SHUResult result = ECSIPlugin_Load(name, nullptr);
+    PLUGINS.enabling = false;
+    PLUGINS.folders = nullptr;
+    PLUGINS.folderCount = 0;
+    PLUGINS.neededBy = nullptr;
+    PLUGINS.invalid = false;
+    return result;
+}
+
+/// @brief Sets a field of a table to a text.
+static SHUResult ECSIPlugins_SetText(ECSValue *table, const char *name, const char *text)
+{
+    ECSValue *field = nullptr;
+    SHU_ReturnResult(ECSValue_SetTableField(table, name, &field));
+    return ECSValue_SetString(field, text);
+}
+
+/// @brief Sets a field of a table to a boolean.
+static SHUResult ECSIPlugins_SetBool(ECSValue *table, const char *name, bool value)
+{
+    ECSValue *field = nullptr;
+    SHU_ReturnResult(ECSValue_SetTableField(table, name, &field));
+    ECSValue_SetBool(field, value);
+    return SHUResult_Ok;
+}
+
+/// @brief Sets a field of a table to a list of names.
+static SHUResult ECSIPlugins_SetNames(ECSValue *table, const char *name, char *const *names)
+{
+    ECSValue *field = nullptr;
+    SHU_ReturnResult(ECSValue_SetTableField(table, name, &field));
+    ECSValue_SetTable(field);
+
+    for (usz i = 0; i < arrlenu(names); i++)
+    {
+        ECSValue *item = nullptr;
+        SHU_ReturnResult(ECSValue_AddListItem(field, &item));
+        SHU_ReturnResult(ECSValue_SetString(item, names[i]));
+    }
+
+    return SHUResult_Ok;
+}
+
+/// @brief Adds a plugin to a list of plugins, as ECSPlugins_List gives it.
+static SHUResult ECSIPlugins_ListOne(ECSValue *list, const char *name)
+{
+    // a plugin that never loaded is read from its manifest, into a record of its own
+    ECSIPlugin *plugin = ECSIPlugin_Find(name);
+    ECSIPlugin unloaded = {0};
+
+    if (plugin == nullptr)
+    {
+        ECSIManifest manifest = {0};
+        SHUResult found = ECSIManifest_Find(name, &manifest);
+        found = found ? found : ECSIPlugin_ReadManifest(&unloaded, &manifest);
+        ECSIManifest_Free(&manifest);
+        SHU_ReturnResult(found, ECSIPlugin_FreeManifestFields(&unloaded););
+    }
+
+    const ECSIPlugin *source = plugin != nullptr ? plugin : &unloaded;
+    ECSValue *entry = nullptr;
+    SHUResult result = ECSValue_AddListItem(list, &entry);
+
+    if (!result)
+    {
+        ECSValue_SetTable(entry);
+    }
+
+    result = result ? result : ECSIPlugins_SetText(entry, "name", name);
+    result = result ? result : ECSIPlugins_SetText(entry, "version", source->version);
+    result = result ? result : ECSIPlugins_SetText(entry, "description", source->description);
+    result = result ? result : ECSIPlugins_SetBool(entry, "enabled", plugin != nullptr && ECSIPlugin_Runs(plugin));
+    result = result ? result : ECSIPlugins_SetBool(entry, "failed", plugin != nullptr && plugin->failed);
+    result = result ? result : ECSIPlugins_SetNames(entry, "depends", source->dependencies);
+    ECSIPlugin_FreeManifestFields(&unloaded);
+    return result;
+}
+
+SHUResult ECSIPlugins_List(const char *const *folders, usz folderCount, ECSValue *retList)
+{
+    SDL_assert(folders != nullptr);
+    SDL_assert(retList != nullptr);
+
+    ECSValue_SetTable(retList);
+    PLUGINS.folders = folders;
+    PLUGINS.folderCount = folderCount;
+    SHUResult result = SHUResult_Ok;
+
+    // the first folder that holds a plugin's name gives it, as for loading
+    for (usz i = 0; !result && i < folderCount; i++)
+    {
+        int count = 0;
+        char **manifests = SDL_GlobDirectory(folders[i], "*/manifest.lua", 0, &count);
+
+        for (int j = 0; !result && j < count; j++)
+        {
+            const char *slash = manifests[j];
+
+            while (*slash != '\0' && !ECSPath_IsSeparator(*slash))
+            {
+                slash++;
+            }
+
+            char *name = SDL_strndup(manifests[j], (usz)(slash - manifests[j]));
+            bool listed = false;
+
+            for (usz k = 0; name != nullptr && k < ECSValue_GetListCount(retList) && !listed; k++)
+            {
+                listed = SDL_strcmp(ECSValue_GetString(ECSValue_GetTableField(ECSValue_GetListItem(retList, k), "name"), ""), name) == 0;
+            }
+
+            // a manifest that cannot be read is reported, and the rest are listed still
+            result = name == nullptr ? SHUResult_ErrAllocation : listed ? SHUResult_Ok
+                                                                        : ECSIPlugins_ListOne(retList, name);
+            result = result == SHUResult_ErrAllocation ? result : SHUResult_Ok;
+            SDL_free(name);
+        }
+
+        SDL_free(manifests);
+    }
+
+    PLUGINS.folders = nullptr;
+    PLUGINS.folderCount = 0;
+    PLUGINS.invalid = false;
+    return result;
+}
+
+SHUResult ECSIPlugins_GetDisabled(ECSValue *retList)
+{
+    SDL_assert(retList != nullptr);
+
+    ECSValue_SetTable(retList);
+
+    for (usz i = 0; i < shlenu(PLUGINS.plugins); i++)
+    {
+        if (PLUGINS.plugins[i].value->disabled)
+        {
+            ECSValue *item = nullptr;
+            SHU_ReturnResult(ECSValue_AddListItem(retList, &item));
+            SHU_ReturnResult(ECSValue_SetString(item, PLUGINS.plugins[i].value->name));
+        }
+    }
+
+    return SHUResult_Ok;
+}
+
+bool ECSIPlugins_IsDisabled(const char *name)
+{
+    SDL_assert(name != nullptr);
+
+    // the owner's name is the text before the first dot, as of a panel type
+    const char *dot = SDL_strchr(name, '.');
+    char *owner = SDL_strndup(name, dot == nullptr ? SDL_strlen(name) : (usz)(dot - name));
+    ECSIPlugin *plugin = owner == nullptr ? nullptr : ECSIPlugin_Find(owner);
+    SDL_free(owner);
+    return plugin != nullptr && plugin->disabled;
 }

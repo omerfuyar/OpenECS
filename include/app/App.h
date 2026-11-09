@@ -14,6 +14,8 @@ typedef struct ECSIArguments
     bool fresh;              // true to start from the preset, not from the tool's last session
     const char *test;        // path of a test to run, or nullptr
     const char *definitions; // folder to write the definition files of the plugins' functions into, or nullptr
+    bool install;            // add the preset's tool to the system's launcher, and exit
+    bool uninstall;          // remove the preset's tool from the system's launcher, and exit
     bool version;            // print the version and exit
     bool help;               // print the options and exit
     char **files;            // the files to open, as the command line names them
@@ -24,6 +26,11 @@ typedef struct ECSIArguments
 /// @param folder The folder to write into; it is made if it is missing.
 /// @return SHUResult_Ok, or the first error; each is reported.
 SHUWUR SHUResult ECSIApp_WriteDefinitions(const char *folder);
+
+/// @brief Adds the preset's tool to the system's launcher, or removes it (DESIGN 13.9), without starting the tool. Call it in place of ECSIApp_Start.
+/// @param arguments What the command line asks for: the preset, and install or uninstall.
+/// @return The program's exit status: 0 if it worked, 1 otherwise; the reason is logged.
+int ECSIApp_Install(const ECSIArguments *arguments);
 
 /// @brief Starts every module, loads the plugins and builds the layout from the session or the preset. If a step fails, it tells the user and exits the program.
 /// @param arguments What the command line asks for.

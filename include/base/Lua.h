@@ -6,7 +6,7 @@
 
 #pragma region Declarations
 
-/// @brief The Lua state, as lua.h declares it. Only the Bindings, Workers and Test modules use it.
+/// @brief The Lua state, as lua.h declares it, so a header can name it without including Lua.
 typedef struct lua_State lua_State;
 
 /// @brief Starts the Lua state.
@@ -16,7 +16,7 @@ SHUWUR SHUResult ECSILua_Initialize(void);
 /// @brief Stops the Lua state.
 void ECSILua_Terminate(void);
 
-/// @brief Gets the Lua state, for the Bindings and Test modules.
+/// @brief Gets the Lua state that runs the plugins' Lua code.
 /// @return The state.
 lua_State *ECSILua_GetState(void);
 

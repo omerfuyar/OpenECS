@@ -183,6 +183,12 @@ SDL_FRect ECSIWindow_MenuItemRect(usz level, usz index);
 /// @return true if there is an entry at the point.
 bool ECSIWindow_MenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex);
 
+/// @brief Tells whether a point of the OS window that has the pointer is on the title bar that OpenECS draws, apart from its buttons.
+/// @param x Horizontal position in layout units.
+/// @param y Vertical position in layout units.
+/// @return true on the title bar; false elsewhere, or when the system draws the title bar.
+bool ECSIWindow_TitleBarAt(f32 x, f32 y);
+
 /// @brief Checks whether a point of the event window is on any shown menu.
 bool ECSIWindow_MenuContains(f32 x, f32 y);
 

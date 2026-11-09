@@ -274,6 +274,12 @@ typedef struct ECSITypedText
 } ECSITypedText;
 
 /// @brief Delivers a Text event, then frees its copy of the text.
+/// @brief Frees typed text that is never delivered.
+static void ECSIPanel_FreeText(void *target)
+{
+    SDL_free(target);
+}
+
 static void ECSIPanel_DeliverText(void *target, const ECSPanelEvent *event)
 {
     ECSITypedText *typed = target;
@@ -292,15 +298,21 @@ static void ECSIPanel_ClearAccepts(ECSPanel panel)
     arrfree(panel->accepts);
 }
 
+/// @brief Frees a drop's data.
+static void ECSIPanel_FreeDrop(void *target)
+{
+    ECSDropData data = target;
+    SDL_free(data->type);
+    ECSValue_Destroy(&data->value);
+    SDL_free(data);
+}
+
 /// @brief Delivers a Drop event, then frees its data.
 static void ECSIPanel_DeliverDrop(void *target, const ECSPanelEvent *event)
 {
     ECSDropData data = target;
     ECSIPanel_DeliverEvent(data->panel, event);
-
-    SDL_free(data->type);
-    ECSValue_Destroy(&data->value);
-    SDL_free(data);
+    ECSIPanel_FreeDrop(data);
 }
 
 #pragma endregion Source Only
@@ -505,8 +517,9 @@ void ECSIPanel_SetRect(ECSPanel panel, f32 x, f32 y, f32 width, f32 height)
         panel->needsDraw = true;
     }
 
-    panel->x = x;
-    panel->y = y;
+    // a panel's corner is on a whole pixel, so its pixels show one to one and pointer positions match them
+    panel->x = SDL_roundf(x);
+    panel->y = SDL_roundf(y);
     panel->width = width;
     panel->height = height;
 }
@@ -632,7 +645,9 @@ void ECSIPanel_Show(ECSPanel panel, SDL_Renderer *renderer)
 
     if (panel->texture != nullptr && panel->fault == nullptr)
     {
-        SDL_FRect rect = {panel->x, panel->y, panel->width, panel->height};
+        // the pixels show one to one, so text and lines stay sharp at any place and size
+        SDL_FRect rect = {panel->x, panel->y, 0.0f, 0.0f};
+        SDL_GetTextureSize(panel->texture, &rect.w, &rect.h);
         SDL_RenderTexture(renderer, panel->texture, nullptr, &rect);
     }
 }
@@ -689,7 +704,7 @@ void ECSIPanel_PostEvent(ECSPanel panel, const ECSPanelEvent *event)
     SDL_assert(panel != nullptr);
     SDL_assert(event != nullptr);
 
-    ECSIEvents_Post(ECSIPanel_DeliverEvent, panel, event);
+    ECSIEvents_Post(ECSIPanel_DeliverEvent, nullptr, panel, event);
 }
 
 bool ECSIPanel_Accepts(ECSPanel panel, const char *type)
@@ -740,7 +755,7 @@ void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const EC
     }
 
     ECSPanelEvent event = {.type = ECSPanelEventType_Drop, .modifiers = modifiers, .drop = {.x = x, .y = y, .data = data}};
-    ECSIEvents_Post(ECSIPanel_DeliverDrop, data, &event);
+    ECSIEvents_Post(ECSIPanel_DeliverDrop, ECSIPanel_FreeDrop, data, &event);
 }
 
 void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers)
@@ -761,7 +776,7 @@ void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers)
     SDL_memcpy(typed->text, text, size);
 
     ECSPanelEvent event = {.type = ECSPanelEventType_Text, .modifiers = modifiers, .text = {.text = typed->text}};
-    ECSIEvents_Post(ECSIPanel_DeliverText, typed, &event);
+    ECSIEvents_Post(ECSIPanel_DeliverText, ECSIPanel_FreeText, typed, &event);
 }
 
 void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f32 y, f32 width, f32 height)
@@ -912,6 +927,36 @@ u32 ECSIPanels_GetStateVersion(const char *typeName)
 
     ECSIPanelType *type = ECSIPanelType_Find(typeName);
     return type == nullptr ? 0 : type->desc.stateVersion;
+}
+
+void ECSIPanel_Unload(ECSPanel panel)
+{
+    SDL_assert(panel != nullptr);
+
+    if (panel->type == nullptr)
+    {
+        return;
+    }
+
+    // the panel saves its state first, which it keeps as a placeholder and gets back when its plugin is enabled again
+    ECSValue *saved = nullptr;
+
+    if (ECSValue_Create(&saved) || ECSIPanel_Save(panel, saved))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' could not save its state; it keeps the state it had.", panel->title);
+    }
+
+    ECSValue_Destroy(&saved);
+
+    panel->type->desc.Destroy(panel->state);
+    ECSIPanel_ClearAccepts(panel);
+    panel->textInput = false;
+    SDL_free(panel->fault);
+    panel->fault = nullptr;
+    panel->state = nullptr;
+    panel->type = nullptr;
+    panel->unsaved = false;
+    panel->needsDraw = true;
 }
 
 bool ECSIPanel_CanRestart(ECSPanel panel)

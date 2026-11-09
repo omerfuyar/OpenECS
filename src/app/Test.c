@@ -1,6 +1,7 @@
 #include "app/Test.h"
 #include "base/Lua.h"
 #include "base/Paths.h"
+#include "interface/Dialogs.h"
 #include "interface/Input.h"
 #include "interface/Layout.h"
 #include "interface/Panels.h"
@@ -754,7 +755,7 @@ static int ECSITest_Popup(lua_State *state)
 /// @brief test.dialog(): the message dialog that waits for an answer, or nil: its title, message and buttons, the chosen button, and each button's rectangle in its OS window.
 static int ECSITest_Dialog(lua_State *state)
 {
-    const ECSIDialogView *dialog = ECSIInput_GetDialog();
+    const ECSIDialogView *dialog = ECSIDialogs_Get();
 
     if (dialog == nullptr)
     {
@@ -1018,7 +1019,7 @@ SHUResult ECSITest_Load(const char *path, char **retPreset)
     TEST.started = false;
     TEST.failed = false;
     TEST.ended = false;
-    ECSIInput_SetDialogTest(ECSITest_StepDialog, ECSITest_GetWait);
+    ECSIDialogs_SetTest(ECSITest_StepDialog, ECSITest_GetWait);
     return SHUResult_Ok;
 }
 
@@ -1043,7 +1044,7 @@ const char *ECSITest_GetSessionsFolder(void)
 void ECSITest_Terminate(void)
 {
     ECSITest_Finish();
-    ECSIInput_SetDialogTest(nullptr, nullptr);
+    ECSIDialogs_SetTest(nullptr, nullptr);
 
     for (usz i = 0; i < arrlenu(TEST.files); i++)
     {
