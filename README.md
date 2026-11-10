@@ -225,6 +225,10 @@ SDL_VIDEO_DRIVER=wayland ./shuild.ignore -t
 
 The checks also format the C files with clang-format 18, as `.clang-format` says.
 
+## Questions and bugs
+
+Ask questions and show what you build in [Discussions](https://github.com/omerfuyar/OpenECS/discussions). Report bugs in [Issues](https://github.com/omerfuyar/OpenECS/issues).
+
 ## License
 
 OpenECS is under the zlib license; see [LICENSE.md](LICENSE.md). The release archives hold the licenses of the libraries and the font that OpenECS includes, in `licenses/`.
