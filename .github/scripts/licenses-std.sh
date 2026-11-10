@@ -27,6 +27,8 @@ cp $std/tree-sitter/LICENSE "$folder/tree-sitter.txt"
 cp $std/tree-sitter-c/LICENSE "$folder/tree-sitter-c.txt"
 cp $std/tree-sitter-lua/LICENSE.md "$folder/tree-sitter-lua.txt"
 cp $std/tree-sitter-json/LICENSE "$folder/tree-sitter-json.txt"
+# pl_mpeg is one header, whose first lines name its license and its author
+sed -n '2,5p' $std/pl_mpeg/pl_mpeg.h > "$folder/pl_mpeg.txt"
 cp std/plugins/draw/fonts/OFL.txt "$folder/RobotoMono.txt"
 
 cat << NOTICE
@@ -49,5 +51,6 @@ SQLite: public domain
 PCRE2: BSD 3-Clause license, with its exception for binary copies
 md4c: MIT license
 tree-sitter, with its grammars of C, Lua and JSON: MIT license
+pl_mpeg: MIT license
 Roboto Mono font: SIL Open Font License 1.1
 NOTICE
