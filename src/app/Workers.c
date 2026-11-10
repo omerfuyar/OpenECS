@@ -70,7 +70,7 @@ static ECSValue *ECSIWorkers_CopyMessage(lua_State *state, int index)
 {
     ECSValue *message = nullptr;
     SHUResult result = ECSValue_Create(&message);
-    result = result ? result : ECSILua_GetValue(state, index, message);
+    result = result ? result : ECSILua_GetMessage(state, index, message);
 
     if (result)
     {
@@ -487,7 +487,7 @@ static int ECSIWorkers_Start(lua_State *state)
 
     lua_getfield(state, 1, "input");
     SHUResult result = ECSValue_Create(&worker->input);
-    result = result ? result : ECSILua_GetValue(state, -1, worker->input);
+    result = result ? result : ECSILua_GetMessage(state, -1, worker->input);
     lua_pop(state, 1);
 
     if (!result && (worker->path == nullptr || worker->folder == nullptr || worker->name == nullptr || worker->version == nullptr || worker->lock == nullptr || worker->arrived == nullptr))

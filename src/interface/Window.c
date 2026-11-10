@@ -453,6 +453,12 @@ static void ECSIWindow_Forget(void)
     ECSIWindow_CancelDrag();
     WINDOW.gripGroup = nullptr;
     WINDOW.dragSplit = nullptr;
+
+    // the tabs drawn in the last frame name groups and places in them, so a press finds no tab until the next frame draws them again
+    for (usz i = 0; i < arrlenu(WINDOW.windows); i++)
+    {
+        arrsetlen(WINDOW.windows[i]->tabs, 0);
+    }
 }
 
 #pragma region Dragging
@@ -2628,7 +2634,7 @@ bool ECSIWindow_ScrollTabs(f32 x, f32 y, f32 steps)
     return true;
 }
 
-void ECSIWindow_ShowMenu(usz level, SDL_FRect anchor, const char *const *lines, usz count)
+void ECSIWindow_ShowMenu(usz level, ECSPanel panel, SDL_FRect anchor, const char *const *lines, usz count)
 {
     SDL_assert(level < OPENECS_MENU_DEPTH);
 
@@ -2641,19 +2647,20 @@ void ECSIWindow_ShowMenu(usz level, SDL_FRect anchor, const char *const *lines, 
     ECSIMenuView *menu = &WINDOW.menus[level];
     ECSILayout_RequestFrame();
 
-    // the panel menu opens in the OS window of the event that opens it, and its submenus open beside it
-    if (level == 0)
-    {
-        WINDOW.menuWindow = WINDOW.eventWindow;
-    }
-
-    f32 windowWidth = WINDOW.menuWindow->width;
-    f32 windowHeight = WINDOW.menuWindow->height;
-
     if (count == 0)
     {
         return;
     }
+
+    // the panel menu opens in the OS window of its panel, or of the event that opens it, which a popup's window is not; its submenus open beside it
+    if (level == 0)
+    {
+        ECSIOSWindow *shown = panel != nullptr ? ECSIWindow_FindByRoot(ECSILayout_RootOf(panel)) : WINDOW.eventWindow;
+        WINDOW.menuWindow = shown != nullptr ? shown : WINDOW.windows[0];
+    }
+
+    f32 windowWidth = WINDOW.menuWindow->width;
+    f32 windowHeight = WINDOW.menuWindow->height;
 
     menu->lines = lines;
     menu->count = count;

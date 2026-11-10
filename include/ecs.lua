@@ -74,6 +74,7 @@ function ecs.setting.declare(desc) end
 function ecs.setting.get(name) end
 
 ---Sets a setting in the user's settings file, the highest layer, and writes the file.
+---A file that could not be read is not written: the change lasts until the program exits.
 ---@param name string The setting's full name, such as "canvas.grid".
 ---@param value any The new value, of the setting's type.
 ---@return true|nil ok true if the value is set and written.

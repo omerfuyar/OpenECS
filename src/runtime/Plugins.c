@@ -47,7 +47,7 @@ typedef struct ECSIPlugin
     SDL_SharedObject *library; // nullptr if the plugin has no native code
     bool failed;               // its code failed to start; plugins that depend on it are skipped
     bool disabled;             // the user disabled it, or a plugin it depends on; its code is not loaded
-    u32 generation;            // grows each time its code is loaded or unloaded, so work of an earlier load is dropped
+    u32 generation;            // grows each time its code is loaded, and when it starts and ends being unloaded, so work of an earlier load is dropped
     ECSValue *keptState;       // the state it saved when it was disabled, or that a session gave it while disabled; nullptr if none
     u32 keptStateVersion;
     char **dependencies;     // stb_ds array of the names its manifest depends on
@@ -1085,6 +1085,9 @@ void ECSIPlugins_Disable(ECSPlugin plugin)
         return;
     }
 
+    // what this load's work in the background sent to the main thread is dropped from now on: a done function never runs after Destroy
+    plugin->generation++;
+
     // its state is kept for when it is enabled again, and for the session
     if (plugin->desc.SaveState != nullptr)
     {
@@ -1116,6 +1119,7 @@ void ECSIPlugins_Disable(ECSPlugin plugin)
         plugin->library = nullptr;
     }
 
+    // work that Destroy itself started is dropped too
     plugin->disabled = true;
     plugin->generation++;
     SDL_Log("Plugin '%s' is disabled.", plugin->name);

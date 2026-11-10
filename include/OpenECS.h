@@ -514,7 +514,7 @@ OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel l
 /// @param work Runs on a worker thread from a small pool. It must not call core functions that are for the main thread only.
 /// @param done Runs on the main thread after work returns, or nullptr. Work that has not started when the program exits does not run, and neither does its done.
 /// @param data Passed to both functions.
-/// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if no worker thread can start.
+/// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if no worker thread can start, or the program exits.
 /// @lua none: Lua code never runs on worker threads; Lua plugins use services that work in the background
 OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data);
 
@@ -657,6 +657,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetString(ECSValue *value, const char *
 OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetBuffer(ECSValue *value, SHUSliceView buffer);
 
 /// @brief Makes a value a handle: an object of a registered handle type, such as a panel. In Lua it is the object's handle. The value does not own the object, which must live as long as the value is used.
+/// An emitted event's value is used later, when it is delivered: it gives no object once ECSHandle_Free or ECSHandle_Forget is called for the object.
 /// @param value The value.
 /// @param type Full name of the handle type, such as "ecs.panel". The core copies it.
 /// @param object The object.
@@ -706,10 +707,10 @@ OPENECS_EXPORT SHUWUR SHUResult ECSService_RegisterFunction(ECSPlugin plugin, co
 
 /// @brief Looks up a function of a service. Lua functions come as C function pointers too. Main thread only.
 /// @param plugin The plugin that asks. It may look up its own functions and those of the plugins its manifest depends on.
-/// @param retFunction The function, to be cast to its real type. Valid until the program exits.
+/// @param retFunction The function, to be cast to its real type. Valid until the plugin or the function's provider is disabled, or the program exits.
 /// @param name Name of the function, such as "audio.play".
 /// @param signature The signature the caller expects. It must match the registered one.
-/// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, SHUResult_ErrPrivileges if the plugin does not depend on the provider, or SHUResult_ErrBadData if the signature is invalid or does not match.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, SHUResult_ErrPrivileges if the plugin does not depend on the provider, SHUResult_ErrBadData if the signature is invalid or does not match, or SHUResult_ErrAllocation.
 /// @lua ecs.service.get
 OPENECS_EXPORT SHUWUR SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, const char *name, const char *signature);
 
@@ -718,7 +719,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunc
 /// @lua none: Lua's garbage collector frees the callbacks that Lua keeps
 OPENECS_EXPORT void ECSService_ReleaseCallback(ECSFunction callback);
 
-/// @brief Sets a setting in the user's settings file, the highest layer, and writes the file. Main thread only.
+/// @brief Sets a setting in the user's settings file, the highest layer, and writes the file. A file that could not be read is not written: the change lasts until the program exits. Main thread only.
 /// @param name Name of the setting.
 /// @param value The new value. It must have the setting's type. The core copies it.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no setting has the name, SHUResult_ErrBadData if the value has the wrong type, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.

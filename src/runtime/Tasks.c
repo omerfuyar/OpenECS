@@ -235,7 +235,7 @@ void ECSITasks_ForgetPlugin(ECSPlugin plugin)
     SDL_UnlockMutex(TASKS.lock);
 }
 
-void ECSITasks_Terminate(void)
+void ECSITasks_Stop(void)
 {
     // running work finishes, waiting work is dropped, and no task reaches the main thread any more
     SDL_LockMutex(TASKS.lock);
@@ -250,6 +250,11 @@ void ECSITasks_Terminate(void)
 
     SDL_SetAtomicInt(&TASKS.stopped, 1);
     arrfree(TASKS.workers);
+}
+
+void ECSITasks_Terminate(void)
+{
+    ECSITasks_Stop();
     arrfree(TASKS.queue);
     arrfree(TASKS.busy);
     SDL_DestroyCondition(TASKS.idle);

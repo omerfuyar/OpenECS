@@ -147,8 +147,8 @@ SHUResult ECSIValue_Copy(ECSValue *retCopy, const ECSValue *source)
     case ECSValueType_Buffer:
         return ECSValue_SetBuffer(retCopy, (SHUSliceView){.data = source->bytes, .size = source->size});
     case ECSValueType_Handle:
-        return source->reference != 0 && VALUES.Keep != nullptr ? ECSIValue_SetLuaHandle(retCopy, source->handleType, source->object, VALUES.Keep(source->reference))
-                                                                : ECSValue_SetHandle(retCopy, source->handleType, source->object);
+        // a handle whose object was freed while it waited has no object
+        return ECSIValue_SetLuaHandle(retCopy, source->handleType, source->object, source->reference != 0 && VALUES.Keep != nullptr ? VALUES.Keep(source->reference) : 0);
     case ECSValueType_Table:
         break;
     }
@@ -436,6 +436,29 @@ void ECSIValue_SetLuaFunctions(ECSIValueKeepFunction Keep, ECSIValueDropFunction
     VALUES.Object = Object;
 }
 
+void ECSIValue_ForgetObject(ECSValue *value, const void *object)
+{
+    SDL_assert(value != nullptr);
+
+    // a handle read from Lua keeps its Lua handle, which knows when its object goes
+    if (value->type == ECSValueType_Handle && value->reference == 0 && value->object == object)
+    {
+        value->object = nullptr;
+    }
+    else if (value->type == ECSValueType_Table)
+    {
+        for (usz i = 0; i < arrlenu(value->items); i++)
+        {
+            ECSIValue_ForgetObject(value->items[i], object);
+        }
+
+        for (usz i = 0; i < shlenu(value->fields); i++)
+        {
+            ECSIValue_ForgetObject(value->fields[i].value, object);
+        }
+    }
+}
+
 usz ECSValue_GetListCount(const ECSValue *table)
 {
     return ECSValue_GetType(table) == ECSValueType_Table ? arrlenu(table->items) : 0;
@@ -558,6 +581,8 @@ SHUResult ECSValue_SetBuffer(ECSValue *value, SHUSliceView buffer)
 
 SHUResult ECSValue_SetHandle(ECSValue *value, const char *type, void *object)
 {
+    SDL_assert(object != nullptr);
+
     return ECSIValue_SetLuaHandle(value, type, object, 0);
 }
 
@@ -565,7 +590,6 @@ SHUResult ECSIValue_SetLuaHandle(ECSValue *value, const char *type, void *object
 {
     SDL_assert(value != nullptr);
     SDL_assert(type != nullptr);
-    SDL_assert(object != nullptr);
 
     char *copy = SDL_strdup(type);
 

@@ -71,6 +71,9 @@ typedef void *(*ECSIValueObjectFunction)(int reference);
 /// @brief Sets the functions for the Lua handles that values keep; the Lua module gives them as it starts, and nullptr functions as it ends.
 void ECSIValue_SetLuaFunctions(ECSIValueKeepFunction Keep, ECSIValueDropFunction Drop, ECSIValueObjectFunction Object);
 
+/// @brief Makes every handle that C set to an object, in a value and in the values it holds, give no object from now on, because the object is freed.
+void ECSIValue_ForgetObject(ECSValue *value, const void *object);
+
 /// @brief Makes a value a handle read from Lua, which keeps the Lua handle itself, so it gives Lua that same handle back, and gives C the object only while it lives.
 /// @param reference A registry reference to the Lua handle; the value owns it.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation; the reference is dropped then.
