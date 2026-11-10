@@ -734,7 +734,8 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 
 - A plugin that loaded is enabled. While OpenECS runs, `ECSPlugins_Disable(name)` and `ECSPlugins_Enable(name)` disable and enable it, and `ECSPlugins_List` lists every plugin in the plugin folders (9.3), loaded or not. Lua: `ecs.plugins.disable`, `ecs.plugins.enable` and `ecs.plugins.list`.
 - The change happens when the current pass of the main loop ends, so no plugin's code is running, and a plugin may disable itself. Then the core emits `ecs.pluginsChanged`.
-- Disabling a plugin disables every plugin that depends on it too, the last loaded first. The core asks once about the unsaved work in their panels (4.5); Cancel keeps them enabled. Then every popup closes, and for each plugin:
+- A plugin that an enabled plugin depends on is not disabled: the core reports it, and names a plugin that depends on it. So the plugins that use a plugin are disabled before it, and no enabled plugin holds a function or an object of a disabled one.
+- The core asks about the unsaved work in the plugin's panels (4.5); Cancel keeps it enabled. Then every popup closes, and:
   1. Each of its panels saves its state, and becomes a placeholder that keeps it (14.2) and says that its plugin is disabled.
   2. Its Lua workers stop (3.4). Its background work that waits is dropped, its running work finishes, and the `done` functions of its work are not called.
   3. The objects of its handle types are destroyed, and their handles become invalid (10.6).

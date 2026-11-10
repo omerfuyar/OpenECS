@@ -616,7 +616,7 @@ static void ECSIApp_NoteEnabled(const char *name, bool enabled)
     arrfree(kept);
 }
 
-/// @brief Disables a plugin and the plugins that depend on it, after asking about the unsaved work of their panels, which become placeholders.
+/// @brief Disables a plugin that no enabled plugin depends on, after asking about the unsaved work of its panels, which become placeholders.
 static void ECSIApp_DisablePlugin(const char *name)
 {
     ECSPlugin target = ECSIPlugins_Get(name);
@@ -628,6 +628,16 @@ static void ECSIApp_DisablePlugin(const char *name)
     }
 
     ECSPlugin *plugins = ECSIPlugins_GetDependents(target);
+
+    // the last loaded goes first, so the first one depends on the plugin when any does
+    if (arrlenu(plugins) > 1)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not disabled, as the enabled plugin '%s' depends on it. Disable that one first.", name,
+                    ECSIPlugin_GetName(plugins[0]));
+        arrfree(plugins);
+        return;
+    }
+
     ECSPanel *panels = ECSILayout_GetPanels();
     ECSPanel *affected = nullptr;
 

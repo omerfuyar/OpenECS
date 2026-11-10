@@ -489,9 +489,9 @@ OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_List(ECSValue *retList);
 /// @lua ecs.plugins.enable
 OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Enable(const char *name);
 
-/// @brief Disables a plugin, and the plugins that depend on it, when the current pass of the main loop ends, after asking about the unsaved work of their panels, which become placeholders (DESIGN 9.10). The core emits ecs.pluginsChanged after it. Main thread only.
+/// @brief Disables a plugin when the current pass of the main loop ends, after asking about the unsaved work of its panels, which become placeholders (DESIGN 9.10). A plugin that an enabled plugin depends on is not disabled, which is reported. The core emits ecs.pluginsChanged after it. Main thread only.
 /// @param name The plugin's name.
-/// @return SHUResult_Ok, or SHUResult_ErrAllocation. Cancel keeps the plugins enabled.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation. Cancel keeps the plugin enabled.
 /// @lua ecs.plugins.disable
 OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Disable(const char *name);
 
