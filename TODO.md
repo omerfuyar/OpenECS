@@ -29,7 +29,6 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
 - **The core's libraries.** The standard plugins still use the core's SDL, SDL_ttf and stb_ds (DESIGN 17.2), against the principle that plugins stand alone (OVERVIEW 12). To remove: each plugin would bring what it uses.
 - **Ideas for more standard plugins**, to choose from later:
-  - **syntax:** syntax highlighting with tree-sitter, for code editors.
   - **video:** playing video files, such as MPEG-1 with pl_mpeg.
 
 ## Reaching users
