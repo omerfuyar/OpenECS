@@ -70,6 +70,7 @@ static const char *const OPENECS_CORE_EVENTS[][2] = {
 static struct
 {
     ECSIQueuedEvent *queue; // stb_ds array
+    ECSIQueuedEvent *later; // stb_ds array of the named events emitted while events are delivered, which the next delivery takes
     bool delivering;
     struct
     {
@@ -129,8 +130,10 @@ static void ECSIEvents_DeliverEmission(void *target, const ECSPanelEvent *event)
     (void)event;
     ECSIEmission *emission = target;
 
-    // a subscriber may subscribe or cancel while it runs, so the list is read again at each step
-    for (usz i = 0; i < arrlenu(EVENTS.subscriptions); i++)
+    // a subscription made while the event is delivered is added at the end, and hears the next emission; none is removed meanwhile
+    usz count = arrlenu(EVENTS.subscriptions);
+
+    for (usz i = 0; i < count; i++)
     {
         struct ECSISubscription *subscription = EVENTS.subscriptions[i];
 
@@ -185,7 +188,18 @@ static SHUResult ECSIEvents_Emit(const char *name, const ECSValue *value)
         return SHUResult_ErrAllocation;
     }
 
-    ECSIEvents_Post(ECSIEvents_DeliverEmission, ECSIEvents_FreeEmission, emission, &(ECSPanelEvent){0});
+    // an event emitted while events are delivered waits for the next delivery, so a subscriber that emits each time it hears one cannot hold the main loop
+    ECSIQueuedEvent queued = {.Deliver = ECSIEvents_DeliverEmission, .Release = ECSIEvents_FreeEmission, .target = emission};
+
+    if (EVENTS.delivering)
+    {
+        arrput(EVENTS.later, queued);
+    }
+    else
+    {
+        arrput(EVENTS.queue, queued);
+    }
+
     return SHUResult_Ok;
 }
 
@@ -280,6 +294,26 @@ void ECSIEvents_RemovePlugin(ECSPlugin plugin)
     ECSIEvents_FreeCancelled();
 }
 
+/// @brief Makes the named events of a queue that wait to be delivered give no object where they name one.
+static void ECSIEvents_ForgetObjectIn(ECSIQueuedEvent *queue, const void *object)
+{
+    for (usz i = 0; i < arrlenu(queue); i++)
+    {
+        if (queue[i].Deliver == ECSIEvents_DeliverEmission)
+        {
+            ECSIValue_ForgetObject(((ECSIEmission *)queue[i].target)->value, object);
+        }
+    }
+}
+
+void ECSIEvents_ForgetObject(const void *object)
+{
+    SDL_assert(object != nullptr);
+
+    ECSIEvents_ForgetObjectIn(EVENTS.queue, object);
+    ECSIEvents_ForgetObjectIn(EVENTS.later, object);
+}
+
 SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *description)
 {
     SDL_assert(plugin != nullptr);
@@ -347,6 +381,8 @@ void ECSIEvents_Deliver(void)
     }
 
     arrfree(EVENTS.queue);
+    EVENTS.queue = EVENTS.later;
+    EVENTS.later = nullptr;
     EVENTS.delivering = false;
     ECSIEvents_FreeCancelled();
 }

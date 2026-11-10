@@ -177,10 +177,11 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 1. Ask about unsaved work (4.5). The user may cancel.
 2. Save the session for the next start (13.4).
 3. Destroy the panels, then the objects of handles (10.6).
-4. Destroy the plugins in reverse load order: each plugin's `Destroy` function runs (9.4). Timers, events and the functions of other plugins still work then.
-5. Stop the Lua workers (3.4) and wait for their threads. Forget the handles that plugins made while they shut down, and free the services.
-6. Stop the worker threads and free the timers, then unload the plugins' libraries.
-7. Stop SDL and Lua.
+4. Stop the background work (3.3): running work finishes, and waiting work is dropped.
+5. Destroy the plugins in reverse load order: each plugin's `Destroy` function runs (9.4). Timers, events and the functions of other plugins still work then.
+6. Stop the Lua workers (3.4) and wait for their threads. Forget the handles that plugins made while they shut down, and free the services.
+7. Free the timers, then unload the plugins' libraries.
+8. Stop SDL and Lua.
 
 ## 3. Main loop, timers and threads
 
@@ -220,7 +221,7 @@ The wait uses `SDL_WaitEventTimeout` with the time until the next timer or the n
 - `ECS_RunInBackground(plugin, work, done, data)`: `work` runs on a worker thread from a small pool, then `done` runs on the main thread. A plugin's Lua code never runs on these threads. A Lua plugin uses services that work in the background, or starts a worker (3.4), which runs a script of its own.
 - The pool has one thread for each processor core but one, at most 4. It starts when background work first comes.
 - A function that reaches the main thread runs between passes of the main loop, and the loop makes a pass after it. A function that the main thread sends to itself runs after the current callback returns, with the queued events (8.2).
-- On exit, running work finishes and waiting work does not run, nor does its `done`.
+- On exit, running work finishes and waiting work does not run, nor does its `done`. Both happen before the plugins' `Destroy` functions run (2.4), so no work uses what `Destroy` freed.
 - The thread-safe functions are: running a function on the main thread (`ECS_RunOnMainThread`, built on `SDL_RunOnMainThread`), `ECS_RunInBackground`, and logging. Every other function is for the main thread only. Each function documents its thread rule.
 - Native plugins may create their own threads, under the same rule.
 
@@ -609,6 +610,8 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 8.2 Delivery
 
 - Events are queued and delivered on the main thread after the current callback returns, never inside another event handler.
+- An event that a handler emits waits for the next delivery, which follows at once.
+- An event goes to its subscriptions in the order they were made. A subscription made in a handler hears the next event, not the one being delivered.
 - Changes take effect immediately; only the notification waits. A closed panel leaves the layout at once, but its `Destroy` runs after the current delivery finishes, so no handler meets a destroyed panel.
 
 ### 8.3 Named events
@@ -799,7 +802,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - Each part of a value is allocated on its own with SDL's allocator. Values are small and short-lived, so they need no arena.
 - A table is a list and named fields together. From Lua, integer keys from 1 up to the first missing one are the list, and text keys are the fields. Other keys are reported and skipped.
 - A buffer is bytes that may hold zeros: `ECSValue_SetBuffer` copies them, and `ECSValue_GetBuffer` reads them, or a string's bytes. From Lua, a string with a zero byte becomes a buffer; to Lua, a buffer is a string.
-- A handle names an object of a handle type (10.6) by its type and its object: `ECSValue_SetHandle(value, "ecs.panel", panel)` and `ECSValue_GetHandle(value, "ecs.panel")`. The value does not own the object. To Lua it is the object's handle, and a handle from Lua stays one, so an event can name a panel by its handle. A value made from a Lua handle keeps that handle, so the object lives as long as the value.
+- A handle names an object of a handle type (10.6) by its type and its object: `ECSValue_SetHandle(value, "ecs.panel", panel)` and `ECSValue_GetHandle(value, "ecs.panel")`. The value does not own the object. When the object is freed while the value waits in an emitted event, the value gives no object: `nullptr` in C, nil in Lua. To Lua it is the object's handle, and a handle from Lua stays one, so an event can name a panel by its handle. A value made from a Lua handle keeps that handle, so the object lives as long as the value.
 - Files hold only data (13.4): a buffer is written as a string, and a handle is left out.
 - Functions on a table's list have `List` in their names (`ECSValue_GetListCount`, `ECSValue_GetListItem`, `ECSValue_AddListItem`), and functions on its named fields have `Table` (`ECSValue_GetTableField`, `ECSValue_SetTableField`, and `ECSValue_GetTableFieldCount` with `ECSValue_GetTableFieldAt`, which go through every field).
 
@@ -811,7 +814,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - **Lua calls Lua:** a plain Lua call, because all plugins share one Lua state.
 - Callbacks (`fn<...>` parameters) work the same way in both directions. In C, a callback is a function pointer of its signature; in Lua, a function. `nil` in Lua is `nullptr` in C.
 - A callback is valid only during the call that gives it. C must not keep it; a Lua function that keeps one gets an error when it calls it later.
-- A `keep fn<signature>` callback stays valid after the call, so a service can call it later, such as when work in the background is done. The function that took it releases it when it no longer calls it: in C with `ECSService_ReleaseCallback(callback)`, which frees the closure of a Lua function; a Lua function just drops it. Callbacks that are never released are freed when the program exits, and those a failed plugin kept are freed with its registrations. A callback that a failed plugin's Lua code gave to another plugin stays valid, but calling it runs nothing and gives zeros. A kept callback is called on the main thread only, as every callback is.
+- A `keep fn<signature>` callback stays valid after the call, so a service can call it later, such as when work in the background is done. The function that took it releases it when it no longer calls it: in C with `ECSService_ReleaseCallback(callback)`, which frees the closure of a Lua function; a Lua function just drops it. Callbacks that are never released are freed when the program exits, and those a failed plugin kept are freed with its registrations. A callback that a failed or disabled plugin's Lua code gave to another plugin stays valid, but calling it runs nothing and gives zeros. So does a callback that a C plugin gave to a Lua function, once that plugin fails or is disabled. A C function that keeps another C plugin's callback holds its raw pointer, which the core cannot guard: the plugin that gave it takes it back in its `Destroy`, with the function its provider has for that. A kept callback is called on the main thread only, as every callback is.
 - A callback is a parameter only, never `out` or a result, and its own signature has no callbacks.
 - Strings, buffers and values that a Lua function gives to C stay valid until that function returns again.
 - When a Lua function called from C raises an error or gives a value of the wrong type, the error is reported (14.2) and C gets zeros.
@@ -940,7 +943,7 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 ### 12.2 Interface
 
 - `get(name)`, `set(name, value)` (writes the user's settings file), `list()` (every declared setting) and `explain(name)`: the setting's description with its default, the value in effect, the layer it came from (`default`, `theme`, `preset` or `user`), and what each layer says. An explanation is the description that declared the setting plus where its value comes from, so `ecs.SettingExplanation` extends `ecs.SettingDesc` in `ecs.lua`. In C: `ECSSetting_Get`, `ECSSetting_Set`, `ECSSetting_List` and `ECSSetting_Explain`; lists and explanations are values.
-- `set` changes the tool's own part of the user's settings file if that part already has the setting; otherwise it changes the part for every tool. It rewrites the whole file (13.4), so comments in it are not kept. Without a configuration folder, as in a test, the change lasts until the program exits.
+- `set` changes the tool's own part of the user's settings file if that part already has the setting; otherwise it changes the part for every tool. It rewrites the whole file (13.4), so comments in it are not kept. Without a configuration folder, as in a test, the change lasts until the program exits. So it does when the file is there but cannot be read: the file is reported and never written over, so the user corrects it and loses nothing.
 - The settings window uses `list`, `explain` and `set` (12.5).
 
 ### 12.3 User files

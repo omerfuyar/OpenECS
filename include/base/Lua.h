@@ -39,6 +39,11 @@ void ECSILua_SetHandleFunctions(ECSILuaReadHandleFunction Read, ECSILuaPushHandl
 /// @return SHUResult_Ok, SHUResult_ErrBadData if tables are nested too deeply, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSILua_GetValue(lua_State *state, int index, ECSValue *retValue);
 
+/// @brief Copies the Lua value at an index of a state's stack into a value that goes to another thread: as ECSILua_GetValue does, but a handle is skipped with a
+/// warning in the core's state too, as only the main thread may use the Lua handle that a value keeps.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if tables are nested too deeply, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSILua_GetMessage(lua_State *state, int index, ECSValue *retValue);
+
 /// @brief Pushes a value onto a state's stack. A table becomes a Lua table with its list items and named fields. On a state other than the core's, a handle becomes nil.
 /// @param state The state.
 /// @param value The value, or nullptr for nil.

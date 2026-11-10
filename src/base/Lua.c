@@ -82,11 +82,10 @@ static int ECSILua_CompareTexts(const void *first, const void *second)
 }
 
 /// @brief Copies the Lua value at an index of the stack into a value. Named fields are added in the order of their names, so the same table always gives the same value.
-/// Handles stay handles in the core's state only; another state's value goes to another thread, so a handle is skipped there.
-static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue, u32 depth)
+/// @param handles Whether handles stay handles: in the core's state only, and not in a value that goes to another thread, where a handle is skipped.
+static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue, bool handles, u32 depth)
 {
     index = lua_absindex(state, index);
-    bool handles = state == LUA.state;
 
     switch (lua_type(state, index))
     {
@@ -128,7 +127,7 @@ static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue
             return ECSIValue_SetLuaHandle(retValue, type, object, luaL_ref(state, LUA_REGISTRYINDEX));
         }
 
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, handles ? "A userdata that is not a handle, or whose object is gone, is not data; it is skipped." : "A userdata is not data that can go to another thread; it is skipped.");
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, handles ? "A userdata that is not a handle, or whose object is gone, is not data; it is skipped." : "A handle or other userdata is not data that can go to another thread; it is skipped.");
         ECSValue_SetNil(retValue);
         return SHUResult_Ok;
     }
@@ -155,7 +154,7 @@ static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue
         SHU_ReturnResult(ECSValue_AddListItem(retValue, &item));
 
         lua_rawgeti(state, index, (lua_Integer)i);
-        SHUResult result = ECSILua_ToValue(state, -1, item, depth + 1);
+        SHUResult result = ECSILua_ToValue(state, -1, item, handles, depth + 1);
         lua_pop(state, 1);
         SHU_ReturnResult(result);
     }
@@ -191,7 +190,7 @@ static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue
         {
             lua_pushstring(state, names[i]);
             lua_rawget(state, index);
-            result = ECSILua_ToValue(state, -1, field, depth + 1);
+            result = ECSILua_ToValue(state, -1, field, handles, depth + 1);
             lua_pop(state, 1);
         }
     }
@@ -501,7 +500,15 @@ SHUResult ECSILua_GetValue(lua_State *state, int index, ECSValue *retValue)
     SDL_assert(state != nullptr);
     SDL_assert(retValue != nullptr);
 
-    return ECSILua_ToValue(state, index, retValue, 0);
+    return ECSILua_ToValue(state, index, retValue, state == LUA.state, 0);
+}
+
+SHUResult ECSILua_GetMessage(lua_State *state, int index, ECSValue *retValue)
+{
+    SDL_assert(state != nullptr);
+    SDL_assert(retValue != nullptr);
+
+    return ECSILua_ToValue(state, index, retValue, false, 0);
 }
 
 void ECSILua_PushValue(lua_State *state, const ECSValue *value)
@@ -595,7 +602,7 @@ SHUResult ECSILua_ReadData(const char *path, ECSValue *retValue)
         return SHUResult_ErrBadData;
     }
 
-    SHUResult result = ECSILua_ToValue(state, -1, retValue, 0);
+    SHUResult result = ECSILua_ToValue(state, -1, retValue, false, 0);
     lua_settop(state, top);
     return result;
 }

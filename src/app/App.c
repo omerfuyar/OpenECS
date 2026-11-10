@@ -843,7 +843,10 @@ ECSIRestart ECSIApp_Stop(void)
     ECSIPanels_Terminate();
     ECSIServices_DestroyHandles();
 
-    // plugins shut down while timers, events and the functions of other plugins still work, and their code is unloaded once no worker runs it; the GPU device goes after them, since they may hold its objects
+    // no work runs in the background on what the plugins free: running work finishes first, and waiting work is dropped
+    ECSITasks_Stop();
+
+    // plugins shut down while timers, events and the functions of other plugins still work, and their code is unloaded later; the GPU device goes after them, since they may hold its objects
     ECSIPlugins_Destroy();
     ECSIWindow_DestroyDevice();
     ECSIWorkers_Terminate();

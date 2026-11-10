@@ -155,14 +155,29 @@ typedef struct ECSIFunction
     {
         ECSPlugin key;
         int value;
-    } *callers;           // stb_ds hash map: for each plugin, the registry reference of the Lua function that calls it for that plugin, made when the plugin first asks for it
-    ECSPlugin giver;      // a callback: the plugin that gave the Lua function it calls, or nullptr
+    } *callers; // stb_ds hash map: for each plugin, the registry reference of the Lua function that calls it for that plugin, made when the plugin first asks for it
+    struct
+    {
+        ECSPlugin key;
+        struct ECSICaller *value;
+    } *stubs;             // stb_ds hash map, for a Lua function that keeps callbacks: for each plugin whose C code asked for it, the code that calls it for that plugin
+    ECSPlugin giver;      // a callback: the plugin that gave it, or nullptr if it is not known
+    u32 generation;       // a callback that C gave to Lua: its giver's generation then; once the giver's differs, its code is gone and nothing runs
     bool inert;           // a callback whose giver was removed: C may still call it, and nothing runs
     int lua;              // registry reference of the Lua function, or LUA_NOREF for a C function
     int anchors;          // registry reference of a table that keeps the strings and buffers a Lua function last gave C
     ECSValue *result;     // the value a Lua function last returned to C, or nullptr
     ffi_closure *closure; // the code that C calls for a Lua function, or nullptr
 } ECSIFunction;
+
+/// @brief The code that a plugin's C code calls for a Lua function that keeps callbacks, so the callbacks know which plugin gave them.
+typedef struct ECSICaller
+{
+    ECSIFunction *function;
+    ECSPlugin plugin;
+    ffi_closure *closure;
+    ECSFunction pointer;
+} ECSICaller;
 
 /// @brief Storage for one argument, output or result of a call through libffi.
 typedef union ECSISlot
@@ -666,6 +681,14 @@ static void ECSIFunction_Free(ECSIFunction *function)
     }
 
     hmfree(function->callers);
+
+    for (usz i = 0; i < hmlenu(function->stubs); i++)
+    {
+        ffi_closure_free(function->stubs[i].value->closure);
+        SDL_free(function->stubs[i].value);
+    }
+
+    hmfree(function->stubs);
 
     if (function->closure != nullptr)
     {
@@ -1407,7 +1430,13 @@ static int ECSIServices_CallC(lua_State *state)
     if (!result)
     {
         ECSISlot returned = {0};
-        ffi_call((ffi_cif *)&signature->cif, FFI_FN(function->pointer), &returned, arguments);
+
+        // a callback whose giver was disabled since has lost its code: nothing runs, and Lua gets zeros
+        if (function->giver == nullptr || ECSIPlugin_GetGeneration(function->giver) == function->generation)
+        {
+            ffi_call((ffi_cif *)&signature->cif, FFI_FN(function->pointer), &returned, arguments);
+        }
+
         pushed = ECSIServices_PushResults(state, signature, parameters, &returned);
     }
 
@@ -1429,6 +1458,9 @@ static int ECSIServices_CallC(lua_State *state)
 /// @return The object's type, or nullptr if Lua had no handle of it.
 static ECSIHandleType *ECSIServices_DropObject(void *object)
 {
+    // an emitted event that names the object is delivered later
+    ECSIEvents_ForgetObject(object);
+
     ECSIHandleObject *record = SERVICES.objects == nullptr ? nullptr : hmget(SERVICES.objects, object);
 
     if (record == nullptr)
@@ -1788,7 +1820,8 @@ static void ECSIServices_ReportType(lua_State *state, const ECSIFunction *functi
 }
 
 /// @brief Pushes a callback that C passed to a Lua function: a Lua function that calls it, or nil for nullptr. Unless it is kept, it is added to the table of callbacks at an index of the stack, which makes it invalid when the call returns.
-static void ECSIServices_PushCallback(lua_State *state, const ECSIFunction *service, ECSIParameter parameter, const void *argument, int callbacks)
+/// @param giver The plugin whose C code gave the callback, or nullptr if it is not known.
+static void ECSIServices_PushCallback(lua_State *state, const ECSIFunction *service, ECSPlugin giver, ECSIParameter parameter, const void *argument, int callbacks)
 {
     ECSFunction pointer = nullptr;
     SDL_memcpy(&pointer, argument, sizeof(pointer));
@@ -1802,6 +1835,8 @@ static void ECSIServices_PushCallback(lua_State *state, const ECSIFunction *serv
     // the record borrows the service's name and the callback's signature, which live as long as the service; one that is not kept is never used after the call
     ECSIFunction *callback = lua_newuserdatauv(state, sizeof(ECSIFunction), 0);
     *callback = (ECSIFunction){.name = service->name, .plugin = service->plugin, .signature = *parameter.callback, .pointer = pointer, .lua = LUA_NOREF, .anchors = LUA_NOREF};
+    callback->giver = giver;
+    callback->generation = giver == nullptr ? 0 : ECSIPlugin_GetGeneration(giver);
 
     if (!parameter.keep)
     {
@@ -1823,11 +1858,10 @@ static void ECSIServices_EndCallbacks(lua_State *state, int callbacks)
     }
 }
 
-/// @brief The handler of a Lua function's closure: C calls it through the closure's code. Output parameters are read from the extra results.
-static void ECSIServices_CallLua(ffi_cif *cif, void *result, void **arguments, void *data)
+/// @brief Calls a Lua function for C, with the arguments and the result as libffi gives them. Output parameters are read from the extra results.
+/// @param caller The plugin whose C code calls, which gives the callbacks it passes, or nullptr if it is not known.
+static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *result, void **arguments)
 {
-    (void)cif;
-    ECSIFunction *function = data;
     const ECSISignature *signature = &function->signature;
     lua_State *state = ECSILua_GetState();
     int top = lua_gettop(state);
@@ -1872,7 +1906,7 @@ static void ECSIServices_CallLua(ffi_cif *cif, void *result, void **arguments, v
 
         if (parameter.type == ECSIParameterType_Callback)
         {
-            ECSIServices_PushCallback(state, function, parameter, arguments[i], callbacks);
+            ECSIServices_PushCallback(state, function, caller, parameter, arguments[i], callbacks);
             pushed++;
         }
         else if (!parameter.out)
@@ -1908,6 +1942,60 @@ static void ECSIServices_CallLua(ffi_cif *cif, void *result, void **arguments, v
     }
 
     lua_settop(state, top);
+}
+
+/// @brief The handler of a Lua function's closure: C calls it through the closure's code.
+static void ECSIServices_CallLua(ffi_cif *cif, void *result, void **arguments, void *data)
+{
+    (void)cif;
+    ECSIServices_RunLua(data, nullptr, result, arguments);
+}
+
+/// @brief The handler of the closure that one plugin's C code calls for a Lua function.
+static void ECSIServices_CallLuaFor(ffi_cif *cif, void *result, void **arguments, void *data)
+{
+    (void)cif;
+    ECSICaller *caller = data;
+    ECSIServices_RunLua(caller->function, caller->plugin, result, arguments);
+}
+
+/// @brief Gives the code that a plugin's C code calls for a function. A Lua function that keeps callbacks gets code of its own for each plugin, made when
+/// the plugin first asks, so a callback it keeps runs nothing once the plugin that gave it is disabled; every other function has one pointer.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+static SHUResult ECSIFunction_GetPointerFor(ECSIFunction *function, ECSPlugin plugin, ECSFunction *retPointer)
+{
+    bool keeps = false;
+
+    for (usz i = 0; function->lua != LUA_NOREF && i < arrlenu(function->signature.parameters); i++)
+    {
+        keeps = keeps || function->signature.parameters[i].keep;
+    }
+
+    if (keeps && hmgeti(function->stubs, plugin) < 0)
+    {
+        void *code = nullptr;
+        ECSICaller *caller = SDL_calloc(1, sizeof(ECSICaller));
+
+        if (caller == nullptr || (caller->closure = ffi_closure_alloc(sizeof(ffi_closure), &code)) == nullptr ||
+            ffi_prep_closure_loc(caller->closure, &function->signature.cif, ECSIServices_CallLuaFor, caller, code) != FFI_OK)
+        {
+            if (caller != nullptr && caller->closure != nullptr)
+            {
+                ffi_closure_free(caller->closure);
+            }
+
+            SDL_free(caller);
+            return SHUResult_ErrAllocation;
+        }
+
+        caller->function = function;
+        caller->plugin = plugin;
+        SDL_memcpy(&caller->pointer, &code, sizeof(code));
+        hmput(function->stubs, plugin, caller);
+    }
+
+    *retPointer = keeps ? hmget(function->stubs, plugin)->pointer : function->pointer;
+    return SHUResult_Ok;
 }
 
 /// @brief Makes the code that C calls for a Lua function, which calls the Lua function at an index of the stack, and keeps the Lua function and a table of anchors in the registry.
@@ -2820,10 +2908,10 @@ void ECSIServices_PushHandle(const char *type, void *object)
         return;
     }
 
-    // the type is gone when its plugin was removed; a handle cannot be made without it
+    // the type is gone when its plugin was removed, and its objects when its plugin was disabled; a handle cannot be made then
     ECSIHandleType *handleType = ECSIServices_FindHandleType(type);
 
-    if (handleType == nullptr)
+    if (handleType == nullptr || handleType->kept)
     {
         lua_pushnil(state);
         return;
@@ -3103,6 +3191,14 @@ void ECSIServices_RemovePlugin(ECSPlugin plugin)
         {
             luaL_unref(ECSILua_GetState(), LUA_REGISTRYINDEX, hmget(function->callers, plugin));
             (void)hmdel(function->callers, plugin);
+        }
+
+        if (hmgeti(function->stubs, plugin) >= 0)
+        {
+            ECSICaller *caller = hmget(function->stubs, plugin);
+            (void)hmdel(function->stubs, plugin);
+            ffi_closure_free(caller->closure);
+            SDL_free(caller);
         }
     }
 
@@ -3557,8 +3653,7 @@ SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, con
 
     ECSIFunction *function = nullptr;
     SHU_ReturnResult(ECSIServices_Find(plugin, name, signature, &function));
-    *retFunction = function->pointer;
-    return SHUResult_Ok;
+    return ECSIFunction_GetPointerFor(function, plugin, retFunction);
 }
 
 void ECSService_ReleaseCallback(ECSFunction callback)

@@ -69,6 +69,7 @@ static struct
     ECSValue *plugins;                         // list of extra plugin names
     ECSValue *keys[ECSISettingsLayer_Count];   // the core's and the user's keys tables
     ECSValue *userFile;                        // the whole user's settings file, which ECSSetting_Set changes and writes
+    bool userFileUnread;                       // the user's settings file is there but cannot be read, so it is never written over
     char *appID;                               // chooses the tool's own part of the user's files
     ECSISetting **changed;                     // stb_ds array of settings whose owners are not told yet
 } SETTINGS = {0};
@@ -445,9 +446,10 @@ static SHUResult ECSISettings_ReadFile(ECSISettingsLayer layer, const char *fold
     SHU_ReturnResult(ECSValue_Create(&file));
     SHUResult result = SDL_GetPathInfo(SETTINGS.paths[layer], nullptr) ? ECSILua_ReadData(SETTINGS.paths[layer], file) : SHUResult_Ok;
 
-    // a file that cannot be read is already reported, and skipped
+    // a file that cannot be read is already reported, and skipped; the user's is kept as it is, for the user to fix
     if (result == SHUResult_ErrFile || result == SHUResult_ErrBadData)
     {
+        SETTINGS.userFileUnread = SETTINGS.userFileUnread || layer == ECSISettingsLayer_User;
         result = SHUResult_Ok;
     }
 
@@ -950,8 +952,12 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
 
     ECSValue_Destroy(&old);
 
-    // without a configuration folder, the change lasts until the program exits
-    if (!result && SETTINGS.paths[ECSISettingsLayer_User] != nullptr)
+    // without a configuration folder, the change lasts until the program exits; so it does when the file could not be read, as writing it would lose what the user wrote
+    if (!result && SETTINGS.userFileUnread)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' could not be read, so '%s' is not saved in it and lasts until OpenECS exits. Correct the file first.", SETTINGS.paths[ECSISettingsLayer_User], name);
+    }
+    else if (!result && SETTINGS.paths[ECSISettingsLayer_User] != nullptr)
     {
         result = ECSILua_WriteData(SETTINGS.paths[ECSISettingsLayer_User], SETTINGS.userFile);
     }
