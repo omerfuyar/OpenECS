@@ -50,7 +50,8 @@ static struct
     bool prefixActive;
     const char **prefixLines; // stb_ds array of the lines shown after the prefix: key text, description, and so on; a nullptr key text makes a heading
     char **prefixTexts;       // stb_ds array of the key texts made for the lines, such as "1...0"
-    ECSPanel pointerPanel;    // panel that got the press; it gets pointer events until the release
+    ECSPanel pointerPanel;    // panel that got the press; it gets pointer events until the last held button is released
+    u32 pointerButtons;       // SDL's mask of the buttons whose press the panel got and that are still held
     ECSPopup pointerPopup;    // popup that got the press; it gets pointer events until the release
     f32 pointerX;             // the pointer's last position in the OS window, in layout units
     f32 pointerY;
@@ -779,6 +780,14 @@ static void ECSIInput_PressPointer(const SDL_MouseButtonEvent *button)
         ECSIInput_EndPrefix();
     }
 
+    // while a button is held on a panel, the press of another goes to that panel too
+    if (ECSIInput_PointerPanel() != nullptr)
+    {
+        INPUT.pointerButtons |= SDL_BUTTON_MASK(button->button);
+        ECSIInput_SendPointer(INPUT.pointerPanel, ECSPanelEventType_PointerDown, button->x, button->y, button->button);
+        return;
+    }
+
     if (ECSIInput_PressTab(button) || (button->button == SDL_BUTTON_LEFT && ECSIWindow_PointerDown(button->x, button->y)))
     {
         return;
@@ -799,6 +808,7 @@ static void ECSIInput_PressPointer(const SDL_MouseButtonEvent *button)
     {
         ECSILayout_SetFocus(panel);
         INPUT.pointerPanel = panel;
+        INPUT.pointerButtons = SDL_BUTTON_MASK(button->button);
 
         ECSIInput_SendPointer(panel, ECSPanelEventType_PointerDown, x, y, button->button);
     }
@@ -859,10 +869,16 @@ static void ECSIInput_ReleasePointer(const SDL_MouseButtonEvent *button)
         ECSIMenus_OpenPanelMenu(clicked, button->x, button->y);
     }
 
-    if (ECSIInput_PointerPanel() != nullptr)
+    // the panel keeps the pointer until the last button it got is released
+    if (ECSIInput_PointerPanel() != nullptr && (INPUT.pointerButtons & SDL_BUTTON_MASK(button->button)) != 0)
     {
         ECSIInput_SendPointer(INPUT.pointerPanel, ECSPanelEventType_PointerUp, button->x, button->y, button->button);
-        INPUT.pointerPanel = nullptr;
+        INPUT.pointerButtons &= ~SDL_BUTTON_MASK(button->button);
+
+        if (INPUT.pointerButtons == 0)
+        {
+            INPUT.pointerPanel = nullptr;
+        }
     }
 }
 

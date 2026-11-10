@@ -271,7 +271,8 @@ SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFun
     SDL_assert(TASKS.lock != nullptr);
 
     SDL_LockMutex(TASKS.lock);
-    SHUResult result = TASKS.stopping ? SHUResult_ErrInternal : ECSITasks_StartWorkers();
+    // work of a plugin that is being disabled would run after its code is unloaded
+    SHUResult result = TASKS.stopping || !ECSIPlugin_TakesWork(plugin) ? SHUResult_ErrInternal : ECSITasks_StartWorkers();
 
     if (!result)
     {

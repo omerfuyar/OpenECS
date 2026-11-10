@@ -502,7 +502,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 7.2 Pointer routing
 
-- While a button is held, pointer events keep going to the panel where the press started, even outside its OS window (`SDL_HINT_MOUSE_AUTO_CAPTURE`).
+- While a button is held, pointer events keep going to the panel where the press started, even outside its OS window (`SDL_HINT_MOUSE_AUTO_CAPTURE`). The press and the release of another button go to that panel too, and it keeps the pointer until the last of them is released.
 
 ### 7.3 Key combinations
 
@@ -737,7 +737,7 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 - A plugin that an enabled plugin depends on is not disabled: the core reports it, and names a plugin that depends on it. So the plugins that use a plugin are disabled before it, and no enabled plugin holds a function or an object of a disabled one.
 - The core asks about the unsaved work in the plugin's panels (4.5); Cancel keeps it enabled. Then every popup closes, and:
   1. Each of its panels saves its state, and becomes a placeholder that keeps it (14.2) and says that its plugin is disabled.
-  2. Its Lua workers stop (3.4). Its background work that waits is dropped, its running work finishes, and the `done` functions of its work are not called.
+  2. Its Lua workers stop (3.4). Its background work that waits is dropped, its running work finishes, and the `done` functions of its work are not called. From now on `ECS_RunInBackground` refuses its work.
   3. The objects of its handle types are destroyed, and their handles become invalid (10.6).
   4. Its `SaveState` runs, and the core keeps the state. Then its `Destroy` runs (9.4).
   5. Everything it registered is removed, as for a plugin that failed (9.7), and its library is unloaded. Its handle types and struct types stay without their methods, as other plugins' signatures and Lua's values name them.
@@ -1022,6 +1022,7 @@ return {
 - A layout node is a split (`split` plus its children) or a group (`panels`, and optionally `shown` and `locked`). A split's child has a fixed `size` in layout units or a `share`.
 - A workspace can have its own `keys`, a keys table (7.8).
 - A panel's saved state is its `state` field, and the state's version is `stateVersion`.
+- A panel's `id` that another panel has, or that is out of range, is reported, and the panel gets a new one.
 - Sessions also store each panel's `id`, each workspace's `focus` (a panel id), each group's `shown` panel and `maximized` mark, the `currentWorkspace`, and `pluginState`: for each plugin's name, its `state` and `stateVersion`.
 - `enabled` and `disabled` are lists of plugins' names, which enabling and disabling plugins write (9.10).
 - A plugin saves state of its own, apart from its panels', with the `SaveState` and `RestoreState` functions of its description (9.4). The state of a plugin that is not loaded stays in the session.
@@ -1049,7 +1050,7 @@ The core converts only layout data.
 - A session is written from the file it came from, with the current workspaces. So fields that the core does not use are kept.
 - A file is written to a temporary file, then renamed over the old one, so it is never left half-written.
 - `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. Keys run `ecs.session.save`, which asks for the file with a save dialog that starts in the folder of saved sessions (16) and suggests a file named after the preset. A chosen name without `.lua` gets it.
-- The core's setting `ecs.keepSession`, off by default, keeps the tool's session between runs: quitting saves it as the tool's last session, and the next start of the same tool opens it instead of the preset. The core reads the setting before it chooses what to open, and again when the tool quits.
+- The core's setting `ecs.keepSession`, off by default, keeps the tool's session between runs: quitting saves it as the tool's last session, and the next start of the same tool opens it instead of the preset. The core reads the setting before it chooses what to open, and again when the tool quits. A last session that cannot be read, such as one of a newer format, is reported and renamed with `.unreadable` after its name, and the tool starts from its preset.
 
 ### 13.5 Opening a session or a preset
 

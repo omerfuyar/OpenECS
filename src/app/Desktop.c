@@ -83,17 +83,25 @@ static char *ECSIDesktop_FindEntry(const char *appID)
     return home == nullptr || SDL_asprintf(&path, "%s/.local/share/applications/%s.desktop", home, appID) < 0 ? nullptr : path;
 }
 
-/// @brief Adds text to an entry, with '\' doubled, as a desktop entry's values need.
+/// @brief Adds text to an entry, with '\' doubled and new lines, returns and tabs written as the escapes that a desktop entry's values need.
 static void ECSIDesktop_AddText(char **entry, const char *text)
 {
     for (const char *character = text; *character != '\0'; character++)
     {
-        if (*character == '\\')
+        char escaped = *character == '\n' ? 'n' : *character == '\r' ? 'r'
+                                              : *character == '\t'   ? 't'
+                                              : *character == '\\'   ? '\\'
+                                                                     : '\0';
+
+        if (escaped != '\0')
         {
             arrput(*entry, '\\');
+            arrput(*entry, escaped);
         }
-
-        arrput(*entry, *character);
+        else
+        {
+            arrput(*entry, *character);
+        }
     }
 }
 

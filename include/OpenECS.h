@@ -514,7 +514,7 @@ OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel l
 /// @param work Runs on a worker thread from a small pool. It must not call core functions that are for the main thread only.
 /// @param done Runs on the main thread after work returns, or nullptr. Work that has not started when the program exits does not run, and neither does its done.
 /// @param data Passed to both functions.
-/// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if no worker thread can start, or the program exits.
+/// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if no worker thread can start, the plugin is being disabled, or the program exits.
 /// @lua none: Lua code never runs on worker threads; Lua plugins use services that work in the background
 OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data);
 

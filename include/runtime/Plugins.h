@@ -118,6 +118,12 @@ SHUResult ECSIPlugins_ForEach(ECSIPluginsVisitFunction Visit, void *data);
 /// @brief Tells whether a plugin's code runs: it loaded, did not fail and is not disabled.
 bool ECSIPlugin_IsEnabled(ECSPlugin plugin);
 
+/// @brief Marks a plugin that is about to be disabled: it takes no new background work until it is loaded again.
+void ECSIPlugin_StopWork(ECSPlugin plugin);
+
+/// @brief Tells whether a plugin may start background work: its code runs and it is not being disabled.
+bool ECSIPlugin_TakesWork(ECSPlugin plugin);
+
 /// @brief Gets the number of a plugin's load: it grows each time the plugin's code is loaded or unloaded, so work that an earlier load sent is dropped.
 u32 ECSIPlugin_GetGeneration(ECSPlugin plugin);
 

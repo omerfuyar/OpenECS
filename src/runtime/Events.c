@@ -316,6 +316,7 @@ void ECSIEvents_ForgetObject(const void *object)
 
 SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *description)
 {
+    SDL_assert(SDL_IsMainThread());
     SDL_assert(plugin != nullptr);
     SDL_assert(name != nullptr && description != nullptr);
 
@@ -327,6 +328,7 @@ SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *descr
 
 SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name, const ECSValue *value)
 {
+    SDL_assert(SDL_IsMainThread());
     SDL_assert(plugin != nullptr);
     SDL_assert(name != nullptr);
 
@@ -343,11 +345,13 @@ SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name, const ECSValue *valu
 
 SHUResult ECSEvent_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscription, const char *name, ECSEventFunction function, void *data)
 {
+    SDL_assert(SDL_IsMainThread());
     return ECSIEvents_Subscribe(plugin, retSubscription, name, function, nullptr, data);
 }
 
 void ECSEvent_Unsubscribe(ECSSubscription *subscription)
 {
+    SDL_assert(SDL_IsMainThread());
     SDL_assert(subscription != nullptr);
 
     if (*subscription != nullptr)

@@ -55,8 +55,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 **Core: communication**
 
-- **P2 · A Lua function called from C again, inside its own call, breaks the outer call.** `src/runtime/Services.c:1842-1861` Each call destroys the function's one result value and replaces its one anchor table. The inner call frees the value the outer caller will get, and the outer call's strings lose their anchor (`:1910`). Keep the result and the anchors for each call in progress, or replace them after the Lua call returns. Size: S.
-- **P2 · No function of events or services asserts the main thread.** `src/runtime/Events.c:294`, `src/runtime/Services.c:1827` DESIGN 1.4 and 3.3 make a call from the wrong thread an assertion failure; the only `SDL_IsMainThread` in `src/` is `Tasks.c:106`. A plugin's thread that calls a Lua function's pointer uses the shared Lua state. Assert in `ECSIServices_CallLua` and the `ECSEvent_`, `ECSService_` and `ECSHandle_` functions. Size: S.
 - **P2 · A call from Lua into C looks up names and allocates each time.** `src/runtime/Services.c:1148`, `:2880-2888` Each handle argument and result finds its type by name twice, though the parameter already points to it; each `fn<>` argument allocates a libffi closure, a name and two registry references (`:1918-1948`); the arguments' storage is a new userdata (`:1398`). Compare the handle's type pointer, keep flags of what a signature holds from when it is parsed, and reuse callback closures. Size: M.
 - **P2 · An emission is compared with every subscription of every event.** `src/runtime/Events.c:133-141`, `:174-176` Delivery runs `strcmp` over all subscriptions, and each emission allocates three times. Keep each event's subscribers in its record, which the hash map of events already holds. Size: M.
 - **P2 · `ecs.handle.new` and `ecs.handle.value` take full names.** `include/ecs.lua:601,608`, `src/app/Bindings.c:425-433` The rest of `ecs.handle`, and `ECSHandle_Free`, take the plugin's local name (9.9). Take local names in both; this changes the plugin interface. Lua's `ecs.service.register` (`Bindings.c:1249`) also skips the check of `ECSIPlugin_MakeFullName` (`Plugins.c:941-945`), so `canvas.clear` in plugin canvas becomes `canvas.canvas.clear`. Size: S.
@@ -80,8 +78,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 **Core: plugins and threads**
 
-- **P2 · `ECS_RunInBackground` takes work from a plugin that is being disabled.** `src/runtime/Tasks.c:262-276` After `ECSITasks_ForgetPlugin` (`App.c:661`), a handle's destructor, `SaveState`, `Destroy` or the plugin's own thread can queue work, which then runs after the library is unloaded (`Plugins.c:1115`). Refuse work from a plugin once its work is forgotten. Size: S.
-- **P2 · A plugin that fails when it is enabled again is failed, not disabled.** `src/runtime/Plugins.c:520-528`, `:391-398` `Start` clears `disabled` before `Init`, and `Fail` sets only `failed` and keeps the library loaded. The plugin cannot be enabled again (`:565-572`), the session does not list it as disabled, and its placeholders do not say so; 9.10 says it stays disabled. Unload it and mark it disabled. Size: S.
 - **P2 · Work that is dropped leaks its `data`.** `src/runtime/Tasks.c:67-73`, `:208-218` When `done` does not run, on disabling or exit, nothing frees `data`, and the plugin is not told; c12_sketch frees its export job only in `done`. Call `done` with a sign that the work was dropped, or take a function that releases `data`; either changes the plugin interface. Size: M.
 - **P2 · No example disables a plugin that is working.** OpenECS-examples' `s7_first_party/test-plugins.lua:61-96` disables idle plugins only. Add a test that disables c13_workers' plugin while a worker counts, and c12_sketch's during an export, and one that enables a plugin whose start fails. Size: M.
 - **P3 · A function the main thread sends itself while a plugin is disabled runs after the unload.** `src/runtime/Tasks.c:106-110` It waits in the core's queue with no plugin, and `SDL_PumpEvents` (`Plugins.c:1111`) does not deliver that queue. Deliver the core's queue before the library is unloaded. Size: S.
@@ -89,7 +85,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 **Core: interface**
 
-- **P2 · Releasing one button ends the press of another.** `src/interface/Input.c:798-801`, `:862-866` Each release sends `PointerUp` and clears the panel that holds the pointer, though 7.2 keeps it while a button is held: press left, click right, and the left drag's moves go to the panel under the pointer, and its release reaches no panel. Keep which buttons are held, and end the hold when none is. Size: S.
 - **P2 · A frame draws and presents every OS window and popup.** `src/interface/Window.c:1972-1977`, `:1829-1846`, `:299-302` One panel that draws all the time makes every window, minimized and hidden behind others too, and every popup be laid out, drawn and presented at the display's rate. Mark what changed for each OS window and popup, and draw only those; skip windows that cannot be seen. Size: M.
 - **P2 · Window.c holds five modules.** `src/interface/Window.c:139-211` Its 2848 lines hold the OS windows, and also the drag of panels and drop zones (`:458-730`, `:2384-2590`), the Clay declarations (`:732-1304`), the popups' views (`:1623-1848`), the title bar and hit tests, and the menus' geometry (`:2631-2765`). Move each to its own file with its part of the `WINDOW` struct; Window.c keeps the OS windows, renderers and frame pacing. Size: L.
 - **P3 · The drop that waits on Wayland keeps a panel's pointer.** `src/interface/Window.c:2556` `pending.panel` outlives `ECSIWindow_Forget` for up to 400 ms, and is checked only by its address (`Layout.c:1769`). Clear it in `Forget`, or keep the panel's id. Size: S.
@@ -98,9 +93,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 **Core: app**
 
-- **P2 · A last session that cannot be read stops every start.** `src/app/App.c:316`, `:448-450` With `ecs.keepSession`, a last session that fails its check, such as one of a newer format (`Session.c:338`), exits the program, each time, until the user finds and deletes the file. For a session the user did not name, report it, move it aside, and start from the preset. Size: S.
-- **P2 · Panel ids in a file are not checked.** `src/app/Session.c:385-389`, `src/interface/Panels.c:459-462` Two panels may get the same id, when a preset gives one panel the id that another got by counting, and an id of 4294967295 makes the next new panel's id 0, which means none. Refuse or replace an id that is taken or too large. Size: S.
-- **P2 · A new line in `hint` or `app.name` breaks the desktop entry.** `src/app/Desktop.c:87-97`, `:606-607` `AddText` escapes only `\`, and the session's check refuses new lines only in `categories` and `mimeTypes` (`Session.c:353`). Write new lines and tabs as the entry's escapes. Size: S.
 
 **std: panels, settings, fs and mixer**
 

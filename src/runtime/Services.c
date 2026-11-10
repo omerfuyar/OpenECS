@@ -1858,10 +1858,26 @@ static void ECSIServices_EndCallbacks(lua_State *state, int callbacks)
     }
 }
 
+/// @brief Gives a Lua function a new, empty result value for C, in place of the one its last call gave. A call does it when its Lua code has returned,
+/// so a call of the same function inside it does not free the value that the outer caller gets.
+static void ECSIServices_RenewResult(ECSIFunction *function, void *result)
+{
+    if (function->signature.result.type == ECSIParameterType_Value)
+    {
+        ECSValue_Destroy(&function->result);
+
+        if (!ECSValue_Create(&function->result))
+        {
+            *(const ECSValue **)result = function->result;
+        }
+    }
+}
+
 /// @brief Calls a Lua function for C, with the arguments and the result as libffi gives them. Output parameters are read from the extra results.
 /// @param caller The plugin whose C code calls, which gives the callbacks it passes, or nullptr if it is not known.
 static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *result, void **arguments)
 {
+    SDL_assert(SDL_IsMainThread());
     const ECSISignature *signature = &function->signature;
     lua_State *state = ECSILua_GetState();
     int top = lua_gettop(state);
@@ -1871,28 +1887,14 @@ static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *
     // a failed call gives C a zero result
     SDL_memset(result, 0, SDL_max(sizeof(ffi_arg), ECSIServices_GetFfiType(signature->result)->size));
 
-    if (signature->result.type == ECSIParameterType_Value)
-    {
-        ECSValue_Destroy(&function->result);
-
-        if (ECSValue_Create(&function->result))
-        {
-            return;
-        }
-
-        *(const ECSValue **)result = function->result;
-    }
-
     // the plugin that gave the Lua function was removed, so its code never runs again
     if (function->inert)
     {
+        ECSIServices_RenewResult(function, result);
         return;
     }
 
-    // a new anchor table replaces the last call's, so what C got from the last call stays valid until now
     lua_newtable(state);
-    lua_pushvalue(state, -1);
-    lua_rawseti(state, LUA_REGISTRYINDEX, function->anchors);
     int anchors = lua_gettop(state);
     lua_newtable(state);
     int callbacks = lua_gettop(state);
@@ -1918,6 +1920,12 @@ static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *
 
     bool failed = ECSILua_Call(state, pushed, resultCount) != SHUResult_Ok;
     ECSIServices_EndCallbacks(state, callbacks);
+
+    // the new anchor table replaces the last call's only now, so what C got from the last call stayed valid until the Lua code returned,
+    // also when that code called this function again
+    lua_pushvalue(state, anchors);
+    lua_rawseti(state, LUA_REGISTRYINDEX, function->anchors);
+    ECSIServices_RenewResult(function, result);
 
     if (failed)
     {
@@ -3247,6 +3255,7 @@ SHUResult ECSIServices_PushFunction(ECSPlugin plugin, const char *name, const ch
 
 SHUResult ECSService_RegisterFunction(ECSPlugin plugin, const char *name, ECSFunction function, const char *signature, const char *description)
 {
+    SDL_assert(SDL_IsMainThread());
     SDL_assert(plugin != nullptr);
     SDL_assert(name != nullptr);
     SDL_assert(function != nullptr);
@@ -3374,6 +3383,7 @@ const char *ECSIServices_GetDescription(const char *name)
 
 SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function)
 {
+    SDL_assert(SDL_IsMainThread());
     SDL_assert(plugin != nullptr);
     SDL_assert(type != nullptr);
     SDL_assert(method != nullptr);
@@ -3608,6 +3618,7 @@ void ECSIServices_PushLuaHandleValue(ECSPlugin plugin, const char *name, int ind
 
 SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, ECSHandleDestroyFunction Destroy)
 {
+    SDL_assert(SDL_IsMainThread());
     SDL_assert(plugin != nullptr);
     SDL_assert(name != nullptr);
 
@@ -3619,6 +3630,7 @@ SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, ECSHandleDe
 
 void ECSHandle_Forget(void *object)
 {
+    SDL_assert(SDL_IsMainThread());
     SDL_assert(object != nullptr);
 
     ECSIServices_DropObject(object);
@@ -3626,6 +3638,7 @@ void ECSHandle_Forget(void *object)
 
 void ECSHandle_Free(ECSPlugin plugin, const char *type, void *object)
 {
+    SDL_assert(SDL_IsMainThread());
     SDL_assert(plugin != nullptr);
     SDL_assert(type != nullptr);
     SDL_assert(object != nullptr);
@@ -3646,6 +3659,7 @@ void ECSHandle_Free(ECSPlugin plugin, const char *type, void *object)
 
 SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, const char *name, const char *signature)
 {
+    SDL_assert(SDL_IsMainThread());
     SDL_assert(plugin != nullptr);
     SDL_assert(retFunction != nullptr);
     SDL_assert(name != nullptr);
@@ -3658,6 +3672,7 @@ SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, con
 
 void ECSService_ReleaseCallback(ECSFunction callback)
 {
+    SDL_assert(SDL_IsMainThread());
     void *code = nullptr;
     SDL_memcpy(&code, &callback, sizeof(code));
 

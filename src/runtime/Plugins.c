@@ -47,6 +47,7 @@ typedef struct ECSIPlugin
     SDL_SharedObject *library; // nullptr if the plugin has no native code
     bool failed;               // its code failed to start; plugins that depend on it are skipped
     bool disabled;             // the user disabled it, or a plugin it depends on; its code is not loaded
+    bool stopping;             // it is being disabled, so it takes no new background work; guarded by nothing, as only the main thread writes it
     u32 generation;            // grows each time its code is loaded, and when it starts and ends being unloaded, so work of an earlier load is dropped
     ECSValue *keptState;       // the state it saved when it was disabled, or that a session gave it while disabled; nullptr if none
     u32 keptStateVersion;
@@ -394,6 +395,21 @@ static SHUResult ECSIPlugin_Fail(ECSIPlugin *plugin, const char *what, SHUResult
     PLUGINS.hooks.RemoveRegistrations(plugin);
     ECSIPlugin_Forget(plugin);
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' %s (%s).", plugin->name, what, SHUResult_String(result));
+
+    // a plugin that the user enables while the program runs stays disabled when it fails, so it can be enabled again
+    if (PLUGINS.enabling)
+    {
+        if (plugin->library != nullptr)
+        {
+            SDL_UnloadObject(plugin->library);
+            plugin->library = nullptr;
+        }
+
+        plugin->failed = false;
+        plugin->disabled = true;
+        plugin->generation++;
+    }
+
     return result;
 }
 
@@ -520,6 +536,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
     plugin->library = library;
     plugin->disabled = false;
     plugin->failed = false;
+    plugin->stopping = false;
     plugin->generation++;
 
     if (native)
@@ -1027,6 +1044,18 @@ bool ECSIPlugin_IsEnabled(ECSPlugin plugin)
 {
     SDL_assert(plugin != nullptr);
     return ECSIPlugin_Runs(plugin);
+}
+
+void ECSIPlugin_StopWork(ECSPlugin plugin)
+{
+    SDL_assert(plugin != nullptr);
+    plugin->stopping = true;
+}
+
+bool ECSIPlugin_TakesWork(ECSPlugin plugin)
+{
+    SDL_assert(plugin != nullptr);
+    return ECSIPlugin_Runs(plugin) && !plugin->stopping;
 }
 
 u32 ECSIPlugin_GetGeneration(ECSPlugin plugin)
