@@ -177,7 +177,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 1. Ask about unsaved work (4.5). The user may cancel.
 2. Save the session for the next start (13.4).
 3. Destroy the panels, then the objects of handles (10.6).
-4. Stop the background work (3.3): running work finishes, and waiting work is dropped.
+4. Stop the background work (3.3): running work finishes, waiting work is dropped, and their `done` functions run.
 5. Destroy the plugins in reverse load order: each plugin's `Destroy` function runs (9.4). Timers, events and the functions of other plugins still work then.
 6. Stop the Lua workers (3.4) and wait for their threads. Forget the handles that plugins made while they shut down, and free the services.
 7. Free the timers, then unload the plugins' libraries.
@@ -218,10 +218,10 @@ The wait uses `SDL_WaitEventTimeout` with the time until the next timer or the n
 
 - OS windows, input, layout, event delivery, timers, every call into the plugins' Lua state and every callback that a plugin registers run on the main thread. SDL expects window and event calls there, and a Lua state must not be used by two threads at once.
 - Background work posts its result to the main thread, which delivers it.
-- `ECS_RunInBackground(plugin, work, done, data)`: `work` runs on a worker thread from a small pool, then `done` runs on the main thread. A plugin's Lua code never runs on these threads. A Lua plugin uses services that work in the background, or starts a worker (3.4), which runs a script of its own.
+- `ECS_RunInBackground(plugin, work, done, data)`: `work` runs on a worker thread from a small pool, then `done(data, dropped)` runs on the main thread. `done` runs once for each call: `dropped` is true when the work never ran, so `done` is where the plugin frees `data`. A plugin's Lua code never runs on these threads. A Lua plugin uses services that work in the background, or starts a worker (3.4), which runs a script of its own.
 - The pool has one thread for each processor core but one, at most 4. It starts when background work first comes.
 - A function that reaches the main thread runs between passes of the main loop, and the loop makes a pass after it. A function that the main thread sends to itself runs after the current callback returns, with the queued events (8.2).
-- On exit, running work finishes and waiting work does not run, nor does its `done`. Both happen before the plugins' `Destroy` functions run (2.4), so no work uses what `Destroy` freed.
+- On exit, running work finishes and waiting work does not run; its `done` gets `dropped`. Both happen before the plugins' `Destroy` functions run (2.4), so no work uses what `Destroy` freed.
 - The thread-safe functions are: running a function on the main thread (`ECS_RunOnMainThread`, built on `SDL_RunOnMainThread`), `ECS_RunInBackground`, and logging. Every other function is for the main thread only. Each function documents its thread rule.
 - Native plugins may create their own threads, under the same rule.
 
@@ -737,7 +737,7 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 - A plugin that an enabled plugin depends on is not disabled: the core reports it, and names a plugin that depends on it. So the plugins that use a plugin are disabled before it, and no enabled plugin holds a function or an object of a disabled one.
 - The core asks about the unsaved work in the plugin's panels (4.5); Cancel keeps it enabled. Then every popup closes, and:
   1. Each of its panels saves its state, and becomes a placeholder that keeps it (14.2) and says that its plugin is disabled.
-  2. Its Lua workers stop (3.4). Its background work that waits is dropped, its running work finishes, and the `done` functions of its work are not called. From now on `ECS_RunInBackground` refuses its work.
+  2. Its Lua workers stop (3.4). Its background work that waits is dropped, its running work finishes, and the `done` function of each runs, with `dropped` for work that never ran. From now on `ECS_RunInBackground` refuses its work.
   3. The objects of its handle types are destroyed, and their handles become invalid (10.6).
   4. Its `SaveState` runs, and the core keeps the state. Then its `Destroy` runs (9.4).
   5. Everything it registered is removed, as for a plugin that failed (9.7), and its library is unloaded. Its handle types and struct types stay without their methods, as other plugins' signatures and Lua's values name them.
@@ -835,7 +835,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - The same object always has the same Lua handle. A provider that still uses an object after giving it to Lua counts references, and its destructor drops one.
 - A handle that waits for its finalizer is already gone from Lua, so pushing its object again makes a new handle. The destructor runs once, when the object's last handle is collected.
 - The core's own handle types are `ecs.panel`, Lua's panel handles (11.4), and `ecs.surface`, the surface a panel draws into. A surface handle is valid only during the `Draw` call that gives it, so a panel can pass its surface to a service that draws, such as the draw plugin's (20).
-- A Lua plugin provides a handle type too: `ecs.handle.registerType(name)`, `ecs.handle.new(name, value)` for a handle that stands for a Lua value, and `ecs.handle.value(handle, name)`, which gives the value back to the plugin that owns the type. Users see such a handle like any other. The core keeps the value until the handle is collected.
+- A Lua plugin provides a handle type too: `ecs.handle.registerType(name)`, `ecs.handle.new(name, value)` for a handle that stands for a Lua value, and `ecs.handle.value(handle, name)`, which gives the value back to the plugin that owns the type. All three take the type's local name (9.9). Users see such a handle like any other. The core keeps the value until the handle is collected.
 - Handles that wait for their finalizer at exit are collected before the handle types are freed.
 - A failed plugin's handles become invalid without their destructor. On exit, the objects of handles that Lua still holds are destroyed before plugins are destroyed.
 - A provider may free an object before its handles are collected, such as with a plugin's `free` function: `ECSHandle_Forget(object)` makes the object's handles invalid without calling the destructor, so using one raises an error. `ECSHandle_Free(plugin, type, object)` makes them invalid and calls the type's destructor, for a plugin's `free` function.

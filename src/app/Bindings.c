@@ -420,17 +420,32 @@ static int ECSIBindings_HandleRegisterType(lua_State *state)
     return 0;
 }
 
+/// @brief Pushes the full name of one of the calling plugin's handle types, from the local name at an argument; Lua keeps the text while it is on the stack.
+static const char *ECSIBindings_PushTypeName(lua_State *state, int argument)
+{
+    char *fullName = ECSIPlugin_MakeFullName(ECSIBindings_GetPlugin(state), luaL_checkstring(state, argument));
+
+    if (fullName == nullptr)
+    {
+        luaL_argerror(state, argument, "must be the local name of one of the plugin's handle types, such as \"brush\"");
+        return nullptr;
+    }
+
+    const char *pushed = lua_pushstring(state, fullName);
+    SDL_free(fullName);
+    return pushed;
+}
+
 static int ECSIBindings_HandleNew(lua_State *state)
 {
-    const char *name = luaL_checkstring(state, 1);
     luaL_checkany(state, 2);
-    ECSIServices_PushLuaHandle(ECSIBindings_GetPlugin(state), name, 2);
+    ECSIServices_PushLuaHandle(ECSIBindings_GetPlugin(state), ECSIBindings_PushTypeName(state, 1), 2);
     return 1;
 }
 
 static int ECSIBindings_HandleValue(lua_State *state)
 {
-    ECSIServices_PushLuaHandleValue(ECSIBindings_GetPlugin(state), luaL_checkstring(state, 2), 1);
+    ECSIServices_PushLuaHandleValue(ECSIBindings_GetPlugin(state), ECSIBindings_PushTypeName(state, 2), 1);
     return 1;
 }
 
@@ -1246,6 +1261,10 @@ static int ECSIBindings_ServiceRegister(lua_State *state)
         lua_getfield(state, -3, "fn");
         luaL_checktype(state, -1, LUA_TFUNCTION);
 
+        // the core adds the plugin's name, so a name that has it already is a mistake, as in C
+        const char *local = lua_tostring(state, -5);
+        usz prefixLength = SDL_strlen(prefix);
+        luaL_argcheck(state, SDL_strncmp(local, prefix, prefixLength) != 0 || local[prefixLength] != '.', 1, "must map local names, without the plugin's name");
         const char *name = lua_pushfstring(state, "%s.%s", prefix, lua_tostring(state, -5));
         lua_insert(state, -2);
         SHUResult registered = ECSIServices_RegisterLua(plugin, name, luaL_checkstring(state, -4), luaL_optstring(state, -3, ""));

@@ -63,6 +63,11 @@ typedef void (*ECSFunction)(void);
 /// @param data The data given with the function.
 typedef void (*ECSTaskFunction)(void *data);
 
+/// @brief What runs on the main thread when background work ends (ECS_RunInBackground).
+/// @param data What the work got.
+/// @param dropped Whether the work never ran, because its plugin is being disabled or the program exits. The function frees what data holds either way.
+typedef void (*ECSTaskDoneFunction)(void *data, bool dropped);
+
 /// @brief Function that a timer calls.
 /// @param data The data given when the timer started.
 typedef void (*ECSTimerFunction)(void *data);
@@ -512,11 +517,11 @@ OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel l
 /// @brief Runs a function on a worker thread, then another function on the main thread. Thread-safe.
 /// @param plugin The plugin that asks.
 /// @param work Runs on a worker thread from a small pool. It must not call core functions that are for the main thread only.
-/// @param done Runs on the main thread after work returns, or nullptr. Work that has not started when the program exits does not run, and neither does its done.
+/// @param done Runs on the main thread, once: after work returns, or with dropped set when the work never ran, because its plugin is being disabled or the program exits. It runs before the plugin's Destroy then. It may be nullptr.
 /// @param data Passed to both functions.
 /// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if no worker thread can start, the plugin is being disabled, or the program exits.
 /// @lua none: Lua code never runs on worker threads; Lua plugins use services that work in the background
-OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data);
+OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskDoneFunction done, void *data);
 
 /// @brief Runs a function on the main thread, between passes of the main loop. Thread-safe. A function that a plugin's thread sent runs before the plugin's library is unloaded, after its Destroy.
 /// @param function The function.

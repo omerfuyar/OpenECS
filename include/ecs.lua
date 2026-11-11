@@ -599,14 +599,14 @@ function ecs.handle.registerType(name) end
 function ecs.handle.addMethod(type, method, functionName) end
 
 ---Makes a handle that stands for a Lua value. Lua only: in C, a handle is the object's pointer.
----@param name string A handle type of the plugin, by its full name.
+---@param name string A handle type of the plugin, by its local name, such as "brush".
 ---@param value any The Lua value that the handle stands for.
 ---@return ecs.Handle handle The new handle.
 function ecs.handle.new(name, value) end
 
 ---Gives back the value of a handle of the plugin's type. Lua only: in C, a handle is the object's pointer.
 ---@param handle ecs.Handle A handle that ecs.handle.new made.
----@param name string The handle's type, by its full name.
+---@param name string The handle's type, by its local name.
 ---@return any value The Lua value the handle stands for.
 function ecs.handle.value(handle, name) end
 
