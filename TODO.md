@@ -13,6 +13,8 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now, and aarch64 waits for 1.0.0 (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
 - **Import the rulesets.** The rulesets of OpenECS, OpenECS-std, OpenECS-examples and OpenECS-template require the Windows checks now, as the owner chose. The owner imports them in each repository's settings. OpenECS-examples' rulesets no longer require `Release (Linux)`, which it does not run.
+- **Functions that call unseen.** OVERVIEW's principle "Calls are written out" is new. Check the core, the standard plugins and the examples for code that registers or calls functions the caller does not name, and write the calls out.
+- **Older plugins and newer features.** Go over the standard plugins and the examples for code that a later feature of the core would make simpler, such as structs, and change it to use the feature.
 - **Lua's speed.** Each call from Lua into the core costs about a third of a microsecond in a Debug build, so a Lua panel draws runs of pixels with `surface:fill` and rows with `setRow`, as c12_sketch's Lua panel paints each row of a dab with one `fill`; the surface's methods keep the colour of the last colour text they read. A panel that keeps its picture draws only what changed (DESIGN 5.1).
 
 ## Shuild
@@ -62,7 +64,7 @@ Recommendations from a review of the code, by area, the most important first. P1
 **std: ui, with draw**
 
 - **P3 · A column in a row measures its text at its parent's width.** `std/plugins/ui/init.lua` A row narrows its wrapped texts and columns only when its children need more than its width; a column that grows in a row still breaks its text at the width it had before it grew. Measure wrapped text again once widths are arranged. Size: M.
-- **P2 · A long list or table is built whole each frame.** `std/plugins/ui/init.lua:536-545`, `:398-419` Each row is a node with two more for each cell, and a closure for each item with `onActivate`; all are measured and arranged, and only those in view are drawn. Rows have one height, so build and measure the rows in view, and share one handler among the items. Size: M.
+- **P3 · A long list or table is built whole each frame.** `std/plugins/ui/init.lua:536-545`, `:398-419` Each row is a node with two more for each cell, and a closure for each item with `onActivate`; all are measured and arranged, and only those in view are drawn. Rows have one height, so build and measure the rows in view, and share one handler among the items. A list takes children that are built already, so this needs a form of `ui.list` that takes a count and a function that builds one item; the owner leaves it until a tool needs it. Size: M.
 - **P3 · `textgrid.cell` and `textgrid.fit` measure without the display scale.** `std/plugins/textgrid/TextGrid.c` `draw.measure` takes the scale now, and the grid draws with it, but `cell` and `fit` measure at scale 1, so their numbers can differ from the drawn cells by a part of a pixel on a display whose scale is not whole. Give them a scale parameter. Size: S.
 
 **Core: plugins and threads**
@@ -74,7 +76,7 @@ Recommendations from a review of the code, by area, the most important first. P1
 **Core: interface**
 
 - **P2 · A frame draws and presents every OS window and popup.** `src/interface/Window.c:1972-1977`, `:1829-1846`, `:299-302` One panel that draws all the time makes every window, minimized and hidden behind others too, and every popup be laid out, drawn and presented at the display's rate. Mark what changed for each OS window and popup, and draw only those; skip windows that cannot be seen. Size: M.
-- **P2 · Window.c holds five modules.** `src/interface/Window.c:139-211` Its 2848 lines hold the OS windows, and also the drag of panels and drop zones (`:458-730`, `:2384-2590`), the Clay declarations (`:732-1304`), the popups' views (`:1623-1848`), the title bar and hit tests, and the menus' geometry (`:2631-2765`). Move each to its own file with its part of the `WINDOW` struct; Window.c keeps the OS windows, renderers and frame pacing. Size: L.
+- **P3 · Window.c holds five modules.** `src/interface/Window.c:139-211` Its 2848 lines hold the OS windows, and also the drag of panels and drop zones (`:458-730`, `:2384-2590`), the Clay declarations (`:732-1304`), the popups' views (`:1623-1848`), the title bar and hit tests, and the menus' geometry (`:2631-2765`). Move each to its own file with its part of the `WINDOW` struct; Window.c keeps the OS windows, renderers and frame pacing. The owner leaves it until it is necessary. The parts call each other, so three modules in an order avoid a cycle (DESIGN 1.5): Drag, then View with every Clay declaration, then Window. Size: L.
 - **P3 · The drop that waits on Wayland keeps a panel's pointer.** `src/interface/Window.c:2556` `pending.panel` outlives `ECSIWindow_Forget` for up to 400 ms, and is checked only by its address (`Layout.c:1769`). Clear it in `Forget`, or keep the panel's id. Size: S.
 - **P3 · Each key press parses every binding's key text.** `src/interface/Keys.c:186`, `:230-255` Finding a binding walks the settings' tables and parses each key again. Parse them once into a table, made again when settings, the preset, workspaces or plugins change, as the prefix keys are (`:105-128`). Size: M.
 - **P3 · No example presses two buttons, or sends input between a layout change and a frame.** `src/app/Test.c:845` `test.press` and `test.release` exist and no example uses them. Add cases for the two findings above that the tests can reach. Size: S.
@@ -85,3 +87,21 @@ Recommendations from a review of the code, by area, the most important first. P1
 **std: panels, settings, fs and mixer**
 
 - **P2 · Many functions of the standard plugins give no reason when they fail.** `std/plugins` fs, sqlite, hash, notify, process and `draw.styledFont` give `nil` or `false` and a message, with `out string error`. About forty others give only `nil` or `false`: draw's images and fonts, gpu's buffers, textures, shaders and pipelines, mixer's sounds, net's servers and connections, web's sockets, gltf's models, and the functions that write to a handle. Give each one that can fail for a reason outside the caller the same `out string error`; an interface change. Size: M.
+
+**Shu and shuild**
+
+Paths are in their repositories, at `dependencies/shu` and `dependencies/shuild`.
+
+- **P1 · `SHU_NO_LOG` stops errors from ending the program.** `shu.h:202-214`, `:231` `SHU_LogError(code, ...)` ends the program through `SHU_Log`, and `SHU_NO_LOG` defines `SHU_Log` as nothing, so the code after a fatal error runs. Keep the `exit` when logging is off. Size: S.
+- **P2 · An interrupted build leaves objects beside the sources.** `shuild.h:2265-2309` Without incremental builds, the objects are deleted at exit, and a signal such as Ctrl+C does not run that. Delete them on `SIGINT` and `SIGTERM` too, or compile them into a temporary directory. Size: S.
+- **P2 · Edit times have whole seconds on Windows.** `shuild.h:1230-1246` A file edited in the same second as its object was compiled does not compile again. Read the time with `GetFileTime`. Size: S.
+- **P2 · `SHU_Shuild` compiles the other build script on every run.** `shuild.h:2815-2846` Each of OpenECS's builds compiles the scripts of `std/` and `examples/` again, though they did not change. Compile only when `SHUI_UtilScriptChanged` says so, or when the flags changed. Size: S.
+- **P2 · Shuild has no checks.** Its examples are its tests and run by hand; its Windows and macOS code is compiled only by OpenECS's checks. Add a workflow that builds and runs `examples/shuild.c` on Linux, Windows and macOS. Size: M.
+- **P2 · `cs` and `csv` are short names without a prefix, and use their arguments bare.** `shu.h:177-183` Any code that includes `shu.h` cannot name a variable `cs`; `csv(*slice)` does not compile, and `csv(f())` calls `f` twice. Put the arguments in parentheses, and decide on the names. Size: S, and a rename in every user.
+- **P3 · A dependency file that names a missing file fails the build.** `shuild.h:1232-1235`, `:1287` A header that moved to another include directory makes an incremental build fail with "cannot be found" until the cache is deleted. Count a missing file as newer. Size: S.
+- **P3 · The settings' hash leaves the compiler's version out.** `shuild.h:2027-2061` A compiler updated under the same command keeps the old objects. Add `SHUILD.COMPILER.version`. Size: S.
+- **P3 · On Windows, a free job is found only when the oldest one ends.** `shuild.h:1589` One slow file holds the other slots. Wait with `WaitForMultipleObjects`. Size: S.
+- **P3 · A rebuilt build script leaves `shuild.old`.** `shuild.h:2710` Delete it where the system allows it, and at the next run on Windows. Size: S.
+- **P3 · `SHUResult_String` is kept in step with `SHUResult` by hand.** `shu.h:120-160` Write both from one list of names. Size: S.
+- **P3 · `SHU_Assert` ends with `exit`.** `shu.h:238-246` A debugger does not stop at the failed assertion, and no core is written; `abort` does both, but runs no `atexit` function, which shuild's cleanup uses. The owner's choice. Size: S.
+- **P3 · `___shures` is a reserved name.** `shu.h:275` Names with two underscores belong to the compiler. Name it `shuResult_`. Size: S.
