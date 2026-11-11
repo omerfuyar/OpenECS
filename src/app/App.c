@@ -316,6 +316,25 @@ static void ECSIApp_UseSession(const char *path)
     ECSIApp_ExitOnFailure(APP.sessionPath == nullptr ? SHUResult_ErrAllocation : ECSISession_ReadInfo(APP.sessionPath, &APP.preset), "reading the session", path);
 }
 
+/// @brief Tells whether the tool's last session can be read. One that cannot is reported and moved aside, so the tool starts from its preset now and at the next start.
+static bool ECSIApp_CheckLastSession(void)
+{
+    ECSIPresetInfo info = {0};
+    SHUResult result = ECSISession_ReadInfo(APP.lastSession, &info);
+    ECSISession_FreeInfo(&info);
+
+    if (result)
+    {
+        char *aside = nullptr;
+        bool moved = SDL_asprintf(&aside, "%s.unreadable", APP.lastSession) >= 0 && SDL_RenamePath(APP.lastSession, aside);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The last session '%s' cannot be read (%s), so the tool starts from its preset.%s", APP.lastSession, SHUResult_String(result),
+                    moved ? " The file is kept beside it, with '.unreadable' after its name." : "");
+        SDL_free(aside);
+    }
+
+    return !result;
+}
+
 /// @brief Finds the user's folders, opens the log file in the state folder and finds the folder of the user's presets.
 /// A test has no folders of the user; its presets field names the folder that stands for the user's presets.
 static void ECSIApp_FindUserFolders(void)
@@ -445,7 +464,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     // with ecs.keepSession, the tool's last session replaces the preset, unless the command line asks for a fresh start
     APP.lastSession = ECSISession_GetLastPath(APP.stateFolder, APP.preset.appID);
 
-    if (APP.sessionPath == nullptr && !arguments->fresh && ECSISettings_PeekBool(OPENECS_KEEP_SESSION, false) && APP.lastSession != nullptr && SDL_GetPathInfo(APP.lastSession, nullptr))
+    if (APP.sessionPath == nullptr && !arguments->fresh && ECSISettings_PeekBool(OPENECS_KEEP_SESSION, false) && APP.lastSession != nullptr && SDL_GetPathInfo(APP.lastSession, nullptr) && ECSIApp_CheckLastSession())
     {
         ECSIApp_UseSession(APP.lastSession);
         ECSIApp_ExitOnFailure(ECSISettings_SetPreset(ECSValue_GetTableField(APP.preset.file, "settings"), APP.sessionPath), "reading the session's settings", APP.sessionPath);
@@ -616,7 +635,7 @@ static void ECSIApp_NoteEnabled(const char *name, bool enabled)
     arrfree(kept);
 }
 
-/// @brief Disables a plugin and the plugins that depend on it, after asking about the unsaved work of their panels, which become placeholders.
+/// @brief Disables a plugin that no enabled plugin depends on, after asking about the unsaved work of its panels, which become placeholders.
 static void ECSIApp_DisablePlugin(const char *name)
 {
     ECSPlugin target = ECSIPlugins_Get(name);
@@ -628,6 +647,16 @@ static void ECSIApp_DisablePlugin(const char *name)
     }
 
     ECSPlugin *plugins = ECSIPlugins_GetDependents(target);
+
+    // the last loaded goes first, so the first one depends on the plugin when any does
+    if (arrlenu(plugins) > 1)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not disabled, as the enabled plugin '%s' depends on it. Disable that one first.", name,
+                    ECSIPlugin_GetName(plugins[0]));
+        arrfree(plugins);
+        return;
+    }
+
     ECSPanel *panels = ECSILayout_GetPanels();
     ECSPanel *affected = nullptr;
 
@@ -658,6 +687,7 @@ static void ECSIApp_DisablePlugin(const char *name)
             }
 
             ECSIWorkers_StopPlugin(plugins[i]);
+            ECSIPlugin_StopWork(plugins[i]);
             ECSITasks_ForgetPlugin(plugins[i]);
             ECSIServices_DestroyHandlesOfPlugin(plugins[i]);
             ECSIApp_NoteEnabled(ECSIPlugin_GetName(plugins[i]), false);

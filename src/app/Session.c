@@ -375,6 +375,25 @@ static f32 ECSISession_GetNumber(const ECSValue *node, const char *name, f32 fal
     return (f32)ECSValue_GetNumber(ECSValue_GetTableField(node, name), fallback);
 }
 
+/// @brief Gives the id that a file names for a panel, or 0, which keeps the panel's new id, when the file names none, one that another panel has,
+/// or one too large for the ids after it. A refused id is reported.
+static u32 ECSISession_CheckPanelID(i64 id)
+{
+    if (id == 0)
+    {
+        return 0;
+    }
+
+    bool taken = id < 0 || id >= SDL_MAX_UINT32 || ECSLayout_FindPanel((u32)id) != nullptr;
+
+    if (taken)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The panel id %lld is taken or out of range, so the panel gets a new id.", (long long)id);
+    }
+
+    return taken ? 0 : (u32)id;
+}
+
 /// @brief Creates the panel that a table describes and adds it to a group.
 static SHUResult ECSISession_ReadPanel(ECSISessionReader *reader, const ECSValue *saved, ECSINode *group)
 {
@@ -386,7 +405,7 @@ static SHUResult ECSISession_ReadPanel(ECSISessionReader *reader, const ECSValue
     ECSPanel panel = nullptr;
 
     SHU_ReturnResult(ECSIPanel_Create(&panel, type, state, version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0));
-    ECSIPanel_SetID(panel, id > 0 && id <= SDL_MAX_UINT32 ? (u32)id : 0);
+    ECSIPanel_SetID(panel, ECSISession_CheckPanelID(id));
     ECSILayout_GroupAdd(group, panel);
 
     if (id != 0 && id == reader->focusID)

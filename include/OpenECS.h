@@ -489,9 +489,9 @@ OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_List(ECSValue *retList);
 /// @lua ecs.plugins.enable
 OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Enable(const char *name);
 
-/// @brief Disables a plugin, and the plugins that depend on it, when the current pass of the main loop ends, after asking about the unsaved work of their panels, which become placeholders (DESIGN 9.10). The core emits ecs.pluginsChanged after it. Main thread only.
+/// @brief Disables a plugin when the current pass of the main loop ends, after asking about the unsaved work of its panels, which become placeholders (DESIGN 9.10). A plugin that an enabled plugin depends on is not disabled, which is reported. The core emits ecs.pluginsChanged after it. Main thread only.
 /// @param name The plugin's name.
-/// @return SHUResult_Ok, or SHUResult_ErrAllocation. Cancel keeps the plugins enabled.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation. Cancel keeps the plugin enabled.
 /// @lua ecs.plugins.disable
 OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Disable(const char *name);
 
@@ -514,7 +514,7 @@ OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel l
 /// @param work Runs on a worker thread from a small pool. It must not call core functions that are for the main thread only.
 /// @param done Runs on the main thread after work returns, or nullptr. Work that has not started when the program exits does not run, and neither does its done.
 /// @param data Passed to both functions.
-/// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if no worker thread can start, or the program exits.
+/// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if no worker thread can start, the plugin is being disabled, or the program exits.
 /// @lua none: Lua code never runs on worker threads; Lua plugins use services that work in the background
 OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data);
 

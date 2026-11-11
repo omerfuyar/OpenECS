@@ -493,7 +493,7 @@ function ecs.plugins.list() end
 ---@param name string The plugin's name.
 function ecs.plugins.enable(name) end
 
----Disables a plugin, and the plugins that depend on it, when the current pass of the main loop ends, after asking about the unsaved work of their panels, which become placeholders. The core emits ecs.pluginsChanged after it.
+---Disables a plugin when the current pass of the main loop ends, after asking about the unsaved work of its panels, which become placeholders. A plugin that an enabled plugin depends on is not disabled, which is reported. The core emits ecs.pluginsChanged after it.
 ---@param name string The plugin's name.
 function ecs.plugins.disable(name) end
 
