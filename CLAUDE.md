@@ -54,6 +54,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Write text and code for a human reader: simple, short and easy to read. Do not bloat.
 - Keep `include/OpenECS.h` and `include/ecs.lua` in step, with every reference and document (DESIGN.md, section 11.5).
 - Check your work as [Checks](#checks) says.
+- When a new feature of the core would make older code of a plugin or an example simpler, change that code in the same piece of work, or add it to TODO.md.
 
 **Ask first**
 
