@@ -13,16 +13,17 @@ typedef struct ECSIWork
     ECSPlugin plugin;
     u32 generation; // the plugin's load whose code the functions are
     ECSTaskFunction Work;
-    ECSTaskFunction Done;
+    ECSTaskDoneFunction Done;
     void *data;
 } ECSIWork;
 
 /// @brief A function that runs on the main thread.
 typedef struct ECSIMainTask
 {
-    ECSPlugin plugin; // the plugin whose background work ends with it, or nullptr
-    u32 generation;   // the plugin's load whose code the function is; a task of an earlier load is dropped
-    ECSTaskFunction Function;
+    ECSPlugin plugin;         // the plugin whose background work ends with it, or nullptr
+    u32 generation;           // the plugin's load whose code the function is; a task of an earlier load is dropped
+    ECSTaskFunction Function; // what ECS_RunOnMainThread sent, or nullptr
+    ECSTaskDoneFunction Done; // the done function of background work that ran, or nullptr
     void *data;
 } ECSIMainTask;
 
@@ -66,7 +67,15 @@ static void SDLCALL ECSITasks_RunMainTask(void *data)
     // a plugin disabled since then has unloaded the code of its done function
     if (!SDL_GetAtomicInt(&TASKS.stopped) && (task->plugin == nullptr || ECSIPlugin_GetGeneration(task->plugin) == task->generation))
     {
-        task->Function(task->data);
+        if (task->Done != nullptr)
+        {
+            task->Done(task->data, false);
+        }
+        else
+        {
+            task->Function(task->data);
+        }
+
         ECSITasks_Wake();
     }
 
@@ -89,9 +98,11 @@ static void ECSITasks_DeliverMainTask(void *target, const ECSPanelEvent *event)
 /// @brief Sends a function to the main thread, for a plugin's background work or for anyone.
 /// @param plugin The plugin whose work ends with the function, or nullptr; the function is dropped if that plugin is disabled first.
 /// @param generation The plugin's load whose code the function is.
-static SHUResult ECSITasks_Post(ECSPlugin plugin, u32 generation, ECSTaskFunction function, void *data)
+/// @param function What ECS_RunOnMainThread sent, or nullptr when done is given.
+/// @param done The done function of background work that ran, or nullptr.
+static SHUResult ECSITasks_Post(ECSPlugin plugin, u32 generation, ECSTaskFunction function, ECSTaskDoneFunction done, void *data)
 {
-    SDL_assert(function != nullptr);
+    SDL_assert((function != nullptr) != (done != nullptr));
 
     ECSIMainTask *task = SDL_malloc(sizeof(ECSIMainTask));
 
@@ -100,7 +111,7 @@ static SHUResult ECSITasks_Post(ECSPlugin plugin, u32 generation, ECSTaskFunctio
         return SHUResult_ErrAllocation;
     }
 
-    *task = (ECSIMainTask){.plugin = plugin, .generation = generation, .Function = function, .data = data};
+    *task = (ECSIMainTask){.plugin = plugin, .generation = generation, .Function = function, .Done = done, .data = data};
 
     // SDL would run it at once on the main thread, inside the caller's callback; the event queue runs it after
     if (SDL_IsMainThread())
@@ -145,7 +156,7 @@ static int SDLCALL ECSITasks_Worker(void *unused)
 
         work.Work(work.data);
 
-        if (work.Done != nullptr && ECSITasks_Post(work.plugin, work.generation, work.Done, work.data))
+        if (work.Done != nullptr && ECSITasks_Post(work.plugin, work.generation, nullptr, work.Done, work.data))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Background work of plugin '%s' finished, but its done function cannot be queued.", ECSIPlugin_GetName(work.plugin));
         }
@@ -199,16 +210,17 @@ SHUResult ECSITasks_Initialize(void)
     return TASKS.lock == nullptr || TASKS.ready == nullptr || TASKS.idle == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
 }
 
-void ECSITasks_ForgetPlugin(ECSPlugin plugin)
+/// @brief Takes the waiting work of a plugin, or of every plugin for nullptr, out of the queue; the caller holds the lock.
+/// @return The work, an stb_ds array that the caller frees.
+static ECSIWork *ECSITasks_TakeWaiting(ECSPlugin plugin)
 {
-    SDL_assert(plugin != nullptr);
-
-    SDL_LockMutex(TASKS.lock);
+    ECSIWork *taken = nullptr;
 
     for (usz i = 0; i < arrlenu(TASKS.queue);)
     {
-        if (TASKS.queue[i].plugin == plugin)
+        if (plugin == nullptr || TASKS.queue[i].plugin == plugin)
         {
+            arrput(taken, TASKS.queue[i]);
             arrdel(TASKS.queue, i);
         }
         else
@@ -216,6 +228,32 @@ void ECSITasks_ForgetPlugin(ECSPlugin plugin)
             i++;
         }
     }
+
+    return taken;
+}
+
+/// @brief Tells the done functions of work that never ran that it was dropped, so they free its data, then runs the done functions of the work
+/// that finished meanwhile. Main thread only, while the plugins' code is loaded.
+static void ECSITasks_FinishDropped(ECSIWork *dropped)
+{
+    for (usz i = 0; i < arrlenu(dropped); i++)
+    {
+        if (dropped[i].Done != nullptr)
+        {
+            dropped[i].Done(dropped[i].data, true);
+        }
+    }
+
+    arrfree(dropped);
+    SDL_PumpEvents();
+}
+
+void ECSITasks_ForgetPlugin(ECSPlugin plugin)
+{
+    SDL_assert(plugin != nullptr);
+
+    SDL_LockMutex(TASKS.lock);
+    ECSIWork *dropped = ECSITasks_TakeWaiting(plugin);
 
     for (bool running = true; running;)
     {
@@ -233,13 +271,20 @@ void ECSITasks_ForgetPlugin(ECSPlugin plugin)
     }
 
     SDL_UnlockMutex(TASKS.lock);
+    ECSITasks_FinishDropped(dropped);
 }
 
 void ECSITasks_Stop(void)
 {
-    // running work finishes, waiting work is dropped, and no task reaches the main thread any more
+    if (TASKS.lock == nullptr || SDL_GetAtomicInt(&TASKS.stopped))
+    {
+        return;
+    }
+
+    // running work finishes, waiting work is dropped, each done function runs once, and no task reaches the main thread after that
     SDL_LockMutex(TASKS.lock);
     TASKS.stopping = true;
+    ECSIWork *dropped = ECSITasks_TakeWaiting(nullptr);
     SDL_BroadcastCondition(TASKS.ready);
     SDL_UnlockMutex(TASKS.lock);
 
@@ -247,6 +292,8 @@ void ECSITasks_Stop(void)
     {
         SDL_WaitThread(TASKS.workers[i], nullptr);
     }
+
+    ECSITasks_FinishDropped(dropped);
 
     SDL_SetAtomicInt(&TASKS.stopped, 1);
     arrfree(TASKS.workers);
@@ -264,7 +311,7 @@ void ECSITasks_Terminate(void)
     TASKS.ready = nullptr;
 }
 
-SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data)
+SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskDoneFunction done, void *data)
 {
     SDL_assert(plugin != nullptr);
     SDL_assert(work != nullptr);
@@ -288,5 +335,5 @@ SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFun
 SHUResult ECS_RunOnMainThread(ECSTaskFunction function, void *data)
 {
     SDL_assert(function != nullptr);
-    return ECSITasks_Post(nullptr, 0, function, data);
+    return ECSITasks_Post(nullptr, 0, function, nullptr, data);
 }
