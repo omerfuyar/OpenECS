@@ -90,6 +90,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 **Shu and shuild**
 
-Paths are in their repositories, at `dependencies/shu` and `dependencies/shuild`. omerfuyar/shu#3 and omerfuyar/shuild#60 fix the review's other findings; when the owner merges them, move the two submodules to them.
+Paths are in their repositories, at `dependencies/shu` and `dependencies/shuild`.
 
 - **P3 · The settings' hash leaves the compiler's version out.** `shuild.h`, `SHUI_CacheSettingsHash` A compiler updated under the same command keeps the old objects. The configured compiler's version is not kept, and asking for it runs the compiler once more in each build. Size: S.
