@@ -1,5 +1,6 @@
 #include "runtime/Settings.h"
 
+#include "base/Log.h"
 #include "base/Lua.h"
 #include "runtime/Events.h"
 
@@ -205,8 +206,8 @@ static SHUResult ECSISetting_SetDefault(ECSISetting *setting, const ECSSettingDe
         // a core setting's default comes from the core's settings file, and is checked there
         if (desc->defaultString != nullptr && !ECSISetting_Check(setting, setting->defaultValue))
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The default of setting '%s' must be %s.", desc->name, OPENECS_SETTING_TYPE_TEXTS[desc->type]);
-            return SHUResult_ErrBadData;
+            (void)ECS_Check(nullptr, false, "The default of setting '%s' must be %s.", desc->name, OPENECS_SETTING_TYPE_TEXTS[desc->type]);
+            return SHUResult_ErrAssertion;
         }
 
         return SHUResult_Ok;
@@ -228,8 +229,8 @@ static SHUResult ECSISetting_SetDefault(ECSISetting *setting, const ECSSettingDe
 
         if (!ECSISetting_Check(setting, setting->defaultValue))
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The default of setting '%s' is not one of its choices.", desc->name);
-            return SHUResult_ErrBadData;
+            (void)ECS_Check(nullptr, false, "The default of setting '%s' is not one of its choices.", desc->name);
+            return SHUResult_ErrAssertion;
         }
 
         return SHUResult_Ok;
@@ -687,8 +688,8 @@ void ECSISettings_ApplyTheme(void)
 
 bool ECSColor_Parse(const char *text, ECSColor *retColor)
 {
-    SDL_assert(text != nullptr);
-    SDL_assert(retColor != nullptr);
+    ECSILog_Check(text != nullptr, false);
+    ECSILog_Check(retColor != nullptr, false);
 
     if (text[0] == '#')
     {
@@ -835,7 +836,10 @@ void ECSISettings_DeliverChanges(void)
 
         if (setting->Changed != nullptr)
         {
+            ECSICallback callback;
+            ECSIPlugin_Enter(&callback, setting->owner, nullptr, ECSICallbackType_Plugin);
             setting->Changed(setting->data);
+            (void)ECSIPlugin_Leave(&callback);
         }
 
         // every plugin may hear it, as the owner is told only of its own settings
@@ -868,8 +872,8 @@ const ECSValue *ECSISettings_GetPlugins(void)
 
 SHUResult ECSSetting_Declare(ECSPlugin plugin, const ECSSettingDesc *desc)
 {
-    SDL_assert(plugin != nullptr);
-    SDL_assert(desc != nullptr);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(desc != nullptr, SHUResult_ErrAssertion);
 
     return ECSISettings_DeclarePlugin(plugin, desc, nullptr);
 }
@@ -880,12 +884,8 @@ SHUResult ECSISettings_DeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *des
     SDL_assert(desc != nullptr);
 
     // the description gives the local name, and the setting is known by its full name
-    char *name = ECSIPlugin_MakeFullName(plugin, desc->name);
-
-    if (name == nullptr)
-    {
-        return SHUResult_ErrBadData;
-    }
+    char *name = nullptr;
+    SHU_ReturnResult(ECSIPlugin_MakeFullName(plugin, desc->name, &name));
 
     ECSSettingDesc named = *desc;
     named.name = name;
@@ -896,7 +896,7 @@ SHUResult ECSISettings_DeclarePlugin(ECSPlugin plugin, const ECSSettingDesc *des
 
 const ECSValue *ECSSetting_Get(const char *name)
 {
-    SDL_assert(name != nullptr);
+    ECSILog_Check(name != nullptr, nullptr);
 
     ECSISetting *setting = ECSISettings_Find(name);
     return setting == nullptr ? nullptr : setting->value;
@@ -904,7 +904,7 @@ const ECSValue *ECSSetting_Get(const char *name)
 
 SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
 {
-    SDL_assert(name != nullptr);
+    ECSILog_Check(name != nullptr, SHUResult_ErrAssertion);
 
     ECSISetting *setting = ECSISettings_Find(name);
 
@@ -967,7 +967,7 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
 
 SHUResult ECSSetting_List(ECSValue *retList)
 {
-    SDL_assert(retList != nullptr);
+    ECSILog_Check(retList != nullptr, SHUResult_ErrAssertion);
 
     ECSValue_SetTable(retList);
 
@@ -983,8 +983,8 @@ SHUResult ECSSetting_List(ECSValue *retList)
 
 SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation)
 {
-    SDL_assert(name != nullptr);
-    SDL_assert(retExplanation != nullptr);
+    ECSILog_Check(name != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(retExplanation != nullptr, SHUResult_ErrAssertion);
 
     ECSISetting *setting = ECSISettings_Find(name);
 

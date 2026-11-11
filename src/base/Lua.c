@@ -16,7 +16,14 @@ static struct
     ECSILuaReadHandleFunction ReadHandle; // set by the Services module
     ECSILuaPushHandleFunction PushHandle;
     char *warning; // the pieces of a warning that Lua gives in pieces, joined so far, or nullptr
+    ECSILuaMisuseFunction Misuse;
 } LUA = {0};
+
+/// @brief File-level state of each thread.
+static thread_local struct
+{
+    lua_State *caller; // the Lua state whose code calls C on this thread, or nullptr
+} LUA_THREAD = {0};
 
 /// @brief The writer of data files. It takes a value as ECSILua_PushOrderedValue pushes it, and returns Lua source that returns the value.
 static const char OPENECS_LUA_WRITER[] =
@@ -553,6 +560,188 @@ lua_State *ECSILua_NewState(void)
     }
 
     return state;
+}
+
+void ECSILua_SetMisuseFunction(ECSILuaMisuseFunction Misuse)
+{
+    LUA.Misuse = Misuse;
+}
+
+void ECSILua_Misuse(lua_State *state, const char *format, ...)
+{
+    SDL_assert(state != nullptr);
+    SDL_assert(format != nullptr);
+
+    va_list arguments;
+    va_start(arguments, format);
+    const char *message = lua_pushvfstring(state, format, arguments);
+    va_end(arguments);
+
+    if (LUA.Misuse != nullptr)
+    {
+        lua_State *outer = ECSILua_SetCaller(state);
+        LUA.Misuse(message);
+        (void)ECSILua_SetCaller(outer);
+    }
+
+    // as luaL_error, with the Lua caller's line before the message
+    luaL_where(state, 1);
+    lua_insert(state, -2);
+    lua_concat(state, 2);
+    lua_error(state);
+    unreachable();
+}
+
+void ECSILua_ArgError(lua_State *state, int argument, const char *message)
+{
+    // as luaL_argerror: a method's self is not counted
+    lua_Debug info;
+
+    if (!lua_getstack(state, 0, &info))
+    {
+        ECSILua_Misuse(state, "bad argument #%d (%s)", argument, message);
+    }
+
+    lua_getinfo(state, "n", &info);
+
+    if (info.namewhat != nullptr && SDL_strcmp(info.namewhat, "method") == 0 && --argument == 0)
+    {
+        ECSILua_Misuse(state, "calling '%s' on bad self (%s)", info.name != nullptr ? info.name : "?", message);
+    }
+
+    ECSILua_Misuse(state, "bad argument #%d to '%s' (%s)", argument, info.name != nullptr ? info.name : "?", message);
+}
+
+void ECSILua_TypeError(lua_State *state, int argument, const char *typeName)
+{
+    const char *given = luaL_getmetafield(state, argument, "__name") == LUA_TSTRING ? lua_tostring(state, -1)
+                        : lua_type(state, argument) == LUA_TLIGHTUSERDATA           ? "light userdata"
+                                                                                    : luaL_typename(state, argument);
+    ECSILua_ArgError(state, argument, lua_pushfstring(state, "%s expected, got %s", typeName, given));
+}
+
+const char *ECSILua_CheckLString(lua_State *state, int argument, usz *retLength)
+{
+    size_t length = 0;
+    const char *text = lua_tolstring(state, argument, &length);
+
+    if (text == nullptr)
+    {
+        ECSILua_TypeError(state, argument, lua_typename(state, LUA_TSTRING));
+    }
+
+    if (retLength != nullptr)
+    {
+        *retLength = length;
+    }
+
+    return text;
+}
+
+const char *ECSILua_CheckString(lua_State *state, int argument)
+{
+    return ECSILua_CheckLString(state, argument, nullptr);
+}
+
+const char *ECSILua_OptString(lua_State *state, int argument, const char *fallback)
+{
+    return lua_isnoneornil(state, argument) ? fallback : ECSILua_CheckString(state, argument);
+}
+
+i64 ECSILua_CheckInteger(lua_State *state, int argument)
+{
+    int isInteger = 0;
+    lua_Integer integer = lua_tointegerx(state, argument, &isInteger);
+
+    if (!isInteger)
+    {
+        if (lua_isnumber(state, argument))
+        {
+            ECSILua_ArgError(state, argument, "number has no integer representation");
+        }
+
+        ECSILua_TypeError(state, argument, lua_typename(state, LUA_TNUMBER));
+    }
+
+    return (i64)integer;
+}
+
+i64 ECSILua_OptInteger(lua_State *state, int argument, i64 fallback)
+{
+    return lua_isnoneornil(state, argument) ? fallback : ECSILua_CheckInteger(state, argument);
+}
+
+f64 ECSILua_CheckNumber(lua_State *state, int argument)
+{
+    int isNumber = 0;
+    lua_Number number = lua_tonumberx(state, argument, &isNumber);
+
+    if (!isNumber)
+    {
+        ECSILua_TypeError(state, argument, lua_typename(state, LUA_TNUMBER));
+    }
+
+    return (f64)number;
+}
+
+f64 ECSILua_OptNumber(lua_State *state, int argument, f64 fallback)
+{
+    return lua_isnoneornil(state, argument) ? fallback : ECSILua_CheckNumber(state, argument);
+}
+
+void ECSILua_CheckType(lua_State *state, int argument, int type)
+{
+    if (lua_type(state, argument) != type)
+    {
+        ECSILua_TypeError(state, argument, lua_typename(state, type));
+    }
+}
+
+void ECSILua_CheckAny(lua_State *state, int argument)
+{
+    if (lua_type(state, argument) == LUA_TNONE)
+    {
+        ECSILua_ArgError(state, argument, "value expected");
+    }
+}
+
+void *ECSILua_CheckUdata(lua_State *state, int argument, const char *typeName)
+{
+    void *data = luaL_testudata(state, argument, typeName);
+
+    if (data == nullptr)
+    {
+        ECSILua_TypeError(state, argument, typeName);
+    }
+
+    return data;
+}
+
+int ECSILua_CheckOption(lua_State *state, int argument, const char *fallback, const char *const options[])
+{
+    const char *name = fallback != nullptr ? ECSILua_OptString(state, argument, fallback) : ECSILua_CheckString(state, argument);
+
+    for (int i = 0; options[i] != nullptr; i++)
+    {
+        if (SDL_strcmp(options[i], name) == 0)
+        {
+            return i;
+        }
+    }
+
+    ECSILua_ArgError(state, argument, lua_pushfstring(state, "invalid option '%s'", name));
+}
+
+lua_State *ECSILua_SetCaller(lua_State *state)
+{
+    lua_State *previous = LUA_THREAD.caller;
+    LUA_THREAD.caller = state;
+    return previous;
+}
+
+lua_State *ECSILua_GetCaller(void)
+{
+    return LUA_THREAD.caller;
 }
 
 SHUResult ECSILua_Call(lua_State *state, int argumentCount, int resultCount)

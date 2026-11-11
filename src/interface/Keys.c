@@ -1,5 +1,6 @@
 #include "interface/Keys.h"
 
+#include "base/Log.h"
 #include "interface/Layout.h"
 #include "runtime/Plugins.h"
 #include "runtime/Services.h"
@@ -546,8 +547,8 @@ char *ECSIKeys_BoundTextOf(const char *panelType, const char *function)
 
 SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *key, const char *function)
 {
-    SDL_assert(plugin != nullptr);
-    SDL_assert(panelType != nullptr && key != nullptr && function != nullptr);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(panelType != nullptr && key != nullptr && function != nullptr, SHUResult_ErrAssertion);
 
     u32 code = 0;
     u32 modifiers = 0;
@@ -555,14 +556,14 @@ SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *key, 
     // a plugin binds keys only for its own panel types
     if (!ECSIPlugin_OwnsName(plugin, panelType))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' binds a key for '%s', which is not one of its panel types.", ECSIPlugin_GetName(plugin), panelType);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Plugin '%s' binds a key for '%s', which is not one of its panel types.", ECSIPlugin_GetName(plugin), panelType);
+        return SHUResult_ErrAssertion;
     }
 
     if (ECSISettings_ParseKey(key, &code, &modifiers))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a key combination.", key);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "'%s' is not a key combination.", key);
+        return SHUResult_ErrAssertion;
     }
 
     ECSIKeys_ReadPrefix();

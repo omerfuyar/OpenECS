@@ -1,5 +1,6 @@
 #include "runtime/Tasks.h"
 
+#include "base/Log.h"
 #include "runtime/Events.h"
 
 #include "SDL3/SDL.h"
@@ -67,6 +68,9 @@ static void SDLCALL ECSITasks_RunMainTask(void *data)
     // a plugin disabled since then has unloaded the code of its done function
     if (!SDL_GetAtomicInt(&TASKS.stopped) && (task->plugin == nullptr || ECSIPlugin_GetGeneration(task->plugin) == task->generation))
     {
+        ECSICallback callback;
+        ECSIPlugin_Enter(&callback, task->plugin, nullptr, ECSICallbackType_Plugin);
+
         if (task->Done != nullptr)
         {
             task->Done(task->data, false);
@@ -75,6 +79,8 @@ static void SDLCALL ECSITasks_RunMainTask(void *data)
         {
             task->Function(task->data);
         }
+
+        (void)ECSIPlugin_Leave(&callback);
 
         ECSITasks_Wake();
     }
@@ -154,7 +160,10 @@ static int SDLCALL ECSITasks_Worker(void *unused)
         arrput(TASKS.busy, work.plugin);
         SDL_UnlockMutex(TASKS.lock);
 
+        ECSICallback callback;
+        ECSIPlugin_Enter(&callback, work.plugin, nullptr, ECSICallbackType_Plugin);
         work.Work(work.data);
+        (void)ECSIPlugin_Leave(&callback);
 
         if (work.Done != nullptr && ECSITasks_Post(work.plugin, work.generation, nullptr, work.Done, work.data))
         {
@@ -240,7 +249,11 @@ static void ECSITasks_FinishDropped(ECSIWork *dropped)
     {
         if (dropped[i].Done != nullptr)
         {
+            // the plugin is being disabled already
+            ECSICallback callback;
+            ECSIPlugin_Enter(&callback, dropped[i].plugin, nullptr, ECSICallbackType_Quiet);
             dropped[i].Done(dropped[i].data, true);
+            (void)ECSIPlugin_Leave(&callback);
         }
     }
 
@@ -313,9 +326,9 @@ void ECSITasks_Terminate(void)
 
 SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskDoneFunction done, void *data)
 {
-    SDL_assert(plugin != nullptr);
-    SDL_assert(work != nullptr);
-    SDL_assert(TASKS.lock != nullptr);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(work != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(TASKS.lock != nullptr, SHUResult_ErrAssertion);
 
     SDL_LockMutex(TASKS.lock);
     // work of a plugin that is being disabled would run after its code is unloaded
@@ -334,6 +347,6 @@ SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskDon
 
 SHUResult ECS_RunOnMainThread(ECSTaskFunction function, void *data)
 {
-    SDL_assert(function != nullptr);
+    ECSILog_Check(function != nullptr, SHUResult_ErrAssertion);
     return ECSITasks_Post(nullptr, 0, function, nullptr, data);
 }

@@ -28,4 +28,9 @@ void ECSIWorkers_PushTable(lua_State *state, ECSPlugin plugin);
 /// @param plugin The plugin.
 void ECSIWorkers_PushLog(lua_State *state, ECSPlugin plugin);
 
+/// @brief Adds fail and check, in a plugin's name, to the ecs table on top of the stack. The plugin's ecs and its workers' ecs have them.
+/// @param state The core's Lua state, or a worker's.
+/// @param plugin The plugin.
+void ECSIWorkers_AddErrors(lua_State *state, ECSPlugin plugin);
+
 #pragma endregion Declarations

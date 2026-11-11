@@ -81,9 +81,16 @@ This document explains how OpenECS is built: modules, interfaces, data, rules an
 
 ### 1.4 Errors
 
-- **Recoverable errors** (a missing file, a failed allocation, a bad signature string) return a `SHUResult`. `SHUResult_Ok` is zero, so `if (ECSService_GetFunction(...))` checks for failure. Functions whose result must be checked are marked `SHUWUR`.
-- **Contract violations** (a `nullptr` handle, an index out of range, a call from the wrong thread) are bugs. They fail an `SDL_assert`. Release builds turn these assertions off.
-- Lua never reaches an assertion: the core checks every argument that comes from Lua and raises a Lua error instead (10.8).
+Every function, of the core or of a plugin, in C or in Lua, fails in one of two ways.
+
+- **A failure** has a cause outside the caller: a missing file, a lost connection, a shader that the GPU refuses, memory that runs out. The function gives nothing and why, and the caller decides what to do.
+  - A core function in C returns a `SHUResult`. `SHUResult_Ok` is zero, so `if (ECSService_GetFunction(...))` checks for failure. Functions whose result must be checked are marked `SHUWUR`. The core logs why (14.3).
+  - A core function in Lua gives `nil, message`, except when memory runs out: that raises an error, as Lua's own allocations do.
+  - A service gives why as its last result, `out string error` (10.8).
+- **A misuse** is a bug of the caller: an argument of the wrong type, a `nullptr` handle, an index out of range, data that does not fit, such as too few pixels for an image's size, a call from the wrong thread, or a registration that is not valid, such as a bad signature or a second one of a name. Each function checks what it is given with `ECS_Check` in C and `ecs.check` in Lua, in every build. A misused call never finishes as asked, and the callback that made it fails (14.2).
+  - Lua code stops at the call: it raises an error at the line that made it.
+  - C code cannot be stopped in the middle, so the call returns and gives nothing: `nullptr`, zero, or `SHUResult_ErrAssertion` from a function that returns a `SHUResult`. The code runs on to the end of its callback.
+- `SDL_assert` checks only the core's own invariants, which hold whatever plugins do; a failed one is a bug of OpenECS. Release builds turn these assertions off.
 
 ### 1.5 Files
 
@@ -743,6 +750,7 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
   5. Everything it registered is removed, as for a plugin that failed (9.7), and its library is unloaded. Its handle types and struct types stay without their methods, as other plugins' signatures and Lua's values name them.
 - Enabling a plugin loads it as at start, after the plugins it depends on, which are enabled too. When it registers its handle types and struct types again, it gets them back; a struct type must have the same fields. It gets back the state it kept. Then the placeholders of its panel types are created again from their saved state. A plugin that cannot be enabled is reported, and stays disabled.
 - A plugin that is not loaded, such as one the user installed (16), is enabled the same way.
+- A plugin whose callback misused a function (14.2) is disabled the same way, without the question about unsaved work, as the user did not ask for it, and with the plugins that depend on it, first. Its panels keep their state in their placeholders, which show the misuse. Enabling it again brings them back.
 - A session keeps the change (13.2): `disabled` lists the disabled plugins, and `enabled` the plugins the user enabled that the preset does not depend on. The next start loads the preset's plugins and `enabled`, and records the plugins of `disabled`, and the plugins that depend on them, without loading their code.
 
 ## 10. Services
@@ -849,7 +857,10 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 
 ### 10.8 Errors in services
 
-- In C, a `SHUResult`, like every core function (1.4). In Lua, expected failures, such as a missing file, return `nil, message`; misuse, such as a wrong argument type, raises an error.
+- Services follow 1.4. A function that can fail has `out string error` as its last parameter, and in Lua gives `nil` and the message: `local image, error = image.load(path)`. It fills `error` with `nullptr` when it works, and gives nothing else when it fails: `nil`, `false`, zero or an empty buffer.
+- A C service fails with `ECS_Fail(plugin, retError, format, ...)`, and a Lua one with `return nil, ecs.fail(message)`. Both log the message as a warning, in the plugin's name, while the setting `ecs.logServiceErrors` is on, as it is by default. So a plugin never logs its own failures, and a tool that expects them turns the setting off. The message stays valid until the next `ECS_Fail` on the same thread, so a caller that keeps it copies it.
+- A service checks its arguments with `ECS_Check(plugin, condition, format, ...)` in C and `ecs.check(condition, message)` in Lua (1.4). The core checks each argument's type by the signature before the call, so a service checks only what its values mean, such as an image's bytes against its size.
+- `ECS_Check` gives `true` when the condition holds. When it does not, it reports the misuse, makes the callback that runs fail (14.2) and gives `false`, and the function returns at once, giving nothing. When Lua made the call, the core raises the error after the C function returns, so the Lua code stops at its line. `ecs.check` raises the error itself.
 
 ### 10.9 libffi
 
@@ -909,6 +920,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 | `ecs.plugin`                  | information about plugins                        |
 | `ecs.clipboard`, `ecs.dialog` | clipboard and dialogs                            |
 | `ecs.log`                     | `debug`, `info`, `warn` and `error`              |
+| `ecs.fail`, `ecs.check`       | a service's failure and a check of misuse (10.8) |
 
 - `ecs.plugin` holds the plugin's `name`, `version` and `folder`, and `register(desc)`, which describes the plugin's own life (9.4). The `folder` is the full path of the folder the plugin was loaded from, ending with a separator, so the plugin finds its own files, such as images. In C: `ECSPlugin_GetFolder(plugin)`.
 
@@ -936,7 +948,7 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 
 - Plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. The core declares its own with a name, a type and a description; their defaults are in the core's settings file. Owners are told when their settings change: the description's `Changed` function runs after the queued events (3.1, step 4), and only when the value in effect really changed. Then the core emits `ecs.settingChanged` with the setting's full name, so any plugin can follow a setting it does not own, such as `ecs.font`.
 - Types: `bool`, `integer`, `number`, `string`, `choice` (one of a list), `key` (a key combination, 7.3), `color` (`"#RRGGBB"` or `"#RRGGBBAA"`, 5.2), `list` and `table`. A value must have its setting's type: a `key` must read as a key combination, and a `color` as a colour.
-- The core's settings hold the core's choices of look and behaviour: the prefix, focus and vsync, the window's size, font and colours, the sizes of tab rows, dividers and grips, the distances that start drags and drops, and the reopen limit.
+- The core's settings hold the core's choices of look and behaviour: the prefix, focus and vsync, whether services' failures are logged, the window's size, font and colours, the sizes of tab rows, dividers and grips, the distances that start drags and drops, and the reopen limit.
 - The core's settings file is `resources/settings.lua` next to the executable, in the format of the user's file (12.3). It is part of the defaults layer (OVERVIEW 10.4), the only place that gives the core's settings their defaults, and holds the core's default keys (7.8). OpenECS does not start if the file cannot be read, or if it gives a core setting no value of its type. Its `ecs.prefix` must be a key combination, because a prefix that cannot be read falls back to it.
 - `ECSSetting_Get(name)` returns the value in effect as a value (10.3). It comes from the highest layer that sets the setting with a value of its type; otherwise it is the default. A value of another type is reported with its file and skipped.
 - A name's owner is the text before its first dot: `ecs` for the core, or a plugin. Once the plugins are loaded, a setting in a file that is not declared is reported with its file if its owner runs: the core, or a plugin that loaded and did not fail. So a misspelt name is noticed. The setting is kept (OVERVIEW 12).
@@ -1139,16 +1151,20 @@ When the command line names no preset and no session, OpenECS starts with the fi
 | Dependency cycle                                                                      | The plugins in the cycle are skipped and reported.                                                                                                                                                                                                  |
 | Plugin API version mismatch                                                           | The plugin is refused before any of its code runs.                                                                                                                                                                                                  |
 | `ECSPlugin_Init` or the plugin's Lua file fails                                       | The plugin is marked failed and its registrations are removed. Plugins that depend on it are skipped and reported.                                                                                                                                  |
-| Invalid registration (bad signature, bad or duplicate name, the core prefix as a key) | That registration is rejected and the error is returned to the plugin, which continues.                                                                                                                                                             |
 | A panel callback raises an error                                                      | The panel becomes a faulted placeholder that shows the error. Its menu has a "Restart" entry (`ecs.panel.restart`), which recreates the panel in place from its last saved state: the state the session last saved, or the one it was created with. |
 | A panel's texture or pixels cannot be made                                            | The panel becomes a faulted placeholder, as above, so it is not tried again in every frame. The log has the reason.                                                                                                                                 |
 | A plugin callback (timer, event handler) raises an error                              | The error is reported. Repeats of the same error are counted, not reported again.                                                                                                                                                                   |
+| A panel's callback, or a popup of the panel, misuses a function (1.4)                 | When the callback returns, the panel becomes a faulted placeholder that shows the misuse, as for a panel callback that raises an error.                                                                                                              |
+| A plugin's `Init` or Lua file misuses a function                                      | The plugin fails, as when its `Init` fails.                                                                                                                                                                                                         |
+| Any other callback of a plugin misuses a function: `RestoreState`, a timer, an event handler, a setting's `changed`, work in the background or its `done`, a dialog's `done`, a worker, a key's or the preset's open function | The plugin is disabled at the end of the pass, with the plugins that depend on it (9.10). Its panels become placeholders that keep their state and show the misuse.                                                         |
+| A plugin's `Destroy` or `SaveState`, a handle type's `Destroy` or a panel's `Destroy` misuses a function | The misuse is reported. The plugin or the panel is going away already.                                                                                                                                                                             |
 | Problems while restoring a session                                                    | See 13.3.                                                                                                                                                                                                                                           |
 
 ### 14.3 Error convention
 
-- C errors follow 1.4; Lua errors follow 10.8.
-- The core logs the details of each error, so a result code needs no message.
+- Errors follow 1.4, and services' errors 10.8.
+- The core logs the details of each of its own failures, so a result code needs no message.
+- A misuse is logged as an error, in the name of the plugin whose callback made it, with what the check says and, when Lua made the call, the Lua stack trace. A test fails on it (17.5).
 
 ### 14.4 Logging
 
@@ -1268,7 +1284,7 @@ OpenECS follows the XDG Base Directory specification:
 - Before `run` goes on, each OS window gets the size the system gives it, as a tiling compositor does, and the layout follows it.
 - A pointer event over a shown popup window goes to that popup, in its own positions, as the system gives it. While a button is held, the events go to the window that got the press.
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
-- A Lua error fails the test and logs it with its stack trace. When `run` returns, the program quits without asking about unsaved work.
+- A Lua error fails the test and logs it with its stack trace. So does a misuse (1.4) by any plugin, while the test goes on to its end. When `run` returns, the program quits without asking about unsaved work.
 - While a message dialog waits (7.7), the test goes on, so it can read and answer the dialog. A dialog that the test's own step opens, as `call` can, cannot wait for the test, so it is answered with its last button, and so is one that waits when the test ends.
 - The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
 - OpenECS's build runs the tests with `-t`, `--test`: it builds in Debug with the examples, then runs every test in `bin/examples/`, or only the tests of the examples named after it, such as `-t c12_sketch`. It prints `pass` or `FAIL` for each test, and fails when one fails. A test fails when the program fails, or when its output has a sanitizer's report: `Sanitizer` or `runtime error:`.
@@ -1450,6 +1466,8 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 **Main thread.** The thread on which the program starts. OS windows, input and the Lua code of plugins run there.
 
 **Merge commit.** A commit that joins two branches and keeps the commits of both.
+
+**Misuse.** A call that breaks the rules of the function it calls, such as one with a wrong argument. It is a bug of the caller, not of the function.
 
 **Metatable (Lua).** A table that defines how a Lua value behaves. For handles, it carries the type name.
 

@@ -1,5 +1,6 @@
 #include "interface/Layout.h"
 
+#include "base/Log.h"
 #include "runtime/Events.h"
 #include "runtime/Plugins.h"
 #include "runtime/Settings.h"
@@ -2117,9 +2118,9 @@ SHUResult ECSILayout_Save(ECSValue *retWorkspaces, usz *retCurrent)
 
 SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type, const ECSValue *state, ECSPanel target, ECSZone zone)
 {
-    SDL_assert(plugin != nullptr);
-    SDL_assert(retPanel != nullptr);
-    SDL_assert(type != nullptr);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(retPanel != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(type != nullptr, SHUResult_ErrAssertion);
 
     ECSIWorkspace *workspace = ECSILayout_GetCurrent();
     ECSINode *group = nullptr;
@@ -2163,8 +2164,8 @@ SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type,
 
 SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone)
 {
-    SDL_assert(panel != nullptr);
-    SDL_assert(target != nullptr || zone == ECSZone_Window);
+    ECSILog_Check(panel != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(target != nullptr || zone == ECSZone_Window, SHUResult_ErrAssertion);
 
     ECSIWorkspace *workspace = nullptr;
     ECSIWorkspace *targetWorkspace = nullptr;
@@ -2205,7 +2206,7 @@ SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone)
 
 bool ECSLayout_Close(ECSPanel panel)
 {
-    SDL_assert(panel != nullptr);
+    ECSILog_Check(panel != nullptr, false);
 
     if (!ECSILayout_HasPanel(panel) || !ECSIPanels_ConfirmClose(&panel, 1, false))
     {
@@ -2218,7 +2219,7 @@ bool ECSLayout_Close(ECSPanel panel)
 
 void ECSLayout_Focus(ECSPanel panel)
 {
-    SDL_assert(panel != nullptr);
+    ECSILog_Check(panel != nullptr);
 
     ECSIWorkspace *workspace = nullptr;
     ECSINode *group = nullptr;

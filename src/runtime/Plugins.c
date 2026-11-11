@@ -1,6 +1,10 @@
 #include "runtime/Plugins.h"
 
+#include "base/Log.h"
 #include "base/Lua.h"
+
+#include "lua/lauxlib.h"
+#include "lua/lua.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -55,6 +59,7 @@ typedef struct ECSIPlugin
     bool registered;         // it registered desc
     ECSPluginDesc desc;      // its own state and its Destroy, from ECSPlugin_Register
     ECSTaskFunction release; // releases desc's data when the plugin goes away, or nullptr
+    char *misuse;            // why it is disabled, when it misused a function, or nullptr
 } ECSIPlugin;
 
 /// @brief State while the plugins of a table are loaded.
@@ -93,6 +98,14 @@ static struct
     } *errors;     // stb_ds hash map with copied keys
     ECSIPluginHooks hooks;
 } PLUGINS = {0};
+
+/// @brief File-level state of each thread.
+static thread_local struct
+{
+    ECSICallback *callback; // the innermost plugin callback that runs on this thread, or nullptr
+    u64 misuses;            // how many misuses this thread noted
+    char *misuse;           // what the last one said, or nullptr
+} PLUGINS_THREAD = {0};
 
 /// @brief Tells whether a plugin's code runs: it loaded, did not fail and is not disabled.
 static bool ECSIPlugin_Runs(const ECSIPlugin *plugin)
@@ -140,6 +153,7 @@ static void ECSIPlugin_Free(ECSIPlugin *plugin)
 {
     ECSIPlugin_FreeManifestFields(plugin);
     ECSValue_Destroy(&plugin->keptState);
+    SDL_free(plugin->misuse);
     SDL_free(plugin->name);
 }
 
@@ -468,10 +482,37 @@ static bool ECSIPlugins_IsDisabledName(const char *name)
     return false;
 }
 
+/// @brief Calls a plugin's RestoreState. A misuse in it disables the plugin.
+static SHUResult ECSIPlugin_CallRestore(ECSIPlugin *plugin, const ECSValue *state, u32 version)
+{
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, plugin, nullptr, ECSICallbackType_Plugin);
+    SHUResult result = plugin->desc.RestoreState(plugin->desc.data, state, version);
+    return ECSIPlugin_Leave(&callback) && !result ? SHUResult_ErrAssertion : result;
+}
+
+/// @brief Calls a plugin's SaveState. A misuse in it is only reported, as the plugin is being stopped or saved.
+static SHUResult ECSIPlugin_CallSave(ECSIPlugin *plugin, ECSValue *state)
+{
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, plugin, nullptr, ECSICallbackType_Quiet);
+    SHUResult result = plugin->desc.SaveState(plugin->desc.data, state);
+    return ECSIPlugin_Leave(&callback) && !result ? SHUResult_ErrAssertion : result;
+}
+
+/// @brief Calls a plugin's Destroy. A misuse in it is only reported.
+static void ECSIPlugin_CallDestroy(ECSIPlugin *plugin)
+{
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, plugin, nullptr, ECSICallbackType_Quiet);
+    plugin->desc.Destroy(plugin->desc.data);
+    (void)ECSIPlugin_Leave(&callback);
+}
+
 /// @brief Gives a plugin the state it kept while it was disabled, and forgets it.
 static void ECSIPlugin_RestoreKeptState(ECSIPlugin *plugin)
 {
-    if (plugin->keptState != nullptr && plugin->desc.RestoreState != nullptr && plugin->desc.RestoreState(plugin->desc.data, plugin->keptState, plugin->keptStateVersion))
+    if (plugin->keptState != nullptr && plugin->desc.RestoreState != nullptr && ECSIPlugin_CallRestore(plugin, plugin->keptState, plugin->keptStateVersion))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not restore its state.", plugin->name);
     }
@@ -535,19 +576,27 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
 
     plugin->library = library;
     plugin->disabled = false;
+    SDL_free(plugin->misuse);
+    plugin->misuse = nullptr;
     plugin->failed = false;
     plugin->stopping = false;
     plugin->generation++;
 
+    // a misuse while the plugin starts fails its start
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, plugin, nullptr, ECSICallbackType_Quiet);
+
     if (native)
     {
         SHUResult result = Init(plugin);
+        result = ECSIPlugin_Leave(&callback) && !result ? SHUResult_ErrAssertion : result;
         SHU_ReturnResult(result, ECSIPlugin_Fail(plugin, "failed to start", result););
     }
     else
     {
         char *path = nullptr;
         SHUResult result = SDL_asprintf(&path, "%s" OPENECS_LUA_ENTRY, manifest->folder) < 0 ? SHUResult_ErrAllocation : PLUGINS.hooks.StartLua(plugin, manifest->folder, path);
+        result = ECSIPlugin_Leave(&callback) && !result ? SHUResult_ErrAssertion : result;
         SDL_free(path);
         SHU_ReturnResult(result, ECSIPlugin_Fail(plugin, "failed to start its Lua code", result););
     }
@@ -689,7 +738,7 @@ void ECSIPlugins_Destroy(void)
 
         if (plugin->desc.Destroy != nullptr)
         {
-            plugin->desc.Destroy(plugin->desc.data);
+            ECSIPlugin_CallDestroy(plugin);
         }
 
         plugin->desc.Destroy = nullptr;
@@ -765,8 +814,8 @@ SHUResult ECSIPlugin_Register(ECSPlugin plugin, const ECSPluginDesc *desc, ECSTa
 
     if ((desc->SaveState == nullptr) != (desc->RestoreState == nullptr) || plugin->registered)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' registers itself with only one of SaveState and RestoreState, or a second time.", plugin->name);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Plugin '%s' registers itself with only one of SaveState and RestoreState, or a second time.", plugin->name);
+        return SHUResult_ErrAssertion;
     }
 
     plugin->desc = *desc;
@@ -777,7 +826,7 @@ SHUResult ECSIPlugin_Register(ECSPlugin plugin, const ECSPluginDesc *desc, ECSTa
 
 const char *ECSPlugin_GetFolder(ECSPlugin plugin)
 {
-    SDL_assert(plugin != nullptr);
+    ECSILog_Check(plugin != nullptr, nullptr);
 
     return plugin->folder;
 }
@@ -814,7 +863,7 @@ void ECSIPlugins_RestoreStates(const ECSValue *states)
             continue;
         }
 
-        if (plugin->desc.RestoreState(plugin->desc.data, ECSValue_GetTableField(entry, "state"), version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0))
+        if (ECSIPlugin_CallRestore(plugin, ECSValue_GetTableField(entry, "state"), version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not restore its state from the session.", plugin->name);
         }
@@ -845,7 +894,7 @@ SHUResult ECSIPlugins_SaveStates(ECSValue *states)
 
         SHU_ReturnResult(ECSValue_Create(&saved));
 
-        if (plugin->keptState != nullptr ? ECSIValue_Copy(saved, plugin->keptState) : plugin->desc.SaveState(plugin->desc.data, saved))
+        if (plugin->keptState != nullptr ? ECSIValue_Copy(saved, plugin->keptState) : ECSIPlugin_CallSave(plugin, saved))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not save its state.", plugin->name);
             ECSValue_Destroy(&saved);
@@ -879,6 +928,12 @@ void ECSIPlugin_ReportError(ECSPlugin plugin, const char *message)
 {
     SDL_assert(plugin != nullptr);
     SDL_assert(message != nullptr);
+
+    // the error of a misuse, which Lua raises, was reported as the misuse
+    if (ECSIPlugin_IsMisusing())
+    {
+        return;
+    }
 
     char *key = nullptr;
 
@@ -943,27 +998,27 @@ bool ECSIPlugins_OwnerRuns(const char *name)
     return plugin != nullptr && ECSIPlugin_Runs(plugin);
 }
 
-char *ECSIPlugin_MakeFullName(ECSPlugin plugin, const char *localName)
+SHUResult ECSIPlugin_MakeFullName(ECSPlugin plugin, const char *localName, char **retName)
 {
     SDL_assert(plugin != nullptr);
+    SDL_assert(retName != nullptr);
 
+    *retName = nullptr;
     usz prefixLength = SDL_strlen(plugin->name);
 
-    if (localName == nullptr || localName[0] == '\0')
+    if (!ECS_Check(nullptr, localName != nullptr && localName[0] != '\0', "Plugin '%s' registers something without a name.", plugin->name))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' registers something without a name.", plugin->name);
-        return nullptr;
+        return SHUResult_ErrAssertion;
     }
 
     // the core adds the plugin's name, so a name that has it already is a mistake
-    if (SDL_strncmp(localName, plugin->name, prefixLength) == 0 && localName[prefixLength] == '.')
+    if (!ECS_Check(nullptr, SDL_strncmp(localName, plugin->name, prefixLength) != 0 || localName[prefixLength] != '.',
+                   "'%s' is given without '%s.', which the core adds, so it is '%s.%s'.", localName, plugin->name, plugin->name, localName))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is given without '%s.', which the core adds, so it is '%s.%s'.", localName, plugin->name, plugin->name, localName);
-        return nullptr;
+        return SHUResult_ErrAssertion;
     }
 
-    char *name = nullptr;
-    return SDL_asprintf(&name, "%s.%s", plugin->name, localName) < 0 ? nullptr : name;
+    return SDL_asprintf(retName, "%s.%s", plugin->name, localName) < 0 ? SHUResult_ErrAllocation : SHUResult_Ok;
 }
 
 bool ECSIPlugin_OwnsName(ECSPlugin plugin, const char *name)
@@ -984,9 +1039,9 @@ bool ECSIPlugin_OwnsName(ECSPlugin plugin, const char *name)
 
 void ECS_Log(ECSPlugin plugin, ECSLogLevel level, const char *format, ...)
 {
-    SDL_assert(plugin != nullptr);
-    SDL_assert(level <= ECSLogLevel_Error);
-    SDL_assert(format != nullptr);
+    ECSILog_Check(plugin != nullptr);
+    ECSILog_Check(level <= ECSLogLevel_Error);
+    ECSILog_Check(format != nullptr);
 
     static const SDL_LogPriority PRIORITIES[] = {
         [ECSLogLevel_Debug] = SDL_LOG_PRIORITY_DEBUG,
@@ -1105,7 +1160,7 @@ ECSPlugin *ECSIPlugins_GetDependents(ECSPlugin plugin)
     return found;
 }
 
-void ECSIPlugins_Disable(ECSPlugin plugin)
+void ECSIPlugins_Disable(ECSPlugin plugin, const char *misuse)
 {
     SDL_assert(plugin != nullptr);
 
@@ -1113,6 +1168,9 @@ void ECSIPlugins_Disable(ECSPlugin plugin)
     {
         return;
     }
+
+    SDL_free(plugin->misuse);
+    plugin->misuse = misuse != nullptr ? SDL_strdup(misuse) : nullptr;
 
     // what this load's work in the background sent to the main thread is dropped from now on: a done function never runs after Destroy
     plugin->generation++;
@@ -1122,7 +1180,7 @@ void ECSIPlugins_Disable(ECSPlugin plugin)
     {
         ECSValue_Destroy(&plugin->keptState);
 
-        if (ECSValue_Create(&plugin->keptState) || plugin->desc.SaveState(plugin->desc.data, plugin->keptState))
+        if (ECSValue_Create(&plugin->keptState) || ECSIPlugin_CallSave(plugin, plugin->keptState))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not save its state.", plugin->name);
             ECSValue_Destroy(&plugin->keptState);
@@ -1133,7 +1191,7 @@ void ECSIPlugins_Disable(ECSPlugin plugin)
 
     if (plugin->desc.Destroy != nullptr)
     {
-        plugin->desc.Destroy(plugin->desc.data);
+        ECSIPlugin_CallDestroy(plugin);
     }
 
     PLUGINS.hooks.RemoveRegistrations(plugin);
@@ -1309,14 +1367,134 @@ SHUResult ECSIPlugins_GetDisabled(ECSValue *retList)
     return SHUResult_Ok;
 }
 
-bool ECSIPlugins_IsDisabled(const char *name)
+/// @brief Finds the plugin that owns a name, the text before its first dot, as of a panel type.
+static ECSIPlugin *ECSIPlugin_FindOwner(const char *name)
 {
-    SDL_assert(name != nullptr);
-
-    // the owner's name is the text before the first dot, as of a panel type
     const char *dot = SDL_strchr(name, '.');
     char *owner = SDL_strndup(name, dot == nullptr ? SDL_strlen(name) : (usz)(dot - name));
     ECSIPlugin *plugin = owner == nullptr ? nullptr : ECSIPlugin_Find(owner);
     SDL_free(owner);
+    return plugin;
+}
+
+bool ECSIPlugins_IsDisabled(const char *name)
+{
+    SDL_assert(name != nullptr);
+
+    ECSIPlugin *plugin = ECSIPlugin_FindOwner(name);
     return plugin != nullptr && plugin->disabled;
+}
+
+const char *ECSIPlugins_GetMisuse(const char *name)
+{
+    SDL_assert(name != nullptr);
+
+    ECSIPlugin *plugin = ECSIPlugin_FindOwner(name);
+    return plugin != nullptr && plugin->disabled ? plugin->misuse : nullptr;
+}
+
+void ECSIPlugin_Enter(ECSICallback *callback, ECSPlugin plugin, ECSPanel panel, ECSICallbackType type)
+{
+    SDL_assert(callback != nullptr);
+
+    *callback = (ECSICallback){.plugin = plugin, .panel = panel, .type = type, .outer = PLUGINS_THREAD.callback};
+    PLUGINS_THREAD.callback = callback;
+}
+
+bool ECSIPlugin_Leave(ECSICallback *callback)
+{
+    SDL_assert(callback != nullptr);
+    SDL_assert(PLUGINS_THREAD.callback == callback);
+
+    PLUGINS_THREAD.callback = callback->outer;
+
+    if (callback->misuse == nullptr)
+    {
+        return false;
+    }
+
+    if (callback->plugin != nullptr && callback->type != ECSICallbackType_Quiet && PLUGINS.hooks.Misused != nullptr)
+    {
+        PLUGINS.hooks.Misused(callback);
+    }
+
+    SDL_free(callback->misuse);
+    callback->misuse = nullptr;
+    return true;
+}
+
+void ECSIPlugin_NoteMisuse(ECSPlugin checker, const char *message)
+{
+    SDL_assert(message != nullptr);
+
+    PLUGINS_THREAD.misuses++;
+    SDL_free(PLUGINS_THREAD.misuse);
+    PLUGINS_THREAD.misuse = SDL_strdup(message);
+
+    if (PLUGINS.hooks.Misuse != nullptr)
+    {
+        PLUGINS.hooks.Misuse(message);
+    }
+
+    // the first misuse of a callback is the one to fix, and the others often follow from it, so only it is logged
+    ECSICallback *callback = PLUGINS_THREAD.callback;
+    bool charged = callback != nullptr && callback->plugin != nullptr;
+
+    if (charged && callback->misuse != nullptr)
+    {
+        return;
+    }
+
+    // when Lua made the call, the stack trace names its line; the core's own Lua functions run in the main state
+    lua_State *caller = ECSILua_GetCaller();
+    lua_Debug running;
+
+    if (caller == nullptr && SDL_IsMainThread() && ECSILua_GetState() != nullptr && lua_getstack(ECSILua_GetState(), 0, &running))
+    {
+        caller = ECSILua_GetState();
+    }
+    char *text = nullptr;
+
+    if (caller != nullptr)
+    {
+        luaL_traceback(caller, caller, message, 1);
+        text = SDL_strdup(lua_tostring(caller, -1));
+        lua_pop(caller, 1);
+    }
+
+    const char *shown = text != nullptr ? text : message;
+    const char *checkerName = checker != nullptr ? checker->name : "ecs";
+
+    if (!charged)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "A function of %s is misused: %s", checkerName, shown);
+        SDL_free(text);
+        return;
+    }
+
+    if (checker == callback->plugin)
+    {
+        ECS_Log(callback->plugin, ECSLogLevel_Error, "Failed its own check: %s", shown);
+    }
+    else
+    {
+        ECS_Log(callback->plugin, ECSLogLevel_Error, "Misused a function of %s: %s", checkerName, shown);
+    }
+
+    callback->misuse = text != nullptr ? text : SDL_strdup(message);
+}
+
+u64 ECSIPlugin_GetMisuseCount(void)
+{
+    return PLUGINS_THREAD.misuses;
+}
+
+const char *ECSIPlugin_GetLastMisuse(void)
+{
+    return PLUGINS_THREAD.misuse != nullptr ? PLUGINS_THREAD.misuse : "a check failed";
+}
+
+bool ECSIPlugin_IsMisusing(void)
+{
+    return PLUGINS_THREAD.callback != nullptr && PLUGINS_THREAD.callback->misuse != nullptr;
 }
