@@ -160,6 +160,19 @@ u32 ECSIPlugin_GetGeneration(ECSPlugin plugin);
 /// @param names The names; the caller keeps them while plugins load.
 void ECSIPlugins_SetDisabled(const char *const *names, usz count);
 
+/// @brief Makes native libraries load from copies, or from their own files (DESIGN 9.11). It applies to the libraries loaded from now on.
+void ECSIPlugins_SetCopyLibraries(bool copy);
+
+/// @brief Marks a plugin that a reload failed to start, so ECSIPlugins_FindChanged watches its files while it is disabled; or unmarks it.
+void ECSIPlugins_SetWaiting(const char *name, bool waits);
+
+/// @brief Tells whether a reload failed to start a plugin, which waits for a change of its files.
+bool ECSIPlugins_Waits(const char *name);
+
+/// @brief Checks the files of each plugin that runs or waits, and gives those that changed since its code last started and stayed the same since the last check.
+/// @return stb_ds array of the plugins' names, or nullptr for none. Free each name with SDL_free, and the array with arrfree.
+char **ECSIPlugins_FindChanged(void);
+
 /// @brief Gets a plugin and every enabled plugin that depends on it, through others too, the last loaded first: the plugins that disabling it disables.
 /// @return stb_ds array of the plugins. Free it with arrfree.
 ECSPlugin *ECSIPlugins_GetDependents(ECSPlugin plugin);

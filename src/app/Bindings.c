@@ -984,10 +984,21 @@ static int ECSIBindings_PluginsDisable(lua_State *state)
     return 0;
 }
 
+static int ECSIBindings_PluginsReload(lua_State *state)
+{
+    if (ECSPlugins_Reload(ECSILua_CheckString(state, 1)))
+    {
+        return luaL_error(state, "out of memory");
+    }
+
+    return 0;
+}
+
 static const luaL_Reg OPENECS_BINDINGS_PLUGINS[] = {
     {"list", ECSIBindings_PluginsList},
     {"enable", ECSIBindings_PluginsEnable},
     {"disable", ECSIBindings_PluginsDisable},
+    {"reload", ECSIBindings_PluginsReload},
     {nullptr, nullptr},
 };
 

@@ -37,6 +37,11 @@
 /// @brief The setting that keeps the tool's session between runs.
 #define OPENECS_KEEP_SESSION "ecs.keepSession"
 
+/// @brief The settings of reloading plugins (DESIGN 9.11), and the shortest interval between checks of their files, in seconds.
+#define OPENECS_RELOAD_PLUGINS "ecs.reloadPlugins"
+#define OPENECS_RELOAD_INTERVAL "ecs.reloadInterval"
+#define OPENECS_RELOAD_INTERVAL_MIN 0.1
+
 /// @brief Where the user's saved sessions go by default, in the data folder.
 #define OPENECS_SESSIONS_FOLDER "sessions/"
 /// @brief The user's presets, in the configuration folder.
@@ -62,9 +67,20 @@ static struct
     {
         char *name;
         bool enable;
+        bool reload;   // reload it, with the plugins that depend on it; enable is false
         char *misuse;  // for a plugin disabled because it misused a function, what the misuse said; nullptr when it was asked for
-    } *pluginRequests; // stb_ds array of plugins to enable or disable when the current pass of the main loop ends
+    } *pluginRequests; // stb_ds array of plugins to enable, disable or reload when the current pass of the main loop ends
+    struct
+    {
+        char *name;
+        char **group;  // stb_ds array: it and the plugins that depend on it, the last loaded first
+    } *waiting;        // stb_ds array of plugins that a reload failed to start, with the plugins that the reload disabled with them
+    bool watch;        // ecs.reloadPlugins: plugins reload when their files change
+    u64 watchInterval; // ecs.reloadInterval, in nanoseconds
+    u64 nextWatch;     // when the plugins' files are checked next, in SDL's ticks
 } APP = {0};
+
+static void ECSIApp_ReadReloadSettings(void *data);
 
 /// @brief Finds an XDG base folder for OpenECS: $variable/OpenECS/, or ~/fallback/OpenECS/ if the variable is not set.
 /// On Windows, every folder is SDL's pref path, %APPDATA%\OpenECS\ (DESIGN 16).
@@ -534,6 +550,11 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSSettingDesc keepSession = {.name = OPENECS_KEEP_SESSION, .type = ECSSettingType_Bool, .description = "Save the tool's session when it quits, and start from it the next time"};
     ECSIApp_ExitOnFailure(ECSISettings_DeclareCore(&keepSession), "declaring the session settings", nullptr);
     ECSIApp_ExitOnFailure(ECSIServices_DeclareSettings(), "declaring the services' settings", nullptr);
+    ECSSettingDesc reloadPlugins = {.name = OPENECS_RELOAD_PLUGINS, .type = ECSSettingType_Bool, .description = "Reload a plugin when its files change, so its author sees a change without a restart", .Changed = ECSIApp_ReadReloadSettings};
+    ECSSettingDesc reloadInterval = {.name = OPENECS_RELOAD_INTERVAL, .type = ECSSettingType_Number, .description = "How often, in seconds, the files of plugins are checked for changes while ecs.reloadPlugins is on", .Changed = ECSIApp_ReadReloadSettings};
+    ECSIApp_ExitOnFailure(ECSISettings_DeclareCore(&reloadPlugins), "declaring the reload settings", nullptr);
+    ECSIApp_ExitOnFailure(ECSISettings_DeclareCore(&reloadInterval), "declaring the reload settings", nullptr);
+    ECSIApp_ReadReloadSettings(nullptr);
     const char *sourcePath = APP.sessionPath != nullptr ? APP.sessionPath : APP.presetPath;
 
     SDL_SetAppMetadata(APP.preset.appName, nullptr, APP.preset.appID);
@@ -698,6 +719,44 @@ static void ECSIApp_NoteEnabled(const char *name, bool enabled)
     arrfree(kept);
 }
 
+/// @brief Disables plugins, the last loaded first, and makes their panels placeholders that keep their state.
+/// @param affected The panels of the plugins.
+/// @param misuse What a misuse said, or nullptr.
+/// @param noted The session notes the plugins as disabled; a reload, which enables them again, does not.
+static void ECSIApp_UnloadPlugins(ECSPlugin *plugins, ECSPanel *affected, const char *misuse, bool noted)
+{
+    // popups may belong to the plugins' panels, so every popup closes, and their Closed functions run while the plugins' code is loaded
+    ECSIPopups_CloseAll();
+    ECSIEvents_Deliver();
+    ECSIPopups_DestroyClosed();
+
+    for (usz i = 0; i < arrlenu(plugins); i++)
+    {
+        for (usz j = 0; j < arrlenu(affected); j++)
+        {
+            if (affected[j]->type != nullptr && affected[j]->type->plugin == plugins[i])
+            {
+                ECSIPanel_Unload(affected[j]);
+            }
+        }
+
+        ECSIWorkers_StopPlugin(plugins[i]);
+        ECSIPlugin_StopWork(plugins[i]);
+        ECSITasks_ForgetPlugin(plugins[i]);
+        ECSIServices_DestroyHandlesOfPlugin(plugins[i]);
+
+        if (noted)
+        {
+            ECSIApp_NoteEnabled(ECSIPlugin_GetName(plugins[i]), false);
+        }
+
+        ECSIPlugins_Disable(plugins[i], misuse);
+    }
+
+    ECSIEvents_EmitCore("ecs.pluginsChanged", nullptr);
+    ECSILayout_RequestFrame();
+}
+
 /// @brief Disables a plugin that no enabled plugin depends on, after asking about the unsaved work of its panels, which become placeholders.
 /// A plugin that misused a function is disabled without asking, with the plugins that depend on it (DESIGN 9.10).
 /// @param misuse What the misuse said, or nullptr when the disable was asked for.
@@ -746,31 +805,7 @@ static void ECSIApp_DisablePlugin(const char *name, const char *misuse)
 
     if (misuse != nullptr || ECSIPanels_ConfirmClose(affected, arrlenu(affected), false))
     {
-        // popups may belong to the plugins' panels, so every popup closes, and their Closed functions run while the plugins' code is loaded
-        ECSIPopups_CloseAll();
-        ECSIEvents_Deliver();
-        ECSIPopups_DestroyClosed();
-
-        for (usz i = 0; i < arrlenu(plugins); i++)
-        {
-            for (usz j = 0; j < arrlenu(affected); j++)
-            {
-                if (affected[j]->type != nullptr && affected[j]->type->plugin == plugins[i])
-                {
-                    ECSIPanel_Unload(affected[j]);
-                }
-            }
-
-            ECSIWorkers_StopPlugin(plugins[i]);
-            ECSIPlugin_StopWork(plugins[i]);
-            ECSITasks_ForgetPlugin(plugins[i]);
-            ECSIServices_DestroyHandlesOfPlugin(plugins[i]);
-            ECSIApp_NoteEnabled(ECSIPlugin_GetName(plugins[i]), false);
-            ECSIPlugins_Disable(plugins[i], misuse);
-        }
-
-        ECSIEvents_EmitCore("ecs.pluginsChanged", nullptr);
-        ECSILayout_RequestFrame();
+        ECSIApp_UnloadPlugins(plugins, affected, misuse, true);
     }
 
     arrfree(affected);
@@ -809,6 +844,105 @@ static void ECSIApp_EnablePlugin(const char *name)
     ECSILayout_RequestFrame();
 }
 
+/// @brief Frees a list of plugins' names.
+static void ECSIApp_FreeNames(char **names)
+{
+    for (usz i = 0; i < arrlenu(names); i++)
+    {
+        SDL_free(names[i]);
+    }
+
+    arrfree(names);
+}
+
+/// @brief Reloads a plugin and the plugins that depend on it (DESIGN 9.11): disables them without asking, as their panels keep their state, and enables them again.
+/// A plugin that a reload failed to start waits, disabled, for the next change of its files, which enables it and the plugins disabled with it.
+static void ECSIApp_ReloadPlugin(const char *name)
+{
+    ECSPlugin target = ECSIPlugins_Get(name);
+    char **names = nullptr;
+
+    if (target != nullptr)
+    {
+        ECSPlugin *plugins = ECSIPlugins_GetDependents(target);
+        ECSPanel *panels = ECSILayout_GetPanels();
+        ECSPanel *affected = nullptr;
+
+        for (usz i = 0; i < arrlenu(plugins); i++)
+        {
+            arrput(names, SDL_strdup(ECSIPlugin_GetName(plugins[i])));
+        }
+
+        for (usz i = 0; i < arrlenu(panels); i++)
+        {
+            if (ECSIApp_PanelOfPlugins(panels[i], plugins))
+            {
+                arrput(affected, panels[i]);
+            }
+        }
+
+        if (arrlenu(plugins) > 1)
+        {
+            SDL_Log("Plugin '%s' reloads, with the %zu plugins that depend on it.", name, arrlenu(plugins) - 1);
+        }
+        else
+        {
+            SDL_Log("Plugin '%s' reloads.", name);
+        }
+
+        ECSIApp_UnloadPlugins(plugins, affected, nullptr, false);
+        arrfree(affected);
+        arrfree(panels);
+        arrfree(plugins);
+    }
+    else
+    {
+        for (usz i = 0; i < arrlenu(APP.waiting); i++)
+        {
+            if (SDL_strcmp(APP.waiting[i].name, name) == 0)
+            {
+                names = APP.waiting[i].group;
+                SDL_free(APP.waiting[i].name);
+                arrdel(APP.waiting, i);
+                break;
+            }
+        }
+
+        if (names == nullptr)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not enabled, so it is not reloaded.", name);
+            return;
+        }
+    }
+
+    // the plugin first, then the plugins that depend on it, in the order they loaded
+    for (usz i = arrlenu(names); i-- > 0;)
+    {
+        if (names[i] != nullptr)
+        {
+            ECSIApp_EnablePlugin(names[i]);
+        }
+    }
+
+    if (ECSIPlugins_Get(name) != nullptr)
+    {
+        ECSIApp_FreeNames(names);
+        return;
+    }
+
+    char *copy = SDL_strdup(name);
+
+    if (copy == nullptr)
+    {
+        ECSIApp_FreeNames(names);
+        return;
+    }
+
+    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not be reloaded; it starts again when its files change.", name);
+    ECSIPlugins_SetWaiting(name, true);
+    arrput(APP.waiting, ((typeof(*APP.waiting)){.name = copy, .group = names}));
+}
+
 /// @brief Makes the changes to plugins that were asked for during the pass, now that no plugin's code runs.
 static void ECSIApp_ChangePlugins(void)
 {
@@ -818,7 +952,11 @@ static void ECSIApp_ChangePlugins(void)
 
     for (usz i = 0; i < arrlenu(requests); i++)
     {
-        if (requests[i].enable)
+        if (requests[i].reload)
+        {
+            ECSIApp_ReloadPlugin(requests[i].name);
+        }
+        else if (requests[i].enable)
         {
             ECSIApp_EnablePlugin(requests[i].name);
         }
@@ -834,8 +972,8 @@ static void ECSIApp_ChangePlugins(void)
     arrfree(requests);
 }
 
-/// @brief Asks for a plugin to be enabled or disabled when the current pass of the main loop ends.
-static SHUResult ECSIApp_RequestPlugin(const char *name, bool enable)
+/// @brief Asks for a plugin to be enabled, disabled or reloaded when the current pass of the main loop ends.
+static SHUResult ECSIApp_RequestPlugin(const char *name, bool enable, bool reload)
 {
     SDL_assert(name != nullptr);
 
@@ -846,18 +984,69 @@ static SHUResult ECSIApp_RequestPlugin(const char *name, bool enable)
         return SHUResult_ErrAllocation;
     }
 
-    arrput(APP.pluginRequests, ((typeof(*APP.pluginRequests)){.name = copy, .enable = enable}));
+    arrput(APP.pluginRequests, ((typeof(*APP.pluginRequests)){.name = copy, .enable = enable, .reload = reload}));
     return SHUResult_Ok;
 }
 
 SHUResult ECSPlugins_Enable(const char *name)
 {
-    return ECSIApp_RequestPlugin(name, true);
+    return ECSIApp_RequestPlugin(name, true, false);
 }
 
 SHUResult ECSPlugins_Disable(const char *name)
 {
-    return ECSIApp_RequestPlugin(name, false);
+    return ECSIApp_RequestPlugin(name, false, false);
+}
+
+SHUResult ECSPlugins_Reload(const char *name)
+{
+    ECSILog_Check(name != nullptr, SHUResult_ErrAssertion);
+    return ECSIApp_RequestPlugin(name, false, true);
+}
+
+/// @brief Asks for the plugins whose files changed to be reloaded, when ecs.reloadPlugins is on and the interval has passed.
+static void ECSIApp_WatchPlugins(void)
+{
+    u64 now = SDL_GetTicksNS();
+
+    if (!APP.watch || now < APP.nextWatch)
+    {
+        return;
+    }
+
+    APP.nextWatch = now + APP.watchInterval;
+    char **changed = ECSIPlugins_FindChanged();
+
+    for (usz i = 0; i < arrlenu(changed); i++)
+    {
+        (void)ECSIApp_RequestPlugin(changed[i], false, true);
+    }
+
+    ECSIApp_FreeNames(changed);
+}
+
+/// @brief Gives how long the main loop may wait before the plugins' files are checked, in milliseconds, or -1 when they are not watched.
+static i32 ECSIApp_GetWatchWait(void)
+{
+    if (!APP.watch)
+    {
+        return -1;
+    }
+
+    u64 now = SDL_GetTicksNS();
+    return now >= APP.nextWatch ? 0 : (i32)SDL_NS_TO_MS(APP.nextWatch - now + SDL_NS_PER_MS - 1);
+}
+
+/// @brief Reads ecs.reloadPlugins and ecs.reloadInterval. Also their Changed function.
+static void ECSIApp_ReadReloadSettings(void *data)
+{
+    (void)data;
+
+    APP.watch = ECSValue_GetBool(ECSSetting_Get(OPENECS_RELOAD_PLUGINS), false);
+    f64 seconds = SDL_max(OPENECS_RELOAD_INTERVAL_MIN, ECSValue_GetNumber(ECSSetting_Get(OPENECS_RELOAD_INTERVAL), 1.0));
+    APP.watchInterval = (u64)(seconds * (f64)SDL_NS_PER_SECOND);
+    APP.nextWatch = SDL_GetTicksNS() + APP.watchInterval;
+    ECSIPlugins_SetCopyLibraries(APP.watch);
 }
 
 SHUResult ECSPlugins_List(ECSValue *retList)
@@ -876,6 +1065,7 @@ int ECSIApp_Run(void)
         SDL_Event event;
         i32 wait = ECSIApp_ShorterWait(ECSIEvents_GetWait(), ECSIWindow_GetFrameWait());
         wait = ECSIApp_ShorterWait(wait, ECSITest_GetWait());
+        wait = ECSIApp_ShorterWait(wait, ECSIApp_GetWatchWait());
 
         if (SDL_WaitEventTimeout(&event, wait))
         {
@@ -899,6 +1089,7 @@ int ECSIApp_Run(void)
         ECSIEvents_Deliver();
         ECSIPanels_DestroyClosed();
         ECSIPopups_DestroyClosed();
+        ECSIApp_WatchPlugins();
         ECSIApp_ChangePlugins();
 
         // closing the last panel quits, as nothing is left to show
@@ -988,6 +1179,14 @@ ECSIRestart ECSIApp_Stop(void)
     }
 
     arrfree(APP.pluginRequests);
+
+    for (usz i = 0; i < arrlenu(APP.waiting); i++)
+    {
+        SDL_free(APP.waiting[i].name);
+        ECSIApp_FreeNames(APP.waiting[i].group);
+    }
+
+    arrfree(APP.waiting);
     ECSILua_Terminate();
 
     // Debug builds check for leaks here, when OpenECS has freed its memory but SDL still holds its own

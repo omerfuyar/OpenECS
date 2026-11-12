@@ -15,10 +15,6 @@ What the owner wants worked on, in no fixed order. Each one is described further
 - **Import the rulesets.** The rulesets of OpenECS, OpenECS-std, OpenECS-examples and OpenECS-template require the Windows checks now, as the owner chose. The owner imports them in each repository's settings. OpenECS-examples' rulesets no longer require `Release (Linux)`, which it does not run.
 - **Functions that call unseen.** OVERVIEW's principle "Calls are written out" is new. Check the core, the standard plugins and the examples for code that registers or calls functions the caller does not name, and write the calls out.
 - **Older plugins and newer features.** Go over the standard plugins and the examples for code that a later feature of the core would make simpler, such as structs, and change it to use the feature.
-- **Hot reloading.** The owner wants plugins reloaded while OpenECS runs, when their files change, so a plugin's author sees a change without a restart. Disabling and enabling a plugin (DESIGN 9.10) already does most of it: its panels keep their state in placeholders, and come back from it. Open:
-  - what starts a reload: the core watching the plugin folders, or a key and a launcher entry, and whether it is on only in a Debug build or a setting;
-  - a native plugin: its library is unloaded and loaded again, but on Windows a loaded DLL cannot be overwritten, so the build would fail while OpenECS runs; loading a copy of the library would avoid it. If C brings problems, Lua plugins alone are reloaded;
-  - the plugins that depend on the reloaded one are reloaded with it, as disabling them already does.
 - **Lua's speed.** Each call from Lua into the core costs about a third of a microsecond in a Debug build, so a Lua panel draws runs of pixels with `surface:fill` and rows with `setRow`, as c12_sketch's Lua panel paints each row of a dab with one `fill`; the surface's methods keep the colour of the last colour text they read. A panel that keeps its picture draws only what changed (DESIGN 5.1).
 
 ## Shuild
@@ -52,6 +48,12 @@ What would grow it most:
 
 - **Releases for macOS**, since most tool builders are not on Linux. Windows has one since 0.4.0 (see Tasks).
 - **A flagship tool** that is useful without writing code, such as a log viewer, a glTF viewer or a terminal, built from the standard plugins.
+  - **A workbench for LÖVE games**, which the owner proposes. LÖVE has no editor of its own, and its users write Lua, as OpenECS's plugins do. Its value is in what a code editor lacks, not in editing code, which stays in the user's editor at first:
+    - a project's files, with viewers for its images, sounds and models (image, audio, gltf);
+    - running the game with `love`, its output in a panel, and a restart on a change (process, terminal);
+    - a live view of the game's values, which a small Lua module in the game sends over a socket (net), with values to tweak while it runs;
+    - editors for what LÖVE leaves to code, such as particle systems, sprite sheets and tile maps.
+  - Open: the game runs in its own window, as Wayland does not let another program's window be embedded; whether a code editor with the Lua language server comes later; its name, which says it is for LÖVE without using LÖVE's own name as its name; and whether it waits for a stable plugin interface (1.0.0). It would be made from OpenECS-template, in its own repository.
 - **A showcase** in README.md of plugins and tools others build.
 
 

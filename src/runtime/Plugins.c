@@ -23,6 +23,9 @@
 #define OPENECS_LIBRARY_FORMAT "%slib%s.so"
 #endif
 
+/// @brief The start of the names of a library's copies (DESIGN 9.11); the dot hides them.
+#define OPENECS_LIBRARY_COPY_PREFIX ".reload-"
+
 /// @brief What loading a plugin gives when it is disabled, or depends on a disabled plugin: it is known but its code does not run, and that is no error.
 #define OPENECS_PLUGIN_DISABLED SHUResult_Pending
 
@@ -49,6 +52,10 @@ typedef struct ECSIPlugin
     char *description;         // from the manifest, or empty
     char *folder;              // ends with a separator
     SDL_SharedObject *library; // nullptr if the plugin has no native code
+    char *libraryCopy;         // the copy of the library that it was loaded from while plugins reload, removed when it is unloaded; else nullptr
+    SDL_Time changed;          // the newest change of its files when its code last started
+    SDL_Time seen;             // the newest change of its files when they were last checked
+    bool waits;                // a reload failed to start it, so a change of its files enables it again
     bool failed;               // its code failed to start; plugins that depend on it are skipped
     bool disabled;             // the user disabled it, or a plugin it depends on; its code is not loaded
     bool stopping;             // it is being disabled, so it takes no new background work; guarded by nothing, as only the main thread writes it
@@ -90,7 +97,9 @@ static struct
     bool invalid;                     // a manifest is not valid or plugins depend on each other in a cycle, so the start fails
     const char *const *disabledNames; // plugins that a session disabled, which start disabled
     usz disabledCount;
-    bool enabling; // disabled plugins that loading meets are enabled
+    bool enabling;      // disabled plugins that loading meets are enabled
+    bool copyLibraries; // native libraries load from copies, so a build can replace them while they are loaded
+    u32 copies;         // how many copies were made, which numbers them
     struct
     {
         char *key; // "plugin: message"
@@ -374,16 +383,118 @@ static SHUResult ECSIManifest_Find(const char *name, ECSIManifest *retManifest)
 
 static SHUResult ECSIPlugins_LoadAll(const ECSValue *plugins, const char *dependent);
 
-/// @brief Loads a native plugin's library and finds its ECSPlugin_Init.
-static SHUResult ECSIPlugin_LoadLibrary(const char *name, const char *folder, SDL_SharedObject **retLibrary, ECSIPluginInitFunction *retInit)
+/// @brief Finds the newest change of a file in a folder and the folders in it. Hidden files and folders, such as a library's copies, are left out.
+static SDL_EnumerationResult ECSIPlugin_FindNewer(void *data, const char *folder, const char *name)
+{
+    SDL_Time *newest = data;
+    char *path = nullptr;
+    SDL_PathInfo info;
+
+    if (name[0] == '.' || SDL_asprintf(&path, "%s%s", folder, name) < 0)
+    {
+        return SDL_ENUM_CONTINUE;
+    }
+
+    if (SDL_GetPathInfo(path, &info))
+    {
+        *newest = SDL_max(*newest, info.modify_time);
+
+        if (info.type == SDL_PATHTYPE_DIRECTORY)
+        {
+            (void)SDL_EnumerateDirectory(path, ECSIPlugin_FindNewer, newest);
+        }
+    }
+
+    SDL_free(path);
+    return SDL_ENUM_CONTINUE;
+}
+
+/// @brief Gives the newest change of the files in a plugin's folder, or 0 if it has none.
+static SDL_Time ECSIPlugin_NewestChange(const char *folder)
+{
+    SDL_Time newest = 0;
+    (void)SDL_EnumerateDirectory(folder, ECSIPlugin_FindNewer, &newest);
+    return newest;
+}
+
+/// @brief Unloads a native plugin's library, and removes the copy it was loaded from.
+/// @param copy The copy's path, or nullptr; it is freed.
+static void ECSIPlugin_UnloadLibrary(SDL_SharedObject *library, char *copy)
+{
+    SDL_UnloadObject(library);
+
+    if (copy != nullptr)
+    {
+        (void)SDL_RemovePath(copy);
+        SDL_free(copy);
+    }
+}
+
+/// @brief Copies a native plugin's library to a hidden file in its folder, so it loads from the copy and a build can replace the library meanwhile.
+/// The copy stays in the folder, so the libraries that the plugin keeps beside its own are found as before.
+/// @return The copy's path, or nullptr if it cannot be made, so the library loads from its own file. Free it with SDL_free.
+static char *ECSIPlugin_CopyLibrary(const char *name, const char *folder, const char *path)
+{
+    // copies that a run which ended without unloading left behind go first; one that another run has loaded may stay
+    int count = 0;
+    char **stale = SDL_GlobDirectory(folder, OPENECS_LIBRARY_COPY_PREFIX "*", 0, &count);
+
+    for (int i = 0; stale != nullptr && i < count; i++)
+    {
+        char *stalePath = nullptr;
+
+        if (SDL_asprintf(&stalePath, "%s%s", folder, stale[i]) >= 0)
+        {
+            (void)SDL_RemovePath(stalePath);
+            SDL_free(stalePath);
+        }
+    }
+
+    SDL_free(stale);
+
+    char *prefix = nullptr;
+    char *copy = nullptr;
+    bool made = SDL_asprintf(&prefix, "%s" OPENECS_LIBRARY_COPY_PREFIX "%" SDL_PRIu32 "-", folder, PLUGINS.copies++) >= 0 &&
+                SDL_asprintf(&copy, OPENECS_LIBRARY_FORMAT, prefix, name) >= 0 && SDL_CopyFile(path, copy);
+    SDL_free(prefix);
+
+    if (!made)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' loads from its own library, as it cannot be copied: %s", name, SDL_GetError());
+        SDL_free(copy);
+        return nullptr;
+    }
+
+    return copy;
+}
+
+/// @brief Loads a native plugin's library and finds its ECSPlugin_Init. While plugins reload, it loads a copy of the library.
+/// @param retCopy The copy it loaded, or nullptr; ECSIPlugin_UnloadLibrary removes it.
+static SHUResult ECSIPlugin_LoadLibrary(const char *name, const char *folder, SDL_SharedObject **retLibrary, ECSIPluginInitFunction *retInit, char **retCopy)
 {
     char *path = nullptr;
-    *retLibrary = SDL_asprintf(&path, OPENECS_LIBRARY_FORMAT, folder, name) < 0 ? nullptr : SDL_LoadObject(path);
+    *retLibrary = nullptr;
+    *retCopy = nullptr;
+
+    if (SDL_asprintf(&path, OPENECS_LIBRARY_FORMAT, folder, name) >= 0)
+    {
+        *retCopy = PLUGINS.copyLibraries ? ECSIPlugin_CopyLibrary(name, folder, path) : nullptr;
+        *retLibrary = SDL_LoadObject(*retCopy != nullptr ? *retCopy : path);
+    }
+
     SDL_free(path);
 
     if (*retLibrary == nullptr)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot load the library of plugin '%s': %s", name, SDL_GetError());
+
+        if (*retCopy != nullptr)
+        {
+            (void)SDL_RemovePath(*retCopy);
+            SDL_free(*retCopy);
+            *retCopy = nullptr;
+        }
+
         return SHUResult_ErrFile;
     }
 
@@ -392,8 +503,9 @@ static SHUResult ECSIPlugin_LoadLibrary(const char *name, const char *folder, SD
     if (*retInit == nullptr)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' does not export ECSPlugin_Init.", name);
-        SDL_UnloadObject(*retLibrary);
+        ECSIPlugin_UnloadLibrary(*retLibrary, *retCopy);
         *retLibrary = nullptr;
+        *retCopy = nullptr;
         return SHUResult_ErrBadData;
     }
 
@@ -415,8 +527,9 @@ static SHUResult ECSIPlugin_Fail(ECSIPlugin *plugin, const char *what, SHUResult
     {
         if (plugin->library != nullptr)
         {
-            SDL_UnloadObject(plugin->library);
+            ECSIPlugin_UnloadLibrary(plugin->library, plugin->libraryCopy);
             plugin->library = nullptr;
+            plugin->libraryCopy = nullptr;
         }
 
         plugin->failed = false;
@@ -555,11 +668,12 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
 
     // a native plugin's library loads first, so a new plugin whose code is missing is not recorded
     SDL_SharedObject *library = nullptr;
+    char *libraryCopy = nullptr;
     ECSIPluginInitFunction Init = nullptr;
 
     if (native)
     {
-        SHU_ReturnResult(ECSIPlugin_LoadLibrary(name, manifest->folder, &library, &Init));
+        SHU_ReturnResult(ECSIPlugin_LoadLibrary(name, manifest->folder, &library, &Init, &libraryCopy));
     }
 
     ECSIPlugin *plugin = ECSIPlugin_Record(name, manifest);
@@ -568,13 +682,17 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
     {
         if (library != nullptr)
         {
-            SDL_UnloadObject(library);
+            ECSIPlugin_UnloadLibrary(library, libraryCopy);
         }
 
         return SHUResult_ErrAllocation;
     }
 
     plugin->library = library;
+    plugin->libraryCopy = libraryCopy;
+    plugin->changed = ECSIPlugin_NewestChange(manifest->folder);
+    plugin->seen = plugin->changed;
+    plugin->waits = false;
     plugin->disabled = false;
     SDL_free(plugin->misuse);
     plugin->misuse = nullptr;
@@ -766,7 +884,8 @@ void ECSIPlugins_Unload(void)
 
         if (plugin->library != nullptr)
         {
-            SDL_UnloadObject(plugin->library);
+            ECSIPlugin_UnloadLibrary(plugin->library, plugin->libraryCopy);
+            plugin->libraryCopy = nullptr;
         }
 
         ECSIPlugin_Free(plugin);
@@ -1127,6 +1246,63 @@ void ECSIPlugins_SetDisabled(const char *const *names, usz count)
     PLUGINS.disabledCount = count;
 }
 
+void ECSIPlugins_SetCopyLibraries(bool copy)
+{
+    PLUGINS.copyLibraries = copy;
+}
+
+void ECSIPlugins_SetWaiting(const char *name, bool waits)
+{
+    SDL_assert(name != nullptr);
+
+    ECSIPlugin *plugin = ECSIPlugin_Find(name);
+
+    if (plugin != nullptr)
+    {
+        plugin->waits = waits;
+    }
+}
+
+bool ECSIPlugins_Waits(const char *name)
+{
+    SDL_assert(name != nullptr);
+
+    ECSIPlugin *plugin = ECSIPlugin_Find(name);
+    return plugin != nullptr && plugin->waits;
+}
+
+char **ECSIPlugins_FindChanged(void)
+{
+    char **changed = nullptr;
+
+    for (usz i = 0; i < shlenu(PLUGINS.plugins); i++)
+    {
+        ECSIPlugin *plugin = PLUGINS.plugins[i].value;
+
+        if ((!ECSIPlugin_Runs(plugin) && !plugin->waits) || plugin->folder == nullptr)
+        {
+            continue;
+        }
+
+        // a change counts once the files stay the same for one check, so a build that still writes them is not loaded half done
+        SDL_Time newest = ECSIPlugin_NewestChange(plugin->folder);
+        bool settled = newest == plugin->seen;
+        plugin->seen = newest;
+
+        if (settled && newest != plugin->changed)
+        {
+            char *name = SDL_strdup(plugin->name);
+
+            if (name != nullptr)
+            {
+                arrput(changed, name);
+            }
+        }
+    }
+
+    return changed;
+}
+
 ECSPlugin *ECSIPlugins_GetDependents(ECSPlugin plugin)
 {
     SDL_assert(plugin != nullptr);
@@ -1202,8 +1378,9 @@ void ECSIPlugins_Disable(ECSPlugin plugin, const char *misuse)
 
     if (plugin->library != nullptr)
     {
-        SDL_UnloadObject(plugin->library);
+        ECSIPlugin_UnloadLibrary(plugin->library, plugin->libraryCopy);
         plugin->library = nullptr;
+        plugin->libraryCopy = nullptr;
     }
 
     // work that Destroy itself started is dropped too
