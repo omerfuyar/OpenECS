@@ -68,6 +68,7 @@ static const ECSSettingDesc OPENECS_WINDOW_SETTINGS[] = {
     {.name = "ecs.windowHeight", .type = ECSSettingType_Integer, .description = "Height of the OS window when it opens, in layout units"},
     {.name = "ecs.font", .type = ECSSettingType_String, .description = "TrueType font of the core's interface, read when the window opens; a relative path starts at the executable's folder"},
     {.name = "ecs.fontSize", .type = ECSSettingType_Number, .description = "Size of the core's font, in layout units"},
+    {.name = "ecs.scale", .type = ECSSettingType_Number, .description = "How large panels draw what they hold: the pixels of a panel's layout unit, such as 1.25"},
     {.name = "ecs.gripHeight", .type = ECSSettingType_Number, .description = "Height of a grip, in layout units"},
     {.name = "ecs.gripZone", .type = ECSSettingType_Number, .description = "Distance from a panel's top edge within which its grip shows, in layout units"},
     {.name = "ecs.dragThreshold", .type = ECSSettingType_Number, .description = "How far the pointer moves from a press on a tab or grip before the panel is dragged, in layout units"},
@@ -1667,8 +1668,9 @@ static SDL_FRect ECSIWindow_PlacePopup(ECSPopup popup, const ECSIOSWindow *osWin
 {
     ECSPanel panel = popup->panel;
     const ECSPopupDesc *desc = &popup->desc;
-    SDL_FRect rect = {panel->x + desc->anchorX, panel->y + desc->anchorY + desc->anchorHeight, desc->width, desc->height};
-    f32 above = panel->y + desc->anchorY - desc->height;
+    f32 scale = ECSIPanels_GetScale();
+    SDL_FRect rect = {panel->x + desc->anchorX, panel->y + desc->anchorY + desc->anchorHeight, desc->width * scale, desc->height * scale};
+    f32 above = panel->y + desc->anchorY - rect.h;
 
     if (rect.y + rect.h > osWindow->height && above >= 0.0f)
     {
@@ -1884,6 +1886,7 @@ static void ECSIWindow_ReadSettings(void)
     }
 
     WINDOW.fontSize = ECSIWindow_ReadNumber("ecs.fontSize");
+    ECSIPanels_SetScale(ECSIWindow_ReadNumber("ecs.scale"));
     WINDOW.gripHeight = ECSIWindow_ReadNumber("ecs.gripHeight");
     WINDOW.gripZone = ECSIWindow_ReadNumber("ecs.gripZone");
     WINDOW.dragThreshold = ECSIWindow_ReadNumber("ecs.dragThreshold");

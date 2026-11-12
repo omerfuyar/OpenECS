@@ -188,8 +188,9 @@ bool ECSIPopup_Draw(ECSPopup popup)
 {
     SDL_assert(popup != nullptr);
 
-    i32 width = ECSIPanel_ToPixels(popup->desc.width);
-    i32 height = ECSIPanel_ToPixels(popup->desc.height);
+    f32 scale = ECSIPanels_GetScale();
+    i32 width = ECSIPanel_ToPixels(popup->desc.width * scale);
+    i32 height = ECSIPanel_ToPixels(popup->desc.height * scale);
     bool resized = popup->pixels == nullptr || popup->pixels->w != width || popup->pixels->h != height;
 
     if (!popup->needsDraw && !resized)
@@ -215,7 +216,7 @@ bool ECSIPopup_Draw(ECSPopup popup)
         .type = ECSSurfaceType_Pixels,
         .width = width,
         .height = height,
-        .scale = 1.0f,
+        .scale = scale,
         .pixels = cs(popup->pixels->pixels, (usz)popup->pixels->pitch * (usz)height),
         .pitch = popup->pixels->pitch,
     };

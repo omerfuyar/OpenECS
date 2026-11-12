@@ -332,6 +332,7 @@ typedef struct ECSPanelTypeDesc
 
 - A panel's corner, and a popup's, is on a whole pixel, and its pixels show one to one, so what it draws stays sharp at any place and size.
 - Pointer positions given to a panel are in its surface's pixels, so they match what it draws.
+- A surface's `scale` is the setting `ecs.scale`, 1 by default, for every panel and popup. `Shown` and `Resized` give a panel's size in its pixels divided by the scale, and a popup's `width` and `height` are multiplied by it. When it changes, every panel draws again, with `kept` false, and hears its new size. The core's own interface keeps its sizes, and `ecs.fontSize` sizes its text.
 - A panel must not keep its surface after `Draw` returns; every call receives the current one. So the core can recreate surfaces, for example on resize, without telling the panel.
 - A pixels surface keeps its pixels between draws while its size stays the same. `kept` tells `Draw` that they still hold the picture of the last `Draw`, so it may change only what changed, such as the new part of a stroke. It is false for a new surface, after a resize or a change of scale, and always for a GPU surface.
 - `ECSSurface_Changed(surface, x, y, width, height)`, `surface:changed` in Lua, tells the core which rectangle `Draw` changed. The core uploads only the rectangle around every one given; a `Draw` that tells none changed the whole surface. A popup's surface is always uploaded whole.
@@ -1457,6 +1458,8 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 **Hit testing.** Finding which element is under a point, such as the pointer.
 
 **Input method.** Software that composes characters a keyboard cannot type directly, for languages such as Chinese or Japanese.
+
+**Layout unit.** The unit of positions and sizes in the layout and in a panel. One takes a pixel in the core's interface and `ecs.scale` pixels in a panel or popup (5.1).
 
 **Loader.** A plugin that reads a file format into the objects of an executor, and may write them back.
 
