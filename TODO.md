@@ -48,12 +48,13 @@ What would grow it most:
 
 - **Releases for macOS**, since most tool builders are not on Linux. Windows has one since 0.4.0 (see Tasks).
 - **A flagship tool** that is useful without writing code, such as a log viewer, a glTF viewer or a terminal, built from the standard plugins.
-  - **A workbench for LÖVE games**, which the owner proposes. LÖVE has no editor of its own, and its users write Lua, as OpenECS's plugins do. Its value is in what a code editor lacks, not in editing code, which stays in the user's editor at first:
-    - a project's files, with viewers for its images, sounds and models (image, audio, gltf);
-    - running the game with `love`, its output in a panel, and a restart on a change (process, terminal);
-    - a live view of the game's values, which a small Lua module in the game sends over a socket (net), with values to tweak while it runs;
-    - editors for what LÖVE leaves to code, such as particle systems, sprite sheets and tile maps.
-  - Open: the game runs in its own window, as Wayland does not let another program's window be embedded; whether a code editor with the Lua language server comes later; its name, which says it is for LÖVE without using LÖVE's own name as its name; and whether it waits for a stable plugin interface (1.0.0). It would be made from OpenECS-template, in its own repository.
+  - **An editor for LÖVE games**, the owner's flagship. It is for people who want LÖVE underneath and a simpler interface than Unity or Godot. LÖVE stays the runtime; the editor is no engine. A project is scenes of objects with properties, assets and Lua scripts that the user writes in their own code editor. The editor builds the `.love` file from it, with a small Lua library that loads the scenes, and makes the executables as LÖVE's Game Distribution page says: `love.exe` with the `.love` appended on Windows, the `.love` in `love.app` on macOS, and the AppImage on Linux. It would be made from OpenECS-template, in its own repository. Open:
+    - how scripts attach: a script per object with `load`, `update` and `draw`, as Unity's components do, or also logic without code, as GDevelop's events do;
+    - an existing `.love` made in code has no scenes, so the editor opens its files and runs it, but edits only its own projects; or it also turns such a game into a project;
+    - the scene view: OpenECS draws the sprites, shapes and text itself, and Play runs LÖVE in its own window, as Wayland does not let another program's window be embedded;
+    - the LÖVE version it targets: 11.5 is the latest release, and 12.0 is not released;
+    - where the editor gets LÖVE's executables for each platform, and its name, which says it is for LÖVE without using LÖVE's name as its own;
+    - whether it waits for a stable plugin interface (1.0.0).
 - **A showcase** in README.md of plugins and tools others build.
 
 
