@@ -15,6 +15,10 @@ What the owner wants worked on, in no fixed order. Each one is described further
 - **Import the rulesets.** The rulesets of OpenECS, OpenECS-std, OpenECS-examples and OpenECS-template require the Windows checks now, as the owner chose. The owner imports them in each repository's settings. OpenECS-examples' rulesets no longer require `Release (Linux)`, which it does not run.
 - **Functions that call unseen.** OVERVIEW's principle "Calls are written out" is new. Check the core, the standard plugins and the examples for code that registers or calls functions the caller does not name, and write the calls out.
 - **Older plugins and newer features.** Go over the standard plugins and the examples for code that a later feature of the core would make simpler, such as structs, and change it to use the feature.
+- **Hot reloading.** The owner wants plugins reloaded while OpenECS runs, when their files change, so a plugin's author sees a change without a restart. Disabling and enabling a plugin (DESIGN 9.10) already does most of it: its panels keep their state in placeholders, and come back from it. Open:
+  - what starts a reload: the core watching the plugin folders, or a key and a launcher entry, and whether it is on only in a Debug build or a setting;
+  - a native plugin: its library is unloaded and loaded again, but on Windows a loaded DLL cannot be overwritten, so the build would fail while OpenECS runs; loading a copy of the library would avoid it. If C brings problems, Lua plugins alone are reloaded;
+  - the plugins that depend on the reloaded one are reloaded with it, as disabling them already does.
 - **Lua's speed.** Each call from Lua into the core costs about a third of a microsecond in a Debug build, so a Lua panel draws runs of pixels with `surface:fill` and rows with `setRow`, as c12_sketch's Lua panel paints each row of a dab with one `fill`; the surface's methods keep the colour of the last colour text they read. A panel that keeps its picture draws only what changed (DESIGN 5.1).
 
 ## Shuild
