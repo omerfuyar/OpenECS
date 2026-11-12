@@ -82,6 +82,9 @@ return {
   ["ecs.font"] = "resources/Roboto-Regular.ttf",
   ["ecs.fontSize"] = 14,
 
+  -- how large panels draw what they hold: 1.25 makes their text and elements a quarter larger
+  ["ecs.scale"] = 1,
+
   -- OpenECS draws the title bar of its OS windows, with buttons to minimize, maximize and close them, and edges to resize them;
   -- false leaves them to the system, which on some desktops draws none
   ["ecs.titleBar"] = true,

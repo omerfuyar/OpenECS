@@ -31,7 +31,8 @@ static struct
     u32 nextPanelID;
     ECSIAskFunction Ask; // asks about unsaved work; Input gives it
     ECSIDrawing drawing; // the pixels surface that a panel draws into now
-} PANELS = {0};
+    f32 scale;           // ecs.scale: the pixels of a layout unit of panels and popups
+} PANELS = {.scale = 1.0f};
 
 static void ECSIPanelType_Free(ECSIPanelType *type)
 {
@@ -566,11 +567,22 @@ i32 ECSIPanel_ToPixels(f32 size)
     return (i32)SDL_max(1.0f, SDL_roundf(size));
 }
 
+f32 ECSIPanels_GetScale(void)
+{
+    return PANELS.scale;
+}
+
+void ECSIPanels_SetScale(f32 scale)
+{
+    // each panel draws again at the new scale when it is next shown, and hears its new size then
+    PANELS.scale = scale > 0.0f ? scale : 1.0f;
+}
+
 bool ECSIPanel_WantsFrame(ECSPanel panel)
 {
     SDL_assert(panel != nullptr);
 
-    return panel->needsDraw || (panel->fault == nullptr && panel->type != nullptr && panel->type->desc.continuous);
+    return panel->needsDraw || panel->drawnScale != PANELS.scale || (panel->fault == nullptr && panel->type != nullptr && panel->type->desc.continuous);
 }
 
 /// @brief Calls a pixels panel's Draw, and sends to its texture what it changed.
@@ -583,10 +595,10 @@ static void ECSIPanel_DrawPixels(ECSPanel panel, bool upload, u64 nowTicks, f64 
         .type = ECSSurfaceType_Pixels,
         .width = pixels->w,
         .height = pixels->h,
-        .scale = 1.0f,
+        .scale = PANELS.scale,
         .pixels = cs(pixels->pixels, (usz)pixels->pitch * (usz)pixels->h),
         .pitch = pixels->pitch,
-        .kept = panel->drawn, // the pixels hold the last picture while they stay the same
+        .kept = panel->drawn && panel->drawnScale == PANELS.scale, // the pixels hold the last picture while they and the scale stay the same
     };
 
     panel->lastDrawTicks = nowTicks;
@@ -598,6 +610,7 @@ static void ECSIPanel_DrawPixels(ECSPanel panel, bool upload, u64 nowTicks, f64 
     panel->type->desc.Draw(panel->state, &surface, seconds);
     (void)ECSIPlugin_Leave(&callback);
     panel->drawn = true;
+    panel->drawnScale = PANELS.scale;
 
     // the services that drew into the surface finish, and its Lua handle goes
     ECSIServices_EndSurface(&surface);
@@ -623,6 +636,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
     if (panel->type == nullptr || panel->fault != nullptr || panel->type->desc.Draw == nullptr || panel->width < 1.0f || panel->height < 1.0f)
     {
         panel->needsDraw = false;
+        panel->drawnScale = PANELS.scale;
         return;
     }
 
@@ -647,12 +661,13 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
             .type = ECSSurfaceType_Gpu,
             .width = panel->gpuWidth,
             .height = panel->gpuHeight,
-            .scale = 1.0f,
+            .scale = PANELS.scale,
             .texture = panel->gpuTexture,
         };
 
         panel->lastDrawTicks = nowTicks;
         panel->needsDraw = false;
+        panel->drawnScale = PANELS.scale;
         ECSICallback callback;
         ECSIPlugin_Enter(&callback, panel->type->plugin, panel, ECSICallbackType_Panel);
         panel->type->desc.Draw(panel->state, &surface, seconds);
@@ -722,22 +737,26 @@ void ECSIPanel_SetVisible(ECSPanel panel, bool visible)
 {
     SDL_assert(panel != nullptr);
 
+    // the panel's size in its layout units, which ecs.scale makes larger or smaller than the window's
+    f32 width = panel->width / PANELS.scale;
+    f32 height = panel->height / PANELS.scale;
+
     if (visible != panel->visible)
     {
         panel->visible = visible;
-        ECSPanelEvent event = {.type = visible ? ECSPanelEventType_Shown : ECSPanelEventType_Hidden, .size = {panel->width, panel->height}};
+        ECSPanelEvent event = {.type = visible ? ECSPanelEventType_Shown : ECSPanelEventType_Hidden, .size = {width, height}};
         ECSIPanel_PostEvent(panel, &event);
     }
-    else if (visible && (panel->width != panel->toldWidth || panel->height != panel->toldHeight))
+    else if (visible && (width != panel->toldWidth || height != panel->toldHeight))
     {
-        ECSPanelEvent event = {.type = ECSPanelEventType_Resized, .size = {panel->width, panel->height}};
+        ECSPanelEvent event = {.type = ECSPanelEventType_Resized, .size = {width, height}};
         ECSIPanel_PostEvent(panel, &event);
     }
 
     if (visible)
     {
-        panel->toldWidth = panel->width;
-        panel->toldHeight = panel->height;
+        panel->toldWidth = width;
+        panel->toldHeight = height;
     }
 }
 
