@@ -28,6 +28,7 @@ return {
       ["L"] = "ecs.layout.lock",
       ["T"] = "ecs.layout.reopen",
       ["R"] = "ecs.panel.restart",
+      ["Ctrl+R"] = "ecs.panel.reloadPlugin",
       ["Shift+R"] = "ecs.layout.reset",
       ["Q"] = "ecs.app.quit",
       ["S"] = "ecs.session.save",
@@ -66,6 +67,11 @@ return {
 
   -- save the tool's session when it quits, and start from it the next time; --fresh still starts from the preset
   ["ecs.keepSession"] = false,
+
+  -- reload a plugin when its files change, checking them every interval in seconds, so a plugin's author sees a change without a restart;
+  -- a native plugin loads from a copy of its library then, so its build can replace the library
+  ["ecs.reloadPlugins"] = false,
+  ["ecs.reloadInterval"] = 1,
 
   -- log the failures that services give their callers, such as a file that cannot be read; a tool that expects them turns this off
   ["ecs.logServiceErrors"] = true,

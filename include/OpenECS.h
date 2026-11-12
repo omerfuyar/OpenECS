@@ -500,6 +500,12 @@ OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Enable(const char *name);
 /// @lua ecs.plugins.disable
 OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Disable(const char *name);
 
+/// @brief Reloads a plugin, and the plugins that depend on it, when the current pass of the main loop ends: disables them without asking, as their panels keep their state in placeholders, and enables them again from their files (DESIGN 9.11). Main thread only.
+/// @param name The plugin's name: an enabled plugin, or one that a reload failed to start.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation. A plugin that cannot be started again is reported, and starts when its files change while ecs.reloadPlugins is on.
+/// @lua ecs.plugins.reload
+OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Reload(const char *name);
+
 /// @brief Writes a message to the log, with the plugin's name. Thread-safe.
 /// @param plugin The plugin that writes the message.
 /// @param level Level of the message.

@@ -162,6 +162,7 @@ static ECSIMenuEntry *ECSIMenus_BuildPanelMenu(ECSPanel panel)
 
     ECSIMenus_AddFunction(&entries, "ecs.layout.close", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.panel.restart", nullptr, panel);
+    ECSIMenus_AddFunction(&entries, "ecs.panel.reloadPlugin", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.maximize", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.popOut", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.lock", nullptr, panel);
@@ -399,6 +400,27 @@ static void ECSIMenus_Restart(void)
     }
 }
 
+/// @brief Reloads the plugin of the focused panel, or of the placeholder whose plugin a reload failed to start (DESIGN 9.11).
+static void ECSIMenus_ReloadPlugin(void)
+{
+    ECSPanel focus = ECSILayout_GetFocus();
+    char *name = focus == nullptr ? nullptr : SDL_strdup(focus->typeName);
+    char *dot = name == nullptr ? nullptr : SDL_strchr(name, '.');
+
+    // a panel type's name starts with its plugin's name
+    if (dot != nullptr)
+    {
+        *dot = '\0';
+
+        if (ECSPlugins_Reload(name))
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not reloaded: out of memory.", name);
+        }
+    }
+
+    SDL_free(name);
+}
+
 /// @brief Builds the tool's menu: the functions that ecs.toolMenu names and that are registered, the submenu Workspaces, then reset the layout and quit.
 static ECSIMenuEntry *ECSIMenus_BuildToolMenu(void)
 {
@@ -495,6 +517,7 @@ static const struct
     {"ecs.layout.lock", ECSILayout_ToggleLock, "Lock"},
     {"ecs.layout.reopen", ECSILayout_Reopen, "Reopen closed"},
     {"ecs.panel.restart", ECSIMenus_Restart, "Restart"},
+    {"ecs.panel.reloadPlugin", ECSIMenus_ReloadPlugin, "Reload plugin"},
     ECSIMenus_WorkspaceEntries(1),
     ECSIMenus_WorkspaceEntries(2),
     ECSIMenus_WorkspaceEntries(3),
@@ -542,6 +565,12 @@ bool ECSIMenus_Offers(const char *function, ECSPanel panel)
     if (SDL_strcmp(function, "ecs.layout.reopen") == 0)
     {
         return ECSILayout_CanReopen();
+    }
+
+    // the panel's menu offers a reload while plugins reload, as a plugin's author works then
+    if (SDL_strcmp(function, "ecs.panel.reloadPlugin") == 0)
+    {
+        return panel != nullptr && ECSValue_GetBool(ECSSetting_Get("ecs.reloadPlugins"), false);
     }
 
     // a panel alone in its OS window stays, and so does a locked one

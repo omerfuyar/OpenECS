@@ -545,6 +545,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
   | `ecs.layout.lock`                                               | Lock or unlock the group                                                                                 |
   | `ecs.layout.reopen`                                             | Reopen the last closed panel                                                                             |
   | `ecs.panel.restart`                                             | Restart the failed panel                                                                                 |
+  | `ecs.panel.reloadPlugin`                                        | Reload the plugin of the focused panel's type (9.11)                                                     |
   | `ecs.session.save`                                              | Save the session to a file, which a save dialog asks for (13.4)                                          |
   | `ecs.session.open`                                              | Open a session or a preset, which an open dialog asks for (13.5)                                         |
   | `ecs.workspace.switch1` to `ecs.workspace.switch10`             | Switch to workspace 1 to 10                                                                              |
@@ -753,6 +754,13 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 - A plugin that is not loaded, such as one the user installed (16), is enabled the same way.
 - A plugin whose callback misused a function (14.2) is disabled the same way, without the question about unsaved work, as the user did not ask for it, and with the plugins that depend on it, first. Its panels keep their state in their placeholders, which show the misuse. Enabling it again brings them back.
 - A session keeps the change (13.2): `disabled` lists the disabled plugins, and `enabled` the plugins the user enabled that the preset does not depend on. The next start loads the preset's plugins and `enabled`, and records the plugins of `disabled`, and the plugins that depend on them, without loading their code.
+
+### 9.11 Reloading plugins
+
+- `ECSPlugins_Reload(name)`, and in Lua `ecs.plugins.reload(name)`, reload a plugin when the current pass of the main loop ends. The core disables it and the plugins that depend on it as 9.10 says, without the question about unsaved work, as their panels keep their state in placeholders. Then it enables them again from their files, the plugin first. The function `ecs.panel.reloadPlugin` reloads the plugin of the focused panel's type, and the panel's menu offers it while `ecs.reloadPlugins` is on.
+- The setting `ecs.reloadPlugins`, off by default, watches the files of every plugin that runs: every `ecs.reloadInterval` seconds, 1 by default, the core finds the newest change in each plugin's folder, without hidden files. A plugin reloads when its newest change differs from the one its code started with, and stayed the same since the last check, so a build that still writes its files is not loaded half done.
+- A plugin that cannot be started again is reported, and its panels stay placeholders. The next change of its files, or `ECSPlugins_Reload`, starts it again, with the plugins that reloaded with it.
+- While `ecs.reloadPlugins` is on, a native plugin loads from a copy of its library in its folder, named `.reload-N-` and the library's name, with N counting the copies. So its build can replace the library while it is loaded, which Windows does not allow. Unloading the plugin removes its copy, and loading a plugin removes the copies that a run left behind.
 
 ## 10. Services
 

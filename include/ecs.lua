@@ -509,6 +509,10 @@ function ecs.plugins.enable(name) end
 ---@param name string The plugin's name.
 function ecs.plugins.disable(name) end
 
+---Reloads a plugin, and the plugins that depend on it, when the current pass of the main loop ends: disables them without asking, as their panels keep their state in placeholders, and enables them again from their files. A plugin that cannot be started again is reported, and starts when its files change while ecs.reloadPlugins is on.
+---@param name string The plugin's name: an enabled plugin, or one that a reload failed to start.
+function ecs.plugins.reload(name) end
+
 -- Session
 
 ---@class ecs.session
