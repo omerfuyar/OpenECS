@@ -48,6 +48,12 @@ What would grow it most:
 
 - **Releases for macOS**, since most tool builders are not on Linux. Windows has one since 0.4.0 (see Tasks).
 - **A flagship tool** that is useful without writing code, such as a log viewer, a glTF viewer or a terminal, built from the standard plugins.
+  - **A workbench for LÖVE games**, which the owner proposes. LÖVE has no editor of its own, and its users write Lua, as OpenECS's plugins do. Its value is in what a code editor lacks, not in editing code, which stays in the user's editor at first:
+    - a project's files, with viewers for its images, sounds and models (image, audio, gltf);
+    - running the game with `love`, its output in a panel, and a restart on a change (process, terminal);
+    - a live view of the game's values, which a small Lua module in the game sends over a socket (net), with values to tweak while it runs;
+    - editors for what LÖVE leaves to code, such as particle systems, sprite sheets and tile maps.
+  - Open: the game runs in its own window, as Wayland does not let another program's window be embedded; whether a code editor with the Lua language server comes later; its name, which says it is for LÖVE without using LÖVE's own name as its name; and whether it waits for a stable plugin interface (1.0.0). It would be made from OpenECS-template, in its own repository.
 - **A showcase** in README.md of plugins and tools others build.
 
 
