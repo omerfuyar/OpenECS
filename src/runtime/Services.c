@@ -140,6 +140,7 @@ typedef struct ECSISignature
     ECSIParameter *parameters; // stb_ds array
     ffi_type **types;          // stb_ds array of the parameters' libffi types
     usz outCount;
+    bool fails; // its last parameter is "out string error": the function can fail, and gives nothing else then (DESIGN 10.8)
     ffi_cif cif;
     char *text; // the signature written the same way every time, such as "int(string, out float)"
 } ECSISignature;
@@ -664,6 +665,24 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
         (void)ECS_Check(nullptr, false, "'%s' is not a signature, such as \"int(string, out float)\".", text);
         ECSISignature_Free(retSignature);
         return SHUResult_ErrAssertion;
+    }
+
+    // a function that can fail says why in its last parameter, and only there
+    usz count = arrlenu(retSignature->parameters);
+
+    for (usz i = 0; i < count; i++)
+    {
+        const ECSIParameter *parameter = &retSignature->parameters[i];
+        bool error = parameter->out && parameter->type == ECSIParameterType_String && parameter->name != nullptr && SDL_strcmp(parameter->name, "error") == 0;
+
+        if (error && i + 1 != count)
+        {
+            (void)ECS_Check(nullptr, false, "In '%s', out string error is not the last parameter.", text);
+            ECSISignature_Free(retSignature);
+            return SHUResult_ErrAssertion;
+        }
+
+        retSignature->fails = error;
     }
 
     ECSIText written = ECSISignature_Write(retSignature);
@@ -1360,21 +1379,44 @@ static SHUResult ECSIServices_MakeCallbacks(lua_State *state, const ECSIFunction
 static int ECSIServices_PushResults(lua_State *state, const ECSISignature *signature, const ECSICallParameter *parameters, ECSISlot *returned)
 {
     int pushed = 0;
+    usz count = arrlenu(signature->parameters);
+
+    // a function that failed gives nil for each result, and why last, as Lua's io.open does
+    bool failed = signature->fails && *(const char *const *)&parameters[count - 1].output != nullptr;
 
     if (signature->result.type != ECSIParameterType_Void)
     {
         ECSIServices_NarrowResult(signature->result, returned);
-        ECSIServices_PushArgument(state, signature->result, returned);
+
+        if (failed)
+        {
+            lua_pushnil(state);
+        }
+        else
+        {
+            ECSIServices_PushArgument(state, signature->result, returned);
+        }
+
         pushed++;
     }
 
-    for (usz i = 0; i < arrlenu(signature->parameters); i++)
+    for (usz i = 0; i < count; i++)
     {
-        if (signature->parameters[i].out)
+        if (!signature->parameters[i].out)
+        {
+            continue;
+        }
+
+        if (failed && i + 1 < count)
+        {
+            lua_pushnil(state);
+        }
+        else
         {
             ECSIServices_PushArgument(state, signature->parameters[i], &parameters[i].output);
-            pushed++;
         }
+
+        pushed++;
     }
 
     return pushed;
@@ -1964,14 +2006,19 @@ static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *
 
     int index = callbacks + 1;
 
-    if (signature->result.type != ECSIParameterType_Void && !ECSIServices_WriteOutput(state, function, index++, anchors, signature->result, result, true))
+    // a Lua function that failed gives nil for its results, and why last: C gets zeros for them
+    bool failedCall = signature->fails && lua_type(state, callbacks + resultCount) == LUA_TSTRING;
+
+    if (signature->result.type != ECSIParameterType_Void && !ECSIServices_WriteOutput(state, function, index++, anchors, signature->result, result, true) &&
+        !(failedCall && lua_isnil(state, index - 1)))
     {
         ECSIServices_ReportType(state, function, index - 1);
     }
 
     for (usz i = 0; i < count; i++)
     {
-        if (signature->parameters[i].out && !ECSIServices_WriteOutput(state, function, index++, anchors, signature->parameters[i], *(void **)arguments[i], false))
+        if (signature->parameters[i].out && !ECSIServices_WriteOutput(state, function, index++, anchors, signature->parameters[i], *(void **)arguments[i], false) &&
+            !(failedCall && lua_isnil(state, index - 1)))
         {
             ECSIServices_ReportType(state, function, index - 1);
         }
