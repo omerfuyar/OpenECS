@@ -2,6 +2,7 @@
 
 // Services: the function registry, signatures, and calls between C and Lua. The only module that calls libffi.
 
+#include "base/Lua.h"
 #include "runtime/Events.h"
 
 #pragma region Declarations
@@ -9,6 +10,16 @@
 /// @brief Prepares the table that gives each object one Lua handle, and registers the core's handle types ecs.panel and ecs.surface.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIServices_Initialize(void);
+
+/// @brief Raises the Lua error of a core function that Lua called and that failed (DESIGN 1.4): out of memory raises as Lua's own allocations do; a misuse that the function noted stops the Lua code with its message; any other result is a misuse of the call, noted now.
+/// @param state The state whose code called.
+/// @param result The function's result, not SHUResult_Ok.
+/// @param format printf-style format of the misuse, as lua_pushfstring takes it, for a result that the function did not note.
+[[noreturn]] void ECSIServices_Raise(lua_State *state, SHUResult result, const char *format, ...);
+
+/// @brief Declares the services' setting, ecs.logServiceErrors, once settings are read.
+/// @return SHUResult_Ok, or the error of the declaration.
+SHUWUR SHUResult ECSIServices_DeclareSettings(void);
 
 /// @brief Destroys the objects of every handle Lua still holds, before the plugins shut down (DESIGN 2.4).
 void ECSIServices_DestroyHandles(void);

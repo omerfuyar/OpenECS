@@ -1,5 +1,7 @@
 #include "base/Values.h"
 
+#include "base/Log.h"
+
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
 
@@ -105,7 +107,7 @@ static void ECSIValue_MakeTable(ECSValue *value)
 
 SHUResult ECSValue_Create(ECSValue **retValue)
 {
-    SDL_assert(retValue != nullptr);
+    ECSILog_Check(retValue != nullptr, SHUResult_ErrAssertion);
 
     *retValue = SDL_calloc(1, sizeof(ECSValue));
     return *retValue == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
@@ -113,7 +115,7 @@ SHUResult ECSValue_Create(ECSValue **retValue)
 
 void ECSValue_Destroy(ECSValue **value)
 {
-    SDL_assert(value != nullptr);
+    ECSILog_Check(value != nullptr);
 
     if (*value != nullptr)
     {
@@ -413,7 +415,7 @@ const char *ECSIValue_GetHandleType(const ECSValue *value)
 
 void *ECSValue_GetHandle(const ECSValue *value, const char *type)
 {
-    SDL_assert(type != nullptr);
+    ECSILog_Check(type != nullptr, nullptr);
 
     if (ECSValue_GetType(value) != ECSValueType_Handle || SDL_strcmp(value->handleType, type) != 0)
     {
@@ -471,7 +473,7 @@ const ECSValue *ECSValue_GetListItem(const ECSValue *table, usz index)
 
 const ECSValue *ECSValue_GetTableField(const ECSValue *table, const char *name)
 {
-    SDL_assert(name != nullptr);
+    ECSILog_Check(name != nullptr, nullptr);
 
     // shget would allocate a map that is missing
     if (ECSValue_GetType(table) != ECSValueType_Table || table->fields == nullptr)
@@ -490,7 +492,7 @@ usz ECSValue_GetTableFieldCount(const ECSValue *table)
 
 const ECSValue *ECSValue_GetTableFieldAt(const ECSValue *table, usz index, const char **retName)
 {
-    SDL_assert(retName != nullptr);
+    ECSILog_Check(retName != nullptr, nullptr);
 
     if (index >= ECSValue_GetTableFieldCount(table))
     {
@@ -504,14 +506,14 @@ const ECSValue *ECSValue_GetTableFieldAt(const ECSValue *table, usz index, const
 
 void ECSValue_SetNil(ECSValue *value)
 {
-    SDL_assert(value != nullptr);
+    ECSILog_Check(value != nullptr);
 
     ECSIValue_Clear(value);
 }
 
 void ECSValue_SetBool(ECSValue *value, bool boolean)
 {
-    SDL_assert(value != nullptr);
+    ECSILog_Check(value != nullptr);
 
     ECSIValue_Clear(value);
     value->type = ECSValueType_Bool;
@@ -520,7 +522,7 @@ void ECSValue_SetBool(ECSValue *value, bool boolean)
 
 void ECSValue_SetInteger(ECSValue *value, i64 integer)
 {
-    SDL_assert(value != nullptr);
+    ECSILog_Check(value != nullptr);
 
     ECSIValue_Clear(value);
     value->type = ECSValueType_Integer;
@@ -529,7 +531,7 @@ void ECSValue_SetInteger(ECSValue *value, i64 integer)
 
 void ECSValue_SetNumber(ECSValue *value, f64 number)
 {
-    SDL_assert(value != nullptr);
+    ECSILog_Check(value != nullptr);
 
     ECSIValue_Clear(value);
     value->type = ECSValueType_Number;
@@ -538,8 +540,8 @@ void ECSValue_SetNumber(ECSValue *value, f64 number)
 
 SHUResult ECSValue_SetString(ECSValue *value, const char *string)
 {
-    SDL_assert(value != nullptr);
-    SDL_assert(string != nullptr);
+    ECSILog_Check(value != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(string != nullptr, SHUResult_ErrAssertion);
 
     char *copy = SDL_strdup(string);
 
@@ -556,8 +558,8 @@ SHUResult ECSValue_SetString(ECSValue *value, const char *string)
 
 SHUResult ECSValue_SetBuffer(ECSValue *value, SHUSliceView buffer)
 {
-    SDL_assert(value != nullptr);
-    SDL_assert(buffer.data != nullptr || buffer.size == 0);
+    ECSILog_Check(value != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(buffer.data != nullptr || buffer.size == 0, SHUResult_ErrAssertion);
 
     // a copy of one byte at least, so an empty buffer has bytes to point to
     u8 *bytes = SDL_malloc(SDL_max(buffer.size, 1));
@@ -581,7 +583,7 @@ SHUResult ECSValue_SetBuffer(ECSValue *value, SHUSliceView buffer)
 
 SHUResult ECSValue_SetHandle(ECSValue *value, const char *type, void *object)
 {
-    SDL_assert(object != nullptr);
+    ECSILog_Check(object != nullptr, SHUResult_ErrAssertion);
 
     return ECSIValue_SetLuaHandle(value, type, object, 0);
 }
@@ -613,7 +615,7 @@ SHUResult ECSIValue_SetLuaHandle(ECSValue *value, const char *type, void *object
 
 void ECSValue_SetTable(ECSValue *value)
 {
-    SDL_assert(value != nullptr);
+    ECSILog_Check(value != nullptr);
 
     ECSIValue_Clear(value);
     value->type = ECSValueType_Table;
@@ -621,8 +623,8 @@ void ECSValue_SetTable(ECSValue *value)
 
 SHUResult ECSValue_AddListItem(ECSValue *table, ECSValue **retItem)
 {
-    SDL_assert(table != nullptr);
-    SDL_assert(retItem != nullptr);
+    ECSILog_Check(table != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(retItem != nullptr, SHUResult_ErrAssertion);
 
     ECSIValue_MakeTable(table);
     SHU_ReturnResult(ECSValue_Create(retItem));
@@ -632,9 +634,9 @@ SHUResult ECSValue_AddListItem(ECSValue *table, ECSValue **retItem)
 
 SHUResult ECSValue_SetTableField(ECSValue *table, const char *name, ECSValue **retField)
 {
-    SDL_assert(table != nullptr);
-    SDL_assert(name != nullptr);
-    SDL_assert(retField != nullptr);
+    ECSILog_Check(table != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(name != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(retField != nullptr, SHUResult_ErrAssertion);
 
     ECSIValue_MakeTable(table);
 

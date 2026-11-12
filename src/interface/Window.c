@@ -979,9 +979,12 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
             CLAY_TEXT(heading, CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize}));
             CLAY_TEXT(ECSIWindow_ClayText(panel->typeName), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize}));
 
-            if (panel->fault != nullptr)
+            // a fault, or the misuse that disabled the plugin
+            const char *why = panel->fault != nullptr ? panel->fault : ECSIPlugins_GetMisuse(panel->typeName);
+
+            if (why != nullptr)
             {
-                CLAY_TEXT(ECSIWindow_ClayText(panel->fault), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize}));
+                CLAY_TEXT(ECSIWindow_ClayText(why), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize}));
             }
         }
     }

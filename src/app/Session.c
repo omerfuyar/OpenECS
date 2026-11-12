@@ -1,5 +1,6 @@
 #include "app/Session.h"
 
+#include "base/Log.h"
 #include "base/Lua.h"
 #include "base/Paths.h"
 #include "base/Values.h"
@@ -1065,7 +1066,7 @@ void ECSISession_Terminate(void)
 
 SHUResult ECSSession_Open(const char *path)
 {
-    SDL_assert(path != nullptr);
+    ECSILog_Check(path != nullptr, SHUResult_ErrAssertion);
 
     if (!ECSISession_CanOpen())
     {
@@ -1077,7 +1078,7 @@ SHUResult ECSSession_Open(const char *path)
 
 SHUResult ECSSession_OpenPreset(const char *nameOrPath)
 {
-    SDL_assert(nameOrPath != nullptr);
+    ECSILog_Check(nameOrPath != nullptr, SHUResult_ErrAssertion);
 
     if (!ECSISession_CanOpen())
     {
@@ -1093,7 +1094,7 @@ SHUResult ECSSession_OpenPreset(const char *nameOrPath)
 
 SHUResult ECSSession_ListPresets(ECSValue *retList)
 {
-    SDL_assert(retList != nullptr);
+    ECSILog_Check(retList != nullptr, SHUResult_ErrAssertion);
 
     // the user's presets first, so they win over first-party presets of the same name
     ECSISessionFile *files = nullptr;
@@ -1110,7 +1111,7 @@ SHUResult ECSSession_ListPresets(ECSValue *retList)
 
 SHUResult ECSSession_ListSessions(ECSValue *retList)
 {
-    SDL_assert(retList != nullptr);
+    ECSILog_Check(retList != nullptr, SHUResult_ErrAssertion);
 
     ECSISessionFile *files = nullptr;
     SHUResult result = ECSISession_FindFiles(&files, SESSION.sessions);
@@ -1122,7 +1123,7 @@ SHUResult ECSSession_ListSessions(ECSValue *retList)
 
 SHUResult ECSSession_Save(const char *path)
 {
-    SDL_assert(path != nullptr);
+    ECSILog_Check(path != nullptr, SHUResult_ErrAssertion);
 
     ECSValue *session = nullptr;
     SHU_ReturnResult(ECSValue_Create(&session));

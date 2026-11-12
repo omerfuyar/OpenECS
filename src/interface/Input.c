@@ -1,5 +1,6 @@
 #include "interface/Input.h"
 
+#include "base/Log.h"
 #include "interface/Keys.h"
 #include "interface/Layout.h"
 #include "interface/Menus.h"
@@ -1218,8 +1219,8 @@ void ECSIInput_UpdateTextInput(void)
 
 SHUResult ECSPanel_StartDrag(ECSPanel panel, const char *type, const ECSValue *value)
 {
-    SDL_assert(panel != nullptr);
-    SDL_assert(type != nullptr);
+    ECSILog_Check(panel != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(type != nullptr, SHUResult_ErrAssertion);
 
     if (ECSIInput_PointerPanel() != panel)
     {

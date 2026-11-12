@@ -45,11 +45,12 @@ static struct
     SDL_WindowID grabID;            // the window that got the press while buttons are held, as the system keeps the pointer there; 0 for the event's own
     f32 grabX;                      // where that window shows in the event's own, so positions move into it
     f32 grabY;
-    SDL_Point *sizes; // stb_ds array of each OS window's size when the test last went on
-    char **files;     // stb_ds array of the paths that the test's files field names
-    char **keptTexts; // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
-    char *presets;    // the folder that the test's presets field names, ending with a separator, or nullptr
-    char *sessions;   // the folder that the test's sessions field names, ending with a separator, or nullptr
+    SDL_Point *sizes;      // stb_ds array of each OS window's size when the test last went on
+    char **files;          // stb_ds array of the paths that the test's files field names
+    char **keptTexts;      // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
+    char *presets;         // the folder that the test's presets field names, ending with a separator, or nullptr
+    char *sessions;        // the folder that the test's sessions field names, ending with a separator, or nullptr
+    SDL_AtomicInt misused; // a function was misused while the test ran, on any thread, so the test fails
 } TEST = {0};
 
 /// @brief test.match: compares by contents and names the path of the first difference.
@@ -1124,7 +1125,12 @@ bool ECSITest_Step(void)
         return true;
     }
 
-    if (status == LUA_OK)
+    if (status == LUA_OK && SDL_GetAtomicInt(&TEST.misused) != 0)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The test failed: a function was misused; the log has where.");
+        TEST.failed = true;
+    }
+    else if (status == LUA_OK)
     {
         SDL_Log("The test passed.");
     }
@@ -1143,6 +1149,11 @@ bool ECSITest_Step(void)
 int ECSITest_GetStatus(void)
 {
     return TEST.failed || TEST.thread != nullptr ? 1 : 0;
+}
+
+void ECSITest_NoteMisuse(void)
+{
+    SDL_SetAtomicInt(&TEST.misused, 1);
 }
 
 #else
@@ -1172,6 +1183,10 @@ const char *ECSITest_GetSessionsFolder(void)
 }
 
 void ECSITest_Terminate(void)
+{
+}
+
+void ECSITest_NoteMisuse(void)
 {
 }
 

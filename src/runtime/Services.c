@@ -1,5 +1,6 @@
 #include "runtime/Services.h"
 
+#include "base/Log.h"
 #include "base/Lua.h"
 #include "runtime/Settings.h"
 
@@ -139,6 +140,7 @@ typedef struct ECSISignature
     ECSIParameter *parameters; // stb_ds array
     ffi_type **types;          // stb_ds array of the parameters' libffi types
     usz outCount;
+    bool fails; // its last parameter is "out string error": the function can fail, and gives nothing else then (DESIGN 10.8)
     ffi_cif cif;
     char *text; // the signature written the same way every time, such as "int(string, out float)"
 } ECSISignature;
@@ -242,8 +244,18 @@ static struct
         ECSSurface *surface;
         ECSSurfaceDrawnFunction Drawn;
         void *data;
-    } *drawn; // stb_ds array of the functions that run once the Draw of their surface returns, in the order they were given
+    } *drawn;                // stb_ds array of the functions that run once the Draw of their surface returns, in the order they were given
+    SDL_AtomicInt logErrors; // the setting ecs.logServiceErrors, which threads read
 } SERVICES = {0};
+
+/// @brief File-level state of each thread.
+static thread_local struct
+{
+    char *error; // the message of the last ECS_Fail on this thread, or nullptr
+} SERVICES_THREAD = {0};
+
+/// @brief The setting that logs services' failures (DESIGN 10.8).
+#define OPENECS_LOG_SERVICE_ERRORS "ecs.logServiceErrors"
 
 /// @brief Text that grows as parts are added; a failed addition leaves it nullptr, and later additions do nothing.
 typedef struct ECSIText
@@ -650,9 +662,27 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
 
     if (!valid || *cursor != '\0')
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a signature, such as \"int(string, out float)\".", text);
+        (void)ECS_Check(nullptr, false, "'%s' is not a signature, such as \"int(string, out float)\".", text);
         ECSISignature_Free(retSignature);
-        return SHUResult_ErrBadData;
+        return SHUResult_ErrAssertion;
+    }
+
+    // a function that can fail says why in its last parameter, and only there
+    usz count = arrlenu(retSignature->parameters);
+
+    for (usz i = 0; i < count; i++)
+    {
+        const ECSIParameter *parameter = &retSignature->parameters[i];
+        bool error = parameter->out && parameter->type == ECSIParameterType_String && parameter->name != nullptr && SDL_strcmp(parameter->name, "error") == 0;
+
+        if (error && i + 1 != count)
+        {
+            (void)ECS_Check(nullptr, false, "In '%s', out string error is not the last parameter.", text);
+            ECSISignature_Free(retSignature);
+            return SHUResult_ErrAssertion;
+        }
+
+        retSignature->fails = error;
     }
 
     ECSIText written = ECSISignature_Write(retSignature);
@@ -1069,8 +1099,8 @@ static SHUResult ECSIStructs_TakeBack(ECSIStructType *type, const char *fields)
 
     if (!same)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Struct type '%s' must keep the fields it had before its plugin was disabled.", type->name);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Struct type '%s' must keep the fields it had before its plugin was disabled.", type->name);
+        return SHUResult_ErrAssertion;
     }
 
     type->kept = false;
@@ -1090,8 +1120,8 @@ static SHUResult ECSIStructs_Register(ECSPlugin plugin, const char *name, const 
     // handles and structs share the names of types, so a parameter names one of them
     if (kept != nullptr || ECSIServices_FindHandleType(name) != nullptr)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Type '%s' is already registered.", name);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Type '%s' is already registered.", name);
+        return SHUResult_ErrAssertion;
     }
 
     ECSIStructType *type = SDL_calloc(1, sizeof(ECSIStructType));
@@ -1111,9 +1141,9 @@ static SHUResult ECSIStructs_Register(ECSPlugin plugin, const char *name, const 
 
     if (!ECSIStructs_ReadFields(fields, type))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' are not the fields of a struct, such as \"float x, float y\" or \"float[16]\".", fields);
+        (void)ECS_Check(nullptr, false, "'%s' are not the fields of a struct, such as \"float x, float y\" or \"float[16]\".", fields);
         ECSIStructs_FreeType(type);
-        return SHUResult_ErrBadData;
+        return SHUResult_ErrAssertion;
     }
 
     // the methods go into __index once there are some
@@ -1175,32 +1205,32 @@ static void ECSIServices_CheckArgument(lua_State *state, int index, ECSIParamete
         break;
     case ECSIParameterType_Int:
     {
-        lua_Integer integer = luaL_checkinteger(state, index);
-        luaL_argcheck(state, integer >= SDL_MIN_SINT32 && integer <= SDL_MAX_SINT32, index, "does not fit in an int");
+        lua_Integer integer = ECSILua_CheckInteger(state, index);
+        ECSILua_ArgCheck(state, integer >= SDL_MIN_SINT32 && integer <= SDL_MAX_SINT32, index, "does not fit in an int");
         retSlot->integer = (i32)integer;
         break;
     }
     case ECSIParameterType_Int64:
-        retSlot->integer64 = (i64)luaL_checkinteger(state, index);
+        retSlot->integer64 = (i64)ECSILua_CheckInteger(state, index);
         break;
     case ECSIParameterType_Float:
-        retSlot->single = (f32)luaL_checknumber(state, index);
+        retSlot->single = (f32)ECSILua_CheckNumber(state, index);
         break;
     case ECSIParameterType_Double:
-        retSlot->number = (f64)luaL_checknumber(state, index);
+        retSlot->number = (f64)ECSILua_CheckNumber(state, index);
         break;
     case ECSIParameterType_Color:
-        luaL_argcheck(state, ECSColor_Parse(luaL_checkstring(state, index), &retSlot->color), index, "is not a colour: \"#RRGGBB\", \"#RRGGBBAA\" or a colour of the theme, such as \"text\"");
+        ECSILua_ArgCheck(state, ECSColor_Parse(ECSILua_CheckString(state, index), &retSlot->color), index, "is not a colour: \"#RRGGBB\", \"#RRGGBBAA\" or a colour of the theme, such as \"text\"");
         break;
     case ECSIParameterType_String:
         // valid during the call, because the argument stays on the stack
-        retSlot->string = luaL_checkstring(state, index);
+        retSlot->string = ECSILua_CheckString(state, index);
         break;
     case ECSIParameterType_Callback:
         // the closure is made later, because it allocates
         if (!lua_isnoneornil(state, index))
         {
-            luaL_checktype(state, index, LUA_TFUNCTION);
+            ECSILua_CheckType(state, index, LUA_TFUNCTION);
         }
 
         retSlot->pointer = nullptr;
@@ -1216,7 +1246,7 @@ static void ECSIServices_CheckArgument(lua_State *state, int index, ECSIParamete
         {
             const char *problem = field == nullptr ? lua_pushfstring(state, "is not a %s, a table of its fields", parameter.structType->name)
                                                    : lua_pushfstring(state, "is not a %s: its field '%s' is missing or of another type", parameter.structType->name, field);
-            luaL_argerror(state, index, problem);
+            ECSILua_ArgError(state, index, problem);
         }
 
         retSlot->pointer = memory;
@@ -1226,7 +1256,7 @@ static void ECSIServices_CheckArgument(lua_State *state, int index, ECSIParamete
     {
         // a copy, because the function may write into a buffer and Lua strings must not change
         usz length = 0;
-        const char *bytes = luaL_checklstring(state, index, &length);
+        const char *bytes = ECSILua_CheckLString(state, index, &length);
         void *copy = lua_newuserdatauv(state, length + 1, 0);
         SDL_memcpy(copy, bytes, length);
         retSlot->buffer = cs(copy, length);
@@ -1349,21 +1379,44 @@ static SHUResult ECSIServices_MakeCallbacks(lua_State *state, const ECSIFunction
 static int ECSIServices_PushResults(lua_State *state, const ECSISignature *signature, const ECSICallParameter *parameters, ECSISlot *returned)
 {
     int pushed = 0;
+    usz count = arrlenu(signature->parameters);
+
+    // a function that failed gives nil for each result, and why last, as Lua's io.open does
+    bool failed = signature->fails && *(const char *const *)&parameters[count - 1].output != nullptr;
 
     if (signature->result.type != ECSIParameterType_Void)
     {
         ECSIServices_NarrowResult(signature->result, returned);
-        ECSIServices_PushArgument(state, signature->result, returned);
+
+        if (failed)
+        {
+            lua_pushnil(state);
+        }
+        else
+        {
+            ECSIServices_PushArgument(state, signature->result, returned);
+        }
+
         pushed++;
     }
 
-    for (usz i = 0; i < arrlenu(signature->parameters); i++)
+    for (usz i = 0; i < count; i++)
     {
-        if (signature->parameters[i].out)
+        if (!signature->parameters[i].out)
+        {
+            continue;
+        }
+
+        if (failed && i + 1 < count)
+        {
+            lua_pushnil(state);
+        }
+        else
         {
             ECSIServices_PushArgument(state, signature->parameters[i], &parameters[i].output);
-            pushed++;
         }
+
+        pushed++;
     }
 
     return pushed;
@@ -1406,7 +1459,7 @@ static int ECSIServices_CallC(lua_State *state)
 
     if (function->pointer == nullptr)
     {
-        return luaL_error(state, "a callback given to '%s' is valid only during the call that gave it", function->name);
+        ECSILua_Misuse(state, "a callback given to '%s' is valid only during the call that gave it", function->name);
     }
 
     // a missing argument is nil; the stack holds one for each, so the storage below never stands where an argument is read
@@ -1416,6 +1469,8 @@ static int ECSIServices_CallC(lua_State *state)
     {
         lua_settop(state, inputs);
     }
+
+    u64 misuses = ECSIPlugin_GetMisuseCount();
 
     // the storage is a userdata, so it is freed even when an argument raises an error; libffi takes the arguments as an array of pointers
     ECSICallParameter *parameters = lua_newuserdatauv(state, count * (sizeof(ECSICallParameter) + sizeof(void *)) + 1, 0);
@@ -1434,7 +1489,9 @@ static int ECSIServices_CallC(lua_State *state)
         // a callback whose giver was disabled since has lost its code: nothing runs, and Lua gets zeros
         if (function->giver == nullptr || ECSIPlugin_GetGeneration(function->giver) == function->generation)
         {
+            lua_State *outer = ECSILua_SetCaller(state);
             ffi_call((ffi_cif *)&signature->cif, FFI_FN(function->pointer), &returned, arguments);
+            (void)ECSILua_SetCaller(outer);
         }
 
         pushed = ECSIServices_PushResults(state, signature, parameters, &returned);
@@ -1444,7 +1501,13 @@ static int ECSIServices_CallC(lua_State *state)
 
     if (result)
     {
-        return luaL_error(state, "cannot convert a value for '%s' (%s)", function->name, SHUResult_String(result));
+        ECSIServices_Raise(state, result, "cannot convert a value for '%s'", function->name);
+    }
+
+    // a misuse that the C function checked stops the Lua code at its line, as Lua's own checks do (DESIGN 1.4)
+    if (ECSIPlugin_GetMisuseCount() != misuses)
+    {
+        return luaL_error(state, "%s", ECSIPlugin_GetLastMisuse());
     }
 
     return pushed;
@@ -1487,6 +1550,20 @@ static ECSIHandleType *ECSIServices_DropObject(void *object)
     return type;
 }
 
+/// @brief Calls the Destroy of an object's type, if it has a type and the type has one. A misuse in it is only reported.
+static void ECSIServices_DestroyObject(ECSIHandleType *type, void *object)
+{
+    if (type == nullptr || type->Destroy == nullptr)
+    {
+        return;
+    }
+
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, type->plugin, nullptr, ECSICallbackType_Quiet);
+    type->Destroy(object);
+    (void)ECSIPlugin_Leave(&callback);
+}
+
 /// @brief Lets go of a Lua handle that the garbage collector frees; the object is destroyed with its last handle.
 static int ECSIServices_HandleCollect(lua_State *state)
 {
@@ -1517,11 +1594,7 @@ static int ECSIServices_HandleCollect(lua_State *state)
 
     ECSIHandleType *type = ECSIServices_DropObject(object);
 
-    if (type != nullptr && type->Destroy != nullptr)
-    {
-        type->Destroy(object);
-    }
-
+    ECSIServices_DestroyObject(type, object);
     return 0;
 }
 
@@ -1547,7 +1620,7 @@ static void ECSIServices_CheckLuaHandleType(lua_State *state, ECSPlugin plugin, 
 
     if (type == nullptr || type->plugin != plugin || type->Destroy != ECSIServices_DestroyLuaObject)
     {
-        luaL_error(state, "handle type '%s' is not one that this plugin registered in Lua", name);
+        ECSILua_Misuse(state, "handle type '%s' is not one that this plugin registered in Lua", name);
     }
 }
 
@@ -1565,8 +1638,8 @@ static SHUResult ECSIServices_RegisterHandleType(ECSPlugin plugin, const char *n
 
     if (kept != nullptr || ECSIServices_FindStructType(name) != nullptr)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Type '%s' is already registered.", name);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Type '%s' is already registered.", name);
+        return SHUResult_ErrAssertion;
     }
 
     ECSIHandleType *type = SDL_calloc(1, sizeof(ECSIHandleType));
@@ -1615,10 +1688,7 @@ static void ECSIServices_DropHandles(const ECSIHandleType *type)
     {
         ECSIHandleType *objectType = ECSIServices_DropObject(objects[i]);
 
-        if (objectType != nullptr && objectType->Destroy != nullptr)
-        {
-            objectType->Destroy(objects[i]);
-        }
+        ECSIServices_DestroyObject(objectType, objects[i]);
     }
 
     arrfree(objects);
@@ -1936,14 +2006,19 @@ static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *
 
     int index = callbacks + 1;
 
-    if (signature->result.type != ECSIParameterType_Void && !ECSIServices_WriteOutput(state, function, index++, anchors, signature->result, result, true))
+    // a Lua function that failed gives nil for its results, and why last: C gets zeros for them
+    bool failedCall = signature->fails && lua_type(state, callbacks + resultCount) == LUA_TSTRING;
+
+    if (signature->result.type != ECSIParameterType_Void && !ECSIServices_WriteOutput(state, function, index++, anchors, signature->result, result, true) &&
+        !(failedCall && lua_isnil(state, index - 1)))
     {
         ECSIServices_ReportType(state, function, index - 1);
     }
 
     for (usz i = 0; i < count; i++)
     {
-        if (signature->parameters[i].out && !ECSIServices_WriteOutput(state, function, index++, anchors, signature->parameters[i], *(void **)arguments[i], false))
+        if (signature->parameters[i].out && !ECSIServices_WriteOutput(state, function, index++, anchors, signature->parameters[i], *(void **)arguments[i], false) &&
+            !(failedCall && lua_isnil(state, index - 1)))
         {
             ECSIServices_ReportType(state, function, index - 1);
         }
@@ -2184,21 +2259,22 @@ static SHUResult ECSIServices_CreateFunction(ECSPlugin plugin, const char *name,
     // the core's own names start with "ecs."
     if (plugin == nullptr ? SDL_strncmp(name, "ecs.", 4) != 0 : !ECSIPlugin_OwnsName(plugin, name))
     {
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Function '%s' is not named after the plugin that registers it.", name);
+        return SHUResult_ErrAssertion;
     }
 
     if (ECSIServices_FindFunction(name) != nullptr)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Function '%s' is already registered.", name);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Function '%s' is already registered.", name);
+        return SHUResult_ErrAssertion;
     }
 
     const ECSIFunction *clash = plugin == nullptr ? nullptr : ECSIServices_FindNamespaceClash(plugin, name);
 
     if (clash != nullptr)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Function '%s' cannot be registered: '%s' is a function, and a name's part before a dot is a namespace.", name, clash->name);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Function '%s' cannot be registered: '%s' is a function, and a name's part before a dot is a namespace.", name, clash->name);
+        return SHUResult_ErrAssertion;
     }
 
     ECSIFunction *function = SDL_calloc(1, sizeof(ECSIFunction));
@@ -2904,6 +2980,94 @@ SHUResult ECSIServices_Initialize(void)
     return ECSIServices_RegisterHandleType(nullptr, "ecs.surface", nullptr);
 }
 
+void ECSIServices_Raise(lua_State *state, SHUResult result, const char *format, ...)
+{
+    SDL_assert(state != nullptr);
+    SDL_assert(result != SHUResult_Ok);
+
+    if (result == SHUResult_ErrAllocation)
+    {
+        luaL_error(state, "out of memory");
+    }
+
+    if (result == SHUResult_ErrAssertion)
+    {
+        luaL_error(state, "%s", ECSIPlugin_GetLastMisuse());
+    }
+
+    va_list arguments;
+    va_start(arguments, format);
+    const char *message = lua_pushvfstring(state, format, arguments);
+    va_end(arguments);
+    ECSILua_Misuse(state, "%s (%s)", message, SHUResult_String(result));
+}
+
+/// @brief Follows the setting ecs.logServiceErrors, for every thread.
+static void ECSIServices_LogErrorsChanged(void *data)
+{
+    (void)data;
+    SDL_SetAtomicInt(&SERVICES.logErrors, ECSValue_GetBool(ECSSetting_Get(OPENECS_LOG_SERVICE_ERRORS), true));
+}
+
+SHUResult ECSIServices_DeclareSettings(void)
+{
+    ECSSettingDesc desc = {
+        .name = OPENECS_LOG_SERVICE_ERRORS,
+        .type = ECSSettingType_Bool,
+        .description = "Log the failures that services give their callers, such as a file that cannot be read",
+        .Changed = ECSIServices_LogErrorsChanged,
+    };
+    SHU_ReturnResult(ECSISettings_DeclareCore(&desc));
+    ECSIServices_LogErrorsChanged(nullptr);
+    return SHUResult_Ok;
+}
+
+void ECS_Fail(ECSPlugin plugin, const char **retError, const char *format, ...)
+{
+    if (!ECS_Check(nullptr, plugin != nullptr && retError != nullptr && format != nullptr, "ECS_Fail needs a plugin, an error to write and a format"))
+    {
+        return;
+    }
+
+    va_list arguments;
+    va_start(arguments, format);
+    char *message = nullptr;
+    bool formatted = SDL_vasprintf(&message, format, arguments) >= 0;
+    va_end(arguments);
+
+    // the arguments may name the last message, such as an inner call's error, so it is freed only now
+    SDL_free(SERVICES_THREAD.error);
+    SERVICES_THREAD.error = formatted ? message : nullptr;
+    *retError = SERVICES_THREAD.error != nullptr ? SERVICES_THREAD.error : "out of memory";
+
+    if (SDL_GetAtomicInt(&SERVICES.logErrors) != 0)
+    {
+        ECS_Log(plugin, ECSLogLevel_Warning, "%s", *retError);
+    }
+}
+
+bool ECS_Check(ECSPlugin plugin, bool condition, const char *format, ...)
+{
+    if (condition)
+    {
+        return true;
+    }
+
+    char *message = nullptr;
+
+    if (format != nullptr)
+    {
+        va_list arguments;
+        va_start(arguments, format);
+        message = SDL_vasprintf(&message, format, arguments) < 0 ? nullptr : message;
+        va_end(arguments);
+    }
+
+    ECSIPlugin_NoteMisuse(plugin, message != nullptr ? message : "a check failed");
+    SDL_free(message);
+    return false;
+}
+
 void ECSIServices_PushHandle(const char *type, void *object)
 {
     SDL_assert(type != nullptr);
@@ -2977,15 +3141,15 @@ void *ECSIServices_CheckHandle(int index, const char *type)
 
     if (handleType == nullptr)
     {
-        luaL_error(state, "handle type '%s' is gone; its plugin was removed", type);
+        ECSILua_Misuse(state, "handle type '%s' is gone; its plugin was removed", type);
         return nullptr;
     }
 
-    ECSIHandle *handle = luaL_checkudata(state, index, handleType->metatable);
+    ECSIHandle *handle = ECSILua_CheckUdata(state, index, handleType->metatable);
 
     if (handle->object == nullptr)
     {
-        luaL_argerror(state, index, "the object of this handle is gone");
+        ECSILua_ArgError(state, index, "the object of this handle is gone");
     }
 
     return handle->object;
@@ -3016,8 +3180,8 @@ void ECSIServices_EndSurface(ECSSurface *surface)
 
 SHUResult ECSSurface_OnDrawn(ECSSurface *surface, ECSSurfaceDrawnFunction Drawn, void *data)
 {
-    SDL_assert(surface != nullptr);
-    SDL_assert(Drawn != nullptr);
+    ECSILog_Check(surface != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(Drawn != nullptr, SHUResult_ErrAssertion);
 
     usz count = arrlenu(SERVICES.drawn);
     arrput(SERVICES.drawn, ((typeof(*SERVICES.drawn)){.surface = surface, .Drawn = Drawn, .data = data}));
@@ -3255,16 +3419,17 @@ SHUResult ECSIServices_PushFunction(ECSPlugin plugin, const char *name, const ch
 
 SHUResult ECSService_RegisterFunction(ECSPlugin plugin, const char *name, ECSFunction function, const char *signature, const char *description)
 {
-    SDL_assert(SDL_IsMainThread());
-    SDL_assert(plugin != nullptr);
-    SDL_assert(name != nullptr);
-    SDL_assert(function != nullptr);
-    SDL_assert(signature != nullptr);
+    ECSILog_Check(SDL_IsMainThread(), SHUResult_ErrAssertion);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(name != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(function != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(signature != nullptr, SHUResult_ErrAssertion);
 
     // the plugin gives the local name, and the function is known by its full name
-    char *fullName = ECSIPlugin_MakeFullName(plugin, name);
+    char *fullName = nullptr;
     ECSIFunction *registered = nullptr;
-    SHUResult result = fullName == nullptr ? SHUResult_ErrBadData : ECSIServices_CreateFunction(plugin, fullName, signature, description, &registered);
+    SHUResult result = ECSIPlugin_MakeFullName(plugin, name, &fullName);
+    result = result ? result : ECSIServices_CreateFunction(plugin, fullName, signature, description, &registered);
     SDL_free(fullName);
     SHU_ReturnResult(result);
     registered->pointer = function;
@@ -3320,16 +3485,25 @@ SHUResult ECSIServices_CallBound(const char *name, ECSPanel focus)
         return SHUResult_ErrNotFound;
     }
 
-    // a C function and a Lua function's closure are called the same way
-    if (SDL_strcmp(function->signature.text, "void()") == 0)
-    {
-        function->pointer();
-        return SHUResult_Ok;
-    }
+    bool plain = SDL_strcmp(function->signature.text, "void()") == 0;
 
-    if (SDL_strcmp(function->signature.text, "void(handle<ecs.panel>)") == 0)
+    if (plain || SDL_strcmp(function->signature.text, "void(handle<ecs.panel>)") == 0)
     {
-        ((ECSIPanelFunction)function->pointer)(focus);
+        // a misuse in the function is its plugin's, as in any other callback
+        ECSICallback callback;
+        ECSIPlugin_Enter(&callback, function->plugin, nullptr, ECSICallbackType_Plugin);
+
+        // a C function and a Lua function's closure are called the same way
+        if (plain)
+        {
+            function->pointer();
+        }
+        else
+        {
+            ((ECSIPanelFunction)function->pointer)(focus);
+        }
+
+        (void)ECSIPlugin_Leave(&callback);
         return SHUResult_Ok;
     }
 
@@ -3356,7 +3530,10 @@ SHUResult ECSIServices_CallOpen(const char *name, const char *path)
         return SHUResult_ErrBadData;
     }
 
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, function->plugin, nullptr, ECSICallbackType_Plugin);
     ((ECSIOpenFunction)function->pointer)(path);
+    (void)ECSIPlugin_Leave(&callback);
     return SHUResult_Ok;
 }
 
@@ -3383,14 +3560,16 @@ const char *ECSIServices_GetDescription(const char *name)
 
 SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function)
 {
-    SDL_assert(SDL_IsMainThread());
-    SDL_assert(plugin != nullptr);
-    SDL_assert(type != nullptr);
-    SDL_assert(method != nullptr);
-    SDL_assert(function != nullptr);
+    ECSILog_Check(SDL_IsMainThread(), SHUResult_ErrAssertion);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(type != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(method != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(function != nullptr, SHUResult_ErrAssertion);
 
-    char *typeName = ECSIPlugin_MakeFullName(plugin, type);
-    char *functionName = ECSIPlugin_MakeFullName(plugin, function);
+    char *typeName = nullptr;
+    char *functionName = nullptr;
+    (void)ECSIPlugin_MakeFullName(plugin, type, &typeName);
+    (void)ECSIPlugin_MakeFullName(plugin, function, &functionName);
     ECSIHandleType *handleType = typeName == nullptr ? nullptr : ECSIServices_FindHandleType(typeName);
     ECSIFunction *target = functionName == nullptr ? nullptr : ECSIServices_FindFunction(functionName);
     SHUResult result = SHUResult_Ok;
@@ -3399,16 +3578,16 @@ SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char *type, const char *me
     if (handleType == nullptr || handleType->plugin != plugin || target == nullptr || arrlenu(target->signature.parameters) == 0 ||
         target->signature.parameters[0].type != ECSIParameterType_Handle || target->signature.parameters[0].handle != handleType)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' cannot be a method of '%s': it needs to be a function of the plugin whose first parameter is a handle<%s>.", functionName != nullptr ? functionName : function, typeName != nullptr ? typeName : type, typeName != nullptr ? typeName : type);
-        result = SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "'%s' cannot be a method of '%s': it needs to be a function of the plugin whose first parameter is a handle<%s>.", functionName != nullptr ? functionName : function, typeName != nullptr ? typeName : type, typeName != nullptr ? typeName : type);
+        result = SHUResult_ErrAssertion;
     }
 
     for (usz i = 0; !result && i < arrlenu(handleType->methods); i++)
     {
         if (SDL_strcmp(handleType->methods[i], method) == 0)
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Handle type '%s' already has a method '%s'.", typeName, method);
-            result = SHUResult_ErrBadData;
+            (void)ECS_Check(nullptr, false, "Handle type '%s' already has a method '%s'.", typeName, method);
+            result = SHUResult_ErrAssertion;
         }
     }
 
@@ -3451,12 +3630,13 @@ SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char *type, const char *me
 
 SHUResult ECSStruct_Register(ECSPlugin plugin, const char *name, const char *fields)
 {
-    SDL_assert(plugin != nullptr);
-    SDL_assert(name != nullptr);
-    SDL_assert(fields != nullptr);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(name != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(fields != nullptr, SHUResult_ErrAssertion);
 
-    char *fullName = ECSIPlugin_MakeFullName(plugin, name);
-    SHUResult result = fullName == nullptr ? SHUResult_ErrBadData : ECSIStructs_Register(plugin, fullName, fields);
+    char *fullName = nullptr;
+    SHUResult result = ECSIPlugin_MakeFullName(plugin, name, &fullName);
+    result = result ? result : ECSIStructs_Register(plugin, fullName, fields);
     SDL_free(fullName);
     return result;
 }
@@ -3500,13 +3680,15 @@ static void ECSIStructs_SetMethod(lua_State *state, const ECSIStructType *type, 
 
 SHUResult ECSStruct_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function)
 {
-    SDL_assert(plugin != nullptr);
-    SDL_assert(type != nullptr);
-    SDL_assert(method != nullptr);
-    SDL_assert(function != nullptr);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(type != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(method != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(function != nullptr, SHUResult_ErrAssertion);
 
-    char *typeName = ECSIPlugin_MakeFullName(plugin, type);
-    char *functionName = ECSIPlugin_MakeFullName(plugin, function);
+    char *typeName = nullptr;
+    char *functionName = nullptr;
+    (void)ECSIPlugin_MakeFullName(plugin, type, &typeName);
+    (void)ECSIPlugin_MakeFullName(plugin, function, &functionName);
     ECSIStructType *structType = typeName == nullptr ? nullptr : ECSIServices_FindStructType(typeName);
     ECSIFunction *target = functionName == nullptr ? nullptr : ECSIServices_FindFunction(functionName);
     SHUResult result = SHUResult_Ok;
@@ -3515,16 +3697,16 @@ SHUResult ECSStruct_AddMethod(ECSPlugin plugin, const char *type, const char *me
     if (structType == nullptr || structType->plugin != plugin || target == nullptr || arrlenu(target->signature.parameters) == 0 ||
         target->signature.parameters[0].type != ECSIParameterType_Struct || target->signature.parameters[0].out || target->signature.parameters[0].structType != structType)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' cannot be a method of '%s': it needs to be a function of the plugin whose first parameter is a struct<%s>.", functionName != nullptr ? functionName : function, typeName != nullptr ? typeName : type, typeName != nullptr ? typeName : type);
-        result = SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "'%s' cannot be a method of '%s': it needs to be a function of the plugin whose first parameter is a struct<%s>.", functionName != nullptr ? functionName : function, typeName != nullptr ? typeName : type, typeName != nullptr ? typeName : type);
+        result = SHUResult_ErrAssertion;
     }
 
     for (usz i = 0; !result && i < arrlenu(structType->methods); i++)
     {
         if (SDL_strcmp(structType->methods[i], method) == 0)
         {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Struct type '%s' already has a method '%s'.", typeName, method);
-            result = SHUResult_ErrBadData;
+            (void)ECS_Check(nullptr, false, "Struct type '%s' already has a method '%s'.", typeName, method);
+            result = SHUResult_ErrAssertion;
         }
     }
 
@@ -3553,7 +3735,7 @@ void ECSIServices_PushStruct(int index, const char *type)
 
     if (structType == nullptr)
     {
-        luaL_error(state, "struct type '%s' is not registered", type);
+        ECSILua_Misuse(state, "struct type '%s' is not registered", type);
         return;
     }
 
@@ -3564,7 +3746,7 @@ void ECSIServices_PushStruct(int index, const char *type)
 
     if (!ECSIStructs_Read(state, index, structType, memory, &field))
     {
-        luaL_error(state, field == nullptr ? "a %s is made from a table of its fields" : "a %s needs its field '%s', of its type", type, field);
+        ECSILua_Misuse(state, field == nullptr ? "a %s is made from a table of its fields" : "a %s needs its field '%s', of its type", type, field);
         return;
     }
 
@@ -3577,8 +3759,9 @@ SHUResult ECSIServices_RegisterLuaHandleType(ECSPlugin plugin, const char *name)
     SDL_assert(plugin != nullptr);
     SDL_assert(name != nullptr);
 
-    char *fullName = ECSIPlugin_MakeFullName(plugin, name);
-    SHUResult result = fullName == nullptr ? SHUResult_ErrBadData : ECSIServices_RegisterHandleType(plugin, fullName, ECSIServices_DestroyLuaObject);
+    char *fullName = nullptr;
+    SHUResult result = ECSIPlugin_MakeFullName(plugin, name, &fullName);
+    result = result ? result : ECSIServices_RegisterHandleType(plugin, fullName, ECSIServices_DestroyLuaObject);
     SDL_free(fullName);
     return result;
 }
@@ -3618,52 +3801,51 @@ void ECSIServices_PushLuaHandleValue(ECSPlugin plugin, const char *name, int ind
 
 SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, ECSHandleDestroyFunction Destroy)
 {
-    SDL_assert(SDL_IsMainThread());
-    SDL_assert(plugin != nullptr);
-    SDL_assert(name != nullptr);
+    ECSILog_Check(SDL_IsMainThread(), SHUResult_ErrAssertion);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(name != nullptr, SHUResult_ErrAssertion);
 
-    char *fullName = ECSIPlugin_MakeFullName(plugin, name);
-    SHUResult result = fullName == nullptr ? SHUResult_ErrBadData : ECSIServices_RegisterHandleType(plugin, fullName, Destroy);
+    char *fullName = nullptr;
+    SHUResult result = ECSIPlugin_MakeFullName(plugin, name, &fullName);
+    result = result ? result : ECSIServices_RegisterHandleType(plugin, fullName, Destroy);
     SDL_free(fullName);
     return result;
 }
 
 void ECSHandle_Forget(void *object)
 {
-    SDL_assert(SDL_IsMainThread());
-    SDL_assert(object != nullptr);
+    ECSILog_Check(SDL_IsMainThread());
+    ECSILog_Check(object != nullptr);
 
     ECSIServices_DropObject(object);
 }
 
 void ECSHandle_Free(ECSPlugin plugin, const char *type, void *object)
 {
-    SDL_assert(SDL_IsMainThread());
-    SDL_assert(plugin != nullptr);
-    SDL_assert(type != nullptr);
-    SDL_assert(object != nullptr);
+    ECSILog_Check(SDL_IsMainThread());
+    ECSILog_Check(plugin != nullptr);
+    ECSILog_Check(type != nullptr);
+    ECSILog_Check(object != nullptr);
 
     // Lua may have no handle of the object, so its type is found by name
-    char *fullName = ECSIPlugin_MakeFullName(plugin, type);
+    char *fullName = nullptr;
+    (void)ECSIPlugin_MakeFullName(plugin, type, &fullName);
     ECSIHandleType *handleType = fullName == nullptr ? nullptr : ECSIServices_FindHandleType(fullName);
     SDL_free(fullName);
-    SDL_assert(handleType != nullptr && handleType->plugin == plugin);
+    ECSILog_Check(handleType != nullptr && handleType->plugin == plugin);
 
     ECSIServices_DropObject(object);
 
-    if (handleType != nullptr && handleType->Destroy != nullptr)
-    {
-        handleType->Destroy(object);
-    }
+    ECSIServices_DestroyObject(handleType, object);
 }
 
 SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, const char *name, const char *signature)
 {
-    SDL_assert(SDL_IsMainThread());
-    SDL_assert(plugin != nullptr);
-    SDL_assert(retFunction != nullptr);
-    SDL_assert(name != nullptr);
-    SDL_assert(signature != nullptr);
+    ECSILog_Check(SDL_IsMainThread(), SHUResult_ErrAssertion);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(retFunction != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(name != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(signature != nullptr, SHUResult_ErrAssertion);
 
     ECSIFunction *function = nullptr;
     SHU_ReturnResult(ECSIServices_Find(plugin, name, signature, &function));
@@ -3672,7 +3854,7 @@ SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, con
 
 void ECSService_ReleaseCallback(ECSFunction callback)
 {
-    SDL_assert(SDL_IsMainThread());
+    ECSILog_Check(SDL_IsMainThread());
     void *code = nullptr;
     SDL_memcpy(&code, &callback, sizeof(code));
 

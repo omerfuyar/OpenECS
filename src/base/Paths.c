@@ -1,5 +1,7 @@
 #include "base/Paths.h"
 
+#include "base/Log.h"
+
 #include "SDL3/SDL.h"
 
 bool ECSPath_IsSeparator(char character)
@@ -13,7 +15,7 @@ bool ECSPath_IsSeparator(char character)
 
 bool ECSPath_IsAbsolute(const char *path)
 {
-    SDL_assert(path != nullptr);
+    ECSILog_Check(path != nullptr, false);
 
 #if defined(_WIN32)
     bool letter = (path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z');
@@ -29,7 +31,7 @@ bool ECSPath_IsAbsolute(const char *path)
 
 const char *ECSPath_FindLastSeparator(const char *path)
 {
-    SDL_assert(path != nullptr);
+    ECSILog_Check(path != nullptr, nullptr);
 
     const char *last = nullptr;
 
@@ -46,8 +48,8 @@ const char *ECSPath_FindLastSeparator(const char *path)
 
 SHUResult ECSPath_GetFull(char **retFullPath, const char *path)
 {
-    SDL_assert(retFullPath != nullptr);
-    SDL_assert(path != nullptr);
+    ECSILog_Check(retFullPath != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(path != nullptr, SHUResult_ErrAssertion);
 
     if (SDL_asprintf(retFullPath, "%s%s", ECSPath_IsAbsolute(path) ? "" : SDL_GetBasePath(), path) < 0)
     {

@@ -3,6 +3,7 @@
 #include "base/Lua.h"
 #include "runtime/Tasks.h"
 #include "runtime/Plugins.h"
+#include "runtime/Services.h"
 
 #include "lua/lauxlib.h"
 #include "lua/lua.h"
@@ -75,7 +76,7 @@ static ECSValue *ECSIWorkers_CopyMessage(lua_State *state, int index)
     if (result)
     {
         ECSValue_Destroy(&message);
-        luaL_error(state, "the message cannot be copied (%s)", SHUResult_String(result));
+        ECSIServices_Raise(state, result, "the message cannot be copied");
     }
 
     return message;
@@ -96,7 +97,7 @@ static void ECSIWorkers_FreeMessages(ECSValue ***messages)
 
 static int ECSIWorkers_Log(lua_State *state, ECSLogLevel level)
 {
-    ECS_Log(lua_touserdata(state, lua_upvalueindex(1)), level, "%s", luaL_checkstring(state, 1));
+    ECS_Log(lua_touserdata(state, lua_upvalueindex(1)), level, "%s", ECSILua_CheckString(state, 1));
     return 0;
 }
 
@@ -128,6 +129,44 @@ static const luaL_Reg OPENECS_WORKERS_LOG[] = {
     {nullptr, nullptr},
 };
 
+/// @brief ecs.fail(message): logs a failure the plugin returns, while ecs.logServiceErrors is on, and gives the message, for return nil, ecs.fail(message).
+static int ECSIWorkers_Fail(lua_State *state)
+{
+    const char *message = ECSILua_CheckString(state, 1);
+    const char *error = nullptr;
+    ECS_Fail(lua_touserdata(state, lua_upvalueindex(1)), &error, "%s", message);
+    lua_pushstring(state, error);
+    return 1;
+}
+
+/// @brief ecs.check(condition, message): a misuse when the condition is false or nil. It stops the Lua code, with the line that called the checking function.
+static int ECSIWorkers_Check(lua_State *state)
+{
+    ECSILua_CheckAny(state, 1);
+    const char *message = ECSILua_CheckString(state, 2);
+
+    if (lua_toboolean(state, 1))
+    {
+        return 0;
+    }
+
+    lua_State *outer = ECSILua_SetCaller(state);
+    ECSIPlugin_NoteMisuse(lua_touserdata(state, lua_upvalueindex(1)), message);
+    (void)ECSILua_SetCaller(outer);
+
+    // as error(message, 2): the line to fix is the one that called the function which checked
+    luaL_where(state, 2);
+    lua_pushstring(state, message);
+    lua_concat(state, 2);
+    return lua_error(state);
+}
+
+static const luaL_Reg OPENECS_WORKERS_ERRORS[] = {
+    {"fail", ECSIWorkers_Fail},
+    {"check", ECSIWorkers_Check},
+    {nullptr, nullptr},
+};
+
 #pragma endregion Log
 
 #pragma region Worker Thread
@@ -152,7 +191,7 @@ static void ECSIWorkers_Hook(lua_State *state, lua_Debug *debug)
 /// @brief ecs.worker.send(value): sends a copy of a value to the main thread.
 static int ECSIWorkers_SendToMain(lua_State *state)
 {
-    luaL_checkany(state, 1);
+    ECSILua_CheckAny(state, 1);
     ECSIWorker *worker = ECSIWorkers_GetCurrent(state);
     ECSValue *message = ECSIWorkers_CopyMessage(state, 1);
 
@@ -166,7 +205,7 @@ static int ECSIWorkers_SendToMain(lua_State *state)
 /// @brief ecs.worker.receive(seconds): gives the oldest message from the main thread, waiting for one at most seconds, or without end if seconds is missing.
 static int ECSIWorkers_Receive(lua_State *state)
 {
-    f64 seconds = (f64)luaL_optnumber(state, 1, -1.0);
+    f64 seconds = (f64)ECSILua_OptNumber(state, 1, -1.0);
     ECSIWorker *worker = ECSIWorkers_GetCurrent(state);
     u64 end = SDL_GetTicksNS() + (u64)(SDL_max(seconds, 0.0) * (f64)SDL_NS_PER_SECOND);
     ECSValue *message = nullptr;
@@ -228,6 +267,7 @@ static int ECSIWorkers_Script(lua_State *state)
     lua_newtable(state);
     ECSIWorkers_PushLog(state, worker->plugin);
     lua_setfield(state, -2, "log");
+    ECSIWorkers_AddErrors(state, worker->plugin);
     luaL_newlib(state, OPENECS_WORKERS_OWN);
     lua_setfield(state, -2, "worker");
     lua_newtable(state);
@@ -259,7 +299,7 @@ static int ECSIWorkers_Script(lua_State *state)
 
     if (ECSValue_Create(&worker->result) || ECSILua_GetValue(state, -1, worker->result))
     {
-        return luaL_error(state, "what the worker returned cannot be copied");
+        ECSIServices_Raise(state, SHUResult_ErrBadData, "what the worker returned cannot be copied");
     }
 
     return 0;
@@ -279,7 +319,10 @@ static int SDLCALL ECSIWorkers_Run(void *data)
         *(ECSIWorker **)lua_getextraspace(state) = worker;
         lua_sethook(state, ECSIWorkers_Hook, LUA_MASKCOUNT, OPENECS_WORKER_CHECK_INTERVAL);
         lua_pushcfunction(state, ECSIWorkers_Script);
+        ECSICallback callback;
+        ECSIPlugin_Enter(&callback, worker->plugin, nullptr, ECSICallbackType_Plugin);
         worker->succeeded = !ECSILua_Call(state, 0, 0);
+        (void)ECSIPlugin_Leave(&callback);
 
         if (!worker->succeeded)
         {
@@ -348,11 +391,16 @@ static void ECSIWorkers_Call(ECSIWorker *worker, int function, int argumentCount
     lua_rawgeti(state, LUA_REGISTRYINDEX, function);
     lua_insert(state, -argumentCount - 1);
 
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, worker->plugin, nullptr, ECSICallbackType_Plugin);
+
     if (ECSILua_Call(state, argumentCount, 0))
     {
         ECSIPlugin_ReportError(worker->plugin, lua_tostring(state, -1));
         lua_pop(state, 1);
     }
+
+    (void)ECSIPlugin_Leave(&callback);
 }
 
 /// @brief Takes the messages a worker sent and delivers them to its message function, unless the worker was stopped.
@@ -442,18 +490,18 @@ static void SDLCALL ECSIWorkers_Pump(void *data)
 /// @brief Reads a worker handle. Gives nullptr once its worker is gone.
 static ECSIWorker *ECSIWorkers_CheckHandle(lua_State *state)
 {
-    return *(ECSIWorker **)luaL_checkudata(state, 1, OPENECS_LUA_WORKER);
+    return *(ECSIWorker **)ECSILua_CheckUdata(state, 1, OPENECS_LUA_WORKER);
 }
 
 /// @brief ecs.worker.start(desc): starts a worker of a plugin, and gives its handle, or nil and a message.
 static int ECSIWorkers_Start(lua_State *state)
 {
     ECSPlugin plugin = lua_touserdata(state, lua_upvalueindex(1));
-    luaL_checktype(state, 1, LUA_TTABLE);
+    ECSILua_CheckType(state, 1, LUA_TTABLE);
     ECSILua_CheckFunctionField(state, 1, "message");
     ECSILua_CheckFunctionField(state, 1, "done");
     lua_getfield(state, 1, "file");
-    const char *file = luaL_checkstring(state, -1);
+    const char *file = ECSILua_CheckString(state, -1);
     const char *path = lua_pushfstring(state, "%s%s", ECSPlugin_GetFolder(plugin), file);
 
     if (!SDL_GetPathInfo(path, nullptr))
@@ -498,7 +546,7 @@ static int ECSIWorkers_Start(lua_State *state)
     if (result)
     {
         ECSIWorkers_Free(worker);
-        return luaL_error(state, "the worker cannot start (%s)", SHUResult_String(result));
+        ECSIServices_Raise(state, result, "the worker cannot start");
     }
 
     worker->messageReference = ECSILua_ReferenceFunctionField(state, 1, "message");
@@ -526,7 +574,7 @@ static int ECSIWorkers_Start(lua_State *state)
 static int ECSIWorkers_SendToWorker(lua_State *state)
 {
     ECSIWorker *worker = ECSIWorkers_CheckHandle(state);
-    luaL_checkany(state, 2);
+    ECSILua_CheckAny(state, 2);
 
     if (worker == nullptr || SDL_GetAtomicInt(&worker->stopping))
     {
@@ -559,7 +607,7 @@ static int ECSIWorkers_StopHandle(lua_State *state)
 static int ECSIWorkers_Index(lua_State *state)
 {
     ECSIWorker *worker = ECSIWorkers_CheckHandle(state);
-    const char *key = luaL_checkstring(state, 2);
+    const char *key = ECSILua_CheckString(state, 2);
 
     if (SDL_strcmp(key, "running") == 0)
     {
@@ -661,4 +709,13 @@ void ECSIWorkers_PushLog(lua_State *state, ECSPlugin plugin)
     lua_newtable(state);
     lua_pushlightuserdata(state, plugin);
     luaL_setfuncs(state, OPENECS_WORKERS_LOG, 1);
+}
+
+void ECSIWorkers_AddErrors(lua_State *state, ECSPlugin plugin)
+{
+    SDL_assert(state != nullptr);
+    SDL_assert(plugin != nullptr);
+
+    lua_pushlightuserdata(state, plugin);
+    luaL_setfuncs(state, OPENECS_WORKERS_ERRORS, 1);
 }

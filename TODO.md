@@ -81,13 +81,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 - **P3 · Each key press parses every binding's key text.** `src/interface/Keys.c:186`, `:230-255` Finding a binding walks the settings' tables and parses each key again. Parse them once into a table, made again when settings, the preset, workspaces or plugins change, as the prefix keys are (`:105-128`). Size: M.
 - **P3 · No example presses two buttons, or sends input between a layout change and a frame.** `src/app/Test.c:845` `test.press` and `test.release` exist and no example uses them. Add cases for the two findings above that the tests can reach. Size: S.
 
-**Core: app**
-
-
-**std: panels, settings, fs and mixer**
-
-- **P2 · Many functions of the standard plugins give no reason when they fail.** `std/plugins` fs, sqlite, hash, notify, process and `draw.styledFont` give `nil` or `false` and a message, with `out string error`. About forty others give only `nil` or `false`: draw's images and fonts, gpu's buffers, textures, shaders and pipelines, mixer's sounds, net's servers and connections, web's sockets, gltf's models, and the functions that write to a handle. Give each one that can fail for a reason outside the caller the same `out string error`; an interface change. Size: M.
-
 **Shu and shuild**
 
 Paths are in their repositories, at `dependencies/shu` and `dependencies/shuild`.

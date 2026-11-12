@@ -67,6 +67,9 @@ return {
   -- save the tool's session when it quits, and start from it the next time; --fresh still starts from the preset
   ["ecs.keepSession"] = false,
 
+  -- log the failures that services give their callers, such as a file that cannot be read; a tool that expects them turns this off
+  ["ecs.logServiceErrors"] = true,
+
   -- how focus follows the pointer: "click" or "hover"
   ["ecs.focus"] = "click",
 

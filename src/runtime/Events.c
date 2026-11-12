@@ -1,5 +1,6 @@
 #include "runtime/Events.h"
 
+#include "base/Log.h"
 #include "base/Timers.h"
 
 #include "SDL3/SDL.h"
@@ -139,7 +140,10 @@ static void ECSIEvents_DeliverEmission(void *target, const ECSPanelEvent *event)
 
         if (!subscription->cancelled && SDL_strcmp(subscription->name, emission->name) == 0)
         {
+            ECSICallback callback;
+            ECSIPlugin_Enter(&callback, subscription->plugin, nullptr, ECSICallbackType_Plugin);
             subscription->Function(subscription->data, emission->name, emission->value);
+            (void)ECSIPlugin_Leave(&callback);
         }
     }
 
@@ -156,8 +160,8 @@ static SHUResult ECSIEvents_Declare(ECSPlugin plugin, const char *name, const ch
 
     if (shgeti(EVENTS.named, name) >= 0)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Event '%s' is already declared.", name);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Event '%s' is already declared.", name);
+        return SHUResult_ErrAssertion;
     }
 
     ECSINamedEvent named = {.plugin = plugin, .description = SDL_strdup(description)};
@@ -245,8 +249,8 @@ SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscriptio
 
     if (owner != nullptr && !ECSIPlugin_DependsOn(plugin, owner))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' subscribes to '%s', but its manifest does not depend on '%s'.", ECSIPlugin_GetName(plugin), name, ECSIPlugin_GetName(owner));
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Plugin '%s' subscribes to '%s', but its manifest does not depend on '%s'.", ECSIPlugin_GetName(plugin), name, ECSIPlugin_GetName(owner));
+        return SHUResult_ErrAssertion;
     }
 
     struct ECSISubscription *subscription = SDL_calloc(1, sizeof(struct ECSISubscription));
@@ -316,21 +320,22 @@ void ECSIEvents_ForgetObject(const void *object)
 
 SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *description)
 {
-    SDL_assert(SDL_IsMainThread());
-    SDL_assert(plugin != nullptr);
-    SDL_assert(name != nullptr && description != nullptr);
+    ECSILog_Check(SDL_IsMainThread(), SHUResult_ErrAssertion);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(name != nullptr && description != nullptr, SHUResult_ErrAssertion);
 
-    char *fullName = ECSIPlugin_MakeFullName(plugin, name);
-    SHUResult result = fullName == nullptr ? SHUResult_ErrBadData : ECSIEvents_Declare(plugin, fullName, description);
+    char *fullName = nullptr;
+    SHUResult result = ECSIPlugin_MakeFullName(plugin, name, &fullName);
+    result = result ? result : ECSIEvents_Declare(plugin, fullName, description);
     SDL_free(fullName);
     return result;
 }
 
 SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name, const ECSValue *value)
 {
-    SDL_assert(SDL_IsMainThread());
-    SDL_assert(plugin != nullptr);
-    SDL_assert(name != nullptr);
+    ECSILog_Check(SDL_IsMainThread(), SHUResult_ErrAssertion);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(name != nullptr, SHUResult_ErrAssertion);
 
     ptrdiff_t index = EVENTS.named == nullptr ? -1 : shgeti(EVENTS.named, name);
 
@@ -345,14 +350,14 @@ SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name, const ECSValue *valu
 
 SHUResult ECSEvent_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscription, const char *name, ECSEventFunction function, void *data)
 {
-    SDL_assert(SDL_IsMainThread());
+    ECSILog_Check(SDL_IsMainThread(), SHUResult_ErrAssertion);
     return ECSIEvents_Subscribe(plugin, retSubscription, name, function, nullptr, data);
 }
 
 void ECSEvent_Unsubscribe(ECSSubscription *subscription)
 {
-    SDL_assert(SDL_IsMainThread());
-    SDL_assert(subscription != nullptr);
+    ECSILog_Check(SDL_IsMainThread());
+    ECSILog_Check(subscription != nullptr);
 
     if (*subscription != nullptr)
     {
@@ -430,7 +435,10 @@ void ECSIEvents_Terminate(void)
 static void ECSIEvents_RunPluginTimer(void *data)
 {
     ECSIPluginTimer *record = data;
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, record->plugin, nullptr, ECSICallbackType_Plugin);
     record->Function(record->data);
+    (void)ECSIPlugin_Leave(&callback);
 }
 
 /// @brief Forgets a plugin's timer when base/Timers frees it, and releases its data.
@@ -517,7 +525,7 @@ SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool
 
 void ECSTimer_Stop(ECSTimer *timer)
 {
-    SDL_assert(timer != nullptr);
+    ECSILog_Check(timer != nullptr);
 
     // the handle is cleared first, as stopping may free the memory that holds it, such as a Lua timer's
     ECSTimer stopped = *timer;

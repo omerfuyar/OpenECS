@@ -47,6 +47,20 @@ function ecs.log.warn(text) end
 ---@param text string The message, one line or more.
 function ecs.log.error(text) end
 
+-- Errors
+
+---Reports a failure that the plugin's function returns: logs it as a warning while ecs.logServiceErrors is on, and gives the message.
+---A function fails this way when something outside its caller goes wrong, such as a missing file: return nil, ecs.fail("no file " .. path).
+---@param message string What failed.
+---@return string message The message.
+function ecs.fail(message) end
+
+---Checks that the plugin's function is used by its rules. When the condition is false or nil, the call is a misuse:
+---the core logs it in the name of the plugin whose callback made it and stops the Lua code. A misuse in a panel's callback faults the panel; in any other, the plugin is disabled.
+---@param condition any The rule, such as type(path) == "string".
+---@param message string What the caller broke.
+function ecs.check(condition, message) end
+
 -- Settings
 
 ---@alias ecs.SettingType "bool"|"integer"|"number"|"string"|"choice"|"key"|"list"|"table"|"color"
@@ -64,8 +78,7 @@ ecs.setting = {}
 
 ---Declares a setting of the plugin.
 ---@param desc ecs.SettingDesc The setting's local name, type, default and description.
----@return true|nil ok true if the setting is declared.
----@return string? message Why the setting is not declared.
+---A declaration that is not valid, such as a second one of a name, is a misuse (ecs.check).
 function ecs.setting.declare(desc) end
 
 ---Gets a setting's value from the highest layer that sets it.
@@ -195,7 +208,8 @@ function Panel:startDrag(type, value) end
 ---Opens a popup next to a rectangle of the shown panel: below it, or above it if there is no room below.
 ---It closes when code closes it, on a press outside every popup, on Escape if it is a menu, and when the panel closes, fails or is hidden.
 ---@param desc ecs.PopupDesc The popup's type, place, size and functions.
----@return ecs.Popup? popup The popup, which closes, draws again and resizes it; nil if it is not opened.
+---A desc without draw or a size above 0 is a misuse (ecs.check).
+---@return ecs.Popup? popup The popup, which closes, draws again and resizes it; nil if the panel is not shown.
 ---@return string? message Why the popup is not opened.
 function Panel:openPopup(desc) end
 
@@ -307,15 +321,13 @@ ecs.panel = {}
 
 ---Registers a panel type.
 ---@param desc ecs.PanelTypeDesc The type's local name, title, surface and functions.
----@return true|nil ok true if the type is registered.
----@return string? message Why the type is not registered.
+---A registration that is not valid, such as a second one of a name, is a misuse (ecs.check).
 function ecs.panel.registerType(desc) end
 
 ---Adds a service function to the panel menu of a type. Its signature is "void(handle<ecs.panel>)" or "void()".
 ---@param type string The panel type, by its full name, such as "canvas.view".
 ---@param functionName string The service function the entry runs, such as "canvas.clear".
----@return true|nil ok true if the entry is added.
----@return string? message Why the entry is not added.
+---A type that is not the plugin's, or a function that cannot be an entry, is a misuse (ecs.check).
 function ecs.panel.addMenuEntry(type, functionName) end
 
 ---A registered panel type in a list.
@@ -549,8 +561,7 @@ ecs.key = {}
 ---@param panelType string One of the plugin's panel types, by its full name, such as "canvas.view".
 ---@param key string A key combination, such as "Ctrl+E".
 ---@param functionName string A service function, such as "canvas.clear".
----@return true|nil ok true if the key is bound.
----@return string? message Why the key is not bound.
+---A panel type that is not the plugin's, or a text that is not a key combination, is a misuse (ecs.check).
 function ecs.key.bind(panelType, key, functionName) end
 
 -- Events
@@ -647,8 +658,7 @@ ecs.service = {}
 
 ---Registers functions of the plugin, by their local names: { clear = {...} } of the plugin canvas registers "canvas.clear".
 ---@param functions table<string, ecs.ServiceFunction> The functions, by their local names, each with its signature, description and Lua function.
----@return true|nil ok true if every function is registered.
----@return string? message Which function is not registered, and why.
+---A registration that is not valid, such as a bad signature or a second one of a name, is a misuse (ecs.check).
 function ecs.service.register(functions) end
 
 ---Gets a registered function.

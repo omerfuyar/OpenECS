@@ -62,6 +62,7 @@ static struct
     {
         char *name;
         bool enable;
+        char *misuse;  // for a plugin disabled because it misused a function, what the misuse said; nullptr when it was asked for
     } *pluginRequests; // stb_ds array of plugins to enable or disable when the current pass of the main loop ends
 } APP = {0};
 
@@ -418,6 +419,66 @@ void ECSApp_Quit(void)
     SDL_PushEvent(&event);
 }
 
+/// @brief Asks on the main thread for a plugin that misused a function to be disabled. data is the request, which this takes.
+static void ECSIApp_RequestMisusedPlugin(void *data)
+{
+    typeof(*APP.pluginRequests) *request = data;
+    arrput(APP.pluginRequests, *request);
+    SDL_free(request);
+}
+
+/// @brief Deals with a plugin's callback that misused a function (DESIGN 14.2): its panel faults, or its plugin is disabled when the pass ends.
+static void ECSIApp_Misused(const ECSICallback *callback)
+{
+    if (callback->type == ECSICallbackType_Panel)
+    {
+        ECSIPanel_Fault(callback->panel, callback->misuse);
+        ECSILayout_RequestFrame();
+        return;
+    }
+
+    typeof(*APP.pluginRequests) *request = SDL_malloc(sizeof(*request));
+    char *name = SDL_strdup(ECSIPlugin_GetName(callback->plugin));
+    char *misuse = SDL_strdup(callback->misuse);
+
+    if (request == nullptr || name == nullptr || misuse == nullptr)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' misused a function, and cannot be disabled: out of memory.", ECSIPlugin_GetName(callback->plugin));
+        SDL_free(request);
+        SDL_free(name);
+        SDL_free(misuse);
+        return;
+    }
+
+    *request = (typeof(*request)){.name = name, .enable = false, .misuse = misuse};
+
+    // a worker thread's misuse is sent to the main thread, which changes plugins
+    if (SDL_IsMainThread())
+    {
+        ECSIApp_RequestMisusedPlugin(request);
+    }
+    else if (!SDL_RunOnMainThread(ECSIApp_RequestMisusedPlugin, request, false))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' misused a function, and cannot be disabled: %s", name, SDL_GetError());
+        SDL_free(request);
+        SDL_free(name);
+        SDL_free(misuse);
+    }
+}
+
+/// @brief Notes a misuse as it happens: a test fails on it.
+static void ECSIApp_Misuse(const char *message)
+{
+    (void)message;
+    ECSITest_NoteMisuse();
+}
+
+/// @brief Notes a misuse of a core function, which the Lua module found in an argument from Lua.
+static void ECSIApp_NoteLuaMisuse(const char *message)
+{
+    ECSIPlugin_NoteMisuse(nullptr, message);
+}
+
 void ECSIApp_Start(const ECSIArguments *arguments)
 {
     SDL_assert(arguments != nullptr);
@@ -472,6 +533,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 
     ECSSettingDesc keepSession = {.name = OPENECS_KEEP_SESSION, .type = ECSSettingType_Bool, .description = "Save the tool's session when it quits, and start from it the next time"};
     ECSIApp_ExitOnFailure(ECSISettings_DeclareCore(&keepSession), "declaring the session settings", nullptr);
+    ECSIApp_ExitOnFailure(ECSIServices_DeclareSettings(), "declaring the services' settings", nullptr);
     const char *sourcePath = APP.sessionPath != nullptr ? APP.sessionPath : APP.presetPath;
 
     SDL_SetAppMetadata(APP.preset.appName, nullptr, APP.preset.appID);
@@ -499,8 +561,9 @@ void ECSIApp_Start(const ECSIArguments *arguments)
 
     ECSIBindings_Initialize();
     ECSIWorkers_Initialize();
-    ECSIPluginHooks hooks = {.StartLua = ECSIBindings_StartPlugin, .RemoveRegistrations = ECSIApp_RemoveRegistrations};
+    ECSIPluginHooks hooks = {.StartLua = ECSIBindings_StartPlugin, .RemoveRegistrations = ECSIApp_RemoveRegistrations, .Misused = ECSIApp_Misused, .Misuse = ECSIApp_Misuse};
     ECSIPlugins_SetHooks(&hooks);
+    ECSILua_SetMisuseFunction(ECSIApp_NoteLuaMisuse);
 
     ECSIApp_LoadPlugins(&APP.preset);
     ECSIApp_ExitOnFailure(ECSISession_Apply(sourcePath, &APP.preset), "building the layout", nullptr);
@@ -636,20 +699,27 @@ static void ECSIApp_NoteEnabled(const char *name, bool enabled)
 }
 
 /// @brief Disables a plugin that no enabled plugin depends on, after asking about the unsaved work of its panels, which become placeholders.
-static void ECSIApp_DisablePlugin(const char *name)
+/// A plugin that misused a function is disabled without asking, with the plugins that depend on it (DESIGN 9.10).
+/// @param misuse What the misuse said, or nullptr when the disable was asked for.
+static void ECSIApp_DisablePlugin(const char *name, const char *misuse)
 {
     ECSPlugin target = ECSIPlugins_Get(name);
 
     if (target == nullptr)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not enabled, so it is not disabled.", name);
+        // a plugin that misused a function twice in a pass is disabled once
+        if (misuse == nullptr)
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not enabled, so it is not disabled.", name);
+        }
+
         return;
     }
 
     ECSPlugin *plugins = ECSIPlugins_GetDependents(target);
 
     // the last loaded goes first, so the first one depends on the plugin when any does
-    if (arrlenu(plugins) > 1)
+    if (misuse == nullptr && arrlenu(plugins) > 1)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not disabled, as the enabled plugin '%s' depends on it. Disable that one first.", name,
                     ECSIPlugin_GetName(plugins[0]));
@@ -668,8 +738,13 @@ static void ECSIApp_DisablePlugin(const char *name)
         }
     }
 
-    // Cancel keeps every plugin enabled
-    if (ECSIPanels_ConfirmClose(affected, arrlenu(affected), false))
+    // Cancel keeps every plugin enabled; a misuse is not asked about, and each panel keeps its state in its placeholder
+    if (misuse != nullptr)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is disabled, with the plugins that depend on it, because it misused a function.", name);
+    }
+
+    if (misuse != nullptr || ECSIPanels_ConfirmClose(affected, arrlenu(affected), false))
     {
         // popups may belong to the plugins' panels, so every popup closes, and their Closed functions run while the plugins' code is loaded
         ECSIPopups_CloseAll();
@@ -691,7 +766,7 @@ static void ECSIApp_DisablePlugin(const char *name)
             ECSITasks_ForgetPlugin(plugins[i]);
             ECSIServices_DestroyHandlesOfPlugin(plugins[i]);
             ECSIApp_NoteEnabled(ECSIPlugin_GetName(plugins[i]), false);
-            ECSIPlugins_Disable(plugins[i]);
+            ECSIPlugins_Disable(plugins[i], misuse);
         }
 
         ECSIEvents_EmitCore("ecs.pluginsChanged", nullptr);
@@ -737,21 +812,26 @@ static void ECSIApp_EnablePlugin(const char *name)
 /// @brief Makes the changes to plugins that were asked for during the pass, now that no plugin's code runs.
 static void ECSIApp_ChangePlugins(void)
 {
-    for (usz i = 0; i < arrlenu(APP.pluginRequests); i++)
+    // a change runs plugins' code, whose misuse asks for more; those wait for the next pass
+    typeof(APP.pluginRequests) requests = APP.pluginRequests;
+    APP.pluginRequests = nullptr;
+
+    for (usz i = 0; i < arrlenu(requests); i++)
     {
-        if (APP.pluginRequests[i].enable)
+        if (requests[i].enable)
         {
-            ECSIApp_EnablePlugin(APP.pluginRequests[i].name);
+            ECSIApp_EnablePlugin(requests[i].name);
         }
         else
         {
-            ECSIApp_DisablePlugin(APP.pluginRequests[i].name);
+            ECSIApp_DisablePlugin(requests[i].name, requests[i].misuse);
         }
 
-        SDL_free(APP.pluginRequests[i].name);
+        SDL_free(requests[i].name);
+        SDL_free(requests[i].misuse);
     }
 
-    arrfree(APP.pluginRequests);
+    arrfree(requests);
 }
 
 /// @brief Asks for a plugin to be enabled or disabled when the current pass of the main loop ends.
@@ -782,7 +862,7 @@ SHUResult ECSPlugins_Disable(const char *name)
 
 SHUResult ECSPlugins_List(ECSValue *retList)
 {
-    SDL_assert(retList != nullptr);
+    ECSILog_Check(retList != nullptr, SHUResult_ErrAssertion);
     return ECSIPlugins_List(APP.pluginFolders, APP.pluginFolderCount, retList);
 }
 

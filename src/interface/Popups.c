@@ -1,5 +1,6 @@
 #include "interface/Popups.h"
 
+#include "base/Log.h"
 #include "runtime/Events.h"
 #include "runtime/Services.h"
 
@@ -7,6 +8,26 @@
 #include "stb/stbSDL3.h"
 
 #pragma region Source Only
+
+/// @brief Marks the start of a popup's callback: it is its panel's (DESIGN 14.2). A popup of a placeholder, whose plugin is gone, is not entered.
+static void ECSIPopup_Enter(ECSICallback *callback, ECSPopup popup, ECSICallbackType type)
+{
+    callback->plugin = popup->panel->type != nullptr ? popup->panel->type->plugin : nullptr;
+
+    if (callback->plugin != nullptr)
+    {
+        ECSIPlugin_Enter(callback, callback->plugin, popup->panel, type);
+    }
+}
+
+/// @brief Marks the end of a popup's callback that ECSIPopup_Enter started.
+static void ECSIPopup_Leave(ECSICallback *callback)
+{
+    if (callback->plugin != nullptr)
+    {
+        (void)ECSIPlugin_Leave(callback);
+    }
+}
 
 static struct
 {
@@ -33,7 +54,10 @@ static void ECSIPopup_DeliverEvent(void *target, const ECSPanelEvent *event)
 
     if (!popup->closed && popup->desc.Event != nullptr)
     {
+        ECSICallback callback;
+        ECSIPopup_Enter(&callback, popup, ECSICallbackType_Panel);
         popup->desc.Event(popup->desc.data, event);
+        ECSIPopup_Leave(&callback);
     }
 }
 
@@ -45,7 +69,10 @@ static void ECSIPopup_DeliverClosed(void *target, const ECSPanelEvent *event)
 
     if (popup->desc.Closed != nullptr)
     {
+        ECSICallback callback;
+        ECSIPopup_Enter(&callback, popup, ECSICallbackType_Quiet);
         popup->desc.Closed(popup->desc.data);
+        ECSIPopup_Leave(&callback);
     }
 
     popup->released = true;
@@ -194,7 +221,10 @@ bool ECSIPopup_Draw(ECSPopup popup)
     };
 
     popup->needsDraw = false;
+    ECSICallback callback;
+    ECSIPopup_Enter(&callback, popup, ECSICallbackType_Panel);
     popup->desc.Draw(popup->desc.data, &surface);
+    ECSIPopup_Leave(&callback);
 
     // the services that drew into the surface finish, and its Lua handle goes
     ECSIServices_EndSurface(&surface);
@@ -211,15 +241,16 @@ void ECSIPopup_PostEvent(ECSPopup popup, const ECSPanelEvent *event)
 
 SHUResult ECSPopup_Open(ECSPanel panel, ECSPopup *retPopup, const ECSPopupDesc *desc)
 {
-    SDL_assert(panel != nullptr);
-    SDL_assert(retPopup != nullptr);
-    SDL_assert(desc != nullptr);
+    ECSILog_Check(panel != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(retPopup != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(desc != nullptr, SHUResult_ErrAssertion);
 
     *retPopup = nullptr;
 
     if (desc->Draw == nullptr || desc->width <= 0.0f || desc->height <= 0.0f)
     {
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "A popup needs a Draw function and a size.");
+        return SHUResult_ErrAssertion;
     }
 
     if (panel->closed || !panel->visible)
@@ -245,7 +276,7 @@ SHUResult ECSPopup_Open(ECSPanel panel, ECSPopup *retPopup, const ECSPopupDesc *
 
 void ECSPopup_Close(ECSPopup *popup)
 {
-    SDL_assert(popup != nullptr);
+    ECSILog_Check(popup != nullptr);
 
     ECSPopup closing = *popup;
     *popup = nullptr;
@@ -273,14 +304,14 @@ void ECSPopup_Close(ECSPopup *popup)
 
 void ECSPopup_Redraw(ECSPopup popup)
 {
-    SDL_assert(popup != nullptr);
+    ECSILog_Check(popup != nullptr);
 
     popup->needsDraw = true;
 }
 
 void ECSPopup_SetSize(ECSPopup popup, f32 width, f32 height)
 {
-    SDL_assert(popup != nullptr);
+    ECSILog_Check(popup != nullptr);
 
     popup->desc.width = width > 0.0f ? width : popup->desc.width;
     popup->desc.height = height > 0.0f ? height : popup->desc.height;
