@@ -64,7 +64,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 **Core: communication**
 
-- **P2 · A call from Lua into C looks up names and allocates each time.** `src/runtime/Services.c:1148`, `:2880-2888` Each handle argument and result finds its type by name twice, though the parameter already points to it; each `fn<>` argument allocates a libffi closure, a name and two registry references (`:1918-1948`); the arguments' storage is a new userdata (`:1398`). Compare the handle's type pointer, keep flags of what a signature holds from when it is parsed, and reuse callback closures. Size: M.
 - **P2 · An emission is compared with every subscription of every event.** `src/runtime/Events.c:133-141`, `:174-176` Delivery runs `strcmp` over all subscriptions, and each emission allocates three times. Keep each event's subscribers in its record, which the hash map of events already holds. Size: M.
 - **P3 · No example frees a handle while Lua holds it.** Nothing in OpenECS-examples calls `ECSHandle_Free`, `ECSHandle_Forget` or `ECSValue_SetHandle`, or disables a plugin while another keeps its callback. Add cases when those paths change. Size: M.
 
