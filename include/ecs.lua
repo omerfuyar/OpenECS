@@ -21,6 +21,7 @@
 ---| "overlay" # ecs.colorOverlay: menus, grips and the list of prefix keys
 ---| "drop" # ecs.colorDrop: the place where a dragged panel lands
 ---| "selected" # ecs.colorSelected: the selected menu entry
+---| "frame" # ecs.colorFrame: the frame around each group of panels
 ---| string
 
 ---@class ecs
