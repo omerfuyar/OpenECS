@@ -48,6 +48,7 @@ typedef enum ECSIColor
     ECSIColor_Overlay,
     ECSIColor_Drop,
     ECSIColor_Selected,
+    ECSIColor_Frame,
     ECSIColor_Count,
 } ECSIColor;
 
@@ -64,6 +65,7 @@ static const ECSSettingDesc OPENECS_WINDOW_SETTINGS[] = {
     {.name = "ecs.colorOverlay", .type = ECSSettingType_Color, .description = "Colour of menus, grips and the list of prefix keys"},
     {.name = "ecs.colorDrop", .type = ECSSettingType_Color, .description = "Colour of the place where a dragged panel lands"},
     {.name = "ecs.colorSelected", .type = ECSSettingType_Color, .description = "Colour of the selected menu entry"},
+    {.name = "ecs.colorFrame", .type = ECSSettingType_Color, .description = "Colour of the frame around each group of panels"},
     {.name = "ecs.windowWidth", .type = ECSSettingType_Integer, .description = "Width of the OS window when it opens, in layout units"},
     {.name = "ecs.windowHeight", .type = ECSSettingType_Integer, .description = "Height of the OS window when it opens, in layout units"},
     {.name = "ecs.font", .type = ECSSettingType_String, .description = "TrueType font of the core's interface, read when the window opens; a relative path starts at the executable's folder"},
@@ -957,6 +959,16 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
                 ECSIWindow_DeclareMarks(group, root);
             }
         }
+    }
+
+    // a frame around the group, its tab row too, so groups stand apart from each other and from the colour between them;
+    // Clay's SDL renderer draws a border a pixel outside its rectangle, so the rectangle is a pixel inside the group
+    CLAY_AUTO_ID({
+        .layout = {.sizing = {CLAY_SIZING_FIXED(SDL_max(group->width - 2.0f, 0.0f)), CLAY_SIZING_FIXED(SDL_max(group->height - 2.0f, 0.0f))}},
+        .border = {.color = WINDOW.colors[ECSIColor_Frame], .width = {1, 1, 1, 1, 0}},
+        .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + 1.0f, group->y + 1.0f}, .zIndex = 1, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
+    })
+    {
     }
 
     ECSPanel panel = group->panels[group->shown];

@@ -114,6 +114,7 @@ return {
       ["ecs.colorOverlay"] = "#1C1E22F5",
       ["ecs.colorDrop"] = "#4C8BF546",
       ["ecs.colorSelected"] = "#3A3E46",
+      ["ecs.colorFrame"] = "#464A53",
     },
     light = {
       ["ecs.colorBackground"] = "#D9DCE1",
@@ -127,6 +128,7 @@ return {
       ["ecs.colorOverlay"] = "#FBFBFCF5",
       ["ecs.colorDrop"] = "#2F6FE046",
       ["ecs.colorSelected"] = "#D3DAE6",
+      ["ecs.colorFrame"] = "#A9AEB8",
     },
   },
 
