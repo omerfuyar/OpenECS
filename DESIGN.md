@@ -826,7 +826,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 
 ### 10.4 Calls
 
-- **Lua calls C:** the core makes one Lua function for each registered C function. It converts the arguments by the signature, calls the C function through libffi, and converts the results back.
+- **Lua calls C:** the core makes one Lua function for each registered C function. It converts the arguments by the signature, calls the C function through libffi, and converts the results back. A call keeps its storage on the C stack, checks a handle by the type its signature points to, and gives a callback that is not kept the closure that the last call of its parameter left, so only its values allocate.
 - **C calls C:** the caller gets the raw function pointer and calls it at full speed.
 - **C calls Lua:** the caller also gets a typed C function pointer: a libffi closure that converts the arguments, calls the Lua function in a protected call, and converts the result.
 - **Lua calls Lua:** a plain Lua call, because all plugins share one Lua state.
