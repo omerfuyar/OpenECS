@@ -64,7 +64,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 **Core: communication**
 
-- **P2 · An emission is compared with every subscription of every event.** `src/runtime/Events.c:133-141`, `:174-176` Delivery runs `strcmp` over all subscriptions, and each emission allocates three times. Keep each event's subscribers in its record, which the hash map of events already holds. Size: M.
 - **P3 · No example frees a handle while Lua holds it.** Nothing in OpenECS-examples calls `ECSHandle_Free`, `ECSHandle_Forget` or `ECSValue_SetHandle`, or disables a plugin while another keeps its callback. Add cases when those paths change. Size: M.
 
 **std: ui, with draw**

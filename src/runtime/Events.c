@@ -38,6 +38,7 @@ typedef struct ECSINamedEvent
 {
     ECSPlugin plugin; // nullptr for the core's events
     char *description;
+    struct ECSISubscription **subscribers; // stb_ds array of its subscriptions, in the order they were made, so an emission reads only these
 } ECSINamedEvent;
 
 struct ECSISubscription
@@ -53,8 +54,8 @@ struct ECSISubscription
 /// @brief A named event waiting in the queue to be delivered to its subscribers.
 typedef struct ECSIEmission
 {
-    char *name;
     ECSValue *value;
+    char name[]; // allocated with the emission
 } ECSIEmission;
 
 /// @brief The core's named events.
@@ -81,6 +82,13 @@ static struct
     struct ECSISubscription **subscriptions; // stb_ds array; handles point to them, so each is allocated on its own
 } EVENTS = {0};
 
+/// @brief The declared event of a name, or nullptr; its record moves when events are declared or removed, so it is found again after any of those.
+static ECSINamedEvent *ECSIEvents_FindNamed(const char *name)
+{
+    ptrdiff_t index = EVENTS.named == nullptr ? -1 : shgeti(EVENTS.named, name);
+    return index < 0 ? nullptr : &EVENTS.named[index].value;
+}
+
 static void ECSIEvents_FreeSubscription(struct ECSISubscription *subscription)
 {
     if (subscription->Release != nullptr)
@@ -106,6 +114,18 @@ static void ECSIEvents_FreeCancelled(void)
 
         if (subscription->cancelled)
         {
+            // its event, if it is still declared, lists it too
+            ECSINamedEvent *named = ECSIEvents_FindNamed(subscription->name);
+
+            for (usz j = 0; named != nullptr && j < arrlenu(named->subscribers); j++)
+            {
+                if (named->subscribers[j] == subscription)
+                {
+                    arrdel(named->subscribers, j);
+                    break;
+                }
+            }
+
             arrdel(EVENTS.subscriptions, i);
             ECSIEvents_FreeSubscription(subscription);
         }
@@ -120,7 +140,6 @@ static void ECSIEvents_FreeCancelled(void)
 static void ECSIEvents_FreeEmission(void *data)
 {
     ECSIEmission *emission = data;
-    SDL_free(emission->name);
     ECSValue_Destroy(&emission->value);
     SDL_free(emission);
 }
@@ -131,14 +150,16 @@ static void ECSIEvents_DeliverEmission(void *target, const ECSPanelEvent *event)
     (void)event;
     ECSIEmission *emission = target;
 
-    // a subscription made while the event is delivered is added at the end, and hears the next emission; none is removed meanwhile
-    usz count = arrlenu(EVENTS.subscriptions);
+    // a subscription made while the event is delivered is added at the end, and hears the next emission; none is removed meanwhile.
+    // A subscriber may declare events, which moves the event's record, so it is found again after each one
+    ECSINamedEvent *named = ECSIEvents_FindNamed(emission->name);
+    usz count = named == nullptr ? 0 : arrlenu(named->subscribers);
 
-    for (usz i = 0; i < count; i++)
+    for (usz i = 0; i < count && (named = ECSIEvents_FindNamed(emission->name)) != nullptr; i++)
     {
-        struct ECSISubscription *subscription = EVENTS.subscriptions[i];
+        struct ECSISubscription *subscription = named->subscribers[i];
 
-        if (!subscription->cancelled && SDL_strcmp(subscription->name, emission->name) == 0)
+        if (!subscription->cancelled)
         {
             ECSICallback callback;
             ECSIPlugin_Enter(&callback, subscription->plugin, nullptr, ECSICallbackType_Plugin);
@@ -178,19 +199,21 @@ static SHUResult ECSIEvents_Declare(ECSPlugin plugin, const char *name, const ch
 /// @brief Queues a named event for its subscribers.
 static SHUResult ECSIEvents_Emit(const char *name, const ECSValue *value)
 {
-    ECSIEmission *emission = SDL_calloc(1, sizeof(ECSIEmission));
+    usz length = SDL_strlen(name);
+    ECSIEmission *emission = SDL_calloc(1, sizeof(ECSIEmission) + length + 1);
 
-    if (emission == nullptr || (emission->name = SDL_strdup(name)) == nullptr || ECSValue_Create(&emission->value) || (value != nullptr && ECSIValue_Copy(emission->value, value)))
+    if (emission == nullptr || ECSValue_Create(&emission->value) || (value != nullptr && ECSIValue_Copy(emission->value, value)))
     {
         if (emission != nullptr)
         {
-            SDL_free(emission->name);
             ECSValue_Destroy(&emission->value);
             SDL_free(emission);
         }
 
         return SHUResult_ErrAllocation;
     }
+
+    SDL_memcpy(emission->name, name, length + 1);
 
     // an event emitted while events are delivered waits for the next delivery, so a subscriber that emits each time it hears one cannot hold the main loop
     ECSIQueuedEvent queued = {.Deliver = ECSIEvents_DeliverEmission, .Release = ECSIEvents_FreeEmission, .target = emission};
@@ -266,6 +289,7 @@ SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscriptio
     subscription->Release = release;
     subscription->data = data;
     arrput(EVENTS.subscriptions, subscription);
+    arrput(EVENTS.named[index].value.subscribers, subscription);
     *retSubscription = subscription;
     return SHUResult_Ok;
 }
@@ -291,6 +315,7 @@ void ECSIEvents_RemovePlugin(ECSPlugin plugin)
         if (EVENTS.named[i - 1].value.plugin == plugin)
         {
             SDL_free(EVENTS.named[i - 1].value.description);
+            arrfree(EVENTS.named[i - 1].value.subscribers);
             (void)shdel(EVENTS.named, EVENTS.named[i - 1].key);
         }
     }
@@ -426,6 +451,7 @@ void ECSIEvents_Terminate(void)
     for (usz i = 0; i < shlenu(EVENTS.named); i++)
     {
         SDL_free(EVENTS.named[i].value.description);
+        arrfree(EVENTS.named[i].value.subscribers);
     }
 
     shfree(EVENTS.named);
