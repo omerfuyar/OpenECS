@@ -93,6 +93,9 @@ Some plugins are made and shipped together with OpenECS because the product need
 - **gltf:** a standard plugin: reading glTF models, for plugins that draw 3D scenes.
 - **cglm:** a standard plugin: cglm's vectors, matrices and quaternions, for plugins that draw 3D scenes.
 - **fs:** a standard plugin: listing and making folders, copying files and telling what a path is, which Lua's own libraries cannot.
+- **files:** a standard plugin: a panel of a folder's files, which a tool shows, opens and makes its own kinds of, built on ui and fs.
+- **viewer:** a standard plugin: a panel that shows a file as it is: text, with code coloured, images and sounds.
+- **console:** a standard plugin: a panel of a program's output, whose lines that name a file open it in the user's code editor.
 - **settings:** the settings window, built on ui.
 - **panels:** the list of the tool's panel types, by plugin, which opens the one the user chooses, built on ui.
 - **launcher:** picks a preset or session when OpenECS starts without one, built on ui.

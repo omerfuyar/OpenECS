@@ -48,13 +48,7 @@ What would grow it most:
 
 - **Releases for macOS**, since most tool builders are not on Linux. Windows has one since 0.4.0 (see Tasks).
 - **A flagship tool** that is useful without writing code, such as a log viewer, a glTF viewer or a terminal, built from the standard plugins.
-  - **An editor for LÖVE games**, the owner's flagship. It is for people who want LÖVE underneath and a simpler interface than Unity or Godot. LÖVE stays the runtime; the editor is no engine. A project is scenes of objects with properties, assets and Lua scripts that the user writes in their own code editor. The editor builds the `.love` file from it, with a small Lua library that loads the scenes, and makes the executables as LÖVE's Game Distribution page says: `love.exe` with the `.love` appended on Windows, the `.love` in `love.app` on macOS, and the AppImage on Linux. It would be made from OpenECS-template, in its own repository. Open:
-    - how scripts attach: a script per object with `load`, `update` and `draw`, as Unity's components do, or also logic without code, as GDevelop's events do;
-    - an existing `.love` made in code has no scenes, so the editor opens its files and runs it, but edits only its own projects; or it also turns such a game into a project;
-    - the scene view: OpenECS draws the sprites, shapes and text itself, and Play runs LÖVE in its own window, as Wayland does not let another program's window be embedded;
-    - the LÖVE version it targets: 11.5 is the latest release, and 12.0 is not released;
-    - where the editor gets LÖVE's executables for each platform, and its name, which says it is for LÖVE without using LÖVE's name as its own;
-    - whether it waits for a stable plugin interface (1.0.0).
+  - **An editor for LÖVE games**, the owner's flagship: [ONLR](https://github.com/omerfuyar/ONLR), in its own repository, whose TODO.md holds its open questions. Its files panel, viewer and console are standard plugins now.
 - **A showcase** in README.md of plugins and tools others build.
 
 
