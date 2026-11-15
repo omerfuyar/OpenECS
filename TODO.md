@@ -76,13 +76,10 @@ Recommendations from a review of the code, by area, the most important first. P1
 **Core: plugins and threads**
 
 - **P3 · No example disables a plugin that is working.** Add a test that disables c13_workers' plugin while a worker counts, and c12_sketch's during an export, when those paths change. Size: M.
-- **P3 · A function the main thread sends itself while a plugin is disabled runs after the unload.** `src/runtime/Tasks.c:106-110` It waits in the core's queue with no plugin, and `SDL_PumpEvents` (`Plugins.c:1111`) does not deliver that queue. Deliver the core's queue before the library is unloaded. Size: S.
-- **P3 · A plugin's generation is read by other threads without a lock.** `src/runtime/Tasks.c:273`, `src/runtime/Plugins.c:50` `ECS_RunInBackground` reads it from any thread, and the main thread writes it. Make it atomic. Size: S.
 
 **Core: interface**
 
 - **P3 · Window.c holds five modules.** `src/interface/Window.c:139-211` Its 2848 lines hold the OS windows, and also the drag of panels and drop zones (`:458-730`, `:2384-2590`), the Clay declarations (`:732-1304`), the popups' views (`:1623-1848`), the title bar and hit tests, and the menus' geometry (`:2631-2765`). Move each to its own file with its part of the `WINDOW` struct; Window.c keeps the OS windows, renderers and frame pacing. The owner leaves it until it is necessary. The parts call each other, so three modules in an order avoid a cycle (DESIGN 1.5): Drag, then View with every Clay declaration, then Window. Size: L.
-- **P3 · The drop that waits on Wayland keeps a panel's pointer.** `src/interface/Window.c:2556` `pending.panel` outlives `ECSIWindow_Forget` for up to 400 ms, and is checked only by its address (`Layout.c:1769`). Clear it in `Forget`, or keep the panel's id. Size: S.
 - **P3 · Each key press parses every binding's key text.** `src/interface/Keys.c:186`, `:230-255` Finding a binding walks the settings' tables and parses each key again. Parse them once into a table, made again when settings, the preset, workspaces or plugins change, as the prefix keys are (`:105-128`). Size: M.
 - **P3 · No example presses two buttons, or sends input between a layout change and a frame.** `src/app/Test.c:845` `test.press` and `test.release` exist and no example uses them. Add cases for the two findings above that the tests can reach. Size: S.
 

@@ -459,6 +459,9 @@ static void ECSIWindow_Forget(void)
     WINDOW.gripGroup = nullptr;
     WINDOW.dragSplit = nullptr;
 
+    // a drop that waits on Wayland names a panel and nodes that may be gone, so it is dropped too, and the panel stays where it was
+    WINDOW.pending.panel = nullptr;
+
     // the tabs drawn in the last frame name groups and places in them, so a press finds no tab until the next frame draws them again
     for (usz i = 0; i < arrlenu(WINDOW.windows); i++)
     {

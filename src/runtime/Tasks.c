@@ -348,5 +348,9 @@ SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskDon
 SHUResult ECS_RunOnMainThread(ECSTaskFunction function, void *data)
 {
     ECSILog_Check(function != nullptr, SHUResult_ErrAssertion);
-    return ECSITasks_Post(nullptr, 0, function, nullptr, data);
+
+    // on the main thread, the function is a plugin's whose callback sends it, such as its Destroy, so it is dropped once that plugin's code is
+    // unloaded; another thread's function waits in SDL's queue, which the core delivers before it unloads a plugin
+    ECSPlugin plugin = SDL_IsMainThread() ? ECSIPlugin_GetCalling() : nullptr;
+    return ECSITasks_Post(plugin, plugin != nullptr ? ECSIPlugin_GetGeneration(plugin) : 0, function, nullptr, data);
 }
