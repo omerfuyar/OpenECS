@@ -153,6 +153,9 @@ void ECSIPlugin_StopWork(ECSPlugin plugin);
 /// @brief Tells whether a plugin may start background work: its code runs and it is not being disabled.
 bool ECSIPlugin_TakesWork(ECSPlugin plugin);
 
+/// @brief Gets the plugin whose callback runs now on this thread, or nullptr for the core's own code.
+ECSPlugin ECSIPlugin_GetCalling(void);
+
 /// @brief Gets the number of a plugin's load: it grows each time the plugin's code is loaded or unloaded, so work that an earlier load sent is dropped.
 u32 ECSIPlugin_GetGeneration(ECSPlugin plugin);
 

@@ -59,7 +59,7 @@ typedef struct ECSIPlugin
     bool failed;               // its code failed to start; plugins that depend on it are skipped
     bool disabled;             // the user disabled it, or a plugin it depends on; its code is not loaded
     bool stopping;             // it is being disabled, so it takes no new background work; guarded by nothing, as only the main thread writes it
-    u32 generation;            // grows each time its code is loaded, and when it starts and ends being unloaded, so work of an earlier load is dropped
+    SDL_AtomicInt generation;  // grows each time its code is loaded, and when it starts and ends being unloaded, so work of an earlier load is dropped; other threads read it
     ECSValue *keptState;       // the state it saved when it was disabled, or that a session gave it while disabled; nullptr if none
     u32 keptStateVersion;
     char **dependencies;     // stb_ds array of the names its manifest depends on
@@ -534,7 +534,7 @@ static SHUResult ECSIPlugin_Fail(ECSIPlugin *plugin, const char *what, SHUResult
 
         plugin->failed = false;
         plugin->disabled = true;
-        plugin->generation++;
+        (void)SDL_AddAtomicInt(&plugin->generation, 1);
     }
 
     return result;
@@ -698,7 +698,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
     plugin->misuse = nullptr;
     plugin->failed = false;
     plugin->stopping = false;
-    plugin->generation++;
+    (void)SDL_AddAtomicInt(&plugin->generation, 1);
 
     // a misuse while the plugin starts fails its start
     ECSICallback callback;
@@ -1235,7 +1235,7 @@ bool ECSIPlugin_TakesWork(ECSPlugin plugin)
 u32 ECSIPlugin_GetGeneration(ECSPlugin plugin)
 {
     SDL_assert(plugin != nullptr);
-    return plugin->generation;
+    return (u32)SDL_GetAtomicInt(&plugin->generation);
 }
 
 void ECSIPlugins_SetDisabled(const char *const *names, usz count)
@@ -1349,7 +1349,7 @@ void ECSIPlugins_Disable(ECSPlugin plugin, const char *misuse)
     plugin->misuse = misuse != nullptr ? SDL_strdup(misuse) : nullptr;
 
     // what this load's work in the background sent to the main thread is dropped from now on: a done function never runs after Destroy
-    plugin->generation++;
+    (void)SDL_AddAtomicInt(&plugin->generation, 1);
 
     // its state is kept for when it is enabled again, and for the session
     if (plugin->desc.SaveState != nullptr)
@@ -1385,7 +1385,7 @@ void ECSIPlugins_Disable(ECSPlugin plugin, const char *misuse)
 
     // work that Destroy itself started is dropped too
     plugin->disabled = true;
-    plugin->generation++;
+    (void)SDL_AddAtomicInt(&plugin->generation, 1);
     SDL_Log("Plugin '%s' is disabled.", plugin->name);
 }
 
@@ -1568,6 +1568,11 @@ const char *ECSIPlugins_GetMisuse(const char *name)
 
     ECSIPlugin *plugin = ECSIPlugin_FindOwner(name);
     return plugin != nullptr && plugin->disabled ? plugin->misuse : nullptr;
+}
+
+ECSPlugin ECSIPlugin_GetCalling(void)
+{
+    return PLUGINS_THREAD.callback != nullptr ? PLUGINS_THREAD.callback->plugin : nullptr;
 }
 
 void ECSIPlugin_Enter(ECSICallback *callback, ECSPlugin plugin, ECSPanel panel, ECSICallbackType type)
