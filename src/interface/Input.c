@@ -973,11 +973,9 @@ static void ECSIInput_ReleaseKey(const SDL_KeyboardEvent *key)
 {
     ECSPanel focus = ECSILayout_GetFocus();
 
-    // a key with Ctrl, Alt or Super types no text, so text after it is not its own, such as an input method's, which comes without a key press
-    if ((ECSIInput_ConvertModifiers(key->mod) & (ECSModifier_Ctrl | ECSModifier_Alt | ECSModifier_Super)) != 0)
-    {
-        INPUT.swallowText = false;
-    }
+    // a key's text comes between its press and its release, so text after the release is not its own, such as what is typed after a key
+    // that types none, as Return in a menu, or an input method's, which comes without a key press
+    INPUT.swallowText = false;
 
     if (focus != nullptr && !INPUT.prefixActive)
     {
