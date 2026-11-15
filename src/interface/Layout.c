@@ -1513,6 +1513,23 @@ bool ECSILayout_WantsFrame(void)
     return wants;
 }
 
+bool ECSILayout_IsFrameRequested(void)
+{
+    return LAYOUT.frameNeeded;
+}
+
+bool ECSILayout_RootWantsFrame(ECSIRoot *root)
+{
+    bool wants = false;
+
+    if (root != nullptr)
+    {
+        ECSILayout_ForEachGroup(root, ECSILayout_CheckFrameWanted, &wants);
+    }
+
+    return wants;
+}
+
 void ECSILayout_Update(void)
 {
     // requests made while the frame is drawn, such as a tab row that scrolls, get the next frame

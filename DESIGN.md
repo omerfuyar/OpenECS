@@ -204,14 +204,14 @@ One pass of the loop:
 4. Deliver queued events (8).
 5. Recompute the layout if it changed.
 6. Draw the visible panels that need it: continuous panels, and panels that asked to be redrawn or changed size or scale.
-7. Compose and present.
+7. Compose and present the OS windows that changed: every visible one after a change that may show anywhere, such as the layout, a setting or the interface's state, and otherwise those whose own panels or popups drew. A popup window is presented when it drew or moved.
 
 The wait uses `SDL_WaitEventTimeout` with the time until the next timer or the next allowed frame, and does not wait while events are queued.
 
 - Continuous drawing is paced by the display's refresh (vsync). The setting `ecs.vsync` is the frame rate in percent of the refresh rate: 100 (the default) waits for every refresh, 50 for every second one, and 0 turns vsync off with no limit. A percentage that divides 100, such as 50, sets SDL's vsync interval; others keep vsync on and the core limits the frames.
 - On Wayland, vsync is off and the core limits the frames to the rate that `ecs.vsync` asks for: the compositor shows whole frames already, and it gives a hidden window no refreshes, so waiting for one would stop the program.
 - Some drivers accept vsync without waiting for it, so the core also limits frames to 1.1 times the rate that `ecs.vsync` asks for. A working vsync still sets the pace.
-- A hidden, minimized or covered window is not drawn.
+- A hidden, minimized or covered window is not drawn. A screenshot of the tests draws every shown window.
 - Panels draw before the core declares its interface, because a panel's `Draw` may change its title, which the interface shows.
 
 ### 3.2 Timers
