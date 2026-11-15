@@ -83,6 +83,15 @@ static const char OPENECS_TEST_MATCH[] =
     "  if difference then error((message and message .. ': ' or '') .. difference, 2) end\n"
     "end\n";
 
+/// @brief Makes an event of the type with every other field zero: a union's initializer sets only the member it names, so a field such as a key's repeat would be what the stack held.
+static SDL_Event ECSITest_Event(Uint32 type)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = type;
+    return event;
+}
+
 /// @brief Adds an input event for the loop, in the OS window that test.window chose; the main window if that one has closed.
 static void ECSITest_Send(SDL_Event event)
 {
@@ -246,7 +255,7 @@ static SDL_Keymod ECSITest_CheckModifiers(lua_State *state, int index)
 /// @brief Adds a pointer move to a position.
 static void ECSITest_SendMove(f32 x, f32 y)
 {
-    SDL_Event event = {.type = SDL_EVENT_MOUSE_MOTION};
+    SDL_Event event = ECSITest_Event(SDL_EVENT_MOUSE_MOTION);
     event.motion.x = x;
     event.motion.y = y;
     event.motion.xrel = x - TEST.pointerX;
@@ -270,7 +279,7 @@ static void ECSITest_SendButton(f32 x, f32 y, u8 button, bool down)
         TEST.buttons &= ~SDL_BUTTON_MASK(button);
     }
 
-    SDL_Event event = {.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP};
+    SDL_Event event = ECSITest_Event(down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP);
     event.button.button = button;
     event.button.down = down;
     event.button.clicks = 1;
@@ -310,12 +319,12 @@ static int ECSITest_Key(lua_State *state)
     }
 
     SDL_Keymod sdlModifiers = SDL_KMOD_NONE;
-    sdlModifiers |= (modifiers & ECSModifier_Shift) ? SDL_KMOD_LSHIFT : 0;
-    sdlModifiers |= (modifiers & ECSModifier_Ctrl) ? SDL_KMOD_LCTRL : 0;
-    sdlModifiers |= (modifiers & ECSModifier_Alt) ? SDL_KMOD_LALT : 0;
-    sdlModifiers |= (modifiers & ECSModifier_Super) ? SDL_KMOD_LGUI : 0;
+    sdlModifiers |= (modifiers & (u32)ECSModifier_Shift) ? SDL_KMOD_LSHIFT : 0;
+    sdlModifiers |= (modifiers & (u32)ECSModifier_Ctrl) ? SDL_KMOD_LCTRL : 0;
+    sdlModifiers |= (modifiers & (u32)ECSModifier_Alt) ? SDL_KMOD_LALT : 0;
+    sdlModifiers |= (modifiers & (u32)ECSModifier_Super) ? SDL_KMOD_LGUI : 0;
 
-    SDL_Event event = {.type = SDL_EVENT_KEY_DOWN};
+    SDL_Event event = ECSITest_Event(SDL_EVENT_KEY_DOWN);
     event.key.key = key;
     event.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
     event.key.mod = sdlModifiers;
@@ -344,7 +353,7 @@ static int ECSITest_KeyEvent(lua_State *state)
         return luaL_error(state, "'%s' is not a key without modifiers", text);
     }
 
-    SDL_Event event = {.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP};
+    SDL_Event event = ECSITest_Event(down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP);
     event.key.timestamp = (Uint64)(SDL_max(milliseconds, 0.0) * (lua_Number)SDL_NS_PER_MS);
     event.key.key = key;
     event.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
@@ -436,7 +445,7 @@ static int ECSITest_Wheel(lua_State *state)
     f32 y = 0.0f;
     ECSITest_CheckPosition(state, 1, &x, &y);
 
-    SDL_Event event = {.type = SDL_EVENT_MOUSE_WHEEL};
+    SDL_Event event = ECSITest_Event(SDL_EVENT_MOUSE_WHEEL);
     event.wheel.y = (f32)luaL_checknumber(state, 3);
     event.wheel.direction = SDL_MOUSEWHEEL_NORMAL;
     event.wheel.mouse_x = x;
@@ -449,7 +458,7 @@ static int ECSITest_Wheel(lua_State *state)
 /// @brief test.close(): asks the OS window that test.window chose to close, as its close button does.
 static int ECSITest_Close(lua_State *state)
 {
-    SDL_Event event = {.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED};
+    SDL_Event event = ECSITest_Event(SDL_EVENT_WINDOW_CLOSE_REQUESTED);
     ECSITest_Send(event);
     return lua_yield(state, 0);
 }
@@ -457,7 +466,7 @@ static int ECSITest_Close(lua_State *state)
 /// @brief Adds a drop from another application at a position: its begin, a file or text event for each string, and its end.
 static void ECSITest_SendDrop(f32 x, f32 y, Uint32 type, const char *const *texts, usz count)
 {
-    SDL_Event event = {.type = SDL_EVENT_DROP_BEGIN};
+    SDL_Event event = ECSITest_Event(SDL_EVENT_DROP_BEGIN);
     ECSITest_Send(event);
 
     for (usz i = 0; i < count; i++)
@@ -493,7 +502,7 @@ static int ECSITest_Text(lua_State *state)
 
     // the event points to the text, so the test keeps it until it ends
     arrput(TEST.keptTexts, copy);
-    SDL_Event event = {.type = SDL_EVENT_TEXT_INPUT};
+    SDL_Event event = ECSITest_Event(SDL_EVENT_TEXT_INPUT);
     event.text.text = copy;
     ECSITest_Send(event);
     return lua_yield(state, 0);
@@ -835,7 +844,7 @@ static int ECSITest_Pixel(lua_State *state)
     }
 
     char text[8];
-    SDL_snprintf(text, sizeof(text), "#%06X", (unsigned int)(color & 0xFFFFFF));
+    SDL_snprintf(text, sizeof(text), "#%06X", (unsigned int)(color & 0xFFFFFFU));
     lua_pushstring(state, text);
     return 1;
 }
