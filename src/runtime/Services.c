@@ -42,6 +42,9 @@ static const char *const OPENECS_PARAMETER_TYPE_NAMES[ECSIParameterType_Count] =
 /// @brief Prefix of the names of struct types' metatables.
 #define OPENECS_STRUCT_METATABLE "ecs.struct:"
 
+/// @brief The most parameters whose call storage a call from Lua keeps on the C stack; a function with more gets a userdata.
+#define OPENECS_CALL_PARAMETERS 16
+
 /// @brief The methods whose names make them Lua's operators too, with the metatable fields of those operators: a struct type's add is also its +.
 static const char *const OPENECS_STRUCT_OPERATORS[][2] = {
     {"add", "__add"},
@@ -126,9 +129,10 @@ typedef struct ECSIParameter
     char *name;                     // the name the signature gives it, or nullptr; only for documentation
     bool out;                       // an output parameter: a pointer in C, an extra result in Lua
     bool keep;                      // a callback that stays valid after the call, until the function that took it releases it
-    ECSIHandleType *handle;         // handles: their type
+    ECSIHandleType *handle;         // handles: their type, which stays while the core runs, as handle types are never freed
     ECSIStructType *structType;     // structs: their type
     struct ECSISignature *callback; // callbacks: their signature, owned by the parameter
+    struct ECSIFunction *spare;     // a callback that is not kept: the closure a finished call left, which the next call takes, so a call makes none
     char *luaType;                  // values: the Lua type that value<...> names for editors, or nullptr; only for documentation, as names are
     char *documentation;            // what the parameter or result is, from the function's description, or nullptr; only for documentation
 } ECSIParameter;
@@ -335,6 +339,8 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
 static void ECSISignature_Free(ECSISignature *signature);
 
 /// @brief Frees what a parameter owns: its name and a callback's signature.
+static void ECSIServices_FreeSpare(struct ECSIFunction **spare);
+
 static void ECSIParameter_Free(ECSIParameter *parameter)
 {
     SDL_free(parameter->name);
@@ -343,6 +349,11 @@ static void ECSIParameter_Free(ECSIParameter *parameter)
     parameter->luaType = nullptr;
     SDL_free(parameter->documentation);
     parameter->documentation = nullptr;
+
+    if (parameter->spare != nullptr)
+    {
+        ECSIServices_FreeSpare(&parameter->spare);
+    }
 
     if (parameter->callback != nullptr)
     {
@@ -771,6 +782,9 @@ static SHUResult ECSIServices_Find(ECSPlugin plugin, const char *name, const cha
 static SHUResult ECSIServices_MakeCallback(lua_State *state, int index, const ECSIFunction *service, ECSPlugin giver, const ECSISignature *signature, ECSIFunction **retCallback);
 
 static void ECSIServices_FreeCallback(ECSIFunction **callback);
+static void ECSIServices_ParkCallback(ECSIFunction *callback);
+static void ECSIServices_PushHandleOf(lua_State *state, ECSIHandleType *handleType, void *object);
+static void *ECSIServices_CheckHandleOf(lua_State *state, int index, ECSIHandleType *handleType);
 
 static void ECSIServices_PushArgument(lua_State *state, ECSIParameter parameter, const void *argument);
 
@@ -1198,7 +1212,7 @@ static void ECSIServices_CheckArgument(lua_State *state, int index, ECSIParamete
     switch (parameter.type)
     {
     case ECSIParameterType_Handle:
-        retSlot->pointer = ECSIServices_CheckHandle(index, parameter.handle->name);
+        retSlot->pointer = ECSIServices_CheckHandleOf(state, index, parameter.handle);
         break;
     case ECSIParameterType_Bool:
         retSlot->boolean = (u8)(lua_toboolean(state, index) != 0);
@@ -1346,9 +1360,9 @@ static SHUResult ECSIServices_MakeValues(lua_State *state, const ECSISignature *
 }
 
 /// @brief Makes the Lua functions that a call passes into closures that C calls. A closure is valid until the call returns, or until C releases it if C keeps it.
-static SHUResult ECSIServices_MakeCallbacks(lua_State *state, const ECSIFunction *function, ECSPlugin caller, ECSICallParameter *parameters)
+static SHUResult ECSIServices_MakeCallbacks(lua_State *state, ECSIFunction *function, ECSPlugin caller, ECSICallParameter *parameters)
 {
-    const ECSISignature *signature = &function->signature;
+    ECSISignature *signature = &function->signature;
 
     for (usz i = 0; i < arrlenu(signature->parameters); i++)
     {
@@ -1359,7 +1373,23 @@ static SHUResult ECSIServices_MakeCallbacks(lua_State *state, const ECSIFunction
             continue;
         }
 
-        SHU_ReturnResult(ECSIServices_MakeCallback(state, call->index, function, caller, signature->parameters[i].callback, &call->callback));
+        // a callback that is not kept takes the closure the last call left, and only its Lua function changes
+        ECSIParameter *parameter = &signature->parameters[i];
+
+        if (!parameter->keep && parameter->spare != nullptr)
+        {
+            call->callback = parameter->spare;
+            parameter->spare = nullptr;
+            call->callback->giver = caller;
+            lua_pushvalue(state, call->index);
+            call->callback->lua = luaL_ref(state, LUA_REGISTRYINDEX);
+            lua_newtable(state);
+            call->callback->anchors = luaL_ref(state, LUA_REGISTRYINDEX);
+        }
+        else
+        {
+            SHU_ReturnResult(ECSIServices_MakeCallback(state, call->index, function, caller, parameter->callback, &call->callback));
+        }
 
         // C gets the closure's code; POSIX lets a data pointer hold code
         SDL_memcpy(&call->slot.pointer, &call->callback->pointer, sizeof(call->slot.pointer));
@@ -1423,7 +1453,7 @@ static int ECSIServices_PushResults(lua_State *state, const ECSISignature *signa
 }
 
 /// @brief Frees the values and closures of a call. A kept closure that the call got is C's once the call ran, released or not; when the call did not run, nothing can release it.
-static void ECSIServices_FreeCallParameters(const ECSISignature *signature, ECSICallParameter *parameters, bool called)
+static void ECSIServices_FreeCallParameters(ECSISignature *signature, ECSICallParameter *parameters, bool called)
 {
     for (usz i = 0; i < arrlenu(signature->parameters); i++)
     {
@@ -1443,18 +1473,32 @@ static void ECSIServices_FreeCallParameters(const ECSISignature *signature, ECSI
         if (keep)
         {
             (void)hmdel(SERVICES.kept, call->slot.pointer);
+            ECSIServices_FreeCallback(&call->callback);
+            continue;
         }
 
-        ECSIServices_FreeCallback(&call->callback);
+        // the closure waits for the next call; its Lua function and anchors go now, so the garbage collector can take them
+        ECSIFunction **spare = &signature->parameters[i].spare;
+        ECSIServices_ParkCallback(call->callback);
+
+        if (*spare == nullptr)
+        {
+            *spare = call->callback;
+            call->callback = nullptr;
+        }
+        else
+        {
+            ECSIServices_FreeSpare(&call->callback);
+        }
     }
 }
 
 /// @brief Calls a C function from Lua through libffi. The function is the first upvalue: a registered function, or a callback that C gave Lua. The second, for a registered function, is the plugin that calls it. Output parameters become extra results.
 static int ECSIServices_CallC(lua_State *state)
 {
-    const ECSIFunction *function = lua_touserdata(state, lua_upvalueindex(1));
+    ECSIFunction *function = lua_touserdata(state, lua_upvalueindex(1));
     ECSPlugin caller = lua_touserdata(state, lua_upvalueindex(2));
-    const ECSISignature *signature = &function->signature;
+    ECSISignature *signature = &function->signature;
     usz count = arrlenu(signature->parameters);
 
     if (function->pointer == nullptr)
@@ -1472,9 +1516,19 @@ static int ECSIServices_CallC(lua_State *state)
 
     u64 misuses = ECSIPlugin_GetMisuseCount();
 
-    // the storage is a userdata, so it is freed even when an argument raises an error; libffi takes the arguments as an array of pointers
-    ECSICallParameter *parameters = lua_newuserdatauv(state, count * (sizeof(ECSICallParameter) + sizeof(void *)) + 1, 0);
-    void **arguments = (void **)(parameters + count);
+    // the storage is on the C stack, which an argument's error leaves as well; a function of many parameters gets a userdata, which the garbage
+    // collector frees then; libffi takes the arguments as an array of pointers
+    ECSICallParameter local[OPENECS_CALL_PARAMETERS];
+    void *localArguments[OPENECS_CALL_PARAMETERS];
+    ECSICallParameter *parameters = local;
+    void **arguments = localArguments;
+
+    if (count > OPENECS_CALL_PARAMETERS)
+    {
+        parameters = lua_newuserdatauv(state, count * (sizeof(ECSICallParameter) + sizeof(void *)), 0);
+        arguments = (void **)(parameters + count);
+    }
+
     ECSIServices_CheckArguments(state, signature, parameters, arguments);
 
     // values allocate, so they are made after every check that can raise an error
@@ -1704,7 +1758,7 @@ static void ECSIServices_PushArgument(lua_State *state, ECSIParameter parameter,
     switch (parameter.type)
     {
     case ECSIParameterType_Handle:
-        ECSIServices_PushHandle(parameter.handle->name, *(void *const *)argument);
+        ECSIServices_PushHandleOf(state, parameter.handle, *(void *const *)argument);
         break;
     case ECSIParameterType_Bool:
         lua_pushboolean(state, *(const u8 *)argument != 0);
@@ -2147,6 +2201,26 @@ static void ECSIServices_FreeCallback(ECSIFunction **callback)
     SDL_free((*callback)->name);
     SDL_free(*callback);
     *callback = nullptr;
+}
+
+/// @brief Lets go of a callback's Lua function and anchors, and of what it last returned, so its closure waits for another call without keeping them.
+static void ECSIServices_ParkCallback(ECSIFunction *callback)
+{
+    lua_State *state = ECSILua_GetState();
+    luaL_unref(state, LUA_REGISTRYINDEX, callback->lua);
+    luaL_unref(state, LUA_REGISTRYINDEX, callback->anchors);
+    callback->lua = LUA_NOREF;
+    callback->anchors = LUA_NOREF;
+    ECSValue_Destroy(&callback->result);
+}
+
+/// @brief Frees a parked callback, which holds nothing of Lua's, so it needs no Lua state.
+static void ECSIServices_FreeSpare(ECSIFunction **spare)
+{
+    ffi_closure_free((*spare)->closure);
+    SDL_free((*spare)->name);
+    SDL_free(*spare);
+    *spare = nullptr;
 }
 
 #pragma endregion C Calls Lua
@@ -3071,9 +3145,12 @@ bool ECS_Check(ECSPlugin plugin, bool condition, const char *format, ...)
 void ECSIServices_PushHandle(const char *type, void *object)
 {
     SDL_assert(type != nullptr);
+    ECSIServices_PushHandleOf(ECSILua_GetState(), ECSIServices_FindHandleType(type), object);
+}
 
-    lua_State *state = ECSILua_GetState();
-
+/// @brief Pushes a handle of an object of a type, or nil for no object or no type.
+static void ECSIServices_PushHandleOf(lua_State *state, ECSIHandleType *handleType, void *object)
+{
     if (object == nullptr)
     {
         lua_pushnil(state);
@@ -3081,8 +3158,6 @@ void ECSIServices_PushHandle(const char *type, void *object)
     }
 
     // the type is gone when its plugin was removed, and its objects when its plugin was disabled; a handle cannot be made then
-    ECSIHandleType *handleType = ECSIServices_FindHandleType(type);
-
     if (handleType == nullptr || handleType->kept)
     {
         lua_pushnil(state);
@@ -3145,6 +3220,12 @@ void *ECSIServices_CheckHandle(int index, const char *type)
         return nullptr;
     }
 
+    return ECSIServices_CheckHandleOf(state, index, handleType);
+}
+
+/// @brief Checks that a Lua argument is a handle of a type whose object is there, and gives the object; raises a Lua error otherwise.
+static void *ECSIServices_CheckHandleOf(lua_State *state, int index, ECSIHandleType *handleType)
+{
     ECSIHandle *handle = ECSILua_CheckUdata(state, index, handleType->metatable);
 
     if (handle->object == nullptr)

@@ -120,6 +120,7 @@ typedef struct ECSIOSWindow
     f32 height;
     ECSIDrawnTab *tabs; // stb_ds array of the tabs drawn in its last frame
     u64 raised;         // when it last opened or got the focus, counted across the OS windows; the highest is in front
+    bool changed;       // what it shows changed, so it is drawn and presented in the next frame
 } ECSIOSWindow;
 
 /// @brief How a popup is shown: in an SDL popup window, or inside its panel's OS window when the video driver has no popup windows.
@@ -130,6 +131,7 @@ typedef struct ECSIPopupView
     SDL_Renderer *renderer; // the popup window's
     SDL_Texture *texture;   // its pixels, made by the renderer that shows them
     SDL_FRect rect;         // where it shows, in the layout units of its panel's OS window
+    bool changed;           // its pixels or its place changed, so its popup window is presented again
 } ECSIPopupView;
 
 /// @brief The GPU device that every OS window's renderer and every GPU panel shares. An offscreen renderer owns it, so it outlives the OS windows and the plugins, which release their GPU objects first.
@@ -1776,6 +1778,7 @@ static void ECSIWindow_UpdatePopup(ECSPopup popup)
     }
 
     SDL_FRect rect = ECSIWindow_PlacePopup(popup, osWindow);
+    bool made = view == nullptr;
     view = view != nullptr ? view : ECSIWindow_MakePopupView(popup, osWindow, rect);
 
     if (view == nullptr)
@@ -1800,6 +1803,7 @@ static void ECSIWindow_UpdatePopup(ECSPopup popup)
         SDL_SetWindowSize(view->window, (int)rect.w, (int)rect.h);
     }
 
+    bool moved = made || rect.x != view->rect.x || rect.y != view->rect.y || rect.w != view->rect.w || rect.h != view->rect.h;
     view->rect = rect;
     SDL_Renderer *renderer = view->renderer != nullptr ? view->renderer : osWindow->renderer;
     bool drawn = ECSIPopup_Draw(popup);
@@ -1807,6 +1811,15 @@ static void ECSIWindow_UpdatePopup(ECSPopup popup)
     if (popup->pixels != nullptr)
     {
         ECSIWindow_UploadPopup(view, renderer, popup->pixels, drawn);
+    }
+
+    // a popup window is presented again only when it changed; one drawn inside the OS window changes that window
+    view->changed = view->changed || drawn || moved;
+
+    if (view->window == nullptr && view->changed)
+    {
+        osWindow->changed = true;
+        view->changed = false;
     }
 }
 
@@ -1848,7 +1861,7 @@ static void ECSIWindow_ShowPopupsIn(const ECSIOSWindow *osWindow)
     }
 }
 
-/// @brief Draws and presents the SDL popup windows.
+/// @brief Draws and presents the SDL popup windows that changed.
 static void ECSIWindow_PresentPopups(void)
 {
     usz count = 0;
@@ -1858,8 +1871,9 @@ static void ECSIWindow_PresentPopups(void)
     {
         ECSIPopupView *view = popups[i]->view;
 
-        if (view != nullptr && view->renderer != nullptr)
+        if (view != nullptr && view->renderer != nullptr && view->changed)
         {
+            view->changed = false;
             SDL_SetRenderDrawColor(view->renderer, 0, 0, 0, 0);
             SDL_RenderClear(view->renderer);
             SDL_RenderTexture(view->renderer, view->texture, nullptr, nullptr);
@@ -1980,8 +1994,15 @@ static void ECSIWindow_DrawFrame(ECSIOSWindow *osWindow, u64 nowTicks)
     ECSIWindow_Compose(osWindow, root, commands);
 }
 
-/// @brief Updates the layout and draws a frame of every shown OS window, without presenting them.
-static void ECSIWindow_DrawFrames(u64 nowTicks)
+/// @brief Checks whether an OS window can be seen: it is shown, and neither minimized nor covered by other windows.
+static bool ECSIWindow_IsVisible(const ECSIOSWindow *osWindow)
+{
+    return ECSIWindow_IsShown(osWindow) && (SDL_GetWindowFlags(osWindow->window) & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED)) == 0;
+}
+
+/// @brief Updates the layout and draws a frame of the OS windows that need one, without presenting them: every visible one after a request for a frame,
+/// which may come from a change anywhere, and otherwise those whose panels or popups changed. With all, every shown one draws, so its picture can be read.
+static void ECSIWindow_DrawFrames(u64 nowTicks, bool all)
 {
     // some drivers accept vsync but do not wait for it, so frames are limited a little above the rate ecs.vsync asks for; a working vsync still sets the pace
     const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(WINDOW.windows[0]->window));
@@ -1990,29 +2011,36 @@ static void ECSIWindow_DrawFrames(u64 nowTicks)
     WINDOW.frameNanoseconds = WINDOW.framePercent == 0 ? 0 : (u64)((f64)SDL_NS_PER_SECOND / limit);
     WINDOW.lastFrameTicks = nowTicks;
     ECSIWindow_Sync();
+    bool requested = ECSILayout_IsFrameRequested();
     ECSILayout_Update();
     ECSIWindow_UpdatePopups();
 
     for (usz i = 0; i < arrlenu(WINDOW.windows); i++)
     {
-        if (ECSIWindow_IsShown(WINDOW.windows[i]))
+        ECSIOSWindow *osWindow = WINDOW.windows[i];
+        bool needed = requested || osWindow->changed || ECSILayout_RootWantsFrame(ECSIWindow_RootOf(osWindow));
+
+        if (all ? ECSIWindow_IsShown(osWindow) : needed && ECSIWindow_IsVisible(osWindow))
         {
-            ECSIWindow_DrawFrame(WINDOW.windows[i], nowTicks);
+            ECSIWindow_DrawFrame(osWindow, nowTicks);
+            osWindow->changed = true;
         }
     }
 }
 
-/// @brief Presents the frame of every shown OS window and popup window.
+/// @brief Presents the frame of each OS window and popup window that drew one.
 static void ECSIWindow_Present(void)
 {
     ECSIWindow_PresentPopups();
 
     for (usz i = 0; i < arrlenu(WINDOW.windows); i++)
     {
-        if (ECSIWindow_IsShown(WINDOW.windows[i]))
+        if (WINDOW.windows[i]->changed && ECSIWindow_IsShown(WINDOW.windows[i]))
         {
             SDL_RenderPresent(WINDOW.windows[i]->renderer);
         }
+
+        WINDOW.windows[i]->changed = false;
     }
 }
 
@@ -2340,7 +2368,7 @@ void ECSIWindow_Render(u64 nowTicks)
         WINDOW.pending.panel = nullptr;
     }
 
-    ECSIWindow_DrawFrames(nowTicks);
+    ECSIWindow_DrawFrames(nowTicks, false);
     ECSIWindow_Present();
 }
 
@@ -2348,7 +2376,7 @@ void ECSIWindow_Render(u64 nowTicks)
 /// @return The picture, to destroy with SDL_DestroySurface, or nullptr if there is no such window or it cannot be read.
 static SDL_Surface *ECSIWindow_ReadFrame(usz number, f32 *retScale)
 {
-    ECSIWindow_DrawFrames(SDL_GetTicksNS());
+    ECSIWindow_DrawFrames(SDL_GetTicksNS(), true);
     ECSIOSWindow *osWindow = ECSIWindow_FindByNumber(number);
 
     if (retScale != nullptr)

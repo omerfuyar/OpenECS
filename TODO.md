@@ -64,7 +64,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 **Core: communication**
 
-- **P2 · A call from Lua into C looks up names and allocates each time.** `src/runtime/Services.c:1148`, `:2880-2888` Each handle argument and result finds its type by name twice, though the parameter already points to it; each `fn<>` argument allocates a libffi closure, a name and two registry references (`:1918-1948`); the arguments' storage is a new userdata (`:1398`). Compare the handle's type pointer, keep flags of what a signature holds from when it is parsed, and reuse callback closures. Size: M.
 - **P3 · No example frees a handle while Lua holds it.** Nothing in OpenECS-examples calls `ECSHandle_Free`, `ECSHandle_Forget` or `ECSValue_SetHandle`, or disables a plugin while another keeps its callback. Add cases when those paths change. Size: M.
 
 **std: ui, with draw**
@@ -81,7 +80,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 **Core: interface**
 
-- **P2 · A frame draws and presents every OS window and popup.** `src/interface/Window.c:1972-1977`, `:1829-1846`, `:299-302` One panel that draws all the time makes every window, minimized and hidden behind others too, and every popup be laid out, drawn and presented at the display's rate. Mark what changed for each OS window and popup, and draw only those; skip windows that cannot be seen. Size: M.
 - **P3 · Window.c holds five modules.** `src/interface/Window.c:139-211` Its 2848 lines hold the OS windows, and also the drag of panels and drop zones (`:458-730`, `:2384-2590`), the Clay declarations (`:732-1304`), the popups' views (`:1623-1848`), the title bar and hit tests, and the menus' geometry (`:2631-2765`). Move each to its own file with its part of the `WINDOW` struct; Window.c keeps the OS windows, renderers and frame pacing. The owner leaves it until it is necessary. The parts call each other, so three modules in an order avoid a cycle (DESIGN 1.5): Drag, then View with every Clay declaration, then Window. Size: L.
 - **P3 · The drop that waits on Wayland keeps a panel's pointer.** `src/interface/Window.c:2556` `pending.panel` outlives `ECSIWindow_Forget` for up to 400 ms, and is checked only by its address (`Layout.c:1769`). Clear it in `Forget`, or keep the panel's id. Size: S.
 - **P3 · Each key press parses every binding's key text.** `src/interface/Keys.c:186`, `:230-255` Finding a binding walks the settings' tables and parses each key again. Parse them once into a table, made again when settings, the preset, workspaces or plugins change, as the prefix keys are (`:105-128`). Size: M.
