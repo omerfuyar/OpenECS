@@ -23,6 +23,7 @@ static const char *const OPENECS_SETTING_TYPE_TEXTS[] = {
     [ECSSettingType_List] = "a list",
     [ECSSettingType_Table] = "a table",
     [ECSSettingType_Color] = "a colour, such as \"#18191C\" or \"#18191CFF\"",
+    [ECSSettingType_Path] = "a text that names a file",
 };
 
 /// @brief A declared setting.
@@ -47,13 +48,14 @@ static const char *const OPENECS_SETTINGS_LAYER_NAMES[ECSISettingsLayer_Count] =
 #define OPENECS_SETTINGS_DEFAULT_THEME "dark"
 
 /// @brief Names of the setting types, for explanations, in the order of ECSSettingType.
-static const char *const OPENECS_SETTING_TYPE_NAMES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", "color"};
+static const char *const OPENECS_SETTING_TYPE_NAMES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", "color", "path"};
 
 /// @brief Copies fields of a table into another, while its fields are walked.
 typedef struct ECSISettingsCopier
 {
     ECSValue *target;
     SHUResult result;
+    const char *leftOut; // a field's name that is not copied, or nullptr
 } ECSISettingsCopier;
 
 static struct
@@ -89,6 +91,7 @@ static bool ECSISetting_Check(const ECSISetting *setting, const ECSValue *value)
     case ECSSettingType_Number:
         return type == ECSValueType_Integer || type == ECSValueType_Number;
     case ECSSettingType_String:
+    case ECSSettingType_Path:
         return type == ECSValueType_String;
     case ECSSettingType_Key:
     {
@@ -198,6 +201,7 @@ static SHUResult ECSISetting_SetDefault(ECSISetting *setting, const ECSSettingDe
         ECSValue_SetNumber(setting->defaultValue, desc->defaultNumber);
         return SHUResult_Ok;
     case ECSSettingType_String:
+    case ECSSettingType_Path:
         return ECSValue_SetString(setting->defaultValue, desc->defaultString == nullptr ? "" : desc->defaultString);
     case ECSSettingType_Key:
     case ECSSettingType_Color:
@@ -247,7 +251,7 @@ static SHUResult ECSISetting_SetDefault(ECSISetting *setting, const ECSSettingDe
 /// @param defaultValue The default as a value, or nullptr to take it from the description.
 static SHUResult ECSISettings_Declare(ECSPlugin owner, const ECSSettingDesc *desc, const ECSValue *defaultValue)
 {
-    if (desc->type > ECSSettingType_Color || (desc->type == ECSSettingType_Choice && (desc->choices == nullptr || desc->choices[0] == nullptr)))
+    if (desc->type > ECSSettingType_Path || (desc->type == ECSSettingType_Choice && (desc->choices == nullptr || desc->choices[0] == nullptr)))
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Setting '%s' has an invalid type or no choices.", desc->name);
         return SHUResult_ErrBadData;
@@ -827,8 +831,10 @@ const ECSValue *ECSISettings_GetKeys(ECSISettingsLayer layer)
     return SETTINGS.keys[layer];
 }
 
-void ECSISettings_DeliverChanges(void)
+bool ECSISettings_DeliverChanges(void)
 {
+    bool changed = arrlenu(SETTINGS.changed) > 0;
+
     // an owner may set settings again; those are told in this call too
     for (usz i = 0; i < arrlenu(SETTINGS.changed); i++)
     {
@@ -855,6 +861,7 @@ void ECSISettings_DeliverChanges(void)
     }
 
     arrfree(SETTINGS.changed);
+    return changed;
 }
 
 void ECSISettings_ReportUndeclared(void)
@@ -902,6 +909,37 @@ const ECSValue *ECSSetting_Get(const char *name)
     return setting == nullptr ? nullptr : setting->value;
 }
 
+/// @brief Copies a field of a table into another table, while its fields are walked, unless it is the field to leave out.
+static void ECSISettings_CopyOtherField(const char *name, const ECSValue *field, void *userData)
+{
+    ECSISettingsCopier *copier = userData;
+
+    if (SDL_strcmp(name, copier->leftOut) != 0)
+    {
+        ECSISettings_CopyField(name, field, copier);
+    }
+}
+
+/// @brief Removes a field from a table, if the table has it.
+/// @param table A table, or nullptr.
+static SHUResult ECSISettings_RemoveField(ECSValue *table, const char *name)
+{
+    if (ECSValue_GetTableField(table, name) == nullptr)
+    {
+        return SHUResult_Ok;
+    }
+
+    // a value's table has no removal, so the other fields are copied into a new table, which replaces it
+    ECSValue *kept = nullptr;
+    SHU_ReturnResult(ECSValue_Create(&kept));
+    ECSValue_SetTable(kept);
+    ECSISettingsCopier copier = {.target = kept, .result = SHUResult_Ok, .leftOut = name};
+    ECSIValue_TableForEachField(table, ECSISettings_CopyOtherField, &copier);
+    SHUResult result = copier.result ? copier.result : ECSIValue_Copy(table, kept);
+    ECSValue_Destroy(&kept);
+    return result;
+}
+
 SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
 {
     ECSILog_Check(name != nullptr, SHUResult_ErrAssertion);
@@ -914,7 +952,10 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
         return SHUResult_ErrNotFound;
     }
 
-    if (!ECSISetting_Check(setting, value))
+    // nil takes the user's value away, so the value of the layers below applies
+    bool reset = ECSValue_GetType(value) == ECSValueType_Nil;
+
+    if (!reset && !ECSISetting_Check(setting, value))
     {
         ECSISetting_ReportType(setting, nullptr);
         return SHUResult_ErrBadData;
@@ -931,12 +972,22 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
     SHU_ReturnResult(ECSValue_Create(&old));
     SHUResult result = ECSIValue_Copy(old, setting->value);
 
-    // the tool's own part wins over the part for every tool, so a setting it already has is changed there
+    // the tool's own part wins over the part for every tool, so a setting it already has is changed there; a reset takes it from both
     ECSValue *tool = (ECSValue *)ECSValue_GetTableField(ECSValue_GetTableField(SETTINGS.userFile, "tools"), SETTINGS.appID);
     ECSValue *part = ECSValue_GetTableField(tool, name) != nullptr ? tool : SETTINGS.userFile;
     ECSValue *field = nullptr;
-    result = result ? result : ECSValue_SetTableField(part, name, &field);
-    result = result ? result : ECSIValue_Copy(field, value);
+
+    if (reset)
+    {
+        result = result ? result : ECSISettings_RemoveField(tool, name);
+        result = result ? result : ECSISettings_RemoveField(SETTINGS.userFile, name);
+    }
+    else
+    {
+        result = result ? result : ECSValue_SetTableField(part, name, &field);
+        result = result ? result : ECSIValue_Copy(field, value);
+    }
+
     result = result ? result : ECSISettings_BuildLayer(ECSISettingsLayer_User, SETTINGS.userFile);
 
     // the layer was rebuilt, so every value in effect is found again

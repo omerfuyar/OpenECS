@@ -294,7 +294,7 @@ typedef struct ECSPanelTypeDesc
 
 ### 4.3 When a panel is drawn
 
-- A panel that is not continuous asks to be drawn with `ECSPanel_Redraw`. The core also draws it when its size or scale changes.
+- A panel that is not continuous asks to be drawn with `ECSPanel_Redraw`. The core also draws it when its size or scale changes, and draws every panel and popup again, whole, when a setting changes, as any setting may change how they look, such as a colour of the theme.
 - A panel in a hidden workspace runs only when its timers or events call it.
 
 ### 4.4 Placeholders
@@ -332,7 +332,7 @@ typedef struct ECSPanelTypeDesc
 
 - A panel's corner, and a popup's, is on a whole pixel, and its pixels show one to one, so what it draws stays sharp at any place and size.
 - Pointer positions given to a panel are in its surface's pixels, so they match what it draws.
-- A surface's `scale` is the setting `ecs.scale`, 1 by default, for every panel and popup. `Shown` and `Resized` give a panel's size in its pixels divided by the scale, and a popup's `width` and `height` are multiplied by it. When it changes, every panel draws again, with `kept` false, and hears its new size. The core's own interface keeps its sizes, and `ecs.fontSize` sizes its text.
+- A surface's `scale` is the setting `ecs.scale`, 1 by default, for every panel and popup. `Shown` and `Resized` give a panel's size in its pixels divided by the scale, and a popup's `width` and `height` are multiplied by it. When it changes, every panel draws again, with `kept` false, and hears its new size. The core's own interface grows with it too: the sizes its settings give, such as `ecs.fontSize` and `ecs.tabRowHeight`, and its paddings and gaps are multiplied by it, and its lines stay as thin.
 - A panel must not keep its surface after `Draw` returns; every call receives the current one. So the core can recreate surfaces, for example on resize, without telling the panel.
 - A pixels surface keeps its pixels between draws while its size stays the same. `kept` tells `Draw` that they still hold the picture of the last `Draw`, so it may change only what changed, such as the new part of a stroke. It is false for a new surface, after a resize or a change of scale, and always for a GPU surface.
 - `ECSSurface_Changed(surface, x, y, width, height)`, `surface:changed` in Lua, tells the core which rectangle `Draw` changed. The core uploads only the rectangle around every one given; a `Draw` that tells none changed the whole surface. A popup's surface is always uploaded whole.
@@ -492,6 +492,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - OpenECS draws the OS windows' frames itself, so they look and work the same on every system and desktop: the setting `ecs.titleBar`, on by default, makes each OS window borderless, with a title bar `ecs.titleBarHeight` layout units tall above the layout.
 - The title bar shows the tool's name and the buttons minimize, maximize or restore, and close. Dragging the title bar moves the window, and a right click on it opens the tool's menu (6.8).
 - The window's edges and corners resize it. The core tells SDL which part of the window is under the pointer (`SDL_SetWindowHitTest`), so the system moves and resizes the window, also on Wayland.
+- While the system moves or resizes a window, it may run its own loop until the user lets go, as Windows does, and the main loop waits. The core draws a frame each time SDL asks for one from that loop, so the window's content follows its size.
 - With `ecs.titleBar` off, the system draws the frame.
 - `ecs.app.quit` quits as the main window's close button does, asking about unsaved work (4.5). In C: `ECSApp_Quit()`.
 - The keys that move focus or panels (7.5) act within the focused panel's OS window. Focusing a panel in another OS window raises that window (7.1). When an OS window gets the system's focus, the panel that had the focus last in it gets it.
@@ -957,7 +958,7 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 ### 12.1 Declaring
 
 - Plugins declare settings with a name, a type, a default and a description: `ECSSetting_Declare(plugin, &desc)`. The core declares its own with a name, a type and a description; their defaults are in the core's settings file. Owners are told when their settings change: the description's `Changed` function runs after the queued events (3.1, step 4), and only when the value in effect really changed. Then the core emits `ecs.settingChanged` with the setting's full name, so any plugin can follow a setting it does not own, such as `ecs.font`.
-- Types: `bool`, `integer`, `number`, `string`, `choice` (one of a list), `key` (a key combination, 7.3), `color` (`"#RRGGBB"` or `"#RRGGBBAA"`, 5.2), `list` and `table`. A value must have its setting's type: a `key` must read as a key combination, and a `color` as a colour.
+- Types: `bool`, `integer`, `number`, `string`, `choice` (one of a list), `key` (a key combination, 7.3), `color` (`"#RRGGBB"` or `"#RRGGBBAA"`, 5.2), `list`, `table` and `path` (a text that names a file, which the settings window lets the user choose with a file dialog). A value must have its setting's type: a `key` must read as a key combination, and a `color` as a colour.
 - The core's settings hold the core's choices of look and behaviour: the prefix, focus and vsync, whether services' failures are logged, the window's size, font and colours, the sizes of tab rows, dividers and grips, the distances that start drags and drops, and the reopen limit.
 - The core's settings file is `resources/settings.lua` next to the executable, in the format of the user's file (12.3). It is part of the defaults layer (OVERVIEW 10.4), the only place that gives the core's settings their defaults, and holds the core's default keys (7.8). OpenECS does not start if the file cannot be read, or if it gives a core setting no value of its type. Its `ecs.prefix` must be a key combination, because a prefix that cannot be read falls back to it.
 - `ECSSetting_Get(name)` returns the value in effect as a value (10.3). It comes from the highest layer that sets the setting with a value of its type; otherwise it is the default. A value of another type is reported with its file and skipped.
@@ -966,7 +967,7 @@ Lua functions and values that C code keeps are stored in Lua's registry and refe
 ### 12.2 Interface
 
 - `get(name)`, `set(name, value)` (writes the user's settings file), `list()` (every declared setting) and `explain(name)`: the setting's description with its default, the value in effect, the layer it came from (`default`, `theme`, `preset` or `user`), and what each layer says. An explanation is the description that declared the setting plus where its value comes from, so `ecs.SettingExplanation` extends `ecs.SettingDesc` in `ecs.lua`. In C: `ECSSetting_Get`, `ECSSetting_Set`, `ECSSetting_List` and `ECSSetting_Explain`; lists and explanations are values.
-- `set` changes the tool's own part of the user's settings file if that part already has the setting; otherwise it changes the part for every tool. It rewrites the whole file (13.4), so comments in it are not kept. Without a configuration folder, as in a test, the change lasts until the program exits. So it does when the file is there but cannot be read: the file is reported and never written over, so the user corrects it and loses nothing.
+- `set` changes the tool's own part of the user's settings file if that part already has the setting; otherwise it changes the part for every tool. `set` with nil takes the setting out of both parts, so the value of the layers below the user's applies: the theme's, the preset's or the default. It rewrites the whole file (13.4), so comments in it are not kept. Without a configuration folder, as in a test, the change lasts until the program exits. So it does when the file is there but cannot be read: the file is reported and never written over, so the user corrects it and loses nothing.
 - The settings window uses `list`, `explain` and `set` (12.5).
 
 ### 12.3 User files
@@ -1070,6 +1071,7 @@ The core converts only layout data.
 - The writer is a short Lua function embedded in the executable. It uses `string.format("%q", x)`, so strings read back exactly. Numbers are written in the shortest form that reads back exactly.
 - Named fields are read and written in the order of their names, so the same session always writes the same file.
 - A session is written from the file it came from, with the current workspaces. So fields that the core does not use are kept.
+- `pluginsDir` is written as an absolute path, resolved from the preset's folder and the current folder, so a session opened from another folder, such as the launcher's, finds the preset's plugins.
 - A file is written to a temporary file, then renamed over the old one, so it is never left half-written.
 - `ECSSession_Save(path)`, and in Lua `ecs.session.save(path)`, write the session to a file at any time. Keys run `ecs.session.save`, which asks for the file with a save dialog that starts in the folder of saved sessions (16) and suggests a file named after the preset. A chosen name without `.lua` gets it.
 - The core's setting `ecs.keepSession`, off by default, keeps the tool's session between runs: quitting saves it as the tool's last session, and the next start of the same tool opens it instead of the preset. The core reads the setting before it chooses what to open, and again when the tool quits. A last session that cannot be read, such as one of a newer format, is reported and renamed with `.unreadable` after its name, and the tool starts from its preset.
@@ -1467,7 +1469,7 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 
 **Input method.** Software that composes characters a keyboard cannot type directly, for languages such as Chinese or Japanese.
 
-**Layout unit.** The unit of positions and sizes in the layout and in a panel. One takes a pixel in the core's interface and `ecs.scale` pixels in a panel or popup (5.1).
+**Layout unit.** The unit of positions and sizes in the layout and in a panel. One takes `ecs.scale` pixels in a panel, a popup and the sizes that the core's settings give, such as `ecs.tabRowHeight`, and a pixel in the layout's positions, such as a split's fixed size (5.1).
 
 **Loader.** A plugin that reads a file format into the objects of an executor, and may write them back.
 

@@ -73,3 +73,24 @@ int ECSIPath_GetFolderLength(const char *file, const char *path)
     const char *slash = ECSPath_FindLastSeparator(file);
     return slash == nullptr || ECSPath_IsAbsolute(path) ? 0 : (int)(slash - file + 1);
 }
+
+char *ECSIPath_GetAbsolute(const char *path)
+{
+    SDL_assert(path != nullptr);
+
+    if (ECSPath_IsAbsolute(path))
+    {
+        return SDL_strdup(path);
+    }
+
+    char *folder = SDL_GetCurrentDirectory();
+    char *full = nullptr;
+
+    if (folder == nullptr || SDL_asprintf(&full, "%s%s", folder, path) < 0)
+    {
+        full = nullptr;
+    }
+
+    SDL_free(folder);
+    return full;
+}

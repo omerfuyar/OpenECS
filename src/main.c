@@ -17,23 +17,22 @@
 /// @brief Preset used when the command line names none.
 #define OPENECS_DEFAULT_PRESET "launcher"
 
-/// @brief What --help prints.
-#define OPENECS_USAGE                                                                                          \
-    "Usage: OpenECS [OPTION...] [FILE...]\n"                                                                   \
-    "\n"                                                                                                       \
-    "Starts the launcher, which lists the presets of the presets folders and the saved sessions,\n"            \
-    "or the tool of a preset or a session. The preset's open function opens each FILE.\n"                      \
-    "\n"                                                                                                       \
-    "Options:\n"                                                                                               \
-    "  -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file\n"              \
-    "  -s, --session FILE      Open a saved session\n"                                                         \
-    "  -f, --fresh             Start from the preset, not from the tool's last session\n"                      \
-    "  -t, --test FILE         Run a test; Debug builds only\n"                                                \
-    "  -d, --definitions DIR   Write the plugin interface and every plugin's definitions into DIR, and exit\n" \
-    "  -i, --install           Add the preset's tool to the system's launcher, and exit\n"                     \
-    "  -u, --uninstall         Remove the preset's tool from the system's launcher, and exit\n"                \
-    "  -v, --version           Print the version and exit\n"                                                   \
-    "  -h, --help              Print this help and exit\n"
+/// @brief What --help prints, with the colours of its headings (H), options (O) and values (V), and the code that ends a colour (R).
+#define OPENECS_USAGE(H, O, V, R)                                                                                                                        \
+    H "Usage:" R " OpenECS [" O "OPTION" R "...] [" V "FILE" R "...]\n"                                                                                  \
+      "\n"                                                                                                                                               \
+      "Starts the launcher, which lists the presets of the presets folders and the saved sessions,\n"                                                    \
+      "or the tool of a preset or a session. The preset's open function opens each " V "FILE" R ".\n"                                                    \
+      "\n" H "Options:\n" R                                                                                                                              \
+      "  " O "-p" R ", " O "--preset" R " " V "NAME" R "|" V "FILE" R "  Start from a preset: a name from the presets folders, or a file\n"              \
+      "  " O "-s" R ", " O "--session" R " " V "FILE" R "      Open a saved session\n"                                                                   \
+      "  " O "-f" R ", " O "--fresh" R "             Start from the preset, not from the tool's last session\n"                                          \
+      "  " O "-t" R ", " O "--test" R " " V "FILE" R "         Run a test; Debug builds only\n"                                                          \
+      "  " O "-d" R ", " O "--definitions" R " " V "DIR" R "   Write the plugin interface and every plugin's definitions into " V "DIR" R ", and exit\n" \
+      "  " O "-i" R ", " O "--install" R "           Add the preset's tool to the system's launcher, and exit\n"                                         \
+      "  " O "-u" R ", " O "--uninstall" R "         Remove the preset's tool from the system's launcher, and exit\n"                                    \
+      "  " O "-v" R ", " O "--version" R "           Print the version and exit\n"                                                                       \
+      "  " O "-h" R ", " O "--help" R "              Print this help and exit\n"
 
 /// @brief One option of the command line.
 typedef struct ECSIOption
@@ -69,6 +68,19 @@ typedef enum ECSIOptionIndex
     ECSIOptionIndex_Help,
 } ECSIOptionIndex;
 
+/// @brief Prints the help to a stream, in colour when the stream shows colours.
+static void ECSIMain_PrintUsage(FILE *stream)
+{
+    if (ECSILog_HasColors(stream))
+    {
+        fputs(OPENECS_USAGE("\x1b[1m", "\x1b[32m", "\x1b[36m", "\x1b[0m"), stream);
+    }
+    else
+    {
+        fputs(OPENECS_USAGE("", "", "", ""), stream);
+    }
+}
+
 /// @brief Reads the options, and moves the files to the start of argv, over options already read.
 /// @return false if an option is unknown or lacks its value; the reason and the help are printed.
 static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArguments)
@@ -96,7 +108,8 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
 
         if (option == SDL_arraysize(OPENECS_OPTIONS))
         {
-            fprintf(stderr, "OpenECS: unknown option '%s'.\n\n%s", argv[i], OPENECS_USAGE);
+            fprintf(stderr, "OpenECS: unknown option '%s'.\n\n", argv[i]);
+            ECSIMain_PrintUsage(stderr);
             return false;
         }
 
@@ -106,7 +119,8 @@ static bool ECSIMain_ReadArguments(int argc, char **argv, ECSIArguments *retArgu
         {
             if (i + 1 >= argc)
             {
-                fprintf(stderr, "OpenECS: the option '%s' needs a value.\n\n%s", argv[i], OPENECS_USAGE);
+                fprintf(stderr, "OpenECS: the option '%s' needs a value.\n\n", argv[i]);
+                ECSIMain_PrintUsage(stderr);
                 return false;
             }
 
@@ -183,7 +197,7 @@ int main(int argc, char **argv)
 
     if (arguments.help)
     {
-        printf("%s", OPENECS_USAGE);
+        ECSIMain_PrintUsage(stdout);
         return 0;
     }
 

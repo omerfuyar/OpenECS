@@ -1082,7 +1082,14 @@ int ECSIApp_Run(void)
 
         ECSITimers_Run();
         ECSIEvents_Deliver();
-        ECSISettings_DeliverChanges();
+
+        // a setting may change how any panel or popup looks, such as a colour of the theme, so all of them draw again
+        if (ECSISettings_DeliverChanges())
+        {
+            ECSIPanels_RedrawAll();
+            ECSIPopups_RedrawAll();
+            ECSILayout_RequestFrame();
+        }
 
         // popups of closed or hidden panels close, and their Closed functions run before the panels are destroyed
         ECSIPopups_CloseHidden();

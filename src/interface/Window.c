@@ -68,9 +68,9 @@ static const ECSSettingDesc OPENECS_WINDOW_SETTINGS[] = {
     {.name = "ecs.colorFrame", .type = ECSSettingType_Color, .description = "Colour of the frame around each group of panels"},
     {.name = "ecs.windowWidth", .type = ECSSettingType_Integer, .description = "Width of the OS window when it opens, in layout units"},
     {.name = "ecs.windowHeight", .type = ECSSettingType_Integer, .description = "Height of the OS window when it opens, in layout units"},
-    {.name = "ecs.font", .type = ECSSettingType_String, .description = "TrueType font of the core's interface, read when the window opens; a relative path starts at the executable's folder"},
+    {.name = "ecs.font", .type = ECSSettingType_Path, .description = "TrueType font of the core's interface, read when the window opens; a relative path starts at the executable's folder"},
     {.name = "ecs.fontSize", .type = ECSSettingType_Number, .description = "Size of the core's font, in layout units"},
-    {.name = "ecs.scale", .type = ECSSettingType_Number, .description = "How large panels draw what they hold: the pixels of a panel's layout unit, such as 1.25"},
+    {.name = "ecs.scale", .type = ECSSettingType_Number, .description = "How large the interface is: the pixels of a layout unit, in panels and the core's own interface, such as 1.25"},
     {.name = "ecs.gripHeight", .type = ECSSettingType_Number, .description = "Height of a grip, in layout units"},
     {.name = "ecs.gripZone", .type = ECSSettingType_Number, .description = "Distance from a panel's top edge within which its grip shows, in layout units"},
     {.name = "ecs.dragThreshold", .type = ECSSettingType_Number, .description = "How far the pointer moves from a press on a tab or grip before the panel is dragged, in layout units"},
@@ -202,7 +202,7 @@ static struct
     const ECSIDialogView *dialog; // the message dialog that Input waits on, or nullptr
     ECSIOSWindow *dialogWindow;   // the OS window that shows it
 
-    // from the settings
+    // from the settings; the sizes are in pixels: the setting times ecs.scale
     Clay_Color colors[ECSIColor_Count];
     f32 fontSize;
     f32 gripHeight;
@@ -214,6 +214,18 @@ static struct
     bool titleBar;
     f32 titleBarHeight;
 } WINDOW = {0};
+
+/// @brief Gives a size of the core's interface in pixels: the size in layout units times ecs.scale, rounded.
+static f32 ECSIWindow_Px(f32 units)
+{
+    return SDL_roundf(units * ECSIPanels_GetScale());
+}
+
+/// @brief Gives a padding, gap or corner radius of the core's interface for Clay, in pixels.
+static u16 ECSIWindow_Spacing(f32 units)
+{
+    return (u16)ECSIWindow_Px(units);
+}
 
 /// @brief Width of the key column in the list of prefix keys.
 #define OPENECS_PREFIX_KEY_COLUMN 104.0f
@@ -328,10 +340,10 @@ static f32 ECSIWindow_GetTitleButtonWidth(void)
 /// @brief Gives the edge or corner of an OS window that a point resizes the window by, or SDL_HITTEST_NORMAL away from the edges.
 static SDL_HitTestResult ECSIWindow_HitEdge(f32 x, f32 y, f32 width, f32 height)
 {
-    bool left = x < OPENECS_RESIZE_EDGE;
-    bool right = x >= width - OPENECS_RESIZE_EDGE;
-    bool top = y < OPENECS_RESIZE_EDGE;
-    bool bottom = y >= height - OPENECS_RESIZE_EDGE;
+    bool left = x < ECSIWindow_Px(OPENECS_RESIZE_EDGE);
+    bool right = x >= width - ECSIWindow_Px(OPENECS_RESIZE_EDGE);
+    bool top = y < ECSIWindow_Px(OPENECS_RESIZE_EDGE);
+    bool bottom = y >= height - ECSIWindow_Px(OPENECS_RESIZE_EDGE);
 
     if (top && left)
     {
@@ -511,7 +523,7 @@ static ECSIDrop ECSIWindow_FindTabGap(ECSIOSWindow *osWindow, ECSINode *group, f
         }
     }
 
-    *retRect = (SDL_FRect){gapX - OPENECS_TAB_GAP_WIDTH / 2.0f, group->y, OPENECS_TAB_GAP_WIDTH, ECSILayout_GetTabRowHeight()};
+    *retRect = (SDL_FRect){gapX - ECSIWindow_Px(OPENECS_TAB_GAP_WIDTH) / 2.0f, group->y, ECSIWindow_Px(OPENECS_TAB_GAP_WIDTH), ECSILayout_GetTabRowHeight()};
     return drop;
 }
 
@@ -821,7 +833,7 @@ static void ECSIWindow_DeclareIcon(ECSIIcon icon, Clay_Color color)
 static f32 ECSIWindow_GetMarksWidth(const ECSINode *group, const ECSIRoot *root)
 {
     usz marks = (group->locked ? 1u : 0u) + (root != nullptr && root->maximized == group ? 1u : 0u);
-    return (f32)marks * (SDL_roundf(WINDOW.fontSize * OPENECS_ICON_SCALE) + OPENECS_MENU_ITEM_PADDING);
+    return (f32)marks * (SDL_roundf(WINDOW.fontSize * OPENECS_ICON_SCALE) + ECSIWindow_Px(OPENECS_MENU_ITEM_PADDING));
 }
 
 /// @brief Declares the marks that show a group is locked or maximized, inside the open element.
@@ -848,7 +860,7 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *osWindow)
     CLAY(CLAY_ID("TitleBar"), {
                                   .layout = {
                                       .sizing = {CLAY_SIZING_FIXED(osWindow->width), CLAY_SIZING_FIXED(WINDOW.titleBarHeight)},
-                                      .padding = {12, 0, 0, 0},
+                                      .padding = {ECSIWindow_Spacing(12), 0, 0, 0},
                                       .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                                   },
                                   .backgroundColor = WINDOW.colors[ECSIColor_TabRow],
@@ -858,7 +870,7 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *osWindow)
         CLAY_TEXT(ECSIWindow_ClayText(WINDOW.title), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
 
         // the preset's hint follows the title, cut at the buttons when the window is narrow
-        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}, .padding = {16, 8, 0, 0}}, .clip = {.horizontal = true}})
+        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}, .padding = {ECSIWindow_Spacing(16), ECSIWindow_Spacing(8), 0, 0}}, .clip = {.horizontal = true}})
         {
             if (WINDOW.hint != nullptr)
             {
@@ -911,7 +923,7 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
                 CLAY(CLAY_IDI("Tab", (u32)arrlenu(osWindow->tabs)), {
                                                                         .layout = {
                                                                             .sizing = {CLAY_SIZING_FIT(0), CLAY_SIZING_GROW(0)},
-                                                                            .padding = {12, 12, 0, 0},
+                                                                            .padding = {ECSIWindow_Spacing(12), ECSIWindow_Spacing(12), 0, 0},
                                                                             .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                                                                         },
                                                                         .backgroundColor = i == group->shown ? WINDOW.colors[ECSIColor_TabShown] : WINDOW.colors[ECSIColor_Tab],
@@ -933,7 +945,7 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
                     // panels of a locked group cannot be closed by the user
                     if (!group->locked)
                     {
-                        CLAY(CLAY_IDI("TabClose", (u32)arrlenu(osWindow->tabs)), {.layout = {.padding = {8, 0, 0, 0}}})
+                        CLAY(CLAY_IDI("TabClose", (u32)arrlenu(osWindow->tabs)), {.layout = {.padding = {ECSIWindow_Spacing(8), 0, 0, 0}}})
                         {
                             CLAY_TEXT(CLAY_STRING("\u00D7"), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                         }
@@ -952,13 +964,13 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
         {
             CLAY_AUTO_ID({
                 .layout = {
-                    .sizing = {CLAY_SIZING_FIXED(marksWidth + OPENECS_MENU_ITEM_PADDING), CLAY_SIZING_FIXED(ECSILayout_GetTabRowHeight())},
-                    .padding = {(u16)OPENECS_MENU_ITEM_PADDING, 0, 0, 0},
-                    .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
+                    .sizing = {CLAY_SIZING_FIXED(marksWidth + ECSIWindow_Px(OPENECS_MENU_ITEM_PADDING)), CLAY_SIZING_FIXED(ECSILayout_GetTabRowHeight())},
+                    .padding = {ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING), 0, 0, 0},
+                    .childGap = ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING),
                     .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                 },
                 .backgroundColor = WINDOW.colors[ECSIColor_TabRow],
-                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + group->width - marksWidth - OPENECS_MENU_ITEM_PADDING, group->y}, .zIndex = 1},
+                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + group->width - marksWidth - ECSIWindow_Px(OPENECS_MENU_ITEM_PADDING), group->y}, .zIndex = 1},
             })
             {
                 ECSIWindow_DeclareMarks(group, root);
@@ -983,8 +995,8 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
         CLAY_AUTO_ID({
             .layout = {
                 .sizing = {CLAY_SIZING_FIXED(panel->width), CLAY_SIZING_FIXED(panel->height)},
-                .padding = CLAY_PADDING_ALL(16),
-                .childGap = 6,
+                .padding = CLAY_PADDING_ALL(ECSIWindow_Spacing(16)),
+                .childGap = ECSIWindow_Spacing(6),
                 .layoutDirection = CLAY_TOP_TO_BOTTOM,
             },
             .backgroundColor = WINDOW.colors[ECSIColor_Placeholder],
@@ -1083,7 +1095,7 @@ static void ECSIWindow_DeclareDataTarget(ECSINode *group, void *userData)
 static void ECSIWindow_DeclareDialog(const ECSIOSWindow *osWindow)
 {
     const ECSIDialogView *dialog = WINDOW.dialog;
-    f32 width = SDL_max(1.0f, SDL_min(OPENECS_DIALOG_WIDTH, osWindow->width - 2.0f * OPENECS_DIALOG_MARGIN));
+    f32 width = SDL_max(1.0f, SDL_min(ECSIWindow_Px(OPENECS_DIALOG_WIDTH), osWindow->width - 2.0f * ECSIWindow_Px(OPENECS_DIALOG_MARGIN)));
     Clay_Color shade = WINDOW.colors[ECSIColor_Background];
     shade.a = 176.0f;
 
@@ -1096,12 +1108,12 @@ static void ECSIWindow_DeclareDialog(const ECSIOSWindow *osWindow)
         CLAY(CLAY_ID("Dialog"), {
                                     .layout = {
                                         .sizing = {CLAY_SIZING_FIXED(width), CLAY_SIZING_FIT(0)},
-                                        .padding = CLAY_PADDING_ALL(16),
-                                        .childGap = 12,
+                                        .padding = CLAY_PADDING_ALL(ECSIWindow_Spacing(16)),
+                                        .childGap = ECSIWindow_Spacing(12),
                                         .layoutDirection = CLAY_TOP_TO_BOTTOM,
                                     },
                                     .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
-                                    .cornerRadius = CLAY_CORNER_RADIUS(6),
+                                    .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(6)),
                                     .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {1, 1, 1, 1, 0}},
                                 })
         {
@@ -1109,16 +1121,16 @@ static void ECSIWindow_DeclareDialog(const ECSIOSWindow *osWindow)
             CLAY_TEXT(ECSIWindow_ClayText(dialog->message), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_WORDS}));
 
             // the buttons line up at the right; the one that Return presses has the accent's border, and the one under the pointer is lighter
-            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}, .childGap = 8, .childAlignment = {.x = CLAY_ALIGN_X_RIGHT}}})
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}, .childGap = ECSIWindow_Spacing(8), .childAlignment = {.x = CLAY_ALIGN_X_RIGHT}}})
             {
                 for (usz i = 0; i < dialog->count; i++)
                 {
                     bool selected = i == dialog->selected;
 
                     CLAY(CLAY_IDI("DialogButton", (u32)i), {
-                                                               .layout = {.padding = {12, 12, 6, 6}},
+                                                               .layout = {.padding = {ECSIWindow_Spacing(12), ECSIWindow_Spacing(12), ECSIWindow_Spacing(6), ECSIWindow_Spacing(6)}},
                                                                .backgroundColor = (i32)i == dialog->hover ? WINDOW.colors[ECSIColor_Selected] : WINDOW.colors[ECSIColor_Tab],
-                                                               .cornerRadius = CLAY_CORNER_RADIUS(4),
+                                                               .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(4)),
                                                                .border = {.color = WINDOW.colors[selected ? ECSIColor_Accent : ECSIColor_TextDim], .width = selected ? (Clay_BorderWidth){2, 2, 2, 2, 0} : (Clay_BorderWidth){1, 1, 1, 1, 0}},
                                                            })
                     {
@@ -1149,17 +1161,17 @@ static void ECSIWindow_DeclareGrip(ECSINode *group, const ECSIRoot *root)
     int titleWidth = 0;
     TTF_SetFontSize(WINDOW.font, WINDOW.fontSize);
     TTF_GetStringSize(WINDOW.font, title, 0, &titleWidth, nullptr);
-    f32 width = SDL_min((f32)titleWidth + ECSIWindow_GetMarksWidth(group, root) + 2.0f * OPENECS_MENU_ITEM_PADDING, group->width);
+    f32 width = SDL_min((f32)titleWidth + ECSIWindow_GetMarksWidth(group, root) + 2.0f * ECSIWindow_Px(OPENECS_MENU_ITEM_PADDING), group->width);
 
     CLAY(CLAY_ID("Grip"), {
                               .layout = {
                                   .sizing = {CLAY_SIZING_FIXED(width), CLAY_SIZING_FIXED(WINDOW.gripHeight)},
-                                  .padding = {(u16)OPENECS_MENU_ITEM_PADDING, (u16)OPENECS_MENU_ITEM_PADDING, 0, 0},
-                                  .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
+                                  .padding = {ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING), ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING), 0, 0},
+                                  .childGap = ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING),
                                   .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                               },
                               .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
-                              .cornerRadius = {0, 0, 6, 6},
+                              .cornerRadius = {0, 0, ECSIWindow_Spacing(6), ECSIWindow_Spacing(6)},
                               .border = {.color = WINDOW.colors[ECSIColor_TextDim], .width = {1, 1, 0, 1, 0}},
                               .clip = {.horizontal = true},
                               .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + (group->width - width) / 2.0f, group->y}, .zIndex = 2},
@@ -1197,11 +1209,11 @@ static void ECSIWindow_DeclareMenus(void)
         CLAY(CLAY_IDI("Menu", (u32)level), {
                                                .layout = {
                                                    .sizing = {CLAY_SIZING_FIXED(rect.w), CLAY_SIZING_FIXED(rect.h)},
-                                                   .padding = CLAY_PADDING_ALL((u16)OPENECS_MENU_PADDING),
+                                                   .padding = CLAY_PADDING_ALL(ECSIWindow_Spacing(OPENECS_MENU_PADDING)),
                                                    .layoutDirection = CLAY_TOP_TO_BOTTOM,
                                                },
                                                .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
-                                               .cornerRadius = CLAY_CORNER_RADIUS(6),
+                                               .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(6)),
                                                .border = {.color = WINDOW.colors[ECSIColor_TextDim], .width = {1, 1, 1, 1, 0}},
                                                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = (i16)(5 + level)},
                                            })
@@ -1212,12 +1224,12 @@ static void ECSIWindow_DeclareMenus(void)
                 CLAY_AUTO_ID({
                     .layout = {
                         .sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(menu->itemHeight)},
-                        .padding = {(u16)OPENECS_MENU_ITEM_PADDING, (u16)OPENECS_MENU_ITEM_PADDING, 0, 0},
-                        .childGap = (u16)OPENECS_MENU_ITEM_PADDING,
+                        .padding = {ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING), ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING), 0, 0},
+                        .childGap = ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING),
                         .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                     },
                     .backgroundColor = i == menu->selected ? WINDOW.colors[ECSIColor_Selected] : (Clay_Color){0},
-                    .cornerRadius = CLAY_CORNER_RADIUS(4),
+                    .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(4)),
                 })
                 {
                     CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
@@ -1235,9 +1247,9 @@ static void ECSIWindow_DeclareMenus(void)
 static void ECSIWindow_DeclarePrefixKeys(void)
 {
     CLAY_AUTO_ID({
-        .layout = {.padding = CLAY_PADDING_ALL(14), .childGap = 4, .layoutDirection = CLAY_TOP_TO_BOTTOM},
+        .layout = {.padding = CLAY_PADDING_ALL(ECSIWindow_Spacing(14)), .childGap = ECSIWindow_Spacing(4), .layoutDirection = CLAY_TOP_TO_BOTTOM},
         .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
-        .cornerRadius = CLAY_CORNER_RADIUS(6),
+        .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(6)),
         .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {1, 1, 1, 1, 0}},
         .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {24.0f, 24.0f}, .zIndex = 3},
     })
@@ -1247,7 +1259,7 @@ static void ECSIWindow_DeclarePrefixKeys(void)
             // a line without a key is a heading
             if (WINDOW.prefixLines[2 * i] == nullptr)
             {
-                CLAY_AUTO_ID({.layout = {.padding = {0, 0, i == 0 ? 0 : 6, 0}}})
+                CLAY_AUTO_ID({.layout = {.padding = {0, 0, i == 0 ? 0 : ECSIWindow_Spacing(6), 0}}})
                 {
                     CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize}));
                 }
@@ -1257,7 +1269,7 @@ static void ECSIWindow_DeclarePrefixKeys(void)
 
             CLAY_AUTO_ID({.layout = {.layoutDirection = CLAY_LEFT_TO_RIGHT}})
             {
-                CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(OPENECS_PREFIX_KEY_COLUMN), CLAY_SIZING_FIT(0)}}})
+                CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(ECSIWindow_Px(OPENECS_PREFIX_KEY_COLUMN)), CLAY_SIZING_FIT(0)}}})
                 {
                     CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Accent], .fontSize = (u16)WINDOW.fontSize}));
                 }
@@ -1914,15 +1926,16 @@ static void ECSIWindow_ReadSettings(void)
         ECSIWindow_ReadColor(OPENECS_WINDOW_SETTINGS[i].name, &WINDOW.colors[i]);
     }
 
-    WINDOW.fontSize = ECSIWindow_ReadNumber("ecs.fontSize");
+    // the sizes are kept in pixels, so ecs.scale is read first
     ECSIPanels_SetScale(ECSIWindow_ReadNumber("ecs.scale"));
-    WINDOW.gripHeight = ECSIWindow_ReadNumber("ecs.gripHeight");
-    WINDOW.gripZone = ECSIWindow_ReadNumber("ecs.gripZone");
-    WINDOW.dragThreshold = ECSIWindow_ReadNumber("ecs.dragThreshold");
-    WINDOW.dockEdge = ECSIWindow_ReadNumber("ecs.dockEdge");
-    WINDOW.splitDepth = ECSIWindow_ReadNumber("ecs.splitDepth");
-    WINDOW.tabScrollStep = ECSIWindow_ReadNumber("ecs.tabScrollStep");
-    WINDOW.titleBarHeight = ECSIWindow_ReadNumber("ecs.titleBarHeight");
+    WINDOW.fontSize = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.fontSize"));
+    WINDOW.gripHeight = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.gripHeight"));
+    WINDOW.gripZone = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.gripZone"));
+    WINDOW.dragThreshold = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.dragThreshold"));
+    WINDOW.dockEdge = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.dockEdge"));
+    WINDOW.splitDepth = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.splitDepth"));
+    WINDOW.tabScrollStep = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.tabScrollStep"));
+    WINDOW.titleBarHeight = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.titleBarHeight"));
     bool titleBar = ECSValue_GetBool(ECSSetting_Get("ecs.titleBar"), true);
 
     if (titleBar != WINDOW.titleBar)
@@ -2032,6 +2045,29 @@ static void ECSIWindow_DrawFrames(u64 nowTicks, bool all)
 }
 
 /// @brief Presents the frame of each OS window and popup window that drew one.
+/// @brief Draws a frame while the user moves or resizes an OS window. On Windows, the system runs its own loop then, so the main loop waits until
+/// the user lets go; SDL sends an expose event with data1 1 from that loop, which an event watch sees at once.
+static bool ECSIWindow_WatchLiveResize(void *data, SDL_Event *event)
+{
+    (void)data;
+
+    if (event->type == SDL_EVENT_WINDOW_EXPOSED && event->window.data1 == 1 && arrlenu(WINDOW.windows) > 0)
+    {
+        // a message dialog waits in its own loop, and draws only itself over the last frame
+        if (WINDOW.dialog != nullptr)
+        {
+            ECSIWindow_RenderDialog();
+        }
+        else
+        {
+            ECSILayout_RequestFrame();
+            ECSIWindow_Render(SDL_GetTicksNS());
+        }
+    }
+
+    return true;
+}
+
 static void ECSIWindow_Present(void)
 {
     ECSIWindow_PresentPopups();
@@ -2093,11 +2129,13 @@ SHUResult ECSIWindow_Initialize(const char *title)
     ECSIWindow_ReadVsync(nullptr);
     ECSILayout_SetForget(ECSIWindow_Forget);
     ECSIPopups_SetRelease(ECSIWindow_ReleasePopup);
+    SDL_AddEventWatch(ECSIWindow_WatchLiveResize, nullptr);
     return SHUResult_Ok;
 }
 
 void ECSIWindow_Terminate(void)
 {
+    SDL_RemoveEventWatch(ECSIWindow_WatchLiveResize, nullptr);
     ECSILayout_SetForget(nullptr);
     ECSIPopups_SetRelease(nullptr);
 
@@ -2725,16 +2763,16 @@ void ECSIWindow_ShowMenu(usz level, ECSPanel panel, SDL_FRect anchor, const char
         int keyWidth = 0;
         TTF_GetStringSize(font, lines[2 * i + 1], 0, &labelWidth, nullptr);
         TTF_GetStringSize(font, lines[2 * i], 0, &keyWidth, nullptr);
-        width = SDL_max(width, (f32)(labelWidth + keyWidth) + 3.0f * OPENECS_MENU_ITEM_PADDING);
+        width = SDL_max(width, (f32)(labelWidth + keyWidth) + 3.0f * ECSIWindow_Px(OPENECS_MENU_ITEM_PADDING));
     }
 
-    menu->itemHeight = (f32)TTF_GetFontHeight(font) + 6.0f;
-    width += 2.0f * OPENECS_MENU_PADDING;
-    f32 height = (f32)count * menu->itemHeight + 2.0f * OPENECS_MENU_PADDING;
+    menu->itemHeight = (f32)TTF_GetFontHeight(font) + ECSIWindow_Px(6.0f);
+    width += 2.0f * ECSIWindow_Px(OPENECS_MENU_PADDING);
+    f32 height = (f32)count * menu->itemHeight + 2.0f * ECSIWindow_Px(OPENECS_MENU_PADDING);
 
     // it opens to the right of its anchor, or to the left if there is no room
     f32 x = anchor.x + anchor.w + width <= windowWidth ? anchor.x + anchor.w : anchor.x - width;
-    f32 y = anchor.y - (level == 0 ? 0.0f : OPENECS_MENU_PADDING);
+    f32 y = anchor.y - (level == 0 ? 0.0f : ECSIWindow_Px(OPENECS_MENU_PADDING));
     menu->rect = (SDL_FRect){
         SDL_max(0.0f, SDL_min(x, windowWidth - width)),
         SDL_max(0.0f, SDL_min(y, windowHeight - height)),
@@ -2764,9 +2802,9 @@ SDL_FRect ECSIWindow_MenuItemRect(usz level, usz index)
 
     const ECSIMenuView *menu = &WINDOW.menus[level];
     return (SDL_FRect){
-        menu->rect.x + OPENECS_MENU_PADDING,
-        menu->rect.y + OPENECS_MENU_PADDING + (f32)index * menu->itemHeight,
-        menu->rect.w - 2.0f * OPENECS_MENU_PADDING,
+        menu->rect.x + ECSIWindow_Px(OPENECS_MENU_PADDING),
+        menu->rect.y + ECSIWindow_Px(OPENECS_MENU_PADDING) + (f32)index * menu->itemHeight,
+        menu->rect.w - 2.0f * ECSIWindow_Px(OPENECS_MENU_PADDING),
         menu->itemHeight,
     };
 }
