@@ -13,7 +13,7 @@ This document explains what OpenECS is, what it covers, what it leaves to plugin
 ## Contents
 
 1. Summary
-2. The user's view
+2. Using OpenECS applications
 3. Scope: core and plugins
 4. Architecture
 5. Panels
@@ -41,15 +41,51 @@ From that perspective, OpenECS can be considered as a cross platform application
 
 ## 2. Using OpenECS applications
 
-1. The user starts a tool, for example "Paint" from the desktop's application menu. This runs OpenECS with the paint preset. Started without a preset, OpenECS shows a launcher that lists presets and saved sessions.
+This section is a guide for the person who uses a tool made with OpenECS. The sections after it explain the design.
+
+### 2.1 A day with a tool
+
+1. The user starts a tool, for example "Paint" from the desktop's application menu. This runs OpenECS with the paint preset. Started without a preset, OpenECS shows the launcher, which lists presets and saved sessions.
 2. OpenECS loads the preset's plugins and the plugins they depend on.
-3. If the user used this tool before, OpenECS restores the arrangement from last time. Otherwise it builds the arrangement the preset describes.
+3. If the user keeps sessions and used this tool before, OpenECS restores the arrangement from last time. Otherwise it builds the arrangement the preset describes.
 4. The window is divided into **panels**, such as a canvas, a colour palette or a layer list. Panels grouped in the same place show a **tab row**; a panel on its own shows none.
-5. The user drags panels to split the window differently, groups them as tabs, maximizes one, or moves one into its own window, popping out from main window.
+5. The user drags panels to split the window differently, groups them as tabs, maximizes one, or moves one into its own window.
 6. The user switches between **workspaces**, for example "drawing" and "organizing". Switching is instant.
-7. The user presses keys. Core forwards input to currently focused panel. The core's own actions are always reachable, and the user's own keybindings win over everything else.
-8. The user opens the settings window, sees every setting with its value and what it does, and changes it. The panel list shows every kind of panel the tool's plugins offer, and opens the one the user chooses.
-9. When the user quits, OpenECS asks what to do with unsaved work, then remembers the arrangement for next time. The user can also save sessions to files and open them later.
+7. The user presses keys. The core passes them to the focused panel. The core's own actions are always reachable, and the user's own keybindings win over everything else.
+8. When the user quits, OpenECS asks what to do with unsaved work. The user can also save sessions to files and open them later.
+
+### 2.2 The first keys
+
+Every core action starts with the **core prefix**, Alt+W by default. After it, OpenECS shows the keys it waits for, so the user does not need to learn them first. The most used are:
+
+| After Alt+W | Does                                                 |
+| ----------- | ---------------------------------------------------- |
+| `,`         | Opens the settings window.                           |
+| `.`         | Opens the panel list, to open any panel of the tool. |
+| `;`         | Opens the plugin list, to enable or disable plugins. |
+| `/`         | Opens the launcher, to go to another tool.           |
+| Arrows      | Move the focus to the panel on that side.            |
+| `M` / `P`   | Maximize the panel, or pop it out into its window.   |
+| `1` to `0`  | Switch to a workspace.                               |
+| `S` / `O`   | Save the session, or open one.                       |
+| `Q`         | Quit.                                                |
+
+A right click on the title bar opens the tool's menu, with the same actions. In the lists that the first-party plugins show, Ctrl+F searches, Up and Down choose, and Return acts.
+
+### 2.3 Changing a tool
+
+- **Settings.** The settings window shows every setting with its value and what it does, and saves a change at once. `ecs.scale` makes the whole interface larger or smaller, and `ecs.theme` chooses dark, light or the system's.
+- **Keys.** Any key is a setting: the user's settings file binds keys, and `false` removes one.
+- **Plugins.** The plugin list enables and disables plugins while the tool runs. The user's own plugins go in the user's plugin folder.
+
+### 2.4 Where the user's files are
+
+OpenECS keeps the user's files in the system's usual folders (DESIGN 16):
+
+- On Linux, the settings file is `~/.config/OpenECS/settings.lua`, beside the user's `presets/`. Plugins and saved sessions are in `~/.local/share/OpenECS/`, and the log and each tool's last session in `~/.local/state/OpenECS/`.
+- On Windows, all of them are in `%APPDATA%\OpenECS\`.
+
+The settings file is Lua, and the settings window writes it, so the user rarely opens it. A setting for one tool only goes in its `tools` part, under the tool's application id.
 
 ## 3. Scope: core and plugins
 
