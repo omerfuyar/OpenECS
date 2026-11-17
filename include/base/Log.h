@@ -4,6 +4,8 @@
 
 #include "OpenECS.h"
 
+#include <stdio.h>
+
 #pragma region Declarations
 
 /// @brief Checks a rule that a public function's caller must keep (DESIGN 1.4). A broken rule is a misuse: it is reported, and the function returns the value given after the condition, or nothing.
@@ -18,6 +20,11 @@
 
 /// @brief Sends SDL's log to standard error, with the time, the level and the plugin on each line. Debug builds also show debug messages.
 void ECSILog_Initialize(void);
+
+/// @brief Checks whether a stream shows colours: a terminal, unless NO_COLOR is set (no-color.org). On Windows it turns the console's colours on.
+/// @param stream stdout or stderr.
+/// @return true if the stream shows colours.
+bool ECSILog_HasColors(FILE *stream);
 
 /// @brief Writes the log to a file too, from now on. Each start writes the file anew.
 /// @param path Path of the log file.

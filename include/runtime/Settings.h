@@ -88,7 +88,8 @@ SHUWUR SHUResult ECSISettings_DeclarePlugin(ECSPlugin plugin, const ECSSettingDe
 const ECSValue *ECSISettings_GetKeys(ECSISettingsLayer layer);
 
 /// @brief Tells owners about the settings whose value in effect changed since the last call. The main loop calls it after delivering events.
-void ECSISettings_DeliverChanges(void);
+/// @return Whether a setting changed.
+bool ECSISettings_DeliverChanges(void);
 
 /// @brief Removes every setting a plugin declared. The values in the layers are kept.
 /// @param plugin The plugin.

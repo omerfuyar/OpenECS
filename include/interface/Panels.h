@@ -31,6 +31,7 @@ struct ECSIPanel
     bool needsDraw;
     bool drawn;     // pixels type: its pixels hold the picture of its last Draw
     f32 drawnScale; // the scale of its last Draw; 0 before the first
+    u32 drawnLook;  // the look of its last Draw, which changes with the settings
     bool unsaved;   // the panel has unsaved work
     f32 x;          // rectangle in layout units, set by the layout
     f32 y;
@@ -64,6 +65,9 @@ f32 ECSIPanels_GetScale(void);
 /// @brief Sets ecs.scale; each panel draws again at it and hears its new size when it is next shown.
 /// @param scale More than 0; other values count as 1.
 void ECSIPanels_SetScale(f32 scale);
+
+/// @brief Draws every panel again, whole, when it is next shown, as a setting that changed may change how it looks.
+void ECSIPanels_RedrawAll(void);
 
 /// @brief Registers a panel type like ECSPanelType_Register, with data kept in the type.
 /// @param plugin The plugin that provides the panel type.

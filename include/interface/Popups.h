@@ -49,6 +49,9 @@ void ECSIPopups_DestroyClosed(void);
 /// @brief Checks whether an open popup needs to be drawn.
 bool ECSIPopups_WantsFrame(void);
 
+/// @brief Draws every open popup again, as a setting that changed may change how it looks.
+void ECSIPopups_RedrawAll(void);
+
 /// @brief Draws a popup into its pixels if it needs it.
 /// @param popup The popup.
 /// @return true if its pixels changed.

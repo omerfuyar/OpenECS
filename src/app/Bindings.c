@@ -99,7 +99,7 @@ static struct
 static const char *const OPENECS_BINDINGS_EVENT_TYPES[] = {"pointerDown", "pointerUp", "pointerMove", "wheel", "keyDown", "keyUp", "focused", "unfocused", "shown", "hidden", "resized", "drop", "text"};
 
 /// @brief Names of the setting types in Lua, in the order of ECSSettingType.
-static const char *const OPENECS_BINDINGS_SETTING_TYPES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", "color", nullptr};
+static const char *const OPENECS_BINDINGS_SETTING_TYPES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", "color", "path", nullptr};
 
 /// @brief Gets the plugin that owns the ecs table a function came from. Every function of a plugin's ecs table has the plugin as its upvalue.
 static ECSPlugin ECSIBindings_GetPlugin(lua_State *state)

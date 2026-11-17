@@ -68,7 +68,7 @@ static const ECSSettingDesc OPENECS_WINDOW_SETTINGS[] = {
     {.name = "ecs.colorFrame", .type = ECSSettingType_Color, .description = "Colour of the frame around each group of panels"},
     {.name = "ecs.windowWidth", .type = ECSSettingType_Integer, .description = "Width of the OS window when it opens, in layout units"},
     {.name = "ecs.windowHeight", .type = ECSSettingType_Integer, .description = "Height of the OS window when it opens, in layout units"},
-    {.name = "ecs.font", .type = ECSSettingType_String, .description = "TrueType font of the core's interface, read when the window opens; a relative path starts at the executable's folder"},
+    {.name = "ecs.font", .type = ECSSettingType_Path, .description = "TrueType font of the core's interface, read when the window opens; a relative path starts at the executable's folder"},
     {.name = "ecs.fontSize", .type = ECSSettingType_Number, .description = "Size of the core's font, in layout units"},
     {.name = "ecs.scale", .type = ECSSettingType_Number, .description = "How large panels draw what they hold: the pixels of a panel's layout unit, such as 1.25"},
     {.name = "ecs.gripHeight", .type = ECSSettingType_Number, .description = "Height of a grip, in layout units"},

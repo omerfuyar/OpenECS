@@ -924,10 +924,20 @@ SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
     retInfo->appName = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(app, "name"), ""));
     retInfo->appID = SDL_strdup(appID);
 
-    // relative to the preset's folder, unless it is absolute
+    // relative to the preset's folder, unless it is absolute; kept absolute, as a session saves it and is opened from another folder, such as the launcher's
     if (pluginsFolder != nullptr)
     {
-        if (SDL_asprintf(&retInfo->pluginsFolder, "%.*s%s/", ECSIPath_GetFolderLength(path, pluginsFolder), path, pluginsFolder) < 0)
+        char *relative = nullptr;
+
+        if (SDL_asprintf(&relative, "%.*s%s/", ECSIPath_GetFolderLength(path, pluginsFolder), path, pluginsFolder) < 0)
+        {
+            return SHUResult_ErrAllocation;
+        }
+
+        retInfo->pluginsFolder = ECSIPath_GetAbsolute(relative);
+        SDL_free(relative);
+
+        if (retInfo->pluginsFolder == nullptr)
         {
             return SHUResult_ErrAllocation;
         }

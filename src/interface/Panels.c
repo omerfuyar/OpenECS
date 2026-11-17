@@ -32,6 +32,7 @@ static struct
     ECSIAskFunction Ask; // asks about unsaved work; Input gives it
     ECSIDrawing drawing; // the pixels surface that a panel draws into now
     f32 scale;           // ecs.scale: the pixels of a layout unit of panels and popups
+    u32 look;            // grows each time the settings change, so every panel draws again whole
 } PANELS = {.scale = 1.0f};
 
 static void ECSIPanelType_Free(ECSIPanelType *type)
@@ -578,11 +579,16 @@ void ECSIPanels_SetScale(f32 scale)
     PANELS.scale = scale > 0.0f ? scale : 1.0f;
 }
 
+void ECSIPanels_RedrawAll(void)
+{
+    PANELS.look++;
+}
+
 bool ECSIPanel_WantsFrame(ECSPanel panel)
 {
     SDL_assert(panel != nullptr);
 
-    return panel->needsDraw || panel->drawnScale != PANELS.scale || (panel->fault == nullptr && panel->type != nullptr && panel->type->desc.continuous);
+    return panel->needsDraw || panel->drawnScale != PANELS.scale || panel->drawnLook != PANELS.look || (panel->fault == nullptr && panel->type != nullptr && panel->type->desc.continuous);
 }
 
 /// @brief Calls a pixels panel's Draw, and sends to its texture what it changed.
@@ -598,7 +604,7 @@ static void ECSIPanel_DrawPixels(ECSPanel panel, bool upload, u64 nowTicks, f64 
         .scale = PANELS.scale,
         .pixels = cs(pixels->pixels, (usz)pixels->pitch * (usz)pixels->h),
         .pitch = pixels->pitch,
-        .kept = panel->drawn && panel->drawnScale == PANELS.scale, // the pixels hold the last picture while they and the scale stay the same
+        .kept = panel->drawn && panel->drawnScale == PANELS.scale && panel->drawnLook == PANELS.look, // the pixels hold the last picture while they, the scale and the settings stay the same
     };
 
     panel->lastDrawTicks = nowTicks;
@@ -611,6 +617,7 @@ static void ECSIPanel_DrawPixels(ECSPanel panel, bool upload, u64 nowTicks, f64 
     (void)ECSIPlugin_Leave(&callback);
     panel->drawn = true;
     panel->drawnScale = PANELS.scale;
+    panel->drawnLook = PANELS.look;
 
     // the services that drew into the surface finish, and its Lua handle goes
     ECSIServices_EndSurface(&surface);
@@ -637,6 +644,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
     {
         panel->needsDraw = false;
         panel->drawnScale = PANELS.scale;
+        panel->drawnLook = PANELS.look;
         return;
     }
 
@@ -668,6 +676,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         panel->lastDrawTicks = nowTicks;
         panel->needsDraw = false;
         panel->drawnScale = PANELS.scale;
+        panel->drawnLook = PANELS.look;
         ECSICallback callback;
         ECSIPlugin_Enter(&callback, panel->type->plugin, panel, ECSICallbackType_Panel);
         panel->type->desc.Draw(panel->state, &surface, seconds);

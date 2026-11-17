@@ -171,6 +171,14 @@ void ECSIPopups_DestroyClosed(void)
     }
 }
 
+void ECSIPopups_RedrawAll(void)
+{
+    for (usz i = 0; i < arrlenu(POPUPS.open); i++)
+    {
+        POPUPS.open[i]->needsDraw = true;
+    }
+}
+
 bool ECSIPopups_WantsFrame(void)
 {
     for (usz i = 0; i < arrlenu(POPUPS.open); i++)

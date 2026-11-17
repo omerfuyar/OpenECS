@@ -327,6 +327,7 @@ typedef enum ECSSettingType
     ECSSettingType_List,   // a table with list items only
     ECSSettingType_Table,
     ECSSettingType_Color, // "#RRGGBB" or "#RRGGBBAA"
+    ECSSettingType_Path,  // a text that names a file, which the settings window lets the user choose with a file dialog
 } ECSSettingType;
 
 /// @brief Tells a setting's owner that the value in effect changed. It runs after the queued events, outside other callbacks.
@@ -749,7 +750,7 @@ OPENECS_EXPORT void ECSService_ReleaseCallback(ECSFunction callback);
 
 /// @brief Sets a setting in the user's settings file, the highest layer, and writes the file. A file that could not be read is not written: the change lasts until the program exits. Main thread only.
 /// @param name Name of the setting.
-/// @param value The new value. It must have the setting's type. The core copies it.
+/// @param value The new value. It must have the setting's type. The core copies it. nil, or nullptr, takes the user's value away, so the value of the layers below applies.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no setting has the name, SHUResult_ErrBadData if the value has the wrong type, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
 /// @lua ecs.setting.set
 OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Set(const char *name, const ECSValue *value);

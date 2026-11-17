@@ -141,21 +141,22 @@ int main(int argc, char **argv)
 
 static void PrintUsage(void)
 {
-    printf("Usage: ./shuild.ignore [FLAG...]\n\n"
-           "Flags:\n"
-           "  -b, --build TYPE   Build type:\n"
-           "                       debug           the default, with the static analyzer and the sanitizers\n"
-           "                       release         an optimized build\n"
-           "                       relwithdebinfo  a release with debug information\n"
-           "                       minsizerel      a small release\n"
-           "  -n, --no-std       Do not build the standard plugins of std/\n"
-           "  -e, --examples     Also build the examples of examples/, into bin/examples/\n"
-           "  -t, --test [EXAMPLE...]\n"
-           "                     Build in Debug with the examples, then run the tests of the examples named, such as c12_sketch,\n"
-           "                     or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report\n"
-           "  -c, --compiler CC  The compiler: gcc (default for linux), clang, or on Windows LLVM-MinGW's clang (default for windows).\n"
-           "                     A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/\n"
-           "  -h, --help         Show this help\n");
+    printf(SHUM_COLOR_BOLD("Usage:") " ./shuild.ignore [" SHUM_COLOR_GREEN("FLAG") "...]\n");
+    printf("\n");
+    printf(SHUM_COLOR_BOLD("Flags:") "\n");
+    printf("  " SHUM_COLOR_GREEN("-b") ", " SHUM_COLOR_GREEN("--build") " " SHUM_COLOR_CYAN("TYPE") "   Build type:\n");
+    printf("                       " SHUM_LOG_VALUE("debug") "           the default, with the static analyzer and the sanitizers\n");
+    printf("                       " SHUM_LOG_VALUE("release") "         an optimized build\n");
+    printf("                       " SHUM_LOG_VALUE("relwithdebinfo") "  a release with debug information\n");
+    printf("                       " SHUM_LOG_VALUE("minsizerel") "      a small release\n");
+    printf("  " SHUM_COLOR_GREEN("-n") ", " SHUM_COLOR_GREEN("--no-std") "       Do not build the standard plugins of std/\n");
+    printf("  " SHUM_COLOR_GREEN("-e") ", " SHUM_COLOR_GREEN("--examples") "     Also build the examples of examples/, into bin/examples/\n");
+    printf("  " SHUM_COLOR_GREEN("-t") ", " SHUM_COLOR_GREEN("--test") " [" SHUM_COLOR_CYAN("EXAMPLE") "...]\n");
+    printf("                     Build in Debug with the examples, then run the tests of the examples named, such as c12_sketch,\n");
+    printf("                     or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report\n");
+    printf("  " SHUM_COLOR_GREEN("-c") ", " SHUM_COLOR_GREEN("--compiler") " " SHUM_COLOR_CYAN("CC") "  The compiler: gcc (default for linux), clang, or on Windows LLVM-MinGW's clang (default for windows).\n");
+    printf("                     A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/\n");
+    printf("  " SHUM_COLOR_GREEN("-h") ", " SHUM_COLOR_GREEN("--help") "         Show this help\n");
 }
 
 /// @brief Notes the first argument that cannot be read. main reports it, after shuild.c is compiled again if it changed.
