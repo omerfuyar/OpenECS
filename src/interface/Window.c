@@ -2045,6 +2045,29 @@ static void ECSIWindow_DrawFrames(u64 nowTicks, bool all)
 }
 
 /// @brief Presents the frame of each OS window and popup window that drew one.
+/// @brief Draws a frame while the user moves or resizes an OS window. On Windows, the system runs its own loop then, so the main loop waits until
+/// the user lets go; SDL sends an expose event with data1 1 from that loop, which an event watch sees at once.
+static bool ECSIWindow_WatchLiveResize(void *data, SDL_Event *event)
+{
+    (void)data;
+
+    if (event->type == SDL_EVENT_WINDOW_EXPOSED && event->window.data1 == 1 && arrlenu(WINDOW.windows) > 0)
+    {
+        // a message dialog waits in its own loop, and draws only itself over the last frame
+        if (WINDOW.dialog != nullptr)
+        {
+            ECSIWindow_RenderDialog();
+        }
+        else
+        {
+            ECSILayout_RequestFrame();
+            ECSIWindow_Render(SDL_GetTicksNS());
+        }
+    }
+
+    return true;
+}
+
 static void ECSIWindow_Present(void)
 {
     ECSIWindow_PresentPopups();
@@ -2106,11 +2129,13 @@ SHUResult ECSIWindow_Initialize(const char *title)
     ECSIWindow_ReadVsync(nullptr);
     ECSILayout_SetForget(ECSIWindow_Forget);
     ECSIPopups_SetRelease(ECSIWindow_ReleasePopup);
+    SDL_AddEventWatch(ECSIWindow_WatchLiveResize, nullptr);
     return SHUResult_Ok;
 }
 
 void ECSIWindow_Terminate(void)
 {
+    SDL_RemoveEventWatch(ECSIWindow_WatchLiveResize, nullptr);
     ECSILayout_SetForget(nullptr);
     ECSIPopups_SetRelease(nullptr);
 

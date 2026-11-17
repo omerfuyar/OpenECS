@@ -492,6 +492,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - OpenECS draws the OS windows' frames itself, so they look and work the same on every system and desktop: the setting `ecs.titleBar`, on by default, makes each OS window borderless, with a title bar `ecs.titleBarHeight` layout units tall above the layout.
 - The title bar shows the tool's name and the buttons minimize, maximize or restore, and close. Dragging the title bar moves the window, and a right click on it opens the tool's menu (6.8).
 - The window's edges and corners resize it. The core tells SDL which part of the window is under the pointer (`SDL_SetWindowHitTest`), so the system moves and resizes the window, also on Wayland.
+- While the system moves or resizes a window, it may run its own loop until the user lets go, as Windows does, and the main loop waits. The core draws a frame each time SDL asks for one from that loop, so the window's content follows its size.
 - With `ecs.titleBar` off, the system draws the frame.
 - `ecs.app.quit` quits as the main window's close button does, asking about unsaved work (4.5). In C: `ECSApp_Quit()`.
 - The keys that move focus or panels (7.5) act within the focused panel's OS window. Focusing a panel in another OS window raises that window (7.1). When an OS window gets the system's focus, the panel that had the focus last in it gets it.
