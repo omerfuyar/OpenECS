@@ -448,8 +448,8 @@ static ECSIMenuEntry *ECSIMenus_BuildToolMenu(void)
 static void ECSIMenus_ShowTool(void)
 {
     ECSPanel focus = ECSILayout_GetFocus();
-    f32 x = (focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET;
-    f32 y = (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET;
+    f32 x = (focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET * ECSIPanels_GetScale();
+    f32 y = (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET * ECSIPanels_GetScale();
     ECSIMenus_Show(ECSIMenus_BuildToolMenu(), focus, x, y);
 }
 
@@ -457,8 +457,8 @@ static void ECSIMenus_ShowTool(void)
 static void ECSIMenus_ShowWorkspaces(void)
 {
     ECSPanel focus = ECSILayout_GetFocus();
-    f32 x = (focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET;
-    f32 y = (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET;
+    f32 x = (focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET * ECSIPanels_GetScale();
+    f32 y = (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET * ECSIPanels_GetScale();
     ECSIMenus_Show(ECSIMenus_BuildWorkspaceMenu(), focus, x, y);
 }
 

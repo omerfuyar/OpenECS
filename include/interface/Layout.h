@@ -105,8 +105,8 @@ SHUWUR SHUResult ECSILayout_Initialize(void);
 /// @brief Checks whether a point is in a rectangle: on its left and top edges, but not on its right and bottom ones, so rectangles side by side never share a point.
 bool ECSILayout_Contains(SDL_FRect rect, f32 x, f32 y);
 
-/// @brief Gets the height of a tab row, from ecs.tabRowHeight.
-/// @return The height in layout units.
+/// @brief Gets the height of a tab row: ecs.tabRowHeight times ecs.scale.
+/// @return The height in pixels.
 f32 ECSILayout_GetTabRowHeight(void);
 
 /// @brief Destroys every workspace, panel and node.
