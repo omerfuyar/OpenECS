@@ -67,7 +67,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 - **P3 · A column in a row measures its text at its parent's width.** `std/plugins/ui/init.lua` A row narrows its wrapped texts and columns only when its children need more than its width; a column that grows in a row still breaks its text at the width it had before it grew. Measure wrapped text again once widths are arranged. Size: M.
 - **P3 · A long list or table is built whole each frame.** `std/plugins/ui/init.lua:536-545`, `:398-419` Each row is a node with two more for each cell, and a closure for each item with `onActivate`; all are measured and arranged, and only those in view are drawn. Rows have one height, so build and measure the rows in view, and share one handler among the items. A list takes children that are built already, so this needs a form of `ui.list` that takes a count and a function that builds one item; the owner leaves it until a tool needs it. Size: M.
-- **P3 · `textgrid.cell` and `textgrid.fit` measure without the display scale.** `std/plugins/textgrid/TextGrid.c` `draw.measure` takes the scale now, and the grid draws with it, but `cell` and `fit` measure at scale 1, so their numbers can differ from the drawn cells by a part of a pixel on a display whose scale is not whole. Give them a scale parameter. Size: S.
 
 **Core: plugins and threads**
 
@@ -78,9 +77,3 @@ Recommendations from a review of the code, by area, the most important first. P1
 - **P3 · Window.c holds five modules.** `src/interface/Window.c:139-211` Its 2848 lines hold the OS windows, and also the drag of panels and drop zones (`:458-730`, `:2384-2590`), the Clay declarations (`:732-1304`), the popups' views (`:1623-1848`), the title bar and hit tests, and the menus' geometry (`:2631-2765`). Move each to its own file with its part of the `WINDOW` struct; Window.c keeps the OS windows, renderers and frame pacing. The owner leaves it until it is necessary. The parts call each other, so three modules in an order avoid a cycle (DESIGN 1.5): Drag, then View with every Clay declaration, then Window. Size: L.
 - **P3 · Each key press parses every binding's key text.** `src/interface/Keys.c:186`, `:230-255` Finding a binding walks the settings' tables and parses each key again. Parse them once into a table, made again when settings, the preset, workspaces or plugins change, as the prefix keys are (`:105-128`). Size: M.
 - **P3 · No example presses two buttons, or sends input between a layout change and a frame.** `src/app/Test.c:845` `test.press` and `test.release` exist and no example uses them. Add cases for the two findings above that the tests can reach. Size: S.
-
-**Shu and shuild**
-
-Paths are in their repositories, at `dependencies/shu` and `dependencies/shuild`.
-
-- **P3 · The settings' hash leaves the compiler's version out.** `shuild.h`, `SHUI_CacheSettingsHash` A compiler updated under the same command keeps the old objects. The configured compiler's version is not kept, and asking for it runs the compiler once more in each build. Size: S.
