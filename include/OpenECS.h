@@ -10,7 +10,7 @@
 #define OPENECS_VERSION "0.7.0-dev"
 
 /// @brief Version of this plugin interface. The core refuses a plugin whose manifest names another version.
-#define OPENECS_API_VERSION 2
+#define OPENECS_API_VERSION 3
 
 #if defined(_WIN32)
 #ifdef OPENECS_CORE
