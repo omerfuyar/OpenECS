@@ -2,8 +2,9 @@
 -- The preset and the user's settings file override them.
 ---@type ecs.SettingsFile
 return {
-  -- plugins that every tool loads: the settings window, the list of panel types to open, the list of plugins to enable or disable, and the launcher, which goes to another tool
-  plugins = { "settings", "panels", "plugins", "launcher" },
+  -- plugins that every tool loads: the settings window, the list of panel types to open, the list of plugins to enable or disable, the launcher,
+  -- which goes to another tool, and the profiler, which shows where the time goes
+  plugins = { "settings", "panels", "plugins", "launcher", "profiler" },
 
   -- the key combination before a core action
   ["ecs.prefix"] = "Alt+W",
@@ -37,6 +38,7 @@ return {
       [","] = "settings.open",
       ["."] = "panels.open",
       [";"] = "plugins.open",
+      ["F"] = "profiler.open",
       ["1"] = "ecs.workspace.switch1",
       ["2"] = "ecs.workspace.switch2",
       ["3"] = "ecs.workspace.switch3",
@@ -78,6 +80,9 @@ return {
 
   -- how focus follows the pointer: "click" or "hover"
   ["ecs.focus"] = "click",
+
+  -- measure where the time goes, by step of each frame, by plugin and by panel, for a profiler to show; it costs a little while on
+  ["ecs.profile"] = false,
 
   -- frame rate in percent of the display's refresh rate: 100 waits for every refresh, 50 for every second one, 0 turns vsync off
   ["ecs.vsync"] = 100,

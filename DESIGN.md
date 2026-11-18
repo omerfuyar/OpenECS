@@ -137,6 +137,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Values     | Generic values (10.3).                                                                                                                                         |
 |           | Lua        | The Lua state. Reads data files (11.2) and runs all Lua code in protected calls.                                                                               |
 |           | Timers     | Functions that run on the main thread after a time, once or again and again (3.2).                                                                             |
+|           | Profile    | Where the main thread's time goes, by step of the loop, by plugin and by panel (3.5).                                                                          |
 | runtime   | Plugins    | Finding, ordering and loading plugins. Logging for plugins.                                                                                                    |
 |           | Settings   | Declarations, layers, explanations.                                                                                                                            |
 |           | Events     | Core and plugin events, the event queue, the plugins' timers on base/Timers.                                                                                   |
@@ -251,6 +252,16 @@ A worker is a Lua script that runs on a thread of its own, in a Lua state of its
 - `stop` ends the script at its next `receive`, or within a few thousand of its Lua instructions. After `stop`, its `message` and `done` are not called again. A script that waits in a C function, such as `io.read`, ends when that function returns.
 - A worker runs until its script ends or it is stopped, even when its handle is dropped. On exit, the core stops every worker and waits for it (2.4).
 - Lua only: a native plugin runs work with `ECS_RunInBackground`, or on threads of its own (3.3).
+
+### 3.5 Profile
+
+The core measures where the main thread's time goes while the setting `ecs.profile` is on, so a profiler plugin can show it. Off, it measures nothing and costs nothing.
+
+- **Steps.** Each moment of a pass of the loop belongs to one step: `wait`, `input`, `timers`, `events` (the rest of the pass before the frame), `layout`, `panels`, `upload` (the panels' pixels copied to their textures), `interface` (the core's own) and `present`. The core keeps the steps of the last 240 passes.
+- **Plugins.** A plugin's time is the time its code runs on the main thread: its callbacks, and its functions that other plugins call through the core, from Lua to C and from C to Lua. A plugin's time leaves out the plugins it calls, so a Lua panel's calls into draw are draw's. Calls that do not pass the core, from C to C by raw pointer and from Lua to Lua, stay the caller's (10.4). The core's own callbacks and services count as `ecs`. Other threads are not measured, as they run beside the frames.
+- **Panels.** A panel's time is its `Draw`, with the plugins it calls.
+- Plugins' and panels' times are summed over a second: their time, their longest call and their number of calls. The profile gives the last whole second's.
+- `ECSProfile_Get(value)` fills a value with the profile, in Lua `ecs.profile.get()`: `passes`, the last passes' steps, the oldest first; `plugins` and `panels`, the last second's times, the most first. It gives nil while `ecs.profile` is off.
 
 ## 4. Panel types and panels
 

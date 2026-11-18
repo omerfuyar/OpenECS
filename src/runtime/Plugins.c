@@ -160,6 +160,7 @@ static void ECSIPlugin_FreeManifestFields(ECSIPlugin *plugin)
 
 static void ECSIPlugin_Free(ECSIPlugin *plugin)
 {
+    ECSIProfile_ForgetPlugin(plugin);
     ECSIPlugin_FreeManifestFields(plugin);
     ECSValue_Destroy(&plugin->keptState);
     SDL_free(plugin->misuse);
@@ -1581,6 +1582,7 @@ void ECSIPlugin_Enter(ECSICallback *callback, ECSPlugin plugin, ECSPanel panel, 
 
     *callback = (ECSICallback){.plugin = plugin, .panel = panel, .type = type, .outer = PLUGINS_THREAD.callback};
     PLUGINS_THREAD.callback = callback;
+    ECSIProfile_Enter(&callback->profile, plugin, plugin != nullptr ? plugin->name : nullptr);
 }
 
 bool ECSIPlugin_Leave(ECSICallback *callback)
@@ -1588,6 +1590,7 @@ bool ECSIPlugin_Leave(ECSICallback *callback)
     SDL_assert(callback != nullptr);
     SDL_assert(PLUGINS_THREAD.callback == callback);
 
+    ECSIProfile_Leave(&callback->profile);
     PLUGINS_THREAD.callback = callback->outer;
 
     if (callback->misuse == nullptr)

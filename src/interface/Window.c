@@ -1,5 +1,6 @@
 #include "interface/Window.h"
 
+#include "base/Profile.h"
 #include "runtime/Settings.h"
 
 #include "SDL3/SDL.h"
@@ -2004,10 +2005,13 @@ static void ECSIWindow_DrawFrame(ECSIOSWindow *osWindow, u64 nowTicks)
     ECSIDrawContext context = {osWindow->renderer, nowTicks};
 
     // the interface's commands point to the panels' titles, so panels draw first; their Draw may change a title
+    ECSIProfileStep step = ECSIProfile_SetStep(ECSIProfileStep_Panels);
     ECSILayout_ForEachGroup(root, ECSIWindow_DrawGroup, &context);
+    (void)ECSIProfile_SetStep(ECSIProfileStep_Interface);
     Clay_RenderCommandArray commands = ECSIWindow_DeclareInterface(osWindow, root);
     ECSIWindow_FitTabs(osWindow);
     ECSIWindow_Compose(osWindow, root, commands);
+    (void)ECSIProfile_SetStep(step);
 }
 
 /// @brief Checks whether an OS window can be seen: it is shown, and neither minimized nor covered by other windows.
@@ -2026,6 +2030,7 @@ static void ECSIWindow_DrawFrames(u64 nowTicks, bool all)
     f64 limit = (f64)rate * (f64)WINDOW.framePercent / 100.0 * (f64)OPENECS_FRAME_RATE_MARGIN;
     WINDOW.frameNanoseconds = WINDOW.framePercent == 0 ? 0 : (u64)((f64)SDL_NS_PER_SECOND / limit);
     WINDOW.lastFrameTicks = nowTicks;
+    (void)ECSIProfile_SetStep(ECSIProfileStep_Layout);
     ECSIWindow_Sync();
     bool requested = ECSILayout_IsFrameRequested();
     ECSILayout_Update();
@@ -2070,6 +2075,7 @@ static bool ECSIWindow_WatchLiveResize(void *data, SDL_Event *event)
 
 static void ECSIWindow_Present(void)
 {
+    (void)ECSIProfile_SetStep(ECSIProfileStep_Present);
     ECSIWindow_PresentPopups();
 
     for (usz i = 0; i < arrlenu(WINDOW.windows); i++)

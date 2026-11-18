@@ -507,6 +507,17 @@ OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Disable(const char *name);
 /// @lua ecs.plugins.reload
 OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Reload(const char *name);
 
+/// @brief Gives where the main thread's time went while the setting ecs.profile is on (DESIGN 3.5), as a table, or nil while it is off. Main thread only.
+/// The table holds passes, a list of the last passes of the main loop, the oldest first, each a table of the seconds of its steps: wait, input, timers,
+/// events, layout, panels, upload, interface and present. It holds plugins, a list of the plugins whose code ran in the last whole second, the most time
+/// first, each a table of its name, seconds (its own time in that second, without the plugins it called), longest (its longest call, in seconds) and
+/// calls. And it holds panels, a list of the panels that drew in that second, the same way, each with its id and type in place of a name, and the time
+/// of the plugins that its Draw called.
+/// @param retProfile The value to fill.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.profile.get
+OPENECS_EXPORT SHUWUR SHUResult ECSProfile_Get(ECSValue *retProfile);
+
 /// @brief Writes a message to the log, with the plugin's name. Thread-safe.
 /// @param plugin The plugin that writes the message.
 /// @param level Level of the message.

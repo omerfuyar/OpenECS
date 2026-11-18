@@ -2,6 +2,8 @@
 
 #include "base/Log.h"
 #include "base/Lua.h"
+#include "base/Profile.h"
+#include "runtime/Plugins.h"
 #include "runtime/Settings.h"
 
 #include "lua/lauxlib.h"
@@ -1543,9 +1545,13 @@ static int ECSIServices_CallC(lua_State *state)
         // a callback whose giver was disabled since has lost its code: nothing runs, and Lua gets zeros
         if (function->giver == nullptr || ECSIPlugin_GetGeneration(function->giver) == function->generation)
         {
+            // the called function's time is its plugin's, or the core's, not the Lua code's that called it
+            ECSIProfileScope profile;
+            ECSIProfile_Enter(&profile, function->plugin, function->plugin != nullptr ? ECSIPlugin_GetName(function->plugin) : nullptr);
             lua_State *outer = ECSILua_SetCaller(state);
             ffi_call((ffi_cif *)&signature->cif, FFI_FN(function->pointer), &returned, arguments);
             (void)ECSILua_SetCaller(outer);
+            ECSIProfile_Leave(&profile);
         }
 
         pushed = ECSIServices_PushResults(state, signature, parameters, &returned);
@@ -2042,7 +2048,11 @@ static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *
         }
     }
 
+    // the Lua function's time is its plugin's, not the C code's that called it
+    ECSIProfileScope profile;
+    ECSIProfile_Enter(&profile, function->plugin, function->plugin != nullptr ? ECSIPlugin_GetName(function->plugin) : nullptr);
     bool failed = ECSILua_Call(state, pushed, resultCount) != SHUResult_Ok;
+    ECSIProfile_Leave(&profile);
     ECSIServices_EndCallbacks(state, callbacks);
 
     // the new anchor table replaces the last call's only now, so what C got from the last call stayed valid until the Lua code returned,
