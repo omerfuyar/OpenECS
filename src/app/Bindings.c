@@ -1245,8 +1245,48 @@ static int ECSIBindings_KeyBind(lua_State *state)
     return 0;
 }
 
+static int ECSIBindings_KeyList(lua_State *state)
+{
+    return ECSIBindings_PushFilled(state, ECSKey_List);
+}
+
+static int ECSIBindings_KeySet(lua_State *state)
+{
+    const char *scope = lua_isnoneornil(state, 1) ? nullptr : ECSILua_CheckString(state, 1);
+    const char *key = ECSILua_CheckString(state, 2);
+    ECSValue *function = nullptr;
+    SHUResult result = ECSValue_Create(&function);
+    result = result ? result : ECSILua_GetValue(state, 3, function);
+    result = result ? result : ECSKey_Set(scope, key, function);
+    ECSValue_Destroy(&function);
+
+    // a misuse stops the Lua code at its line; a file that cannot be written is a failure, which the caller handles
+    if (result == SHUResult_ErrAssertion)
+    {
+        ECSIServices_Raise(state, result, "key '%s' is not set", key);
+    }
+
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "key '%s' is not set (%s)", key, SHUResult_String(result));
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
+static int ECSIBindings_KeyFunctions(lua_State *state)
+{
+    return ECSIBindings_PushFilled(state, ECSKey_ListFunctions);
+}
+
 static const luaL_Reg OPENECS_BINDINGS_KEY[] = {
     {"bind", ECSIBindings_KeyBind},
+    {"list", ECSIBindings_KeyList},
+    {"set", ECSIBindings_KeySet},
+    {"functions", ECSIBindings_KeyFunctions},
     {nullptr, nullptr},
 };
 

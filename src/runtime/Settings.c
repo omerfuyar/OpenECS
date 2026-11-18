@@ -940,6 +940,35 @@ static SHUResult ECSISettings_RemoveField(ECSValue *table, const char *name)
     return result;
 }
 
+/// @brief Writes the user's settings file after a change. Without a configuration folder, the change lasts until the program exits; so it does when
+/// the file could not be read, as writing it would lose what the user wrote.
+/// @param what What changed, such as a setting's name, for the warning.
+static SHUResult ECSISettings_WriteUserFile(const char *what)
+{
+    if (SETTINGS.userFileUnread)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' could not be read, so '%s' is not saved in it and lasts until OpenECS exits. Correct the file first.", SETTINGS.paths[ECSISettingsLayer_User], what);
+        return SHUResult_Ok;
+    }
+
+    return SETTINGS.paths[ECSISettingsLayer_User] != nullptr ? ECSILua_WriteData(SETTINGS.paths[ECSISettingsLayer_User], SETTINGS.userFile) : SHUResult_Ok;
+}
+
+/// @brief Gets a table field, and makes it a table first if it is not one.
+static SHUResult ECSISettings_GetOrMakeTable(ECSValue *table, const char *name, ECSValue **retTable)
+{
+    ECSValue *field = (ECSValue *)ECSValue_GetTableField(table, name);
+
+    if (ECSValue_GetType(field) != ECSValueType_Table)
+    {
+        SHU_ReturnResult(ECSValue_SetTableField(table, name, &field));
+        ECSValue_SetTable(field);
+    }
+
+    *retTable = field;
+    return SHUResult_Ok;
+}
+
 SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
 {
     ECSILog_Check(name != nullptr, SHUResult_ErrAssertion);
@@ -1002,18 +1031,58 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
     }
 
     ECSValue_Destroy(&old);
+    return result ? result : ECSISettings_WriteUserFile(name);
+}
 
-    // without a configuration folder, the change lasts until the program exits; so it does when the file could not be read, as writing it would lose what the user wrote
-    if (!result && SETTINGS.userFileUnread)
+SHUResult ECSISettings_SetKey(const char *scope, const char *key, const ECSValue *value)
+{
+    SDL_assert(key != nullptr);
+
+    if (SETTINGS.userFile == nullptr)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' could not be read, so '%s' is not saved in it and lasts until OpenECS exits. Correct the file first.", SETTINGS.paths[ECSISettingsLayer_User], name);
-    }
-    else if (!result && SETTINGS.paths[ECSISettingsLayer_User] != nullptr)
-    {
-        result = ECSILua_WriteData(SETTINGS.paths[ECSISettingsLayer_User], SETTINGS.userFile);
+        SHU_ReturnResult(ECSValue_Create(&SETTINGS.userFile));
+        ECSValue_SetTable(SETTINGS.userFile);
     }
 
-    return result;
+    // the keys of a scope: the keys table itself for the whole tool, or its table named after the scope
+    ECSValue *tool = (ECSValue *)ECSISettings_GetToolPart(SETTINGS.userFile);
+    ECSValue *toolKeys = (ECSValue *)ECSValue_GetTableField(tool, "keys");
+    const ECSValue *toolScope = scope == nullptr ? toolKeys : ECSValue_GetTableField(toolKeys, scope);
+    bool reset = ECSValue_GetType(value) == ECSValueType_Nil;
+    SHUResult result = SHUResult_Ok;
+
+    // the tool's own part wins over the part for every tool, so a key it already has is changed there; a reset takes it from both
+    if (reset)
+    {
+        ECSValue *keys[] = {toolKeys, (ECSValue *)ECSValue_GetTableField(SETTINGS.userFile, "keys")};
+
+        for (usz i = 0; !result && i < SDL_arraysize(keys); i++)
+        {
+            ECSValue *table = scope == nullptr ? keys[i] : (ECSValue *)ECSValue_GetTableField(keys[i], scope);
+            result = table == nullptr ? SHUResult_Ok : ECSISettings_RemoveField(table, key);
+        }
+    }
+    else
+    {
+        ECSValue *part = ECSValue_GetTableField(toolScope, key) != nullptr ? tool : SETTINGS.userFile;
+        ECSValue *table = nullptr;
+        ECSValue *field = nullptr;
+        result = ECSISettings_GetOrMakeTable(part, "keys", &table);
+
+        if (!result && scope != nullptr)
+        {
+            result = ECSISettings_GetOrMakeTable(table, scope, &table);
+        }
+
+        result = result ? result : ECSValue_SetTableField(table, key, &field);
+        result = result ? result : ECSIValue_Copy(field, value);
+    }
+
+    // the user's keys are merged again: those for every tool, then the tool's own, which win
+    ECSValue_Destroy(&SETTINGS.keys[ECSISettingsLayer_User]);
+    result = result ? result : ECSISettings_ReadKeys(ECSISettingsLayer_User, SETTINGS.userFile);
+    result = result ? result : ECSISettings_ReadKeys(ECSISettingsLayer_User, ECSISettings_GetToolPart(SETTINGS.userFile));
+    return result ? result : ECSISettings_WriteUserFile(key);
 }
 
 SHUResult ECSSetting_List(ECSValue *retList)

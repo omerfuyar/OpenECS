@@ -87,6 +87,14 @@ SHUWUR SHUResult ECSISettings_DeclarePlugin(ECSPlugin plugin, const ECSSettingDe
 /// @return The keys table, or nullptr. Valid until ECSISettings_Terminate.
 const ECSValue *ECSISettings_GetKeys(ECSISettingsLayer layer);
 
+/// @brief Changes a key in the user's settings file, and writes the file (DESIGN 7.8). The tool's own part is changed if it binds the key in the scope
+/// already, and the part for every tool otherwise.
+/// @param scope nullptr for the whole tool, "prefix" for the keys after the core prefix, or a panel type.
+/// @param key The key combination's text.
+/// @param value A function's name binds the key, false removes it from the layers below, and nil takes the user's binding away from both parts.
+/// @return SHUResult_Ok, or an error from writing the file or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSISettings_SetKey(const char *scope, const char *key, const ECSValue *value);
+
 /// @brief Tells owners about the settings whose value in effect changed since the last call. The main loop calls it after delivering events.
 /// @return Whether a setting changed.
 bool ECSISettings_DeliverChanges(void);

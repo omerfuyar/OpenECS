@@ -605,6 +605,41 @@ ecs.key = {}
 ---A panel type that is not the plugin's, or a text that is not a key combination, is a misuse (ecs.check).
 function ecs.key.bind(panelType, key, functionName) end
 
+---A key binding of the keys tables in effect, as ecs.key.list gives it.
+---@class ecs.KeyBinding
+---@field key string The key combination, as written.
+---@field function string|false The function it runs, or false for a key that it removes from the layers below.
+---@field scope string? nil for the whole tool, "prefix" for the keys after the core prefix, or a panel type.
+---@field layer "default"|"preset"|"user"
+---@field workspace boolean It comes from the current workspace's keys.
+---@field active boolean It is the binding of its key that runs in its scope.
+
+---A function that a key can run, as ecs.key.functions gives it.
+---@class ecs.KeyFunction
+---@field name string
+---@field description string
+---@field owner string Its plugin's name, or "ecs" for the core's.
+---@field panel boolean It takes the focused panel.
+
+---Lists every key binding of the keys tables in effect: the core's settings file, the plugins' keys for their panel types, the preset, the current
+---workspace and the user's settings (DESIGN 7.8).
+---@return ecs.KeyBinding[] bindings
+function ecs.key.list() end
+
+---Changes a key in the user's settings file and writes the file. The tool's own part of the file is changed if it binds the key in the scope already,
+---and the part for every tool otherwise.
+---@param scope string? nil for the whole tool, "prefix" for the keys after the core prefix, or a panel type, such as "canvas.view".
+---@param key string A key combination, such as "Ctrl+E".
+---@param functionName string|false|nil A function's name binds the key; false removes it from the layers below; nil takes the user's binding away.
+---@return true|nil ok true if the key is set and written.
+---@return string? message Why the key is not set.
+---A text that is not a key combination, or a scope or function of another kind, is a misuse (ecs.check).
+function ecs.key.set(scope, key, functionName) end
+
+---Lists the functions that a key can run: those that take no arguments, or the focused panel.
+---@return ecs.KeyFunction[] functions
+function ecs.key.functions() end
+
 -- Events
 
 ---@class ecs.Subscription
