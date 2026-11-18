@@ -514,6 +514,42 @@ function ecs.plugins.disable(name) end
 ---@param name string The plugin's name: an enabled plugin, or one that a reload failed to start.
 function ecs.plugins.reload(name) end
 
+-- Profile
+
+---A pass of the main loop, as ecs.profile.get gives it: the seconds of each of its steps (DESIGN 3.1).
+---@class ecs.ProfilePass
+---@field wait number Waiting for input, a timer or a frame.
+---@field input number Handling input.
+---@field timers number Running timers.
+---@field events number Delivering events, and the rest of the pass before the frame.
+---@field layout number Updating the layout and the popups.
+---@field panels number Panels drawing.
+---@field upload number Copying the panels' pixels to their textures.
+---@field interface number The core's own interface.
+---@field present number Presenting the OS windows.
+
+---A plugin's or a panel's time in the last whole second, as ecs.profile.get gives it.
+---@class ecs.ProfileTime
+---@field name string? A plugin's name; "ecs" is the core's own callbacks and services.
+---@field id integer? A panel's id.
+---@field type string? A panel's type.
+---@field seconds number Its time in that second: a plugin's own, without the plugins it called; a panel's Draw with the plugins it called.
+---@field longest number Its longest call, in seconds.
+---@field calls integer
+
+---Where the main thread's time went, as ecs.profile.get gives it.
+---@class ecs.Profile
+---@field passes ecs.ProfilePass[] The last passes of the main loop, the oldest first.
+---@field plugins ecs.ProfileTime[] The plugins whose code ran in the last whole second, the most time first.
+---@field panels ecs.ProfileTime[] The panels that drew in the last whole second, the most time first.
+
+---@class ecs.profile
+ecs.profile = {}
+
+---Gives where the main thread's time went while the setting ecs.profile is on (DESIGN 3.5).
+---@return ecs.Profile? profile nil while ecs.profile is off.
+function ecs.profile.get() end
+
 -- Session
 
 ---@class ecs.session

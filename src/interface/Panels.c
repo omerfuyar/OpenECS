@@ -1,6 +1,7 @@
 #include "interface/Panels.h"
 
 #include "base/Log.h"
+#include "base/Profile.h"
 #include "base/Values.h"
 #include "runtime/Events.h"
 #include "runtime/Plugins.h"
@@ -612,6 +613,7 @@ static void ECSIPanel_DrawPixels(ECSPanel panel, bool upload, u64 nowTicks, f64 
     PANELS.drawing = (ECSIDrawing){.surface = &surface};
 
     ECSICallback callback;
+    u64 drawStart = ECSIProfile_BeginDraw();
     ECSIPlugin_Enter(&callback, panel->type->plugin, panel, ECSICallbackType_Panel);
     panel->type->desc.Draw(panel->state, &surface, seconds);
     (void)ECSIPlugin_Leave(&callback);
@@ -621,6 +623,7 @@ static void ECSIPanel_DrawPixels(ECSPanel panel, bool upload, u64 nowTicks, f64 
 
     // the services that drew into the surface finish, and its Lua handle goes
     ECSIServices_EndSurface(&surface);
+    ECSIProfile_EndDraw(drawStart, panel->id, panel->typeName);
 
     // only the rectangle around what changed goes to the texture, if the panel told it and the texture has the rest
     SDL_Rect area = PANELS.drawing.area;
@@ -630,7 +633,9 @@ static void ECSIPanel_DrawPixels(ECSPanel panel, bool upload, u64 nowTicks, f64 
 
     if (changed == nullptr || (changed->w > 0 && changed->h > 0))
     {
+        ECSIProfileStep step = ECSIProfile_SetStep(ECSIProfileStep_Upload);
         SDL_UpdateTexture(panel->texture, changed, start, pixels->pitch);
+        (void)ECSIProfile_SetStep(step);
     }
 }
 
@@ -678,14 +683,19 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         panel->drawnScale = PANELS.scale;
         panel->drawnLook = PANELS.look;
         ECSICallback callback;
+        u64 drawStart = ECSIProfile_BeginDraw();
         ECSIPlugin_Enter(&callback, panel->type->plugin, panel, ECSICallbackType_Panel);
         panel->type->desc.Draw(panel->state, &surface, seconds);
         (void)ECSIPlugin_Leave(&callback);
         ECSIServices_EndSurface(&surface);
+        ECSIProfile_EndDraw(drawStart, panel->id, panel->typeName);
 
+        // a window that cannot show the GPU's texture gets a copy of it, which waits for the GPU
         if (panel->gpuCopy != nullptr)
         {
+            ECSIProfileStep step = ECSIProfile_SetStep(ECSIProfileStep_Upload);
             ECSIPanel_CopyGpuTexture(panel);
+            (void)ECSIProfile_SetStep(step);
         }
 
         return;

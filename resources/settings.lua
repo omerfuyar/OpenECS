@@ -79,6 +79,9 @@ return {
   -- how focus follows the pointer: "click" or "hover"
   ["ecs.focus"] = "click",
 
+  -- measure where the time goes, by step of each frame, by plugin and by panel, for a profiler to show; it costs a little while on
+  ["ecs.profile"] = false,
+
   -- frame rate in percent of the display's refresh rate: 100 waits for every refresh, 50 for every second one, 0 turns vsync off
   ["ecs.vsync"] = 100,
 

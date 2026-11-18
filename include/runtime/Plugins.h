@@ -2,6 +2,7 @@
 
 // Plugins: finding plugins, reading their manifests, and loading them in dependency order.
 
+#include "base/Profile.h"
 #include "base/Values.h"
 
 #pragma region Declarations
@@ -33,6 +34,7 @@ typedef struct ECSICallback
     ECSICallbackType type;
     char *misuse;               // the first misuse in it, or nullptr
     struct ECSICallback *outer; // the callback it runs inside, or nullptr
+    ECSIProfileScope profile;   // its time, while ecs.profile is on
 } ECSICallback;
 
 /// @brief Deals with a callback that misused a function, once it returned: faults its panel, or disables its plugin. Any thread; a panel's callback runs on the main thread.

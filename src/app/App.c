@@ -6,6 +6,7 @@
 #include "app/Workers.h"
 #include "base/Log.h"
 #include "base/Lua.h"
+#include "base/Profile.h"
 #include "base/Sanitizers.h"
 #include "base/Timers.h"
 #include "interface/Clipboard.h"
@@ -36,6 +37,7 @@
 
 /// @brief The setting that keeps the tool's session between runs.
 #define OPENECS_KEEP_SESSION "ecs.keepSession"
+#define OPENECS_PROFILE "ecs.profile"
 
 /// @brief The settings of reloading plugins (DESIGN 9.11), and the shortest interval between checks of their files, in seconds.
 #define OPENECS_RELOAD_PLUGINS "ecs.reloadPlugins"
@@ -81,6 +83,12 @@ static struct
 } APP = {0};
 
 static void ECSIApp_ReadReloadSettings(void *data);
+
+static void ECSIApp_ReadProfileSetting(void *data)
+{
+    (void)data;
+    ECSIProfile_SetOn(ECSValue_GetBool(ECSSetting_Get(OPENECS_PROFILE), false));
+}
 
 /// @brief Finds an XDG base folder for OpenECS: $variable/OpenECS/, or ~/fallback/OpenECS/ if the variable is not set.
 /// On Windows, every folder is SDL's pref path, %APPDATA%\OpenECS\ (DESIGN 16).
@@ -555,6 +563,9 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_ExitOnFailure(ECSISettings_DeclareCore(&reloadPlugins), "declaring the reload settings", nullptr);
     ECSIApp_ExitOnFailure(ECSISettings_DeclareCore(&reloadInterval), "declaring the reload settings", nullptr);
     ECSIApp_ReadReloadSettings(nullptr);
+    ECSSettingDesc profile = {.name = OPENECS_PROFILE, .type = ECSSettingType_Bool, .description = "Measure where the time goes, by step of each frame, by plugin and by panel, for a profiler to show", .Changed = ECSIApp_ReadProfileSetting};
+    ECSIApp_ExitOnFailure(ECSISettings_DeclareCore(&profile), "declaring the profile setting", nullptr);
+    ECSIApp_ReadProfileSetting(nullptr);
     const char *sourcePath = APP.sessionPath != nullptr ? APP.sessionPath : APP.presetPath;
 
     SDL_SetAppMetadata(APP.preset.appName, nullptr, APP.preset.appID);
@@ -1066,8 +1077,11 @@ int ECSIApp_Run(void)
         i32 wait = ECSIApp_ShorterWait(ECSIEvents_GetWait(), ECSIWindow_GetFrameWait());
         wait = ECSIApp_ShorterWait(wait, ECSITest_GetWait());
         wait = ECSIApp_ShorterWait(wait, ECSIApp_GetWatchWait());
+        (void)ECSIProfile_SetStep(ECSIProfileStep_Wait);
+        bool woken = SDL_WaitEventTimeout(&event, wait);
+        (void)ECSIProfile_SetStep(ECSIProfileStep_Input);
 
-        if (SDL_WaitEventTimeout(&event, wait))
+        if (woken)
         {
             do
             {
@@ -1080,7 +1094,9 @@ int ECSIApp_Run(void)
             break;
         }
 
+        (void)ECSIProfile_SetStep(ECSIProfileStep_Timers);
         ECSITimers_Run();
+        (void)ECSIProfile_SetStep(ECSIProfileStep_Events);
         ECSIEvents_Deliver();
 
         // a setting may change how any panel or popup looks, such as a colour of the theme, so all of them draw again
@@ -1115,6 +1131,8 @@ int ECSIApp_Run(void)
         {
             ECSIWindow_Render(SDL_GetTicksNS());
         }
+
+        ECSIProfile_EndPass();
 
         // a session opened in this pass replaces the program once it stops
         running = ECSITest_Step() && ECSISession_GetNext() == nullptr;
@@ -1160,6 +1178,7 @@ ECSIRestart ECSIApp_Stop(void)
     ECSIWorkers_Terminate();
     ECSIServices_Terminate();
     ECSITimers_Terminate();
+    ECSIProfile_Terminate();
     ECSITasks_Terminate();
     ECSIEvents_Terminate();
     ECSIPlugins_ReportRepeatedErrors();

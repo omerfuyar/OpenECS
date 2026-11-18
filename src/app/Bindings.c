@@ -1004,6 +1004,20 @@ static const luaL_Reg OPENECS_BINDINGS_PLUGINS[] = {
 
 #pragma endregion Plugins
 
+#pragma region Profile
+
+static int ECSIBindings_ProfileGet(lua_State *state)
+{
+    return ECSIBindings_PushFilled(state, ECSProfile_Get);
+}
+
+static const luaL_Reg OPENECS_BINDINGS_PROFILE[] = {
+    {"get", ECSIBindings_ProfileGet},
+    {nullptr, nullptr},
+};
+
+#pragma endregion Profile
+
 static const luaL_Reg OPENECS_BINDINGS_SESSION[] = {
     {"save", ECSIBindings_SessionSave},
     {"open", ECSIBindings_SessionOpen},
@@ -2218,6 +2232,7 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIBindings_AddTable(state, plugin, "workspace", OPENECS_BINDINGS_WORKSPACE);
     ECSIBindings_AddTable(state, plugin, "session", OPENECS_BINDINGS_SESSION);
     ECSIBindings_AddTable(state, plugin, "plugins", OPENECS_BINDINGS_PLUGINS);
+    ECSIBindings_AddTable(state, plugin, "profile", OPENECS_BINDINGS_PROFILE);
     ECSIBindings_AddTable(state, plugin, "clipboard", OPENECS_BINDINGS_CLIPBOARD);
     ECSIBindings_AddTable(state, plugin, "dialog", OPENECS_BINDINGS_DIALOG);
     ECSIBindings_AddTable(state, plugin, "event", OPENECS_BINDINGS_EVENT);
