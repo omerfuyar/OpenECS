@@ -12,20 +12,14 @@ What the owner wants worked on, in no fixed order. Each one is described further
 ## Tasks
 
 - **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now, and aarch64 waits for 1.0.0 (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
-- **Import the rulesets.** The rulesets of OpenECS, OpenECS-std, OpenECS-examples and OpenECS-template require the Windows checks now, as the owner chose. The owner imports them in each repository's settings. OpenECS-examples' rulesets no longer require `Release (Linux)`, which it does not run.
 - **Functions that call unseen.** OVERVIEW's principle "Calls are written out" is new. Check the core, the standard plugins and the examples for code that registers or calls functions the caller does not name, and write the calls out.
 - **Older plugins and newer features.** Go over the standard plugins and the examples for code that a later feature of the core would make simpler, such as structs, and change it to use the feature.
 - **The lag on Windows.** The owner saw the editor lag on Windows in a Release build, on a fast machine (i7-14700, 64 GB) with low CPU and GPU use: on hovering, moving and resizing, and more in a larger window. It could not be reproduced on Linux, where software Vulkan hides it. Measure it with the profiler (Alt+W, then F; std DESIGN 32), and send its report; suspects are Direct3D 12's present and frame pacing, and `SDL_UpdateTexture` of large surfaces, which the steps `present` and `upload` show.
 - **OVERVIEW as a guide for users.** OVERVIEW.md should read well for a user too: where the user's settings file is, how presets, sessions and plugins are found, and the first keys to learn. Show the owner the plan first; README-like text for people is reviewed before it is written.
-- **A skill for plugin authors.** A skill in `.claude/skills/` for developing, checking and auditing an OpenECS plugin, in Lua or C: the conventions (DESIGN 1, std DESIGN 1), the check script, a test in the examples' manner, and what to audit, such as ids, misuses and partial drawing.
-- **Lua's speed.** Each call from Lua into the core costs about a third of a microsecond in a Debug build, so a Lua panel draws runs of pixels with `surface:fill` and rows with `setRow`, as c12_sketch's Lua panel paints each row of a dab with one `fill`; the surface's methods keep the colour of the last colour text they read. A panel that keeps its picture draws only what changed (DESIGN 5.1).
 
 ## Shuild
 
-[Shuild](https://github.com/omerfuyar/shuild) is the build tool, a single header at `dependencies/shuild`. Shu, at `dependencies/shu`, holds the types and macros it uses. The owner allows changes to both, in their style, through pull requests into their main branches. These repositories have no CI, so a pull request is merged with a merge commit once it is tested locally: shuild's examples, and OpenECS built from scratch with its checks. Then an OpenECS pull request moves the submodule. Work found in it:
-
-- **Windows and macOS.** Shuild names libraries for the system its compiler compiles for, and cross-compiles for Windows with MinGW (omerfuyar/shuild#23). Its Windows host code runs in OpenECS's Windows checks, which build OpenECS on Windows. `SHU_UtilRun` runs commands with the system's shell, which is `cmd.exe` on Windows.
-- **A relink with nothing compiled.** The owner saw the core link again in a build that compiled 0 files. It did not happen again in builds without changes, with `-t`, after a changed `shuild.c`, or with clang. Shuild links a module again when a library it links is newer than its output. The owner looks at it later.
+[Shuild](https://github.com/omerfuyar/shuild) is the build tool, a single header at `dependencies/shuild`. Shu, at `dependencies/shu`, holds the types and macros it uses. The owner allows changes to both, in their style, through pull requests into their main branches. These repositories have no CI, so a pull request is merged with a merge commit once it is tested locally: shuild's examples, and OpenECS built from scratch with its checks. Then an OpenECS pull request moves the submodule.
 
 ## Standard plugins
 
@@ -53,7 +47,6 @@ What would grow it most:
 - **A flagship tool** that is useful without writing code, such as a log viewer, a glTF viewer or a terminal, built from the standard plugins.
   - **An editor for LÖVE games**, the owner's flagship: [ONLR](https://github.com/omerfuyar/ONLR), in its own repository, whose TODO.md holds its open questions. Its files panel, viewer and console are standard plugins now.
 - **A showcase** in README.md of plugins and tools others build.
-
 
 ## Review
 
