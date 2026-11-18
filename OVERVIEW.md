@@ -99,6 +99,7 @@ Some plugins are made and shipped together with OpenECS because the product need
 - **settings:** the settings window, built on ui.
 - **panels:** the list of the tool's panel types, by plugin, which opens the one the user chooses, built on ui.
 - **launcher:** picks a preset or session when OpenECS starts without one, built on ui.
+- **profiler:** shows where each frame's time goes, by step, by plugin and by panel, as the core measures it, built on ui.
 
 Apart from sdl, they are plugins like any other. They use only the plugin API, the core neither knows nor favours them, and a user can replace any of them with a plugin of the same name.
 
