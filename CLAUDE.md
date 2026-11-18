@@ -89,6 +89,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Write a release's description once, when the release is ready, before the pull request from `dev` into `main`; not with each change.
 - The examples are the tests. A change that breaks an example changes the example in OpenECS-examples in the same piece of work, so every test passes (DESIGN.md, sections 17.5 and 17.6).
 - Commit messages have one line per change, starting with `-`. Details go on lines starting with `--`.
+- Shuild (`dependencies/shuild`) and shu (`dependencies/shu`) are the owner's; changes to them, in their style, go through pull requests into their `main`. They have no CI, so merge such a pull request with a merge commit once it is tested locally: shuild's examples, and OpenECS built from scratch with its checks. Then move the submodule in a pull request to OpenECS.
 
 ## Writing documents
 
