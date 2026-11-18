@@ -30,6 +30,7 @@ DESIGN.md holds the rules; this skill names the sections each step needs and wha
 - A test in the examples' manner (DESIGN 17.5): a file `test*.lua` that returns `preset` and `run(test)`, and drives the plugin as the user would, with `test.key`, `test.click`, `test.text` and `test.wait`, then checks with `test.match`, `test.panel`, `test.pixel` and `test.session`. It checks behaviour the plugin promises, not its internals.
 - In OpenECS, std or examples: the verify skill. In a tool: `cc shuild.c -o shuild && ./shuild`, then `OpenECS/OpenECS --test test.lua`.
 - A change to the plugin's functions or their documentation: `.github/scripts/definitions.sh build/Debug/bin/OpenECS` in OpenECS.
+- Its speed: the profiler (Alt+W, then F; std DESIGN 32) shows the plugin's own time, its panels' draws and its longest call. Its own time leaves out the C plugins it calls, but not the Lua plugins, which run in the same Lua call (DESIGN 3.5).
 
 ## 4. Audit it
 
