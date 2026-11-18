@@ -102,6 +102,12 @@ SHUResult ECSIServices_CallBound(const char *name, ECSPanel focus);
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, or SHUResult_ErrBadData if its signature is another.
 SHUResult ECSIServices_CallOpen(const char *name, const char *path);
 
+/// @brief Lists the functions that a key can run (DESIGN 7.8): those whose signature is void() or void(handle<ecs.panel>), each a table of its name,
+/// description, owner (its plugin's name, or "ecs") and panel, whether it takes the focused panel.
+/// @param retList The value to fill with the list.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSIServices_ListBindable(ECSValue *retList);
+
 /// @brief A function that ECSIServices_ForEachCore calls with the name of one of the core's functions.
 typedef void (*ECSIServicesCoreFunction)(const char *name, void *data);
 

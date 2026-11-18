@@ -3628,6 +3628,39 @@ SHUResult ECSIServices_CallOpen(const char *name, const char *path)
     return SHUResult_Ok;
 }
 
+SHUResult ECSIServices_ListBindable(ECSValue *retList)
+{
+    SDL_assert(retList != nullptr);
+
+    ECSValue_SetTable(retList);
+
+    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
+    {
+        const ECSIFunction *function = SERVICES.functions[i].value;
+        bool panel = SDL_strcmp(function->signature.text, "void(handle<ecs.panel>)") == 0;
+
+        if (!panel && SDL_strcmp(function->signature.text, "void()") != 0)
+        {
+            continue;
+        }
+
+        ECSValue *item = nullptr;
+        ECSValue *field = nullptr;
+        SHU_ReturnResult(ECSValue_AddListItem(retList, &item));
+        ECSValue_SetTable(item);
+        SHU_ReturnResult(ECSValue_SetTableField(item, "name", &field));
+        SHU_ReturnResult(ECSValue_SetString(field, function->name));
+        SHU_ReturnResult(ECSValue_SetTableField(item, "description", &field));
+        SHU_ReturnResult(ECSValue_SetString(field, function->description != nullptr ? function->description : ""));
+        SHU_ReturnResult(ECSValue_SetTableField(item, "owner", &field));
+        SHU_ReturnResult(ECSValue_SetString(field, function->plugin != nullptr ? ECSIPlugin_GetName(function->plugin) : "ecs"));
+        SHU_ReturnResult(ECSValue_SetTableField(item, "panel", &field));
+        ECSValue_SetBool(field, panel);
+    }
+
+    return SHUResult_Ok;
+}
+
 void ECSIServices_ForEachCore(ECSIServicesCoreFunction function, void *data)
 {
     SDL_assert(function != nullptr);

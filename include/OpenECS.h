@@ -834,6 +834,32 @@ OPENECS_EXPORT void ECSHandle_Free(ECSPlugin plugin, const char *type, void *obj
 /// @lua ecs.key.bind
 OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *key, const char *function);
 
+/// @brief Lists every key binding of the keys tables in effect (DESIGN 7.8): the core's settings file, the plugins' keys for their panel types, the
+/// preset, the current workspace and the user's settings. Each is a table of its key, as written; its function, or false for a key that the binding
+/// removes; its scope, missing for the whole tool, "prefix" for the keys after the core prefix, or a panel type; its layer, "default", "preset" or
+/// "user"; workspace, whether it comes from the current workspace; and active, whether it is the binding of its key that runs in its scope. Main thread only.
+/// @param retList The value to fill with the list.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.key.list
+OPENECS_EXPORT SHUWUR SHUResult ECSKey_List(ECSValue *retList);
+
+/// @brief Changes a key in the user's settings file and writes the file (DESIGN 7.8). The tool's own part of the file is changed if it binds the key in
+/// the scope already, and the part for every tool otherwise. Main thread only.
+/// @param scope nullptr for the whole tool, "prefix" for the keys after the core prefix, or a panel type, such as "canvas.view".
+/// @param key A key combination, such as "Ctrl+E".
+/// @param function A function's name binds the key; false removes the key from the layers below; nil takes the user's binding away, so the layers below apply.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the key is not a key combination, the scope is none of those, or the function none of
+/// those values, or an error from writing the file.
+/// @lua ecs.key.set
+OPENECS_EXPORT SHUWUR SHUResult ECSKey_Set(const char *scope, const char *key, const ECSValue *function);
+
+/// @brief Lists the functions that a key can run: those that take no arguments, or the focused panel. Each is a table of its name, description,
+/// owner, the name of its plugin or "ecs", and panel, whether it takes the focused panel. Main thread only.
+/// @param retList The value to fill with the list.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.key.functions
+OPENECS_EXPORT SHUWUR SHUResult ECSKey_ListFunctions(ECSValue *retList);
+
 /// @brief Opens a panel in the current workspace and focuses it. Any plugin may open any panel type. Main thread only.
 /// @param plugin The plugin that opens the panel.
 /// @param retPanel The new panel. A missing type gives a placeholder.

@@ -97,6 +97,7 @@ Some plugins are made and shipped together with OpenECS because the product need
 - **viewer:** a standard plugin: a panel that shows a file as it is: text, with code coloured, images and sounds.
 - **console:** a standard plugin: a panel of a program's output, whose lines that name a file open it in the user's code editor.
 - **settings:** the settings window, built on ui.
+- **keys:** the list of every key binding, which changes, removes and adds keys in the user's settings, built on ui.
 - **panels:** the list of the tool's panel types, by plugin, which opens the one the user chooses, built on ui.
 - **launcher:** picks a preset or session when OpenECS starts without one, built on ui.
 - **profiler:** shows where each frame's time goes, by step, by plugin and by panel, as the core measures it, built on ui.
