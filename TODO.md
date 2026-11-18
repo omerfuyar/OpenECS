@@ -16,6 +16,12 @@ What the owner wants worked on, in no fixed order. Each one is described further
 - **Older plugins and newer features.** Go over the standard plugins and the examples for code that a later feature of the core would make simpler, such as structs, and change it to use the feature.
 - **The lag on Windows.** The owner saw the editor lag on Windows in a Release build, on a fast machine (i7-14700, 64 GB) with low CPU and GPU use: on hovering, moving and resizing, and more in a larger window. It could not be reproduced on Linux, where software Vulkan hides it. Measure it with the profiler (Alt+W, then F; std DESIGN 32), and send its report; suspects are Direct3D 12's present and frame pacing, and `SDL_UpdateTexture` of large surfaces, which the steps `present` and `upload` show.
 - **OVERVIEW as a guide for users.** OVERVIEW.md should read well for a user too: where the user's settings file is, how presets, sessions and plugins are found, and the first keys to learn. Show the owner the plan first; README-like text for people is reviewed before it is written.
+- **LuaJIT in place of Lua 5.5.** Not decided. LuaJIT is faster at running Lua, and its FFI calls C almost as C does, but only in code the JIT compiles, through `ffi.cdef` declarations; a function of the C API, such as `ECSIServices_CallC` and every `ecs` binding, is no faster there, and stops the JIT. The gain needs a new bridge: Lua would call a service's C function through the FFI, from a declaration made of its signature, and the bridge's work would move to Lua or go: its misuse checks, structs, handles, `out string error`, callbacks and the profiler's scopes (DESIGN 3.5, 10). Measure first: the profiler shows whether a plugin's time goes to its calls. What changes:
+  - **Numbers.** LuaJIT has only doubles. The core tells integers from numbers (`lua_isinteger`, the setting type `integer`, `i64` parameters), and the plugins do with `math.type` and `math.tointeger` (std's settings and ui); integers above 2^53 would need LuaJIT's boxed `int64_t`.
+  - **Lua code.** Integer division `//` (ui, four examples), bitwise operators (ui's colours, c12_sketch, s6_web's SHA-1, s8_gpu, s10_cglm), `string.pack` and `string.unpack` (ui's triangles and pixels, five examples) and `utf8` (ui's text measure, c10_text_input, s1_terminal). LuaJIT has the `bit` library and the FFI for these, and no `utf8`.
+  - **C code.** `lua_newuserdatauv`, the 5.4 `lua_resume`, `lua_setwarnf` and `luaL_makeseed` (`src/base/Lua.c`, `Services.c`, `Bindings.c`, `Workers.c`, `Test.c`): small changes.
+  - **The build.** LuaJIT builds a host tool, `buildvm`, that writes its interpreter in assembly before the library compiles; shuild would build it as LuaJIT's makefile does, for each system and cross compiler. Lua builds from its C files alone.
+  - **Upkeep.** LuaJIT follows Lua 5.1 with some of 5.2, and does not take later versions' features; its JIT exists for a fixed list of CPUs, and the platforms DESIGN 19.4 plans need checking against it. ecs.lua and every plugin would be written for 5.1, and LuaLS set to LuaJIT.
 
 ## Standard plugins
 
@@ -23,6 +29,12 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
 - **The core's libraries.** The standard plugins still use the core's SDL, SDL_ttf and stb_ds (DESIGN 17.2), against the principle that plugins stand alone (OVERVIEW 12). To remove: each plugin would bring what it uses.
+
+## Shuild
+
+[Shuild](https://github.com/omerfuyar/shuild) is the owner's; changes go to it as CLAUDE.md says.
+
+- **Reading a build's flags.** The `shuild.c` of OpenECS, OpenECS-std, OpenECS-examples and the template each read their flags with their own loop of `strcmp`: a short and a long name, a value after some, a build type chosen by name, the flag with no value, and a help text written apart from the loop. Shuild would hold a small interface for it: a script lists its flags once, with macros, each with its names, its value's name, its help and where the value goes (a switch, a string, or one of a list of names such as the build types); shuild reads `argv` with that list, reports a flag it does not know or a missing value, and prints the help from the same list. It runs before `SHU_UtilAutomate`, which compiles the script again when it changed, as the scripts' own reading does now. Add an example to shuild for it, then use it in the four scripts.
 
 ## Reaching users
 
