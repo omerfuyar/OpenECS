@@ -1,5 +1,7 @@
 #include "interface/Panels.h"
 
+#include "base/Log.h"
+#include "base/Profile.h"
 #include "base/Values.h"
 #include "runtime/Events.h"
 #include "runtime/Plugins.h"
@@ -11,6 +13,14 @@
 
 #pragma region Source Only
 
+/// @brief The rectangle around what a panel's Draw said it changed (5.1).
+typedef struct ECSIDrawing
+{
+    const ECSSurface *surface;
+    SDL_Rect area;
+    bool changed;
+} ECSIDrawing;
+
 static struct
 {
     struct
@@ -21,7 +31,10 @@ static struct
     ECSPanel *closed; // stb_ds array
     u32 nextPanelID;
     ECSIAskFunction Ask; // asks about unsaved work; Input gives it
-} PANELS = {0};
+    ECSIDrawing drawing; // the pixels surface that a panel draws into now
+    f32 scale;           // ecs.scale: the pixels of a layout unit of panels and popups
+    u32 look;            // grows each time the settings change, so every panel draws again whole
+} PANELS = {.scale = 1.0f};
 
 static void ECSIPanelType_Free(ECSIPanelType *type)
 {
@@ -55,6 +68,7 @@ static bool ECSIPanel_ResizePixels(ECSPanel panel)
 
     SDL_DestroySurface(panel->pixels);
     panel->pixels = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_ARGB8888);
+    panel->drawn = false;
 
     if (panel->texture != nullptr)
     {
@@ -254,7 +268,10 @@ static void ECSIPanel_DeliverEvent(void *target, const ECSPanelEvent *event)
 
     if (!panel->closed && panel->fault == nullptr && panel->type != nullptr && panel->type->desc.Event != nullptr)
     {
+        ECSICallback callback;
+        ECSIPlugin_Enter(&callback, panel->type->plugin, panel, ECSICallbackType_Panel);
         panel->type->desc.Event(panel->state, event);
+        (void)ECSIPlugin_Leave(&callback);
     }
 }
 
@@ -315,6 +332,17 @@ static void ECSIPanel_DeliverDrop(void *target, const ECSPanelEvent *event)
     ECSIPanel_FreeDrop(data);
 }
 
+/// @brief Calls a panel's Save as its callback (DESIGN 14.2).
+/// @return The result of Save.
+static SHUResult ECSIPanel_CallSave(ECSPanel panel)
+{
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, panel->type->plugin, panel, ECSICallbackType_Panel);
+    SHUResult result = panel->type->desc.Save(panel->state);
+    (void)ECSIPlugin_Leave(&callback);
+    return result;
+}
+
 #pragma endregion Source Only
 
 void ECSIPanels_Terminate(void)
@@ -369,8 +397,12 @@ SHUResult ECSIPanel_Create(ECSPanel *retPanel, const char *typeName, const ECSVa
     {
         // the type may set the title while it creates the panel, so the type is set first
         panel->type = type;
+        ECSICallback callback;
+        ECSIPlugin_Enter(&callback, type->plugin, panel, ECSICallbackType_Panel);
+        SHUResult created = type->desc.Create(panel, panel->savedState, stateVersion, &panel->state);
+        (void)ECSIPlugin_Leave(&callback);
 
-        if (type->desc.Create(panel, panel->savedState, stateVersion, &panel->state))
+        if (created)
         {
             // the panel has no state to destroy, so it becomes a placeholder that keeps its saved state
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' failed to create a panel; showing a placeholder.", typeName);
@@ -392,7 +424,10 @@ void ECSIPanel_Destroy(ECSPanel *panel)
 
     if (target->type != nullptr)
     {
+        ECSICallback callback;
+        ECSIPlugin_Enter(&callback, target->type->plugin, target, ECSICallbackType_Quiet);
         target->type->desc.Destroy(target->state);
+        (void)ECSIPlugin_Leave(&callback);
     }
 
     ECSIPanel_ReleaseGpuTexture(target);
@@ -473,7 +508,12 @@ SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retSaved)
     {
         SHU_ReturnResult(ECSValue_Create(&saved));
 
-        if (panel->type->desc.SaveState(panel->state, saved))
+        ECSICallback callback;
+        ECSIPlugin_Enter(&callback, panel->type->plugin, panel, ECSICallbackType_Panel);
+        SHUResult savedState = panel->type->desc.SaveState(panel->state, saved);
+        (void)ECSIPlugin_Leave(&callback);
+
+        if (savedState)
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' failed to save a panel's state; its last saved state is kept.", panel->typeName);
         }
@@ -529,11 +569,74 @@ i32 ECSIPanel_ToPixels(f32 size)
     return (i32)SDL_max(1.0f, SDL_roundf(size));
 }
 
+f32 ECSIPanels_GetScale(void)
+{
+    return PANELS.scale;
+}
+
+void ECSIPanels_SetScale(f32 scale)
+{
+    // each panel draws again at the new scale when it is next shown, and hears its new size then
+    PANELS.scale = scale > 0.0f ? scale : 1.0f;
+}
+
+void ECSIPanels_RedrawAll(void)
+{
+    PANELS.look++;
+}
+
 bool ECSIPanel_WantsFrame(ECSPanel panel)
 {
     SDL_assert(panel != nullptr);
 
-    return panel->needsDraw || (panel->fault == nullptr && panel->type != nullptr && panel->type->desc.continuous);
+    return panel->needsDraw || panel->drawnScale != PANELS.scale || panel->drawnLook != PANELS.look || (panel->fault == nullptr && panel->type != nullptr && panel->type->desc.continuous);
+}
+
+/// @brief Calls a pixels panel's Draw, and sends to its texture what it changed.
+/// @param upload The texture is new, so it takes the whole picture.
+static void ECSIPanel_DrawPixels(ECSPanel panel, bool upload, u64 nowTicks, f64 seconds)
+{
+    SDL_Surface *pixels = panel->pixels;
+
+    ECSSurface surface = {
+        .type = ECSSurfaceType_Pixels,
+        .width = pixels->w,
+        .height = pixels->h,
+        .scale = PANELS.scale,
+        .pixels = cs(pixels->pixels, (usz)pixels->pitch * (usz)pixels->h),
+        .pitch = pixels->pitch,
+        .kept = panel->drawn && panel->drawnScale == PANELS.scale && panel->drawnLook == PANELS.look, // the pixels hold the last picture while they, the scale and the settings stay the same
+    };
+
+    panel->lastDrawTicks = nowTicks;
+    panel->needsDraw = false;
+    PANELS.drawing = (ECSIDrawing){.surface = &surface};
+
+    ECSICallback callback;
+    u64 drawStart = ECSIProfile_BeginDraw();
+    ECSIPlugin_Enter(&callback, panel->type->plugin, panel, ECSICallbackType_Panel);
+    panel->type->desc.Draw(panel->state, &surface, seconds);
+    (void)ECSIPlugin_Leave(&callback);
+    panel->drawn = true;
+    panel->drawnScale = PANELS.scale;
+    panel->drawnLook = PANELS.look;
+
+    // the services that drew into the surface finish, and its Lua handle goes
+    ECSIServices_EndSurface(&surface);
+    ECSIProfile_EndDraw(drawStart, panel->id, panel->typeName);
+
+    // only the rectangle around what changed goes to the texture, if the panel told it and the texture has the rest
+    SDL_Rect area = PANELS.drawing.area;
+    SDL_Rect *changed = !upload && PANELS.drawing.changed ? &area : nullptr;
+    u8 *start = changed == nullptr ? pixels->pixels : (u8 *)pixels->pixels + (usz)changed->y * (usz)pixels->pitch + (usz)changed->x * 4U;
+    PANELS.drawing = (ECSIDrawing){0};
+
+    if (changed == nullptr || (changed->w > 0 && changed->h > 0))
+    {
+        ECSIProfileStep step = ECSIProfile_SetStep(ECSIProfileStep_Upload);
+        SDL_UpdateTexture(panel->texture, changed, start, pixels->pitch);
+        (void)ECSIProfile_SetStep(step);
+    }
 }
 
 void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
@@ -545,6 +648,8 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
     if (panel->type == nullptr || panel->fault != nullptr || panel->type->desc.Draw == nullptr || panel->width < 1.0f || panel->height < 1.0f)
     {
         panel->needsDraw = false;
+        panel->drawnScale = PANELS.scale;
+        panel->drawnLook = PANELS.look;
         return;
     }
 
@@ -569,18 +674,28 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
             .type = ECSSurfaceType_Gpu,
             .width = panel->gpuWidth,
             .height = panel->gpuHeight,
-            .scale = 1.0f,
+            .scale = PANELS.scale,
             .texture = panel->gpuTexture,
         };
 
         panel->lastDrawTicks = nowTicks;
         panel->needsDraw = false;
+        panel->drawnScale = PANELS.scale;
+        panel->drawnLook = PANELS.look;
+        ECSICallback callback;
+        u64 drawStart = ECSIProfile_BeginDraw();
+        ECSIPlugin_Enter(&callback, panel->type->plugin, panel, ECSICallbackType_Panel);
         panel->type->desc.Draw(panel->state, &surface, seconds);
+        (void)ECSIPlugin_Leave(&callback);
         ECSIServices_EndSurface(&surface);
+        ECSIProfile_EndDraw(drawStart, panel->id, panel->typeName);
 
+        // a window that cannot show the GPU's texture gets a copy of it, which waits for the GPU
         if (panel->gpuCopy != nullptr)
         {
+            ECSIProfileStep step = ECSIProfile_SetStep(ECSIProfileStep_Upload);
             ECSIPanel_CopyGpuTexture(panel);
+            (void)ECSIProfile_SetStep(step);
         }
 
         return;
@@ -602,6 +717,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         }
 
         SDL_Surface *pixels = panel->pixels;
+        bool upload = panel->texture == nullptr;
 
         if (panel->texture == nullptr)
         {
@@ -618,23 +734,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
             SDL_SetTextureBlendMode(panel->texture, SDL_BLENDMODE_NONE);
         }
 
-        ECSSurface surface = {
-            .type = ECSSurfaceType_Pixels,
-            .width = pixels->w,
-            .height = pixels->h,
-            .scale = 1.0f,
-            .pixels = cs(pixels->pixels, (usz)pixels->pitch * (usz)pixels->h),
-            .pitch = pixels->pitch,
-        };
-
-        panel->lastDrawTicks = nowTicks;
-        panel->needsDraw = false;
-
-        panel->type->desc.Draw(panel->state, &surface, seconds);
-
-        // the services that drew into the surface finish, and its Lua handle goes
-        ECSIServices_EndSurface(&surface);
-        SDL_UpdateTexture(panel->texture, nullptr, pixels->pixels, pixels->pitch);
+        ECSIPanel_DrawPixels(panel, upload, nowTicks, seconds);
     }
 }
 
@@ -656,22 +756,26 @@ void ECSIPanel_SetVisible(ECSPanel panel, bool visible)
 {
     SDL_assert(panel != nullptr);
 
+    // the panel's size in its layout units, which ecs.scale makes larger or smaller than the window's
+    f32 width = panel->width / PANELS.scale;
+    f32 height = panel->height / PANELS.scale;
+
     if (visible != panel->visible)
     {
         panel->visible = visible;
-        ECSPanelEvent event = {.type = visible ? ECSPanelEventType_Shown : ECSPanelEventType_Hidden, .size = {panel->width, panel->height}};
+        ECSPanelEvent event = {.type = visible ? ECSPanelEventType_Shown : ECSPanelEventType_Hidden, .size = {width, height}};
         ECSIPanel_PostEvent(panel, &event);
     }
-    else if (visible && (panel->width != panel->toldWidth || panel->height != panel->toldHeight))
+    else if (visible && (width != panel->toldWidth || height != panel->toldHeight))
     {
-        ECSPanelEvent event = {.type = ECSPanelEventType_Resized, .size = {panel->width, panel->height}};
+        ECSPanelEvent event = {.type = ECSPanelEventType_Resized, .size = {width, height}};
         ECSIPanel_PostEvent(panel, &event);
     }
 
     if (visible)
     {
-        panel->toldWidth = panel->width;
-        panel->toldHeight = panel->height;
+        panel->toldWidth = width;
+        panel->toldHeight = height;
     }
 }
 
@@ -781,7 +885,7 @@ void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers)
 
 void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f32 y, f32 width, f32 height)
 {
-    SDL_assert(panel != nullptr);
+    ECSILog_Check(panel != nullptr);
 
     panel->textInput = accept;
     panel->textArea = (SDL_FRect){x, y, width, height};
@@ -789,8 +893,8 @@ void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f32 y, f32 width,
 
 SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char *const *types, usz count)
 {
-    SDL_assert(panel != nullptr);
-    SDL_assert(types != nullptr || count == 0);
+    ECSILog_Check(panel != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(types != nullptr || count == 0, SHUResult_ErrAssertion);
 
     ECSIPanel_ClearAccepts(panel);
 
@@ -813,13 +917,13 @@ SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char *const *types, usz cou
 
 const char *ECSDropData_GetType(ECSDropData data)
 {
-    SDL_assert(data != nullptr);
+    ECSILog_Check(data != nullptr, nullptr);
     return data->type;
 }
 
 const ECSValue *ECSDropData_GetValue(ECSDropData data)
 {
-    SDL_assert(data != nullptr);
+    ECSILog_Check(data != nullptr, nullptr);
     return data->value;
 }
 
@@ -909,7 +1013,7 @@ bool ECSIPanels_ConfirmClose(const ECSPanel *panels, usz count, bool quitting)
             continue;
         }
 
-        if (panel->type == nullptr || panel->fault != nullptr || panel->type->desc.Save == nullptr || panel->type->desc.Save(panel->state))
+        if (panel->type == nullptr || panel->fault != nullptr || panel->type->desc.Save == nullptr || ECSIPanel_CallSave(panel))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel '%s' could not save its work; closing is cancelled.", panel->title);
             return false;
@@ -948,7 +1052,10 @@ void ECSIPanel_Unload(ECSPanel panel)
 
     ECSValue_Destroy(&saved);
 
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, panel->type->plugin, panel, ECSICallbackType_Quiet);
     panel->type->desc.Destroy(panel->state);
+    (void)ECSIPlugin_Leave(&callback);
     ECSIPanel_ClearAccepts(panel);
     panel->textInput = false;
     SDL_free(panel->fault);
@@ -981,7 +1088,10 @@ bool ECSIPanel_Restart(ECSPanel panel)
     // a faulted panel's type is not called again, except Destroy, which frees the old state
     if (panel->type != nullptr && panel->state != nullptr)
     {
+        ECSICallback callback;
+        ECSIPlugin_Enter(&callback, panel->type->plugin, panel, ECSICallbackType_Quiet);
         panel->type->desc.Destroy(panel->state);
+        (void)ECSIPlugin_Leave(&callback);
     }
 
     // the new state says again which data it accepts
@@ -992,8 +1102,12 @@ bool ECSIPanel_Restart(ECSPanel panel)
     panel->state = nullptr;
     panel->type = type;
     panel->needsDraw = true;
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, type->plugin, panel, ECSICallbackType_Panel);
+    SHUResult created = type->desc.Create(panel, panel->savedState, panel->stateVersion, &panel->state);
+    (void)ECSIPlugin_Leave(&callback);
 
-    if (type->desc.Create(panel, panel->savedState, panel->stateVersion, &panel->state))
+    if (created)
     {
         ECSIPanel_Fault(panel, "The panel type failed to create the panel again.");
         panel->type = nullptr;
@@ -1033,7 +1147,7 @@ static SHUResult ECSIPanel_SetStringField(ECSValue *table, const char *name, con
 
 SHUResult ECSPanelType_List(ECSValue *retList)
 {
-    SDL_assert(retList != nullptr);
+    ECSILog_Check(retList != nullptr, SHUResult_ErrAssertion);
 
     usz count = shlenu(PANELS.types);
     ECSIPanelType **types = count == 0 ? nullptr : SDL_malloc(count * sizeof(ECSIPanelType *));
@@ -1074,15 +1188,15 @@ SHUResult ECSPanelType_List(ECSValue *retList)
 
 SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, const char *function)
 {
-    SDL_assert(plugin != nullptr);
-    SDL_assert(panelType != nullptr && function != nullptr);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(panelType != nullptr && function != nullptr, SHUResult_ErrAssertion);
 
     ECSIPanelType *type = ECSIPanelType_Find(panelType);
 
     if (type == nullptr || type->plugin != plugin)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' adds a menu entry to '%s', which is not one of its panel types.", ECSIPlugin_GetName(plugin), panelType);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Plugin '%s' adds a menu entry to '%s', which is not one of its panel types.", ECSIPlugin_GetName(plugin), panelType);
+        return SHUResult_ErrAssertion;
     }
 
     char *copy = SDL_strdup(function);
@@ -1122,17 +1236,13 @@ SHUResult ECSIPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
 
     if (desc->name == nullptr || desc->Create == nullptr || desc->Destroy == nullptr)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' registered an incomplete panel type.", pluginName);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Plugin '%s' registered an incomplete panel type.", pluginName);
+        return SHUResult_ErrAssertion;
     }
 
     // the description gives the local name, and the type is known by its full name
-    char *fullName = ECSIPlugin_MakeFullName(plugin, desc->name);
-
-    if (fullName == nullptr)
-    {
-        return SHUResult_ErrBadData;
-    }
+    char *fullName = nullptr;
+    SHU_ReturnResult(ECSIPlugin_MakeFullName(plugin, desc->name, &fullName));
 
     ECSPanelTypeDesc named = *desc;
     named.name = fullName;
@@ -1140,16 +1250,16 @@ SHUResult ECSIPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
 
     if (desc->surface != ECSSurfaceType_Pixels && desc->surface != ECSSurfaceType_Gpu)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' asks for an unknown surface type.", desc->name);
+        (void)ECS_Check(nullptr, false, "Panel type '%s' asks for an unknown surface type.", desc->name);
         SDL_free(fullName);
-        return SHUResult_ErrBadData;
+        return SHUResult_ErrAssertion;
     }
 
     if (ECSIPanelType_Find(desc->name) != nullptr)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Panel type '%s' is already registered.", desc->name);
+        (void)ECS_Check(nullptr, false, "Panel type '%s' is already registered.", desc->name);
         SDL_free(fullName);
-        return SHUResult_ErrBadData;
+        return SHUResult_ErrAssertion;
     }
 
     ECSIPanelType *type = SDL_malloc(sizeof(ECSIPanelType));
@@ -1173,14 +1283,14 @@ SHUResult ECSIPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
 
 bool ECSPanel_GetUnsaved(ECSPanel panel)
 {
-    SDL_assert(panel != nullptr);
+    ECSILog_Check(panel != nullptr, false);
 
     return panel->unsaved;
 }
 
 void ECSPanel_SetUnsaved(ECSPanel panel, bool unsaved)
 {
-    SDL_assert(panel != nullptr);
+    ECSILog_Check(panel != nullptr);
 
     // the tab shows the mark
     panel->needsDraw = panel->needsDraw || panel->unsaved != unsaved;
@@ -1189,14 +1299,53 @@ void ECSPanel_SetUnsaved(ECSPanel panel, bool unsaved)
 
 void ECSPanel_Redraw(ECSPanel panel)
 {
-    SDL_assert(panel != nullptr);
+    ECSILog_Check(panel != nullptr);
 
     panel->needsDraw = true;
 }
 
+void ECSSurface_Changed(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height)
+{
+    ECSILog_Check(surface != nullptr);
+
+    // a surface that is not a panel's pixels, such as a popup's, is uploaded whole
+    if (PANELS.drawing.surface != surface)
+    {
+        return;
+    }
+
+    SDL_Rect bounds = {0, 0, surface->width, surface->height};
+    SDL_Rect given = {x, y, width, height};
+    SDL_Rect area = {0};
+
+    if (!SDL_GetRectIntersection(&given, &bounds, &area))
+    {
+        area = (SDL_Rect){0};
+    }
+
+    if (!PANELS.drawing.changed)
+    {
+        PANELS.drawing.area = area;
+        PANELS.drawing.changed = true;
+    }
+    else if (area.w > 0 && area.h > 0)
+    {
+        if (PANELS.drawing.area.w > 0 && PANELS.drawing.area.h > 0)
+        {
+            SDL_Rect around = {0};
+            SDL_GetRectUnion(&PANELS.drawing.area, &area, &around);
+            PANELS.drawing.area = around;
+        }
+        else
+        {
+            PANELS.drawing.area = area;
+        }
+    }
+}
+
 void ECSSurface_Fill(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height, ECSColor color)
 {
-    SDL_assert(surface != nullptr);
+    ECSILog_Check(surface != nullptr);
 
     // surfaces hold premultiplied colours
     color = ECSIColor_Premultiply(color);
@@ -1224,29 +1373,29 @@ void ECSSurface_Fill(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height, E
 
 const char *ECSPanel_GetTitle(ECSPanel panel)
 {
-    SDL_assert(panel != nullptr);
+    ECSILog_Check(panel != nullptr, nullptr);
 
     return panel->title;
 }
 
 u32 ECSPanel_GetID(ECSPanel panel)
 {
-    SDL_assert(panel != nullptr);
+    ECSILog_Check(panel != nullptr, 0);
 
     return panel->id;
 }
 
 const char *ECSPanel_GetType(ECSPanel panel)
 {
-    SDL_assert(panel != nullptr);
+    ECSILog_Check(panel != nullptr, nullptr);
 
     return panel->typeName;
 }
 
 void ECSPanel_SetTitle(ECSPanel panel, const char *title)
 {
-    SDL_assert(panel != nullptr);
-    SDL_assert(title != nullptr);
+    ECSILog_Check(panel != nullptr);
+    ECSILog_Check(title != nullptr);
 
     char *copy = SDL_strdup(title);
 

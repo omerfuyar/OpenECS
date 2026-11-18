@@ -1,5 +1,7 @@
 #include "interface/Clipboard.h"
 
+#include "base/Log.h"
+
 #include "SDL3/SDL.h"
 
 #pragma region Source Only
@@ -54,7 +56,7 @@ void ECSIClipboard_Terminate(void)
 
 SHUResult ECSClipboard_SetText(const char *text)
 {
-    SDL_assert(text != nullptr);
+    ECSILog_Check(text != nullptr, SHUResult_ErrAssertion);
 
     ECSIClipboard_Forget();
 
@@ -76,8 +78,8 @@ const char *ECSClipboard_GetText(void)
 
 SHUResult ECSClipboard_SetData(const char *mimeType, SHUSliceView data)
 {
-    SDL_assert(mimeType != nullptr);
-    SDL_assert(data.data != nullptr || data.size == 0);
+    ECSILog_Check(mimeType != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(data.data != nullptr || data.size == 0, SHUResult_ErrAssertion);
 
     ECSIClipboard_Forget();
     ECSIClipboardData *copy = SDL_malloc(sizeof(ECSIClipboardData) + data.size);
@@ -109,8 +111,8 @@ SHUResult ECSClipboard_SetData(const char *mimeType, SHUSliceView data)
 
 SHUResult ECSClipboard_GetData(const char *mimeType, SHUSlice *retData)
 {
-    SDL_assert(mimeType != nullptr);
-    SDL_assert(retData != nullptr);
+    ECSILog_Check(mimeType != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(retData != nullptr, SHUResult_ErrAssertion);
 
     ECSIClipboard_Forget();
     usz size = 0;

@@ -1,5 +1,7 @@
 #include "interface/Layout.h"
 
+#include "base/Log.h"
+#include "interface/Panels.h"
 #include "runtime/Events.h"
 #include "runtime/Plugins.h"
 #include "runtime/Settings.h"
@@ -51,6 +53,12 @@ static ECSIWorkspace *ECSILayout_GetCurrent(void)
     return arrlenu(LAYOUT.workspaces) == 0 ? nullptr : &LAYOUT.workspaces[LAYOUT.current];
 }
 
+/// @brief Gets the gap between the children of a split, in pixels: ecs.dividerSize times ecs.scale.
+static f32 ECSILayout_GetDividerSize(void)
+{
+    return SDL_roundf(LAYOUT.dividerSize * ECSIPanels_GetScale());
+}
+
 /// @brief Computes the rectangles of a node and its children, and places the shown panel of each group.
 static void ECSILayout_Place(ECSINode *node, f32 x, f32 y, f32 width, f32 height)
 {
@@ -61,7 +69,7 @@ static void ECSILayout_Place(ECSINode *node, f32 x, f32 y, f32 width, f32 height
 
     if (node->type == ECSINodeType_Group)
     {
-        f32 top = arrlenu(node->panels) >= 2 ? LAYOUT.tabRowHeight : 0.0f;
+        f32 top = arrlenu(node->panels) >= 2 ? ECSILayout_GetTabRowHeight() : 0.0f;
 
         if (arrlenu(node->panels) > 0)
         {
@@ -72,7 +80,7 @@ static void ECSILayout_Place(ECSINode *node, f32 x, f32 y, f32 width, f32 height
     }
 
     f32 total = node->vertical ? height : width;
-    f32 available = total - LAYOUT.dividerSize * (f32)(arrlenu(node->children) - 1);
+    f32 available = total - ECSILayout_GetDividerSize() * (f32)(arrlenu(node->children) - 1);
     f32 fixedSum = 0.0f;
     f32 shareSum = 0.0f;
 
@@ -111,7 +119,7 @@ static void ECSILayout_Place(ECSINode *node, f32 x, f32 y, f32 width, f32 height
             ECSILayout_Place(child, position, y, size, height);
         }
 
-        position += size + LAYOUT.dividerSize;
+        position += size + ECSILayout_GetDividerSize();
     }
 }
 
@@ -1053,8 +1061,8 @@ static void ECSILayout_FindDivider(ECSINode *node, ECSIDividerHit *hit)
     {
         ECSINode *child = node->children[i];
         bool over = node->vertical
-                        ? ECSILayout_Contains((SDL_FRect){node->x, child->y + child->height, node->width, LAYOUT.dividerSize}, hit->x, hit->y)
-                        : ECSILayout_Contains((SDL_FRect){child->x + child->width, node->y, LAYOUT.dividerSize, node->height}, hit->x, hit->y);
+                        ? ECSILayout_Contains((SDL_FRect){node->x, child->y + child->height, node->width, ECSILayout_GetDividerSize()}, hit->x, hit->y)
+                        : ECSILayout_Contains((SDL_FRect){child->x + child->width, node->y, ECSILayout_GetDividerSize(), node->height}, hit->x, hit->y);
 
         if (over)
         {
@@ -1274,7 +1282,7 @@ bool ECSILayout_Contains(SDL_FRect rect, f32 x, f32 y)
 
 f32 ECSILayout_GetTabRowHeight(void)
 {
-    return LAYOUT.tabRowHeight;
+    return SDL_roundf(LAYOUT.tabRowHeight * ECSIPanels_GetScale());
 }
 
 void ECSILayout_SetForget(ECSILayoutForgetFunction function)
@@ -1512,6 +1520,23 @@ bool ECSILayout_WantsFrame(void)
     return wants;
 }
 
+bool ECSILayout_IsFrameRequested(void)
+{
+    return LAYOUT.frameNeeded;
+}
+
+bool ECSILayout_RootWantsFrame(ECSIRoot *root)
+{
+    bool wants = false;
+
+    if (root != nullptr)
+    {
+        ECSILayout_ForEachGroup(root, ECSILayout_CheckFrameWanted, &wants);
+    }
+
+    return wants;
+}
+
 void ECSILayout_Update(void)
 {
     // requests made while the frame is drawn, such as a tab row that scrolls, get the next frame
@@ -1718,14 +1743,14 @@ void ECSILayout_MoveDivider(ECSINode *split, usz divider, f32 x, f32 y)
 
     f32 start = split->vertical ? first->y : first->x;
     f32 end = split->vertical ? second->y + second->height : second->x + second->width;
-    f32 room = end - start - LAYOUT.dividerSize;
+    f32 room = end - start - ECSILayout_GetDividerSize();
 
     if (room < OPENECS_MIN_CHILD_SIZE * 2.0f)
     {
         return;
     }
 
-    f32 position = (split->vertical ? y : x) - start - LAYOUT.dividerSize / 2.0f;
+    f32 position = (split->vertical ? y : x) - start - ECSILayout_GetDividerSize() / 2.0f;
     f32 firstSize = SDL_min(SDL_max(position, OPENECS_MIN_CHILD_SIZE), room - OPENECS_MIN_CHILD_SIZE);
     f32 secondSize = room - firstSize;
 
@@ -2117,9 +2142,9 @@ SHUResult ECSILayout_Save(ECSValue *retWorkspaces, usz *retCurrent)
 
 SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type, const ECSValue *state, ECSPanel target, ECSZone zone)
 {
-    SDL_assert(plugin != nullptr);
-    SDL_assert(retPanel != nullptr);
-    SDL_assert(type != nullptr);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(retPanel != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(type != nullptr, SHUResult_ErrAssertion);
 
     ECSIWorkspace *workspace = ECSILayout_GetCurrent();
     ECSINode *group = nullptr;
@@ -2163,8 +2188,8 @@ SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type,
 
 SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone)
 {
-    SDL_assert(panel != nullptr);
-    SDL_assert(target != nullptr || zone == ECSZone_Window);
+    ECSILog_Check(panel != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(target != nullptr || zone == ECSZone_Window, SHUResult_ErrAssertion);
 
     ECSIWorkspace *workspace = nullptr;
     ECSIWorkspace *targetWorkspace = nullptr;
@@ -2205,7 +2230,7 @@ SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone)
 
 bool ECSLayout_Close(ECSPanel panel)
 {
-    SDL_assert(panel != nullptr);
+    ECSILog_Check(panel != nullptr, false);
 
     if (!ECSILayout_HasPanel(panel) || !ECSIPanels_ConfirmClose(&panel, 1, false))
     {
@@ -2218,7 +2243,7 @@ bool ECSLayout_Close(ECSPanel panel)
 
 void ECSLayout_Focus(ECSPanel panel)
 {
-    SDL_assert(panel != nullptr);
+    ECSILog_Check(panel != nullptr);
 
     ECSIWorkspace *workspace = nullptr;
     ECSINode *group = nullptr;

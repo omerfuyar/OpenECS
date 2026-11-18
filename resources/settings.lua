@@ -2,8 +2,9 @@
 -- The preset and the user's settings file override them.
 ---@type ecs.SettingsFile
 return {
-  -- plugins that every tool loads: the settings window, the list of panel types to open, the list of plugins to enable or disable, and the launcher, which goes to another tool
-  plugins = { "settings", "panels", "plugins", "launcher" },
+  -- plugins that every tool loads: the settings window, the list of keys, the list of panel types to open, the list of plugins to enable or disable,
+  -- the launcher, which goes to another tool, and the profiler, which shows where the time goes
+  plugins = { "settings", "keys", "panels", "plugins", "launcher", "profiler" },
 
   -- the key combination before a core action
   ["ecs.prefix"] = "Alt+W",
@@ -28,14 +29,17 @@ return {
       ["L"] = "ecs.layout.lock",
       ["T"] = "ecs.layout.reopen",
       ["R"] = "ecs.panel.restart",
+      ["Ctrl+R"] = "ecs.panel.reloadPlugin",
       ["Shift+R"] = "ecs.layout.reset",
       ["Q"] = "ecs.app.quit",
       ["S"] = "ecs.session.save",
       ["O"] = "ecs.session.open",
       ["/"] = "launcher.open",
       [","] = "settings.open",
+      ["K"] = "keys.open",
       ["."] = "panels.open",
       [";"] = "plugins.open",
+      ["F"] = "profiler.open",
       ["1"] = "ecs.workspace.switch1",
       ["2"] = "ecs.workspace.switch2",
       ["3"] = "ecs.workspace.switch3",
@@ -62,13 +66,24 @@ return {
   },
 
   -- the functions that the tool's menu shows first, which a right click on the title bar opens; then come the workspaces, reset the layout and quit
-  ["ecs.toolMenu"] = { "settings.open", "panels.open", "plugins.open", "launcher.open", "ecs.session.save", "ecs.session.open" },
+  ["ecs.toolMenu"] = { "settings.open", "keys.open", "panels.open", "plugins.open", "launcher.open", "ecs.session.save", "ecs.session.open" },
 
   -- save the tool's session when it quits, and start from it the next time; --fresh still starts from the preset
   ["ecs.keepSession"] = false,
 
+  -- reload a plugin when its files change, checking them every interval in seconds, so a plugin's author sees a change without a restart;
+  -- a native plugin loads from a copy of its library then, so its build can replace the library
+  ["ecs.reloadPlugins"] = false,
+  ["ecs.reloadInterval"] = 1,
+
+  -- log the failures that services give their callers, such as a file that cannot be read; a tool that expects them turns this off
+  ["ecs.logServiceErrors"] = true,
+
   -- how focus follows the pointer: "click" or "hover"
   ["ecs.focus"] = "click",
+
+  -- measure where the time goes, by step of each frame, by plugin and by panel, for a profiler to show; it costs a little while on
+  ["ecs.profile"] = false,
 
   -- frame rate in percent of the display's refresh rate: 100 waits for every refresh, 50 for every second one, 0 turns vsync off
   ["ecs.vsync"] = 100,
@@ -78,6 +93,9 @@ return {
   ["ecs.windowHeight"] = 800,
   ["ecs.font"] = "resources/Roboto-Regular.ttf",
   ["ecs.fontSize"] = 14,
+
+  -- how large panels draw what they hold: 1.25 makes their text and elements a quarter larger
+  ["ecs.scale"] = 1,
 
   -- OpenECS draws the title bar of its OS windows, with buttons to minimize, maximize and close them, and edges to resize them;
   -- false leaves them to the system, which on some desktops draws none
@@ -102,6 +120,7 @@ return {
       ["ecs.colorOverlay"] = "#1C1E22F5",
       ["ecs.colorDrop"] = "#4C8BF546",
       ["ecs.colorSelected"] = "#3A3E46",
+      ["ecs.colorFrame"] = "#464A53",
     },
     light = {
       ["ecs.colorBackground"] = "#D9DCE1",
@@ -115,6 +134,7 @@ return {
       ["ecs.colorOverlay"] = "#FBFBFCF5",
       ["ecs.colorDrop"] = "#2F6FE046",
       ["ecs.colorSelected"] = "#D3DAE6",
+      ["ecs.colorFrame"] = "#A9AEB8",
     },
   },
 

@@ -44,23 +44,6 @@ static const char *const OPENECS_LOG_COLORS[SDL_LOG_PRIORITY_COUNT] = {
     [SDL_LOG_PRIORITY_CRITICAL] = "\x1b[1;31m",
 };
 
-/// @brief Checks whether standard error shows colours: a terminal, unless NO_COLOR is set (no-color.org). On Windows it turns the console's colours on.
-static bool ECSILog_TerminalHasColors(void)
-{
-    if (SDL_getenv("NO_COLOR") != nullptr)
-    {
-        return false;
-    }
-
-#ifdef _WIN32
-    HANDLE console = GetStdHandle(STD_ERROR_HANDLE);
-    DWORD mode = 0;
-    return _isatty(_fileno(stderr)) && GetConsoleMode(console, &mode) && SetConsoleMode(console, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-#else
-    return isatty(STDERR_FILENO);
-#endif
-}
-
 /// @brief Writes a log line with the time, the level, the plugin and the message, to standard error and the log file. SDL calls it under its log lock, so any thread may log.
 static void ECSILog_Output(void *userData, int category, SDL_LogPriority priority, const char *message)
 {
@@ -117,9 +100,25 @@ static void ECSILog_Output(void *userData, int category, SDL_LogPriority priorit
 
 #pragma endregion Source Only
 
+bool ECSILog_HasColors(FILE *stream)
+{
+    if (SDL_getenv("NO_COLOR") != nullptr)
+    {
+        return false;
+    }
+
+#ifdef _WIN32
+    HANDLE console = GetStdHandle(stream == stdout ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE);
+    DWORD mode = 0;
+    return _isatty(_fileno(stream)) && GetConsoleMode(console, &mode) && SetConsoleMode(console, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+#else
+    return isatty(fileno(stream));
+#endif
+}
+
 void ECSILog_Initialize(void)
 {
-    LOG.colors = ECSILog_TerminalHasColors();
+    LOG.colors = ECSILog_HasColors(stderr);
     SDL_SetLogOutputFunction(ECSILog_Output, nullptr);
 
 #ifdef DEBUG

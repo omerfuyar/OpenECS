@@ -1,5 +1,6 @@
 #include "interface/Dialogs.h"
 
+#include "base/Log.h"
 #include "interface/Panels.h"
 #include "runtime/Plugins.h"
 
@@ -64,7 +65,10 @@ static void ECSIDialogs_Finish(void *data)
 {
     ECSIDialog *dialog = data;
     usz count = arrlenu(dialog->files);
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, dialog->plugin, nullptr, ECSICallbackType_Plugin);
     dialog->Done(dialog->data, count == 0 ? nullptr : (const char *const *)dialog->files, count);
+    (void)ECSIPlugin_Leave(&callback);
     ECSIDialogs_Free(dialog);
 }
 
@@ -112,7 +116,7 @@ void ECSIDialogs_Terminate(void)
 
 SHUResult ECSDialog_Show(ECSPlugin plugin, const ECSDialogDesc *desc)
 {
-    SDL_assert(plugin != nullptr);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
     return ECSIDialogs_Show(plugin, desc);
 }
 
@@ -307,8 +311,8 @@ i32 ECSIDialogs_Ask(const char *title, const char *message, const char *const *b
 
 SHUResult ECSDialog_ShowMessage(const char *title, const char *message, const char *const *buttons, usz buttonCount, usz *retButton)
 {
-    SDL_assert(title != nullptr && message != nullptr && retButton != nullptr);
-    SDL_assert(buttons != nullptr && buttonCount > 0);
+    ECSILog_Check(title != nullptr && message != nullptr && retButton != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(buttons != nullptr && buttonCount > 0, SHUResult_ErrAssertion);
 
     i32 button = ECSIDialogs_Ask(title, message, buttons, buttonCount);
 

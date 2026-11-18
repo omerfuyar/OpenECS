@@ -12,4 +12,9 @@
 /// @return The length of the file's folder, with its last separator; 0 if the path is absolute or the file's path has no folder.
 int ECSIPath_GetFolderLength(const char *file, const char *path);
 
+/// @brief Gets the absolute path of a path that is relative to the current folder, as the command line's paths are.
+/// @param path A path, relative or absolute.
+/// @return The absolute path, which the caller frees with SDL_free, or nullptr if there is no memory.
+char *ECSIPath_GetAbsolute(const char *path);
+
 #pragma endregion Declarations

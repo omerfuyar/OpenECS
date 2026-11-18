@@ -74,7 +74,7 @@ static void ECSIMenus_CloseFrom(usz level)
     if (level < arrlenu(MENUS.levels))
     {
         arrsetlen(MENUS.levels, level);
-        ECSIWindow_ShowMenu(level, (SDL_FRect){0}, nullptr, 0);
+        ECSIWindow_ShowMenu(level, nullptr, (SDL_FRect){0}, nullptr, 0);
     }
 
     if (level == 0)
@@ -115,8 +115,9 @@ static void ECSIMenus_AddSubmenu(ECSIMenuEntry **entries, const char *label, ECS
 }
 
 /// @brief Shows a menu at the next level, with its first entry highlighted.
+/// @param panel For the panel menu: the panel whose OS window shows it, or nullptr for the OS window of the event that opens it.
 /// @param anchor The point the panel menu opens at, or the entry a submenu opens beside.
-static void ECSIMenus_OpenLevel(ECSIMenuEntry *entries, SDL_FRect anchor)
+static void ECSIMenus_OpenLevel(ECSIMenuEntry *entries, ECSPanel panel, SDL_FRect anchor)
 {
     ECSIMenuLevel level = {.entries = entries};
 
@@ -129,7 +130,7 @@ static void ECSIMenus_OpenLevel(ECSIMenuEntry *entries, SDL_FRect anchor)
     }
 
     arrput(MENUS.levels, level);
-    ECSIWindow_ShowMenu(arrlenu(MENUS.levels) - 1, anchor, level.lines, arrlenu(entries));
+    ECSIWindow_ShowMenu(arrlenu(MENUS.levels) - 1, panel, anchor, level.lines, arrlenu(entries));
 }
 
 /// @brief Adds the entries of a panel's type, with the keys its plugin bound to the same functions for the type.
@@ -161,6 +162,7 @@ static ECSIMenuEntry *ECSIMenus_BuildPanelMenu(ECSPanel panel)
 
     ECSIMenus_AddFunction(&entries, "ecs.layout.close", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.panel.restart", nullptr, panel);
+    ECSIMenus_AddFunction(&entries, "ecs.panel.reloadPlugin", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.maximize", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.popOut", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.lock", nullptr, panel);
@@ -250,7 +252,7 @@ static void ECSIMenus_SelectAndOpen(usz level, usz index)
 
     if (entry->submenu != nullptr)
     {
-        ECSIMenus_OpenLevel(entry->submenu, ECSIWindow_MenuItemRect(level, index));
+        ECSIMenus_OpenLevel(entry->submenu, nullptr, ECSIWindow_MenuItemRect(level, index));
     }
 }
 
@@ -283,11 +285,12 @@ static void ECSIMenus_Run(usz level, usz index)
 }
 
 /// @brief Closes the open menus, and shows a menu at a point with its first entry highlighted. The menu's entries are taken over.
-static void ECSIMenus_Show(ECSIMenuEntry *entries, f32 x, f32 y)
+/// @param panel The panel whose OS window shows the menu and has the point, or nullptr for the OS window of the event that opens it.
+static void ECSIMenus_Show(ECSIMenuEntry *entries, ECSPanel panel, f32 x, f32 y)
 {
     ECSIMenus_CloseFrom(0);
     MENUS.entries = entries;
-    ECSIMenus_OpenLevel(entries, (SDL_FRect){x, y, 0.0f, 0.0f});
+    ECSIMenus_OpenLevel(entries, panel, (SDL_FRect){x, y, 0.0f, 0.0f});
 }
 
 #pragma region Core Functions
@@ -397,6 +400,27 @@ static void ECSIMenus_Restart(void)
     }
 }
 
+/// @brief Reloads the plugin of the focused panel, or of the placeholder whose plugin a reload failed to start (DESIGN 9.11).
+static void ECSIMenus_ReloadPlugin(void)
+{
+    ECSPanel focus = ECSILayout_GetFocus();
+    char *name = focus == nullptr ? nullptr : SDL_strdup(focus->typeName);
+    char *dot = name == nullptr ? nullptr : SDL_strchr(name, '.');
+
+    // a panel type's name starts with its plugin's name
+    if (dot != nullptr)
+    {
+        *dot = '\0';
+
+        if (ECSPlugins_Reload(name))
+        {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' is not reloaded: out of memory.", name);
+        }
+    }
+
+    SDL_free(name);
+}
+
 /// @brief Builds the tool's menu: the functions that ecs.toolMenu names and that are registered, the submenu Workspaces, then reset the layout and quit.
 static ECSIMenuEntry *ECSIMenus_BuildToolMenu(void)
 {
@@ -424,18 +448,18 @@ static ECSIMenuEntry *ECSIMenus_BuildToolMenu(void)
 static void ECSIMenus_ShowTool(void)
 {
     ECSPanel focus = ECSILayout_GetFocus();
-    f32 x = (focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET;
-    f32 y = (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET;
-    ECSIMenus_Show(ECSIMenus_BuildToolMenu(), x, y);
+    f32 x = (focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET * ECSIPanels_GetScale();
+    f32 y = (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET * ECSIPanels_GetScale();
+    ECSIMenus_Show(ECSIMenus_BuildToolMenu(), focus, x, y);
 }
 
 /// @brief Shows the menu of workspaces near the top left of the focused panel, or of the window without one.
 static void ECSIMenus_ShowWorkspaces(void)
 {
     ECSPanel focus = ECSILayout_GetFocus();
-    f32 x = (focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET;
-    f32 y = (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET;
-    ECSIMenus_Show(ECSIMenus_BuildWorkspaceMenu(), x, y);
+    f32 x = (focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET * ECSIPanels_GetScale();
+    f32 y = (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET * ECSIPanels_GetScale();
+    ECSIMenus_Show(ECSIMenus_BuildWorkspaceMenu(), focus, x, y);
 }
 
 /// @brief Defines the core's two functions for a workspace number: switching to the workspace, and moving the focused panel to it.
@@ -493,6 +517,7 @@ static const struct
     {"ecs.layout.lock", ECSILayout_ToggleLock, "Lock"},
     {"ecs.layout.reopen", ECSILayout_Reopen, "Reopen closed"},
     {"ecs.panel.restart", ECSIMenus_Restart, "Restart"},
+    {"ecs.panel.reloadPlugin", ECSIMenus_ReloadPlugin, "Reload plugin"},
     ECSIMenus_WorkspaceEntries(1),
     ECSIMenus_WorkspaceEntries(2),
     ECSIMenus_WorkspaceEntries(3),
@@ -540,6 +565,12 @@ bool ECSIMenus_Offers(const char *function, ECSPanel panel)
     if (SDL_strcmp(function, "ecs.layout.reopen") == 0)
     {
         return ECSILayout_CanReopen();
+    }
+
+    // the panel's menu offers a reload while plugins reload, as a plugin's author works then
+    if (SDL_strcmp(function, "ecs.panel.reloadPlugin") == 0)
+    {
+        return panel != nullptr && ECSValue_GetBool(ECSSetting_Get("ecs.reloadPlugins"), false);
     }
 
     // a panel alone in its OS window stays, and so does a locked one
@@ -590,18 +621,18 @@ usz ECSIMenus_GetOrder(const char *function)
 void ECSIMenus_OpenPanelMenu(ECSPanel panel, f32 x, f32 y)
 {
     ECSILayout_SetFocus(panel);
-    ECSIMenus_Show(ECSIMenus_BuildPanelMenu(panel), x, y);
+    ECSIMenus_Show(ECSIMenus_BuildPanelMenu(panel), nullptr, x, y);
 }
 
 void ECSIMenus_OpenGroupMenu(ECSPanel shownPanel, f32 x, f32 y)
 {
     ECSILayout_SetFocus(shownPanel);
-    ECSIMenus_Show(ECSIMenus_BuildGroupMenu(shownPanel), x, y);
+    ECSIMenus_Show(ECSIMenus_BuildGroupMenu(shownPanel), nullptr, x, y);
 }
 
 void ECSIMenus_OpenToolMenu(f32 x, f32 y)
 {
-    ECSIMenus_Show(ECSIMenus_BuildToolMenu(), x, y);
+    ECSIMenus_Show(ECSIMenus_BuildToolMenu(), nullptr, x, y);
 }
 
 bool ECSIMenus_Handle(const SDL_Event *event)

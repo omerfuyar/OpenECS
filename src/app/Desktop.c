@@ -21,27 +21,6 @@
 #define OPENECS_PROGRAM_FILE "OpenECS"
 #endif
 
-/// @brief Gives the full path of a path that the command line named, which is relative to the current folder.
-/// @return The path, which the caller frees with SDL_free, or nullptr if there is no memory.
-static char *ECSIDesktop_GetFullPath(const char *path)
-{
-    if (ECSPath_IsAbsolute(path))
-    {
-        return SDL_strdup(path);
-    }
-
-    char *folder = SDL_GetCurrentDirectory();
-    char *full = nullptr;
-
-    if (folder == nullptr || SDL_asprintf(&full, "%s%s", folder, path) < 0)
-    {
-        full = nullptr;
-    }
-
-    SDL_free(folder);
-    return full;
-}
-
 /// @brief Finds the full path of the tool's icon, which the preset names relative to its folder.
 /// @return The path, which the caller frees with SDL_free, or nullptr if the preset names no icon or it is missing.
 static char *ECSIDesktop_FindIcon(const ECSIPresetInfo *info, const char *presetPath)
@@ -54,7 +33,7 @@ static char *ECSIDesktop_FindIcon(const ECSIPresetInfo *info, const char *preset
         return nullptr;
     }
 
-    char *full = ECSIDesktop_GetFullPath(relative);
+    char *full = ECSIPath_GetAbsolute(relative);
     SDL_free(relative);
 
     if (full != nullptr && !SDL_GetPathInfo(full, nullptr))
@@ -83,17 +62,25 @@ static char *ECSIDesktop_FindEntry(const char *appID)
     return home == nullptr || SDL_asprintf(&path, "%s/.local/share/applications/%s.desktop", home, appID) < 0 ? nullptr : path;
 }
 
-/// @brief Adds text to an entry, with '\' doubled, as a desktop entry's values need.
+/// @brief Adds text to an entry, with '\' doubled and new lines, returns and tabs written as the escapes that a desktop entry's values need.
 static void ECSIDesktop_AddText(char **entry, const char *text)
 {
     for (const char *character = text; *character != '\0'; character++)
     {
-        if (*character == '\\')
+        char escaped = *character == '\n' ? 'n' : *character == '\r' ? 'r'
+                                              : *character == '\t'   ? 't'
+                                              : *character == '\\'   ? '\\'
+                                                                     : '\0';
+
+        if (escaped != '\0')
         {
             arrput(*entry, '\\');
+            arrput(*entry, escaped);
         }
-
-        arrput(*entry, *character);
+        else
+        {
+            arrput(*entry, *character);
+        }
     }
 }
 
@@ -161,7 +148,7 @@ static char *ECSIDesktop_MakeExec(const char *presetPath, const char *presetName
     char *preset = nullptr;
     char *exec = nullptr;
 
-    if (SDL_asprintf(&program, "%s%s", SDL_GetBasePath(), OPENECS_PROGRAM_FILE) >= 0 && (presetName != nullptr || (preset = ECSIDesktop_GetFullPath(presetPath)) != nullptr))
+    if (SDL_asprintf(&program, "%s%s", SDL_GetBasePath(), OPENECS_PROGRAM_FILE) >= 0 && (presetName != nullptr || (preset = ECSIPath_GetAbsolute(presetPath)) != nullptr))
     {
         ECSIDesktop_AddArgument(&exec, program);
         ECSIDesktop_AddText(&exec, " --preset ");
@@ -296,7 +283,7 @@ static char *ECSIDesktop_WriteIcon(const ECSIPresetInfo *info, const char *prese
 /// @return The command, which the caller frees with SDL_free, or nullptr if a path cannot be found.
 static char *ECSIDesktop_MakeCommand(const char *presetPath, const char *presetName)
 {
-    char *preset = presetName != nullptr ? SDL_strdup(presetName) : ECSIDesktop_GetFullPath(presetPath);
+    char *preset = presetName != nullptr ? SDL_strdup(presetName) : ECSIPath_GetAbsolute(presetPath);
     char *command = nullptr;
 
     if (preset == nullptr || SDL_asprintf(&command, "\"%s%s\" --preset \"%s\" \"%%1\"", SDL_GetBasePath(), OPENECS_PROGRAM_FILE, preset) < 0)
@@ -339,7 +326,7 @@ static HRESULT ECSIDesktop_SetShortcutAppID(IShellLinkW *link, const char *appID
 static HRESULT ECSIDesktop_WriteShortcut(const char *path, const char *presetPath, const char *presetName, const char *icon, const ECSIPresetInfo *info)
 {
     char *program = nullptr;
-    char *preset = presetName != nullptr ? SDL_strdup(presetName) : ECSIDesktop_GetFullPath(presetPath);
+    char *preset = presetName != nullptr ? SDL_strdup(presetName) : ECSIPath_GetAbsolute(presetPath);
     char *arguments = nullptr;
 
     if (preset == nullptr || SDL_asprintf(&program, "%s%s", SDL_GetBasePath(), OPENECS_PROGRAM_FILE) < 0 || SDL_asprintf(&arguments, "--preset \"%s\"", preset) < 0)

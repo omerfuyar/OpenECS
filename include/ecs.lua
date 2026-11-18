@@ -21,6 +21,7 @@
 ---| "overlay" # ecs.colorOverlay: menus, grips and the list of prefix keys
 ---| "drop" # ecs.colorDrop: the place where a dragged panel lands
 ---| "selected" # ecs.colorSelected: the selected menu entry
+---| "frame" # ecs.colorFrame: the frame around each group of panels
 ---| string
 
 ---@class ecs
@@ -47,9 +48,23 @@ function ecs.log.warn(text) end
 ---@param text string The message, one line or more.
 function ecs.log.error(text) end
 
+-- Errors
+
+---Reports a failure that the plugin's function returns: logs it as a warning while ecs.logServiceErrors is on, and gives the message.
+---A function fails this way when something outside its caller goes wrong, such as a missing file: return nil, ecs.fail("no file " .. path).
+---@param message string What failed.
+---@return string message The message.
+function ecs.fail(message) end
+
+---Checks that the plugin's function is used by its rules. When the condition is false or nil, the call is a misuse:
+---the core logs it in the name of the plugin whose callback made it and stops the Lua code. A misuse in a panel's callback faults the panel; in any other, the plugin is disabled.
+---@param condition any The rule, such as type(path) == "string".
+---@param message string What the caller broke.
+function ecs.check(condition, message) end
+
 -- Settings
 
----@alias ecs.SettingType "bool"|"integer"|"number"|"string"|"choice"|"key"|"list"|"table"|"color"
+---@alias ecs.SettingType "bool"|"integer"|"number"|"string"|"choice"|"key"|"list"|"table"|"color"|"path"
 
 ---@class ecs.SettingDesc
 ---@field name string The local name, such as "grid"; the setting is "canvas.grid".
@@ -64,8 +79,7 @@ ecs.setting = {}
 
 ---Declares a setting of the plugin.
 ---@param desc ecs.SettingDesc The setting's local name, type, default and description.
----@return true|nil ok true if the setting is declared.
----@return string? message Why the setting is not declared.
+---A declaration that is not valid, such as a second one of a name, is a misuse (ecs.check).
 function ecs.setting.declare(desc) end
 
 ---Gets a setting's value from the highest layer that sets it.
@@ -74,8 +88,9 @@ function ecs.setting.declare(desc) end
 function ecs.setting.get(name) end
 
 ---Sets a setting in the user's settings file, the highest layer, and writes the file.
+---A file that could not be read is not written: the change lasts until the program exits.
 ---@param name string The setting's full name, such as "canvas.grid".
----@param value any The new value, of the setting's type.
+---@param value any The new value, of the setting's type; nil takes the user's value away, so the value of the layers below applies.
 ---@return true|nil ok true if the value is set and written.
 ---@return string? message Why the setting is not set.
 function ecs.setting.set(name, value) end
@@ -194,7 +209,8 @@ function Panel:startDrag(type, value) end
 ---Opens a popup next to a rectangle of the shown panel: below it, or above it if there is no room below.
 ---It closes when code closes it, on a press outside every popup, on Escape if it is a menu, and when the panel closes, fails or is hidden.
 ---@param desc ecs.PopupDesc The popup's type, place, size and functions.
----@return ecs.Popup? popup The popup, which closes, draws again and resizes it; nil if it is not opened.
+---A desc without draw or a size above 0 is a misuse (ecs.check).
+---@return ecs.Popup? popup The popup, which closes, draws again and resizes it; nil if the panel is not shown.
 ---@return string? message Why the popup is not opened.
 function Panel:openPopup(desc) end
 
@@ -205,7 +221,16 @@ function Panel:openPopup(desc) end
 ---@field height integer
 ---@field scale number Pixels per layout unit.
 ---@field type "pixels"|"gpu" The panel type's surface.
+---@field kept boolean The pixels still hold the picture of the last draw, so draw may change only what changed. False for a new surface, such as after a resize, and for a GPU surface.
 local Surface = {}
+
+---Tells the core which rectangle the draw changed, so it shows only that; the core takes the rectangle around every one given.
+---A draw that tells none changed the whole surface; one that tells an empty rectangle changed nothing.
+---@param x integer The rectangle's left, in pixels.
+---@param y integer The rectangle's top, in pixels.
+---@param width integer The rectangle's width, in pixels.
+---@param height integer The rectangle's height, in pixels.
+function Surface:changed(x, y, width, height) end
 
 ---Fills a rectangle with one colour, such as to clear the surface. The rectangle is in pixels, and clipped to the surface.
 ---@param x integer The rectangle's left, in pixels.
@@ -297,15 +322,13 @@ ecs.panel = {}
 
 ---Registers a panel type.
 ---@param desc ecs.PanelTypeDesc The type's local name, title, surface and functions.
----@return true|nil ok true if the type is registered.
----@return string? message Why the type is not registered.
+---A registration that is not valid, such as a second one of a name, is a misuse (ecs.check).
 function ecs.panel.registerType(desc) end
 
 ---Adds a service function to the panel menu of a type. Its signature is "void(handle<ecs.panel>)" or "void()".
 ---@param type string The panel type, by its full name, such as "canvas.view".
 ---@param functionName string The service function the entry runs, such as "canvas.clear".
----@return true|nil ok true if the entry is added.
----@return string? message Why the entry is not added.
+---A type that is not the plugin's, or a function that cannot be an entry, is a misuse (ecs.check).
 function ecs.panel.addMenuEntry(type, functionName) end
 
 ---A registered panel type in a list.
@@ -483,9 +506,49 @@ function ecs.plugins.list() end
 ---@param name string The plugin's name.
 function ecs.plugins.enable(name) end
 
----Disables a plugin, and the plugins that depend on it, when the current pass of the main loop ends, after asking about the unsaved work of their panels, which become placeholders. The core emits ecs.pluginsChanged after it.
+---Disables a plugin when the current pass of the main loop ends, after asking about the unsaved work of its panels, which become placeholders. A plugin that an enabled plugin depends on is not disabled, which is reported. The core emits ecs.pluginsChanged after it.
 ---@param name string The plugin's name.
 function ecs.plugins.disable(name) end
+
+---Reloads a plugin, and the plugins that depend on it, when the current pass of the main loop ends: disables them without asking, as their panels keep their state in placeholders, and enables them again from their files. A plugin that cannot be started again is reported, and starts when its files change while ecs.reloadPlugins is on.
+---@param name string The plugin's name: an enabled plugin, or one that a reload failed to start.
+function ecs.plugins.reload(name) end
+
+-- Profile
+
+---A pass of the main loop, as ecs.profile.get gives it: the seconds of each of its steps (DESIGN 3.1).
+---@class ecs.ProfilePass
+---@field wait number Waiting for input, a timer or a frame.
+---@field input number Handling input.
+---@field timers number Running timers.
+---@field events number Delivering events, and the rest of the pass before the frame.
+---@field layout number Updating the layout and the popups.
+---@field panels number Panels drawing.
+---@field upload number Copying the panels' pixels to their textures.
+---@field interface number The core's own interface.
+---@field present number Presenting the OS windows.
+
+---A plugin's or a panel's time in the last whole second, as ecs.profile.get gives it.
+---@class ecs.ProfileTime
+---@field name string? A plugin's name; "ecs" is the core's own callbacks and services.
+---@field id integer? A panel's id.
+---@field type string? A panel's type.
+---@field seconds number Its time in that second: a plugin's own, without the plugins it called; a panel's Draw with the plugins it called.
+---@field longest number Its longest call, in seconds.
+---@field calls integer
+
+---Where the main thread's time went, as ecs.profile.get gives it.
+---@class ecs.Profile
+---@field passes ecs.ProfilePass[] The last passes of the main loop, the oldest first.
+---@field plugins ecs.ProfileTime[] The plugins whose code ran in the last whole second, the most time first.
+---@field panels ecs.ProfileTime[] The panels that drew in the last whole second, the most time first.
+
+---@class ecs.profile
+ecs.profile = {}
+
+---Gives where the main thread's time went while the setting ecs.profile is on (DESIGN 3.5).
+---@return ecs.Profile? profile nil while ecs.profile is off.
+function ecs.profile.get() end
 
 -- Session
 
@@ -539,9 +602,43 @@ ecs.key = {}
 ---@param panelType string One of the plugin's panel types, by its full name, such as "canvas.view".
 ---@param key string A key combination, such as "Ctrl+E".
 ---@param functionName string A service function, such as "canvas.clear".
----@return true|nil ok true if the key is bound.
----@return string? message Why the key is not bound.
+---A panel type that is not the plugin's, or a text that is not a key combination, is a misuse (ecs.check).
 function ecs.key.bind(panelType, key, functionName) end
+
+---A key binding of the keys tables in effect, as ecs.key.list gives it.
+---@class ecs.KeyBinding
+---@field key string The key combination, as written.
+---@field function string|false The function it runs, or false for a key that it removes from the layers below.
+---@field scope string? nil for the whole tool, "prefix" for the keys after the core prefix, or a panel type.
+---@field layer "default"|"preset"|"user"
+---@field workspace boolean It comes from the current workspace's keys.
+---@field active boolean It is the binding of its key that runs in its scope.
+
+---A function that a key can run, as ecs.key.functions gives it.
+---@class ecs.KeyFunction
+---@field name string
+---@field description string
+---@field owner string Its plugin's name, or "ecs" for the core's.
+---@field panel boolean It takes the focused panel.
+
+---Lists every key binding of the keys tables in effect: the core's settings file, the plugins' keys for their panel types, the preset, the current
+---workspace and the user's settings (DESIGN 7.8).
+---@return ecs.KeyBinding[] bindings
+function ecs.key.list() end
+
+---Changes a key in the user's settings file and writes the file. The tool's own part of the file is changed if it binds the key in the scope already,
+---and the part for every tool otherwise.
+---@param scope string? nil for the whole tool, "prefix" for the keys after the core prefix, or a panel type, such as "canvas.view".
+---@param key string A key combination, such as "Ctrl+E".
+---@param functionName string|false|nil A function's name binds the key; false removes it from the layers below; nil takes the user's binding away.
+---@return true|nil ok true if the key is set and written.
+---@return string? message Why the key is not set.
+---A text that is not a key combination, or a scope or function of another kind, is a misuse (ecs.check).
+function ecs.key.set(scope, key, functionName) end
+
+---Lists the functions that a key can run: those that take no arguments, or the focused panel.
+---@return ecs.KeyFunction[] functions
+function ecs.key.functions() end
 
 -- Events
 
@@ -589,14 +686,14 @@ function ecs.handle.registerType(name) end
 function ecs.handle.addMethod(type, method, functionName) end
 
 ---Makes a handle that stands for a Lua value. Lua only: in C, a handle is the object's pointer.
----@param name string A handle type of the plugin, by its full name.
+---@param name string A handle type of the plugin, by its local name, such as "brush".
 ---@param value any The Lua value that the handle stands for.
 ---@return ecs.Handle handle The new handle.
 function ecs.handle.new(name, value) end
 
 ---Gives back the value of a handle of the plugin's type. Lua only: in C, a handle is the object's pointer.
 ---@param handle ecs.Handle A handle that ecs.handle.new made.
----@param name string The handle's type, by its full name.
+---@param name string The handle's type, by its local name.
 ---@return any value The Lua value the handle stands for.
 function ecs.handle.value(handle, name) end
 
@@ -637,8 +734,7 @@ ecs.service = {}
 
 ---Registers functions of the plugin, by their local names: { clear = {...} } of the plugin canvas registers "canvas.clear".
 ---@param functions table<string, ecs.ServiceFunction> The functions, by their local names, each with its signature, description and Lua function.
----@return true|nil ok true if every function is registered.
----@return string? message Which function is not registered, and why.
+---A registration that is not valid, such as a bad signature or a second one of a name, is a misuse (ecs.check).
 function ecs.service.register(functions) end
 
 ---Gets a registered function.

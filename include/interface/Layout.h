@@ -105,8 +105,8 @@ SHUWUR SHUResult ECSILayout_Initialize(void);
 /// @brief Checks whether a point is in a rectangle: on its left and top edges, but not on its right and bottom ones, so rectangles side by side never share a point.
 bool ECSILayout_Contains(SDL_FRect rect, f32 x, f32 y);
 
-/// @brief Gets the height of a tab row, from ecs.tabRowHeight.
-/// @return The height in layout units.
+/// @brief Gets the height of a tab row: ecs.tabRowHeight times ecs.scale.
+/// @return The height in pixels.
 f32 ECSILayout_GetTabRowHeight(void);
 
 /// @brief Destroys every workspace, panel and node.
@@ -226,6 +226,12 @@ void ECSILayout_RequestFrame(void);
 
 /// @brief Checks whether the window needs a frame: one was asked for, or a visible panel draws continuously.
 bool ECSILayout_WantsFrame(void);
+
+/// @brief Checks whether a frame was asked for, which every OS window draws, since the change may be anywhere, such as in the layout or a setting.
+bool ECSILayout_IsFrameRequested(void);
+
+/// @brief Checks whether a panel shown in a root wants a frame, so the OS window that shows the root draws one.
+bool ECSILayout_RootWantsFrame(ECSIRoot *root);
 
 /// @brief Computes every rectangle of the current workspace's roots for their sizes, and tells the panels that became visible or hidden, or changed size. A frame starts with it, so it clears the request for one.
 void ECSILayout_Update(void);

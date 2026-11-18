@@ -189,7 +189,7 @@ The standard plugins and the examples are in their own repositories, checked out
 
 Dependencies are built the first time only. To build one again, delete its library from `.shu/<TYPE>/dependencies/lib/`; shuild does not make a library again while its compiled files are unchanged.
 
-Shuild compiles again only the files that changed. After changing compiler flags in `shuild.c`, delete `.shu/` (or run `sudo git clean -Xfd` to delete all ignored files) to compile everything again.
+Shuild compiles again only the files that changed, and everything when the flags in `shuild.c` or the compiler change. To compile everything anyway, delete `.shu/` (or run `sudo git clean -Xfd` to delete all ignored files).
 
 The build also writes the definition files of the plugins it built into `build/<TYPE>/include/`, and a `.luarc.json` in this folder, `std/` and `examples/` that names that folder. So an editor with LuaLS, such as VS Code with the Lua extension, completes and checks the `ecs` module and `require("ui")` in every Lua file of the three repositories.
 
@@ -224,6 +224,10 @@ SDL_VIDEO_DRIVER=wayland ./shuild.ignore -t
 ```
 
 The checks also format the C files with clang-format 18, as `.clang-format` says.
+
+## Questions and bugs
+
+Ask questions and show what you build in [Discussions](https://github.com/omerfuyar/OpenECS/discussions). Report bugs in [Issues](https://github.com/omerfuyar/OpenECS/issues).
 
 ## License
 

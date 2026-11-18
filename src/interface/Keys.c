@@ -1,5 +1,6 @@
 #include "interface/Keys.h"
 
+#include "base/Log.h"
 #include "interface/Layout.h"
 #include "runtime/Plugins.h"
 #include "runtime/Services.h"
@@ -361,6 +362,116 @@ static const char *ECSIKeys_TextIn(const ECSValue *keys, const char *panelType, 
     return search.text;
 }
 
+/// @brief A binding of a keys table, as ECSKey_List gives it.
+typedef struct ECSIListedBinding
+{
+    const char *scope;    // nullptr for the whole tool, "prefix", or a panel type
+    const char *text;     // the key combination as written
+    const char *function; // nullptr for a key that false removes
+    u32 key;
+    u32 modifiers;
+    ECSIKeysLayer layer;
+    bool workspace;
+    u32 rank; // a binding of a higher rank wins in its scope; of the same rank, the first one listed
+} ECSIListedBinding;
+
+/// @brief The bindings being listed, and the table and scope that the next ones come from.
+typedef struct ECSIBindingList
+{
+    ECSIListedBinding *bindings; // stb_ds array
+    const ECSIKeysTable *table;
+    u32 rank;
+    const char *scope;
+} ECSIBindingList;
+
+static void ECSIKeys_ListBinding(ECSIBindingList *list, const char *text, const char *function)
+{
+    ECSIListedBinding binding = {.scope = list->scope, .text = text, .function = function, .rank = list->rank};
+    binding.layer = list->table != nullptr ? list->table->layer : ECSIKeysLayer_Default;
+    binding.workspace = list->table != nullptr && list->table->workspace;
+
+    // a key text that cannot be read is reported when its table is checked, and is not listed
+    if (!ECSISettings_ParseKey(text, &binding.key, &binding.modifiers))
+    {
+        arrput(list->bindings, binding);
+    }
+}
+
+/// @brief Lists a field of a keys table: a binding, a removed key, or a table of the keys of a scope, whose bindings are listed in turn.
+static void ECSIKeys_ListField(const char *name, const ECSValue *field, void *userData)
+{
+    ECSIBindingList *list = userData;
+
+    if (ECSValue_GetType(field) == ECSValueType_String)
+    {
+        ECSIKeys_ListBinding(list, name, ECSValue_GetString(field, nullptr));
+    }
+    else if (ECSValue_GetType(field) == ECSValueType_Bool && !ECSValue_GetBool(field, true))
+    {
+        ECSIKeys_ListBinding(list, name, nullptr);
+    }
+    else if (ECSValue_GetType(field) == ECSValueType_Table && list->scope == nullptr)
+    {
+        list->scope = name;
+        ECSIValue_TableForEachField(field, ECSIKeys_ListField, list);
+        list->scope = nullptr;
+    }
+}
+
+/// @brief Checks whether a binding runs: no other one of its scope binds its key at a higher rank, or before it at the same rank.
+static bool ECSIKeys_IsActive(const ECSIListedBinding *bindings, usz index)
+{
+    const ECSIListedBinding *binding = &bindings[index];
+
+    for (usz i = 0; i < arrlenu(bindings); i++)
+    {
+        const ECSIListedBinding *other = &bindings[i];
+        bool sameScope = (other->scope == nullptr && binding->scope == nullptr) ||
+                         (other->scope != nullptr && binding->scope != nullptr && SDL_strcmp(other->scope, binding->scope) == 0);
+
+        if (i != index && sameScope && other->key == binding->key && other->modifiers == binding->modifiers &&
+            (other->rank > binding->rank || (other->rank == binding->rank && i < index)))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static SHUResult ECSIKeys_FillBinding(ECSValue *item, const ECSIListedBinding *binding, bool active)
+{
+    static const char *const LAYERS[] = {"default", "preset", "user"};
+    ECSValue *field = nullptr;
+    ECSValue_SetTable(item);
+    SHU_ReturnResult(ECSValue_SetTableField(item, "key", &field));
+    SHU_ReturnResult(ECSValue_SetString(field, binding->text));
+    SHU_ReturnResult(ECSValue_SetTableField(item, "function", &field));
+
+    if (binding->function != nullptr)
+    {
+        SHU_ReturnResult(ECSValue_SetString(field, binding->function));
+    }
+    else
+    {
+        ECSValue_SetBool(field, false);
+    }
+
+    if (binding->scope != nullptr)
+    {
+        SHU_ReturnResult(ECSValue_SetTableField(item, "scope", &field));
+        SHU_ReturnResult(ECSValue_SetString(field, binding->scope));
+    }
+
+    SHU_ReturnResult(ECSValue_SetTableField(item, "layer", &field));
+    SHU_ReturnResult(ECSValue_SetString(field, LAYERS[binding->layer]));
+    SHU_ReturnResult(ECSValue_SetTableField(item, "workspace", &field));
+    ECSValue_SetBool(field, binding->workspace);
+    SHU_ReturnResult(ECSValue_SetTableField(item, "active", &field));
+    ECSValue_SetBool(field, active);
+    return SHUResult_Ok;
+}
+
 #pragma endregion Source Only
 
 SHUResult ECSIKeys_Initialize(void)
@@ -546,8 +657,8 @@ char *ECSIKeys_BoundTextOf(const char *panelType, const char *function)
 
 SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *key, const char *function)
 {
-    SDL_assert(plugin != nullptr);
-    SDL_assert(panelType != nullptr && key != nullptr && function != nullptr);
+    ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(panelType != nullptr && key != nullptr && function != nullptr, SHUResult_ErrAssertion);
 
     u32 code = 0;
     u32 modifiers = 0;
@@ -555,14 +666,14 @@ SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *key, 
     // a plugin binds keys only for its own panel types
     if (!ECSIPlugin_OwnsName(plugin, panelType))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' binds a key for '%s', which is not one of its panel types.", ECSIPlugin_GetName(plugin), panelType);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "Plugin '%s' binds a key for '%s', which is not one of its panel types.", ECSIPlugin_GetName(plugin), panelType);
+        return SHUResult_ErrAssertion;
     }
 
     if (ECSISettings_ParseKey(key, &code, &modifiers))
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "'%s' is not a key combination.", key);
-        return SHUResult_ErrBadData;
+        (void)ECS_Check(nullptr, false, "'%s' is not a key combination.", key);
+        return SHUResult_ErrAssertion;
     }
 
     ECSIKeys_ReadPrefix();
@@ -582,4 +693,73 @@ SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *key, 
 
     arrput(KEYS.panelBindings, binding);
     return SHUResult_Ok;
+}
+
+SHUResult ECSKey_List(ECSValue *retList)
+{
+    ECSILog_Check(retList != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(SDL_IsMainThread(), SHUResult_ErrAssertion);
+
+    ECSIKeysTable tables[OPENECS_KEYS_TABLE_COUNT];
+    ECSIKeys_GetTables(tables);
+    ECSIBindingList list = {0};
+
+    // the tables from the lowest layer to the highest, and the plugins' keys for their panel types after the core's file, in the defaults' layer
+    for (usz i = 0; i < OPENECS_KEYS_TABLE_COUNT; i++)
+    {
+        list.table = &tables[i];
+        list.rank = (u32)i;
+        ECSIValue_TableForEachField(tables[i].keys, ECSIKeys_ListField, &list);
+
+        for (usz j = 0; i == 0 && j < arrlenu(KEYS.panelBindings); j++)
+        {
+            list.table = nullptr;
+            list.scope = KEYS.panelBindings[j].panelType;
+            ECSIKeys_ListBinding(&list, KEYS.panelBindings[j].key, KEYS.panelBindings[j].function);
+            list.scope = nullptr;
+        }
+    }
+
+    ECSValue_SetTable(retList);
+    SHUResult result = SHUResult_Ok;
+
+    for (usz i = 0; !result && i < arrlenu(list.bindings); i++)
+    {
+        ECSValue *item = nullptr;
+        result = ECSValue_AddListItem(retList, &item);
+        result = result ? result : ECSIKeys_FillBinding(item, &list.bindings[i], ECSIKeys_IsActive(list.bindings, i));
+    }
+
+    arrfree(list.bindings);
+    return result;
+}
+
+SHUResult ECSKey_Set(const char *scope, const char *key, const ECSValue *function)
+{
+    ECSILog_Check(key != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(SDL_IsMainThread(), SHUResult_ErrAssertion);
+
+    u32 code = 0;
+    u32 modifiers = 0;
+    ECSValueType type = ECSValue_GetType(function);
+
+    if (!ECS_Check(nullptr, !ECSISettings_ParseKey(key, &code, &modifiers), "'%s' is not a key combination, such as \"Ctrl+S\".", key) ||
+        !ECS_Check(nullptr, scope == nullptr || SDL_strcmp(scope, OPENECS_KEYS_PREFIX) == 0 || SDL_strchr(scope, '.') != nullptr,
+                   "A key's scope is nil for the whole tool, \"prefix\", or a panel type, such as \"canvas.view\"; not '%s'.", scope != nullptr ? scope : "") ||
+        !ECS_Check(nullptr, type == ECSValueType_String || type == ECSValueType_Nil || (type == ECSValueType_Bool && !ECSValue_GetBool(function, true)),
+                   "A key is set to a function's name, false to remove it, or nil to take the user's binding away."))
+    {
+        return SHUResult_ErrAssertion;
+    }
+
+    SHU_ReturnResult(ECSISettings_SetKey(scope, key, function));
+    KEYS.prefixKeysDirty = true;
+    return SHUResult_Ok;
+}
+
+SHUResult ECSKey_ListFunctions(ECSValue *retList)
+{
+    ECSILog_Check(retList != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(SDL_IsMainThread(), SHUResult_ErrAssertion);
+    return ECSIServices_ListBindable(retList);
 }

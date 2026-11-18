@@ -54,6 +54,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Write text and code for a human reader: simple, short and easy to read. Do not bloat.
 - Keep `include/OpenECS.h` and `include/ecs.lua` in step, with every reference and document (DESIGN.md, section 11.5).
 - Check your work as [Checks](#checks) says.
+- When a new feature of the core would make older code of a plugin or an example simpler, change that code in the same piece of work, or add it to TODO.md.
 
 **Ask first**
 
@@ -88,6 +89,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 - Write a release's description once, when the release is ready, before the pull request from `dev` into `main`; not with each change.
 - The examples are the tests. A change that breaks an example changes the example in OpenECS-examples in the same piece of work, so every test passes (DESIGN.md, sections 17.5 and 17.6).
 - Commit messages have one line per change, starting with `-`. Details go on lines starting with `--`.
+- Shuild (`dependencies/shuild`) and shu (`dependencies/shu`) are the owner's; changes to them, in their style, go through pull requests into their `main`. They have no CI, so merge such a pull request with a merge commit once it is tested locally: shuild's examples, and OpenECS built from scratch with its checks. Then move the submodule in a pull request to OpenECS.
 
 ## Writing documents
 

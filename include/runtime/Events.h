@@ -26,6 +26,9 @@ SHUWUR SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, ECSSubscription *retSubs
 /// @param plugin The plugin.
 void ECSIEvents_RemovePlugin(ECSPlugin plugin);
 
+/// @brief Tells the named events that wait to be delivered that an object of a handle type is freed, so a value that names it gives no object.
+void ECSIEvents_ForgetObject(const void *object);
+
 /// @brief Queues an event. ECSIEvents_Deliver delivers it, after the current callback returns.
 /// @param deliver Function that delivers the event.
 /// @param release Function that frees the target if the event is never delivered, as at exit, or nullptr.
@@ -33,7 +36,8 @@ void ECSIEvents_RemovePlugin(ECSPlugin plugin);
 /// @param event The event. The queue keeps a copy.
 void ECSIEvents_Post(ECSIEventDeliverFunction deliver, ECSTimerFunction release, void *target, const ECSPanelEvent *event);
 
-/// @brief Delivers the queued events in order, and the events queued while they are delivered, until the queue is empty.
+/// @brief Delivers the queued events in order, and the events queued while they are delivered, until the queue is empty. A named event emitted meanwhile
+/// waits for the next call, and a subscription made meanwhile hears the next emission.
 void ECSIEvents_Deliver(void);
 
 /// @brief Starts a plugin's timer on base/Timers, which stops when the plugin's timers stop.

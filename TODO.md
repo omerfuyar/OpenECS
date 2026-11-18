@@ -11,17 +11,17 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 ## Tasks
 
-- **GLSL shaders on Direct3D 12.** gpu compiles GLSL to SPIR-V, and for Direct3D 12 turns it into DXBC through SPIRV-Cross's HLSL and Windows' d3dcompiler_47.dll (OpenECS-std DESIGN 15). The checks run no GPU on Windows; to confirm with s9_gpu_model on Windows.
-- **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
-- **Import the rulesets.** The rulesets of OpenECS, OpenECS-std, OpenECS-examples and OpenECS-template require the Windows checks now, as the owner chose. The owner imports them in each repository's settings. OpenECS-examples' rulesets no longer require `Release (Linux)`, which it does not run.
-- **Lua's speed.** Each call from Lua into the core costs about a third of a microsecond in a Debug build, so a Lua panel draws runs of pixels with `surface:fill` and rows with `setRow`, as c12_sketch's Lua panel paints each row of a dab with one `fill`; the surface's methods keep the colour of the last colour text they read. Ways to go further, to weigh later: a panel that keeps its picture between draws and draws only what changed, which the surface's contract does not allow now (DESIGN 5.1); and LuaJIT, which runs Lua 5.1 code, so OpenECS would give up Lua 5.5's integers, bit operators and other features that plugins use.
-
-## Shuild
-
-[Shuild](https://github.com/omerfuyar/shuild) is the build tool, a single header at `dependencies/shuild`. Shu, at `dependencies/shu`, holds the types and macros it uses. The owner allows changes to both, in their style, through pull requests into their main branches. These repositories have no CI, so a pull request is merged with a merge commit once it is tested locally: shuild's examples, and OpenECS built from scratch with its checks. Then an OpenECS pull request moves the submodule. Work found in it:
-
-- **Windows and macOS.** Shuild names libraries for the system its compiler compiles for, and cross-compiles for Windows with MinGW (omerfuyar/shuild#23). Its Windows host code runs in OpenECS's Windows checks, which build OpenECS on Windows. `SHU_UtilRun` runs commands with the system's shell, which is `cmd.exe` on Windows.
-- **A relink with nothing compiled.** The owner saw the core link again in a build that compiled 0 files. It did not happen again in builds without changes, with `-t`, after a changed `shuild.c`, or with clang. Shuild links a module again when a library it links is newer than its output. The owner looks at it later.
+- **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now, and aarch64 waits for 1.0.0 (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
+- **Functions that call unseen.** OVERVIEW's principle "Calls are written out" is new. Check the core, the standard plugins and the examples for code that registers or calls functions the caller does not name, and write the calls out.
+- **Older plugins and newer features.** Go over the standard plugins and the examples for code that a later feature of the core would make simpler, such as structs, and change it to use the feature.
+- **The lag on Windows.** The owner saw the editor lag on Windows in a Release build, on a fast machine (i7-14700, 64 GB) with low CPU and GPU use: on hovering, moving and resizing, and more in a larger window. It could not be reproduced on Linux, where software Vulkan hides it. Measure it with the profiler (Alt+W, then F; std DESIGN 32), and send its report; suspects are Direct3D 12's present and frame pacing, and `SDL_UpdateTexture` of large surfaces, which the steps `present` and `upload` show.
+- **OVERVIEW as a guide for users.** OVERVIEW.md should read well for a user too: where the user's settings file is, how presets, sessions and plugins are found, and the first keys to learn. Show the owner the plan first; README-like text for people is reviewed before it is written.
+- **LuaJIT in place of Lua 5.5.** Not decided. LuaJIT is faster at running Lua, and its FFI calls C almost as C does, but only in code the JIT compiles, through `ffi.cdef` declarations; a function of the C API, such as `ECSIServices_CallC` and every `ecs` binding, is no faster there, and stops the JIT. The gain needs a new bridge: Lua would call a service's C function through the FFI, from a declaration made of its signature, and the bridge's work would move to Lua or go: its misuse checks, structs, handles, `out string error`, callbacks and the profiler's scopes (DESIGN 3.5, 10). Measure first: the profiler shows whether a plugin's time goes to its calls. What changes:
+  - **Numbers.** LuaJIT has only doubles. The core tells integers from numbers (`lua_isinteger`, the setting type `integer`, `i64` parameters), and the plugins do with `math.type` and `math.tointeger` (std's settings and ui); integers above 2^53 would need LuaJIT's boxed `int64_t`.
+  - **Lua code.** Integer division `//` (ui, four examples), bitwise operators (ui's colours, c12_sketch, s6_web's SHA-1, s8_gpu, s10_cglm), `string.pack` and `string.unpack` (ui's triangles and pixels, five examples) and `utf8` (ui's text measure, c10_text_input, s1_terminal). LuaJIT has the `bit` library and the FFI for these, and no `utf8`.
+  - **C code.** `lua_newuserdatauv`, the 5.4 `lua_resume`, `lua_setwarnf` and `luaL_makeseed` (`src/base/Lua.c`, `Services.c`, `Bindings.c`, `Workers.c`, `Test.c`): small changes.
+  - **The build.** LuaJIT builds a host tool, `buildvm`, that writes its interpreter in assembly before the library compiles; shuild would build it as LuaJIT's makefile does, for each system and cross compiler. Lua builds from its C files alone.
+  - **Upkeep.** LuaJIT follows Lua 5.1 with some of 5.2, and does not take later versions' features; its JIT exists for a fixed list of CPUs, and the platforms DESIGN 19.4 plans need checking against it. ecs.lua and every plugin would be written for 5.1, and LuaLS set to LuaJIT.
 
 ## Standard plugins
 
@@ -29,11 +29,12 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
 - **The core's libraries.** The standard plugins still use the core's SDL, SDL_ttf and stb_ds (DESIGN 17.2), against the principle that plugins stand alone (OVERVIEW 12). To remove: each plugin would bring what it uses.
-- **Ideas for more standard plugins**, to choose from later:
-  - **regex:** searching text with regular expressions, such as PCRE2's.
-  - **markdown:** Markdown into ui's elements, for notes and help panels.
-  - **syntax:** syntax highlighting with tree-sitter, for code editors.
-  - **video:** playing video files, such as MPEG-1 with pl_mpeg.
+
+## Shuild
+
+[Shuild](https://github.com/omerfuyar/shuild) is the owner's; changes go to it as CLAUDE.md says.
+
+- **Reading a build's flags.** The `shuild.c` of OpenECS, OpenECS-std, OpenECS-examples and the template each read their flags with their own loop of `strcmp`: a short and a long name, a value after some, a build type chosen by name, the flag with no value, and a help text written apart from the loop. Shuild would hold a small interface for it: a script lists its flags once, with macros, each with its names, its value's name, its help and where the value goes (a switch, a string, or one of a list of names such as the build types); shuild reads `argv` with that list, reports a flag it does not know or a missing value, and prints the help from the same list. It runs before `SHU_UtilAutomate`, which compiles the script again when it changed, as the scripts' own reading does now. Add an example to shuild for it, then use it in the four scripts.
 
 ## Reaching users
 
@@ -52,6 +53,28 @@ What would grow it most:
 
 - **Releases for macOS**, since most tool builders are not on Linux. Windows has one since 0.4.0 (see Tasks).
 - **A flagship tool** that is useful without writing code, such as a log viewer, a glTF viewer or a terminal, built from the standard plugins.
+  - **An editor for LÖVE games**, the owner's flagship: [ONLR](https://github.com/omerfuyar/ONLR), in its own repository, whose TODO.md holds its open questions. Its files panel, viewer and console are standard plugins now.
 - **A showcase** in README.md of plugins and tools others build.
-- **One place to talk**, Discord or Matrix, linked from README.md.
 
+## Review
+
+Recommendations from a review of the code, by area, the most important first. P1 is a bug, or a design flaw that gets harder to fix with each plugin; P2 is worth doing before 1.0.0; P3 when the code is touched. Each was checked at the lines it names; none was proven by a run. Paths under `std/` are OpenECS-std's.
+
+**Core: communication**
+
+- **P3 · No example frees a handle while Lua holds it.** Nothing in OpenECS-examples calls `ECSHandle_Free`, `ECSHandle_Forget` or `ECSValue_SetHandle`, or disables a plugin while another keeps its callback. Add cases when those paths change. Size: M.
+
+**std: ui, with draw**
+
+- **P3 · A column in a row measures its text at its parent's width.** `std/plugins/ui/init.lua` A row narrows its wrapped texts and columns only when its children need more than its width; a column that grows in a row still breaks its text at the width it had before it grew. Measure wrapped text again once widths are arranged. Size: M.
+- **P3 · A long list or table is built whole each frame.** `std/plugins/ui/init.lua:536-545`, `:398-419` Each row is a node with two more for each cell, and a closure for each item with `onActivate`; all are measured and arranged, and only those in view are drawn. Rows have one height, so build and measure the rows in view, and share one handler among the items. A list takes children that are built already, so this needs a form of `ui.list` that takes a count and a function that builds one item; the owner leaves it until a tool needs it. Size: M.
+
+**Core: plugins and threads**
+
+- **P3 · No example disables a plugin that is working.** Add a test that disables c13_workers' plugin while a worker counts, and c12_sketch's during an export, when those paths change. Size: M.
+
+**Core: interface**
+
+- **P3 · Window.c holds five modules.** `src/interface/Window.c:139-211` Its 2848 lines hold the OS windows, and also the drag of panels and drop zones (`:458-730`, `:2384-2590`), the Clay declarations (`:732-1304`), the popups' views (`:1623-1848`), the title bar and hit tests, and the menus' geometry (`:2631-2765`). Move each to its own file with its part of the `WINDOW` struct; Window.c keeps the OS windows, renderers and frame pacing. The owner leaves it until it is necessary. The parts call each other, so three modules in an order avoid a cycle (DESIGN 1.5): Drag, then View with every Clay declaration, then Window. Size: L.
+- **P3 · Each key press parses every binding's key text.** `src/interface/Keys.c:186`, `:230-255` Finding a binding walks the settings' tables and parses each key again. Parse them once into a table, made again when settings, the preset, workspaces or plugins change, as the prefix keys are (`:105-128`). Size: M.
+- **P3 · No example presses two buttons, or sends input between a layout change and a frame.** `src/app/Test.c:845` `test.press` and `test.release` exist and no example uses them. Add cases for the two findings above that the tests can reach. Size: S.

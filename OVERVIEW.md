@@ -93,9 +93,14 @@ Some plugins are made and shipped together with OpenECS because the product need
 - **gltf:** a standard plugin: reading glTF models, for plugins that draw 3D scenes.
 - **cglm:** a standard plugin: cglm's vectors, matrices and quaternions, for plugins that draw 3D scenes.
 - **fs:** a standard plugin: listing and making folders, copying files and telling what a path is, which Lua's own libraries cannot.
+- **files:** a standard plugin: a panel of a folder's files, which a tool shows, opens and makes its own kinds of, built on ui and fs.
+- **viewer:** a standard plugin: a panel that shows a file as it is: text, with code coloured, images and sounds.
+- **console:** a standard plugin: a panel of a program's output, whose lines that name a file open it in the user's code editor.
 - **settings:** the settings window, built on ui.
+- **keys:** the list of every key binding, which changes, removes and adds keys in the user's settings, built on ui.
 - **panels:** the list of the tool's panel types, by plugin, which opens the one the user chooses, built on ui.
 - **launcher:** picks a preset or session when OpenECS starts without one, built on ui.
+- **profiler:** shows where each frame's time goes, by step, by plugin and by panel, as the core measures it, built on ui.
 
 Apart from sdl, they are plugins like any other. They use only the plugin API, the core neither knows nor favours them, and a user can replace any of them with a plugin of the same name.
 
@@ -372,18 +377,19 @@ The settings window changes the user's settings file, and the user can also edit
 1. **Shallow core.** The core provides mechanisms. Plugins and settings decide what is shown and what keys do. Nothing domain-specific goes into the core.
 2. **Everything is available from Lua.** Lua can do everything that C can.
 3. **Plain functions.** Actions are plain functions that code calls directly. Settings and presets refer to them by their service name. There is no separate command system.
-4. **One front door.** Plugins reach the core only through the plugin API. The core checks its rules when something is used, not only when it is registered.
-5. **Small, uniform API.** Few concepts, used the same way everywhere.
-6. **Hide dependencies.** Plugins never get SDL, Lua, Clay or libffi from the API, so these can change without breaking plugins.
-7. **Least authority.** A plugin can do only what its job needs (section 8.4). Presets and the user can do more, because they assemble the tool.
-8. **The user decides.** The user's settings and keybindings win, the core's keys are always reachable, and no plugin can block closing.
-9. **Panels are views.** Shared data lives in services, not inside panels.
-10. **Nothing runs without a reason.** Code runs because of input, timers, visible animation or finished background work, never by polling.
-11. **Do not lose what is not understood.** Unknown settings, missing panel types and unreadable state are kept.
-12. **Errors stay local.** A broken script or panel affects only itself.
-13. **The core's own tools are plugins.** Rich windows, such as the settings window, are built on the plugin API, which proves that the API is complete.
-14. **Plugins stand alone.** A plugin uses only the libraries it brings, compiled into itself, and never another plugin's. Plugins depend on each other only through the services their manifests name in `depends`, so any plugin that no other one names can be left out of a tool on its own (DESIGN 20.1).
-15. **Written for Lua.** Lua is where tools are read and written most, so plugins' functions read well there: functions of one kind share a namespace, such as `parse.json.read`, and a handle's or a struct's functions are its methods, so `a + b` and `connection:send(data)` read as Lua does. An object with a lifetime is a handle, and plain data, such as a vector, is a struct: a table of its fields. C calls the same functions by their full names.
+4. **Calls are written out.** Code says what it calls and when. No function registers or calls other functions unseen: a panel's code calls what draws it, hands its events on and frees its state, each in its own line.
+5. **One front door.** Plugins reach the core only through the plugin API. The core checks its rules when something is used, not only when it is registered.
+6. **Small, uniform API.** Few concepts, used the same way everywhere.
+7. **Hide dependencies.** Plugins never get SDL, Lua, Clay or libffi from the API, so these can change without breaking plugins.
+8. **Least authority.** A plugin can do only what its job needs (section 8.4). Presets and the user can do more, because they assemble the tool.
+9. **The user decides.** The user's settings and keybindings win, the core's keys are always reachable, and no plugin can block closing.
+10. **Panels are views.** Shared data lives in services, not inside panels.
+11. **Nothing runs without a reason.** Code runs because of input, timers, visible animation or finished background work, never by polling.
+12. **Do not lose what is not understood.** Unknown settings, missing panel types and unreadable state are kept.
+13. **Errors stay local.** A broken script or panel affects only itself.
+14. **The core's own tools are plugins.** Rich windows, such as the settings window, are built on the plugin API, which proves that the API is complete.
+15. **Plugins stand alone.** A plugin uses only the libraries it brings, compiled into itself, and never another plugin's. Plugins depend on each other only through the services their manifests name in `depends`, so any plugin that no other one names can be left out of a tool on its own (DESIGN 20.1).
+16. **Written for Lua.** Lua is where tools are read and written most, so plugins' functions read well there: functions of one kind share a namespace, such as `parse.json.read`, and a handle's or a struct's functions are its methods, so `a + b` and `connection:send(data)` read as Lua does. An object with a lifetime is a handle, and plain data, such as a vector, is a struct: a table of its fields. C calls the same functions by their full names.
 
 ## Glossary
 

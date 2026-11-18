@@ -1,5 +1,6 @@
 #include "app/Session.h"
 
+#include "base/Log.h"
 #include "base/Lua.h"
 #include "base/Paths.h"
 #include "base/Values.h"
@@ -375,6 +376,25 @@ static f32 ECSISession_GetNumber(const ECSValue *node, const char *name, f32 fal
     return (f32)ECSValue_GetNumber(ECSValue_GetTableField(node, name), fallback);
 }
 
+/// @brief Gives the id that a file names for a panel, or 0, which keeps the panel's new id, when the file names none, one that another panel has,
+/// or one too large for the ids after it. A refused id is reported.
+static u32 ECSISession_CheckPanelID(i64 id)
+{
+    if (id == 0)
+    {
+        return 0;
+    }
+
+    bool taken = id < 0 || id >= SDL_MAX_UINT32 || ECSLayout_FindPanel((u32)id) != nullptr;
+
+    if (taken)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The panel id %lld is taken or out of range, so the panel gets a new id.", (long long)id);
+    }
+
+    return taken ? 0 : (u32)id;
+}
+
 /// @brief Creates the panel that a table describes and adds it to a group.
 static SHUResult ECSISession_ReadPanel(ECSISessionReader *reader, const ECSValue *saved, ECSINode *group)
 {
@@ -386,7 +406,7 @@ static SHUResult ECSISession_ReadPanel(ECSISessionReader *reader, const ECSValue
     ECSPanel panel = nullptr;
 
     SHU_ReturnResult(ECSIPanel_Create(&panel, type, state, version >= 0 && version <= SDL_MAX_UINT32 ? (u32)version : 0));
-    ECSIPanel_SetID(panel, id > 0 && id <= SDL_MAX_UINT32 ? (u32)id : 0);
+    ECSIPanel_SetID(panel, ECSISession_CheckPanelID(id));
     ECSILayout_GroupAdd(group, panel);
 
     if (id != 0 && id == reader->focusID)
@@ -904,10 +924,20 @@ SHUResult ECSISession_ReadInfo(const char *path, ECSIPresetInfo *retInfo)
     retInfo->appName = SDL_strdup(ECSValue_GetString(ECSValue_GetTableField(app, "name"), ""));
     retInfo->appID = SDL_strdup(appID);
 
-    // relative to the preset's folder, unless it is absolute
+    // relative to the preset's folder, unless it is absolute; kept absolute, as a session saves it and is opened from another folder, such as the launcher's
     if (pluginsFolder != nullptr)
     {
-        if (SDL_asprintf(&retInfo->pluginsFolder, "%.*s%s/", ECSIPath_GetFolderLength(path, pluginsFolder), path, pluginsFolder) < 0)
+        char *relative = nullptr;
+
+        if (SDL_asprintf(&relative, "%.*s%s/", ECSIPath_GetFolderLength(path, pluginsFolder), path, pluginsFolder) < 0)
+        {
+            return SHUResult_ErrAllocation;
+        }
+
+        retInfo->pluginsFolder = ECSIPath_GetAbsolute(relative);
+        SDL_free(relative);
+
+        if (retInfo->pluginsFolder == nullptr)
         {
             return SHUResult_ErrAllocation;
         }
@@ -1046,7 +1076,7 @@ void ECSISession_Terminate(void)
 
 SHUResult ECSSession_Open(const char *path)
 {
-    SDL_assert(path != nullptr);
+    ECSILog_Check(path != nullptr, SHUResult_ErrAssertion);
 
     if (!ECSISession_CanOpen())
     {
@@ -1058,7 +1088,7 @@ SHUResult ECSSession_Open(const char *path)
 
 SHUResult ECSSession_OpenPreset(const char *nameOrPath)
 {
-    SDL_assert(nameOrPath != nullptr);
+    ECSILog_Check(nameOrPath != nullptr, SHUResult_ErrAssertion);
 
     if (!ECSISession_CanOpen())
     {
@@ -1074,7 +1104,7 @@ SHUResult ECSSession_OpenPreset(const char *nameOrPath)
 
 SHUResult ECSSession_ListPresets(ECSValue *retList)
 {
-    SDL_assert(retList != nullptr);
+    ECSILog_Check(retList != nullptr, SHUResult_ErrAssertion);
 
     // the user's presets first, so they win over first-party presets of the same name
     ECSISessionFile *files = nullptr;
@@ -1091,7 +1121,7 @@ SHUResult ECSSession_ListPresets(ECSValue *retList)
 
 SHUResult ECSSession_ListSessions(ECSValue *retList)
 {
-    SDL_assert(retList != nullptr);
+    ECSILog_Check(retList != nullptr, SHUResult_ErrAssertion);
 
     ECSISessionFile *files = nullptr;
     SHUResult result = ECSISession_FindFiles(&files, SESSION.sessions);
@@ -1103,7 +1133,7 @@ SHUResult ECSSession_ListSessions(ECSValue *retList)
 
 SHUResult ECSSession_Save(const char *path)
 {
-    SDL_assert(path != nullptr);
+    ECSILog_Check(path != nullptr, SHUResult_ErrAssertion);
 
     ECSValue *session = nullptr;
     SHU_ReturnResult(ECSValue_Create(&session));

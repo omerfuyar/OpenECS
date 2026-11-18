@@ -40,6 +40,9 @@ i32 ECSITest_GetWait(void);
 /// @return false when the test has finished, so the program quits; true otherwise.
 bool ECSITest_Step(void);
 
+/// @brief Notes a misuse (DESIGN 1.4), which fails the test that runs. Any thread.
+void ECSITest_NoteMisuse(void);
+
 /// @brief Gets the program's exit status.
 /// @return 1 if a test failed or did not finish, 0 otherwise.
 int ECSITest_GetStatus(void);

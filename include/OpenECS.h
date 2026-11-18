@@ -7,10 +7,10 @@
 #pragma region Macros
 
 /// @brief Version of OpenECS (DESIGN 19.1). Between releases it is the next release with "-dev".
-#define OPENECS_VERSION "0.6.0"
+#define OPENECS_VERSION "0.7.0"
 
 /// @brief Version of this plugin interface. The core refuses a plugin whose manifest names another version.
-#define OPENECS_API_VERSION 2
+#define OPENECS_API_VERSION 3
 
 #if defined(_WIN32)
 #ifdef OPENECS_CORE
@@ -63,6 +63,11 @@ typedef void (*ECSFunction)(void);
 /// @param data The data given with the function.
 typedef void (*ECSTaskFunction)(void *data);
 
+/// @brief What runs on the main thread when background work ends (ECS_RunInBackground).
+/// @param data What the work got.
+/// @param dropped Whether the work never ran, because its plugin is being disabled or the program exits. The function frees what data holds either way.
+typedef void (*ECSTaskDoneFunction)(void *data, bool dropped);
+
 /// @brief Function that a timer calls.
 /// @param data The data given when the timer started.
 typedef void (*ECSTimerFunction)(void *data);
@@ -110,6 +115,7 @@ typedef struct ECSSurface
     SHUSlice pixels; // pixels type: ARGB8888 in native byte order, premultiplied alpha
     i32 pitch;       // pixels type: bytes per row
     void *texture;   // GPU type: the SDL_GPUTexture to draw into, B8G8R8A8_UNORM, on the device that ECSGpu_GetDevice gives
+    bool kept;       // pixels type: the pixels still hold the picture of the last Draw, so Draw may change only what changed
 } ECSSurface;
 
 /// @brief Where a panel goes, next to a target panel.
@@ -321,6 +327,7 @@ typedef enum ECSSettingType
     ECSSettingType_List,   // a table with list items only
     ECSSettingType_Table,
     ECSSettingType_Color, // "#RRGGBB" or "#RRGGBBAA"
+    ECSSettingType_Path,  // a text that names a file, which the settings window lets the user choose with a file dialog
 } ECSSettingType;
 
 /// @brief Tells a setting's owner that the value in effect changed. It runs after the queued events, outside other callbacks.
@@ -472,7 +479,7 @@ OPENECS_EXPORT void ECSPath_Free(char *path);
 /// @brief Registers a plugin's description: how it saves and restores its own state in sessions, and what it does before the program exits. Call it once, from ECSPlugin_Init. Main thread only.
 /// @param plugin The plugin.
 /// @param desc Description of the plugin. The core copies it.
-/// @return SHUResult_Ok, or SHUResult_ErrBadData if the description has only one of SaveState and RestoreState, or the plugin registered already.
+/// @return SHUResult_Ok, or SHUResult_ErrAssertion, a misuse, if the description has only one of SaveState and RestoreState, or the plugin registered already.
 /// @lua ecs.plugin.register
 OPENECS_EXPORT SHUWUR SHUResult ECSPlugin_Register(ECSPlugin plugin, const ECSPluginDesc *desc);
 
@@ -488,11 +495,28 @@ OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_List(ECSValue *retList);
 /// @lua ecs.plugins.enable
 OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Enable(const char *name);
 
-/// @brief Disables a plugin, and the plugins that depend on it, when the current pass of the main loop ends, after asking about the unsaved work of their panels, which become placeholders (DESIGN 9.10). The core emits ecs.pluginsChanged after it. Main thread only.
+/// @brief Disables a plugin when the current pass of the main loop ends, after asking about the unsaved work of its panels, which become placeholders (DESIGN 9.10). A plugin that an enabled plugin depends on is not disabled, which is reported. The core emits ecs.pluginsChanged after it. Main thread only.
 /// @param name The plugin's name.
-/// @return SHUResult_Ok, or SHUResult_ErrAllocation. Cancel keeps the plugins enabled.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation. Cancel keeps the plugin enabled.
 /// @lua ecs.plugins.disable
 OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Disable(const char *name);
+
+/// @brief Reloads a plugin, and the plugins that depend on it, when the current pass of the main loop ends: disables them without asking, as their panels keep their state in placeholders, and enables them again from their files (DESIGN 9.11). Main thread only.
+/// @param name The plugin's name: an enabled plugin, or one that a reload failed to start.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation. A plugin that cannot be started again is reported, and starts when its files change while ecs.reloadPlugins is on.
+/// @lua ecs.plugins.reload
+OPENECS_EXPORT SHUWUR SHUResult ECSPlugins_Reload(const char *name);
+
+/// @brief Gives where the main thread's time went while the setting ecs.profile is on (DESIGN 3.5), as a table, or nil while it is off. Main thread only.
+/// The table holds passes, a list of the last passes of the main loop, the oldest first, each a table of the seconds of its steps: wait, input, timers,
+/// events, layout, panels, upload, interface and present. It holds plugins, a list of the plugins whose code ran in the last whole second, the most time
+/// first, each a table of its name, seconds (its own time in that second, without the plugins it called), longest (its longest call, in seconds) and
+/// calls. And it holds panels, a list of the panels that drew in that second, the same way, each with its id and type in place of a name, and the time
+/// of the plugins that its Draw called.
+/// @param retProfile The value to fill.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.profile.get
+OPENECS_EXPORT SHUWUR SHUResult ECSProfile_Get(ECSValue *retProfile);
 
 /// @brief Writes a message to the log, with the plugin's name. Thread-safe.
 /// @param plugin The plugin that writes the message.
@@ -508,14 +532,31 @@ OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Log(ECSPlugin plugin, ECSLogLevel l
 #define ECS_LogWarn(plugin, ...) ECS_Log((plugin), ECSLogLevel_Warning, __VA_ARGS__)
 #define ECS_LogError(plugin, ...) ECS_Log((plugin), ECSLogLevel_Error, __VA_ARGS__)
 
+/// @brief Fails a service's call for a cause outside its caller, such as a missing file (DESIGN 10.8): writes why into the call's out string error, and logs it as a warning in the plugin's name while the setting ecs.logServiceErrors is on. The function then returns, giving nothing. Thread-safe.
+/// @param plugin The plugin whose function fails.
+/// @param retError The function's out string error. The message stays valid until the next ECS_Fail on the same thread.
+/// @param format printf-style format of why.
+/// @param ... Format arguments.
+/// @lua ecs.fail
+OPENECS_EXPORT OPENECS_PRINTF(3, 4) void ECS_Fail(ECSPlugin plugin, const char **retError, const char *format, ...);
+
+/// @brief Checks that a function is used as it must be, such as an image's bytes against its size (DESIGN 1.4). When the condition does not hold, it reports the misuse and makes the callback that runs fail: its panel faults, or its plugin is disabled (DESIGN 14.2). The function then returns at once, giving nothing; when Lua made the call, the Lua code stops at it. Thread-safe.
+/// @param plugin The plugin whose function checks.
+/// @param condition What must hold.
+/// @param format printf-style format of what is wrong, formatted only when the condition does not hold.
+/// @param ... Format arguments.
+/// @return The condition.
+/// @lua ecs.check
+OPENECS_EXPORT OPENECS_PRINTF(3, 4) bool ECS_Check(ECSPlugin plugin, bool condition, const char *format, ...);
+
 /// @brief Runs a function on a worker thread, then another function on the main thread. Thread-safe.
 /// @param plugin The plugin that asks.
 /// @param work Runs on a worker thread from a small pool. It must not call core functions that are for the main thread only.
-/// @param done Runs on the main thread after work returns, or nullptr. Work that has not started when the program exits does not run, and neither does its done.
+/// @param done Runs on the main thread, once: after work returns, or with dropped set when the work never ran, because its plugin is being disabled or the program exits. It runs before the plugin's Destroy then. It may be nullptr.
 /// @param data Passed to both functions.
-/// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if no worker thread can start.
+/// @return SHUResult_Ok, SHUResult_ErrAllocation, or SHUResult_ErrInternal if no worker thread can start, the plugin is being disabled, or the program exits.
 /// @lua none: Lua code never runs on worker threads; Lua plugins use services that work in the background
-OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskFunction done, void *data);
+OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskDoneFunction done, void *data);
 
 /// @brief Runs a function on the main thread, between passes of the main loop. Thread-safe. A function that a plugin's thread sent runs before the plugin's library is unloaded, after its Destroy.
 /// @param function The function.
@@ -527,7 +568,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECS_RunOnMainThread(ECSTaskFunction function, vo
 /// @brief Registers a panel type. The core copies the description and its texts.
 /// @param plugin The plugin that provides the panel type.
 /// @param desc Description of the panel type, with its local name; the core adds the plugin's name and a dot.
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the description is invalid, or SHUResult_ErrAllocation.
 /// @lua ecs.panel.registerType
 OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc);
 
@@ -535,7 +576,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_Register(ECSPlugin plugin, const EC
 /// @param plugin The plugin that registered the panel type.
 /// @param panelType Name of the panel type.
 /// @param function Name of a service function whose signature is void(handle<ecs.panel>) or void().
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the panel type is not the plugin's, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the panel type is not the plugin's, or SHUResult_ErrAllocation.
 /// @lua ecs.panel.addMenuEntry
 OPENECS_EXPORT SHUWUR SHUResult ECSPanelType_AddMenuEntry(ECSPlugin plugin, const char *panelType, const char *function);
 
@@ -656,6 +697,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetString(ECSValue *value, const char *
 OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetBuffer(ECSValue *value, SHUSliceView buffer);
 
 /// @brief Makes a value a handle: an object of a registered handle type, such as a panel. In Lua it is the object's handle. The value does not own the object, which must live as long as the value is used.
+/// An emitted event's value is used later, when it is delivered: it gives no object once ECSHandle_Free or ECSHandle_Forget is called for the object.
 /// @param value The value.
 /// @param type Full name of the handle type, such as "ecs.panel". The core copies it.
 /// @param object The object.
@@ -682,7 +724,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetTableField(ECSValue *table, const ch
 /// @brief Declares a setting. Its value in effect comes from the highest settings layer that sets it with the right type; otherwise it is the default. Main thread only.
 /// @param plugin The plugin that owns the setting.
 /// @param desc Description of the setting, with its local name; the core adds the plugin's name and a dot. The core copies it.
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the description is invalid or the name is taken, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the description is invalid or the name is taken, or SHUResult_ErrAllocation.
 /// @lua ecs.setting.declare
 OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Declare(ECSPlugin plugin, const ECSSettingDesc *desc);
 
@@ -699,16 +741,16 @@ OPENECS_EXPORT const ECSValue *ECSSetting_Get(const char *name);
 /// @param signature The function's signature, such as "int(string, out float)". Types: void (result only), bool, int, int64, float, double, color (ECSColor in C, a colour text in Lua), string, buffer, value, handle<name>, struct<name> (a pointer to the struct; never the result), fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
 /// @param description One line that says what the function does, which menus show. Lines after it say what its parameters and result are, for the definition files:
 ///                    "@param name text" for a parameter the signature names, and "@return text" for the result. A line that names no such parameter is reported.
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the name or signature is invalid or the name is taken, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the name or signature is invalid or the name is taken, or SHUResult_ErrAllocation.
 /// @lua ecs.service.register
 OPENECS_EXPORT SHUWUR SHUResult ECSService_RegisterFunction(ECSPlugin plugin, const char *name, ECSFunction function, const char *signature, const char *description);
 
 /// @brief Looks up a function of a service. Lua functions come as C function pointers too. Main thread only.
 /// @param plugin The plugin that asks. It may look up its own functions and those of the plugins its manifest depends on.
-/// @param retFunction The function, to be cast to its real type. Valid until the program exits.
+/// @param retFunction The function, to be cast to its real type. Valid until the plugin or the function's provider is disabled, or the program exits.
 /// @param name Name of the function, such as "audio.play".
 /// @param signature The signature the caller expects. It must match the registered one.
-/// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, SHUResult_ErrPrivileges if the plugin does not depend on the provider, or SHUResult_ErrBadData if the signature is invalid or does not match.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, SHUResult_ErrPrivileges if the plugin does not depend on the provider, SHUResult_ErrAssertion, a misuse, if the signature is invalid, SHUResult_ErrBadData if it does not match, or SHUResult_ErrAllocation.
 /// @lua ecs.service.get
 OPENECS_EXPORT SHUWUR SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunction *retFunction, const char *name, const char *signature);
 
@@ -717,9 +759,9 @@ OPENECS_EXPORT SHUWUR SHUResult ECSService_GetFunction(ECSPlugin plugin, ECSFunc
 /// @lua none: Lua's garbage collector frees the callbacks that Lua keeps
 OPENECS_EXPORT void ECSService_ReleaseCallback(ECSFunction callback);
 
-/// @brief Sets a setting in the user's settings file, the highest layer, and writes the file. Main thread only.
+/// @brief Sets a setting in the user's settings file, the highest layer, and writes the file. A file that could not be read is not written: the change lasts until the program exits. Main thread only.
 /// @param name Name of the setting.
-/// @param value The new value. It must have the setting's type. The core copies it.
+/// @param value The new value. It must have the setting's type. The core copies it. nil, or nullptr, takes the user's value away, so the value of the layers below applies.
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no setting has the name, SHUResult_ErrBadData if the value has the wrong type, SHUResult_ErrFile if the file cannot be written, or SHUResult_ErrAllocation.
 /// @lua ecs.setting.set
 OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Set(const char *name, const ECSValue *value);
@@ -741,7 +783,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Explain(const char *name, ECSValue *r
 /// @param plugin The plugin that provides the objects.
 /// @param name The type's local name, such as "sound"; the core adds the plugin's name and a dot, so signatures name it "handle<mixer.sound>".
 /// @param Destroy Called with the object when Lua no longer uses its handle, or nullptr. A provider that keeps using the object counts references.
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the name is invalid or taken, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the name is invalid or taken, or SHUResult_ErrAllocation.
 /// @lua ecs.handle.registerType
 OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const char *name, ECSHandleDestroyFunction Destroy);
 
@@ -750,7 +792,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSHandle_RegisterType(ECSPlugin plugin, const c
 /// @param type The handle type's local name, such as "socket".
 /// @param method The method's name in Lua, such as "send".
 /// @param function The local name of a function of the plugin whose first parameter is a handle of the type, such as "socketSend".
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the type or the function is not the plugin's, the function's first parameter is not such a handle, or the method exists, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the type or the function is not the plugin's, the function's first parameter is not such a handle, or the method exists, or SHUResult_ErrAllocation.
 /// @lua ecs.handle.addMethod
 OPENECS_EXPORT SHUWUR SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function);
 
@@ -758,7 +800,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char
 /// @param plugin The plugin that provides the type.
 /// @param name The type's local name, such as "vec3"; the core adds the plugin's name and a dot, so signatures name it "struct<cglm.vec3>".
 /// @param fields Its fields in order, as a signature writes parameters: "float x, float y, float z". A field may be a list of a fixed length, "float m[16]", or another struct, "struct<cglm.vec3> position"; a struct of one list without a name, "float[16]", is that list in Lua. Fields are bool, int, int64, float, double, color or struct.
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the name is invalid or taken, or the fields cannot be read, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the name is invalid or taken, or the fields cannot be read, or SHUResult_ErrAllocation.
 /// @lua ecs.struct.register
 OPENECS_EXPORT SHUWUR SHUResult ECSStruct_Register(ECSPlugin plugin, const char *name, const char *fields);
 
@@ -767,7 +809,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSStruct_Register(ECSPlugin plugin, const char 
 /// @param type The struct type's local name, such as "vec3".
 /// @param method The method's name in Lua, such as "dot".
 /// @param function The local name of a function of the plugin whose first parameter is a struct of the type, such as "vec3Dot".
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the type or the function is not the plugin's, the function's first parameter is not such a struct, or the method exists, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the type or the function is not the plugin's, the function's first parameter is not such a struct, or the method exists, or SHUResult_ErrAllocation.
 /// @lua ecs.struct.addMethod
 OPENECS_EXPORT SHUWUR SHUResult ECSStruct_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function);
 
@@ -788,9 +830,35 @@ OPENECS_EXPORT void ECSHandle_Free(ECSPlugin plugin, const char *type, void *obj
 /// @param panelType Name of the panel type, such as "canvas.view".
 /// @param key The key combination, such as "Ctrl+E".
 /// @param function Name of the function the key runs. It takes no arguments, or the focused panel: void() or void(handle<ecs.panel>).
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the panel type is not the plugin's or the key is not a key combination, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the panel type is not the plugin's or the key is not a key combination, or SHUResult_ErrAllocation.
 /// @lua ecs.key.bind
 OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *key, const char *function);
+
+/// @brief Lists every key binding of the keys tables in effect (DESIGN 7.8): the core's settings file, the plugins' keys for their panel types, the
+/// preset, the current workspace and the user's settings. Each is a table of its key, as written; its function, or false for a key that the binding
+/// removes; its scope, missing for the whole tool, "prefix" for the keys after the core prefix, or a panel type; its layer, "default", "preset" or
+/// "user"; workspace, whether it comes from the current workspace; and active, whether it is the binding of its key that runs in its scope. Main thread only.
+/// @param retList The value to fill with the list.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.key.list
+OPENECS_EXPORT SHUWUR SHUResult ECSKey_List(ECSValue *retList);
+
+/// @brief Changes a key in the user's settings file and writes the file (DESIGN 7.8). The tool's own part of the file is changed if it binds the key in
+/// the scope already, and the part for every tool otherwise. Main thread only.
+/// @param scope nullptr for the whole tool, "prefix" for the keys after the core prefix, or a panel type, such as "canvas.view".
+/// @param key A key combination, such as "Ctrl+E".
+/// @param function A function's name binds the key; false removes the key from the layers below; nil takes the user's binding away, so the layers below apply.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the key is not a key combination, the scope is none of those, or the function none of
+/// those values, or an error from writing the file.
+/// @lua ecs.key.set
+OPENECS_EXPORT SHUWUR SHUResult ECSKey_Set(const char *scope, const char *key, const ECSValue *function);
+
+/// @brief Lists the functions that a key can run: those that take no arguments, or the focused panel. Each is a table of its name, description,
+/// owner, the name of its plugin or "ecs", and panel, whether it takes the focused panel. Main thread only.
+/// @param retList The value to fill with the list.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua ecs.key.functions
+OPENECS_EXPORT SHUWUR SHUResult ECSKey_ListFunctions(ECSValue *retList);
 
 /// @brief Opens a panel in the current workspace and focuses it. Any plugin may open any panel type. Main thread only.
 /// @param plugin The plugin that opens the panel.
@@ -938,7 +1006,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSDialog_ShowMessage(const char *title, const c
 /// @param plugin The plugin that emits the event.
 /// @param name The event's local name, such as "selectionChanged"; the core adds the plugin's name and a dot, so others subscribe to "canvas.selectionChanged".
 /// @param description One line about the event.
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the name is taken or starts with the plugin's name, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the name is taken or starts with the plugin's name, or SHUResult_ErrAllocation.
 /// @lua ecs.event.declare
 OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *description);
 
@@ -956,7 +1024,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Emit(ECSPlugin plugin, const char *name
 /// @param name Name of the event.
 /// @param function Function called with each emission.
 /// @param data Passed to the function.
-/// @return SHUResult_Ok, SHUResult_ErrNotFound if no such event is declared, SHUResult_ErrBadData if the plugin does not depend on the event's plugin, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if no such event is declared, SHUResult_ErrAssertion, a misuse, if the plugin does not depend on the event's plugin, or SHUResult_ErrAllocation.
 /// @lua ecs.event.subscribe
 OPENECS_EXPORT SHUWUR SHUResult ECSEvent_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscription, const char *name, ECSEventFunction function, void *data);
 
@@ -1011,6 +1079,16 @@ typedef void (*ECSSurfaceDrawnFunction)(ECSSurface *surface, void *data);
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 /// @lua none: a Lua plugin's draw finishes its own work before it returns
 OPENECS_EXPORT SHUWUR SHUResult ECSSurface_OnDrawn(ECSSurface *surface, ECSSurfaceDrawnFunction Drawn, void *data);
+
+/// @brief Tells the core which rectangle of a panel's pixels the Draw changed, so it shows only that: the core takes the rectangle around every one given.
+/// A Draw that tells none changed the whole surface. A Draw that tells an empty rectangle changed nothing. Main thread only.
+/// @param surface Surface from a Draw function.
+/// @param x Left edge, in pixels. The rectangle is clipped to the surface.
+/// @param y Top edge, in pixels.
+/// @param width Width, in pixels.
+/// @param height Height, in pixels.
+/// @lua surface:changed
+OPENECS_EXPORT void ECSSurface_Changed(ECSSurface *surface, i32 x, i32 y, i32 width, i32 height);
 
 /// @brief Fills a rectangle of a pixels surface with one colour, such as to clear it. Main thread only.
 /// @param surface Surface to fill, from a Draw function.
@@ -1088,7 +1166,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSPanel_StartDrag(ECSPanel panel, const char *t
 /// @param panel The panel the popup belongs to.
 /// @param retPopup The new popup.
 /// @param desc Description of the popup. The core copies it.
-/// @return SHUResult_Ok, SHUResult_ErrBadData if the description has no Draw function or no size, SHUResult_ErrNotFound if the panel is not shown, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the description has no Draw function or no size, SHUResult_ErrNotFound if the panel is not shown, or SHUResult_ErrAllocation.
 /// @lua panel:openPopup
 OPENECS_EXPORT SHUWUR SHUResult ECSPopup_Open(ECSPanel panel, ECSPopup *retPopup, const ECSPopupDesc *desc);
 

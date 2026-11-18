@@ -162,12 +162,13 @@ void ECSIWindow_ShowDataDrag(const char *type, f32 x, f32 y);
 /// @param count Number of lines; 0 hides the list.
 void ECSIWindow_ShowPrefixKeys(const char *const *lines, usz count);
 
-/// @brief Shows, changes or hides a menu: the panel menu at level 0, in the event window, and its submenus at the next levels. The menus at deeper levels close. It is kept inside the OS window.
+/// @brief Shows, changes or hides a menu: the panel menu at level 0, and its submenus at the next levels. The menus at deeper levels close. It is kept inside the OS window.
 /// @param level The menu's level, below 4.
+/// @param panel At level 0: the panel whose OS window shows the menu, for a menu that a function opens, or nullptr for the OS window of the event that opens it.
 /// @param anchor In layout units: the point the panel menu opens at, or the entry a submenu opens beside.
 /// @param lines Each entry's key text and label, one after the other. They must stay valid while they are shown.
 /// @param count Number of entries; 0 hides the menu. The first entry is highlighted.
-void ECSIWindow_ShowMenu(usz level, SDL_FRect anchor, const char *const *lines, usz count);
+void ECSIWindow_ShowMenu(usz level, ECSPanel panel, SDL_FRect anchor, const char *const *lines, usz count);
 
 /// @brief Highlights an entry of a shown menu.
 void ECSIWindow_SelectMenuItem(usz level, usz index);
