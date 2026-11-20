@@ -1076,9 +1076,10 @@ SHUResult ECSSetting_SetForRun(const char *name, const ECSValue *value)
         result = result ? result : ECSIValue_Copy(field, value);
     }
 
-    if (!result)
+    // adding or removing a field may move the layer's other fields, which other settings point at, so all resolve again
+    for (usz i = 0; i < shlenu(SETTINGS.settings); i++)
     {
-        ECSISetting_Resolve(setting);
+        ECSISetting_Resolve(SETTINGS.settings[i].value);
     }
 
     if (!result && !ECSIValue_Equal(old, setting->value))
