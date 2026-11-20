@@ -766,6 +766,13 @@ OPENECS_EXPORT void ECSService_ReleaseCallback(ECSFunction callback);
 /// @lua ecs.setting.set
 OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Set(const char *name, const ECSValue *value);
 
+/// @brief Sets a setting for this run only, in a layer above the user's settings file that no file keeps, such as a colour while a tool is busy. The settings window shows the value, and the user's own value comes back when it is taken away or the program exits. Main thread only.
+/// @param name Name of the setting.
+/// @param value The new value. It must have the setting's type. The core copies it. nil, or nullptr, takes the run's value away, so the value of the layers below applies.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if no setting has the name, SHUResult_ErrBadData if the value has the wrong type, or SHUResult_ErrAllocation.
+/// @lua ecs.setting.setForRun
+OPENECS_EXPORT SHUWUR SHUResult ECSSetting_SetForRun(const char *name, const ECSValue *value);
+
 /// @brief Lists every declared setting. Main thread only.
 /// @param retList The value to set to a list of setting names, in the order they were declared.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.

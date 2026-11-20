@@ -15,6 +15,7 @@ typedef enum ECSISettingsLayer
     ECSISettingsLayer_Theme,    // the values of the theme that ecs.theme chooses
     ECSISettingsLayer_Preset,
     ECSISettingsLayer_User, // the user's settings file, which ECSSetting_Set writes
+    ECSISettingsLayer_Run,  // values for this run only, which ECSSetting_SetForRun sets and no file keeps
     ECSISettingsLayer_Count,
 } ECSISettingsLayer;
 

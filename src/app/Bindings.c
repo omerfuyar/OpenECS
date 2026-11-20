@@ -273,6 +273,26 @@ static int ECSIBindings_SettingSet(lua_State *state)
     return 1;
 }
 
+static int ECSIBindings_SettingSetForRun(lua_State *state)
+{
+    const char *name = ECSILua_CheckString(state, 1);
+    ECSValue *value = nullptr;
+    SHUResult result = ECSValue_Create(&value);
+    result = result ? result : ECSILua_GetValue(state, 2, value);
+    result = result ? result : ECSSetting_SetForRun(name, value);
+    ECSValue_Destroy(&value);
+
+    if (result)
+    {
+        lua_pushnil(state);
+        lua_pushfstring(state, "setting '%s' is not set (%s)", name, SHUResult_String(result));
+        return 2;
+    }
+
+    lua_pushboolean(state, true);
+    return 1;
+}
+
 static int ECSIBindings_SettingList(lua_State *state)
 {
     return ECSIBindings_PushFilled(state, ECSSetting_List);
@@ -302,6 +322,7 @@ static const luaL_Reg OPENECS_BINDINGS_SETTING[] = {
     {"declare", ECSIBindings_SettingDeclare},
     {"get", ECSIBindings_SettingGet},
     {"set", ECSIBindings_SettingSet},
+    {"setForRun", ECSIBindings_SettingSetForRun},
     {"list", ECSIBindings_SettingList},
     {"explain", ECSIBindings_SettingExplain},
     {nullptr, nullptr},
