@@ -42,7 +42,7 @@ typedef struct ECSISetting
 } ECSISetting;
 
 /// @brief Names of the layers, for explanations; the core and plugin layers hold defaults.
-static const char *const OPENECS_SETTINGS_LAYER_NAMES[ECSISettingsLayer_Count] = {"default", "default", "theme", "preset", "user"};
+static const char *const OPENECS_SETTINGS_LAYER_NAMES[ECSISettingsLayer_Count] = {"default", "default", "theme", "preset", "user", "run"};
 
 /// @brief The theme whose values core settings take as defaults when the core's settings file gives none, and that "system" means when the system prefers no theme.
 #define OPENECS_SETTINGS_DEFAULT_THEME "dark"
@@ -147,7 +147,7 @@ static void ECSISetting_ReportType(const ECSISetting *setting, const char *file)
 /// @brief Finds the value in effect of a setting: the highest layer that sets it with the right type, or the default.
 static void ECSISetting_Resolve(ECSISetting *setting)
 {
-    for (i32 layer = ECSISettingsLayer_User; layer >= ECSISettingsLayer_Theme; layer--)
+    for (i32 layer = ECSISettingsLayer_Run; layer >= ECSISettingsLayer_Theme; layer--)
     {
         const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[layer], setting->name);
 
@@ -637,7 +637,7 @@ bool ECSIColor_ParseHex(const char *text, u32 *retColor)
 void ECSISettings_ApplyTheme(void)
 {
     // ecs.theme comes from the layers above the defaults, as its value in effect does, or else from the core's settings file
-    const ECSISettingsLayer layers[] = {ECSISettingsLayer_User, ECSISettingsLayer_Preset, ECSISettingsLayer_Core};
+    const ECSISettingsLayer layers[] = {ECSISettingsLayer_Run, ECSISettingsLayer_User, ECSISettingsLayer_Preset, ECSISettingsLayer_Core};
     const char *chosen = nullptr;
 
     for (usz i = 0; i < SDL_arraysize(layers) && chosen == nullptr; i++)
@@ -1032,6 +1032,62 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
 
     ECSValue_Destroy(&old);
     return result ? result : ECSISettings_WriteUserFile(name);
+}
+
+SHUResult ECSSetting_SetForRun(const char *name, const ECSValue *value)
+{
+    ECSILog_Check(name != nullptr, SHUResult_ErrAssertion);
+
+    ECSISetting *setting = ECSISettings_Find(name);
+
+    if (setting == nullptr)
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Setting '%s' is not declared.", name);
+        return SHUResult_ErrNotFound;
+    }
+
+    // nil takes the run's value away, so the value of the layers below applies
+    bool reset = ECSValue_GetType(value) == ECSValueType_Nil;
+
+    if (!reset && !ECSISetting_Check(setting, value))
+    {
+        ECSISetting_ReportType(setting, nullptr);
+        return SHUResult_ErrBadData;
+    }
+
+    if (SETTINGS.layers[ECSISettingsLayer_Run] == nullptr)
+    {
+        SHU_ReturnResult(ECSISettings_ClearLayer(ECSISettingsLayer_Run));
+    }
+
+    // the value in effect is kept, to tell the owner only about a real change
+    ECSValue *old = nullptr;
+    SHU_ReturnResult(ECSValue_Create(&old));
+    SHUResult result = ECSIValue_Copy(old, setting->value);
+    ECSValue *field = nullptr;
+
+    if (reset)
+    {
+        result = result ? result : ECSISettings_RemoveField(SETTINGS.layers[ECSISettingsLayer_Run], name);
+    }
+    else
+    {
+        result = result ? result : ECSValue_SetTableField(SETTINGS.layers[ECSISettingsLayer_Run], name, &field);
+        result = result ? result : ECSIValue_Copy(field, value);
+    }
+
+    if (!result)
+    {
+        ECSISetting_Resolve(setting);
+    }
+
+    if (!result && !ECSIValue_Equal(old, setting->value))
+    {
+        arrput(SETTINGS.changed, setting);
+    }
+
+    ECSValue_Destroy(&old);
+    return result;
 }
 
 SHUResult ECSISettings_SetKey(const char *scope, const char *key, const ECSValue *value)

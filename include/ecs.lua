@@ -95,6 +95,13 @@ function ecs.setting.get(name) end
 ---@return string? message Why the setting is not set.
 function ecs.setting.set(name, value) end
 
+---Sets a setting for this run only, in a layer above the user's settings file that no file keeps, such as a colour while a tool is busy.
+---@param name string The setting's full name, such as "ecs.colorFrame".
+---@param value any The new value, of the setting's type; nil takes the run's value away, so the value of the layers below applies.
+---@return true|nil ok true if the value is set.
+---@return string? message Why the setting is not set.
+function ecs.setting.setForRun(name, value) end
+
 ---Lists the names of every declared setting, in the order they were declared.
 ---@return string[]? names The full names, such as "canvas.grid".
 ---@return string? message Why the names cannot be listed.
@@ -105,9 +112,9 @@ function ecs.setting.list() end
 ---@field name string The full name, such as "canvas.grid".
 ---@field owner string The plugin that declared the setting.
 ---@field value any The value in effect.
----@field layer "default"|"theme"|"preset"|"user" The layer the value comes from.
+---@field layer "default"|"theme"|"preset"|"user"|"run" The layer the value comes from.
 ---@field file? string The file of that layer; missing for defaults.
----@field layers { default: any, theme: any, preset: any, user: any } The value of each layer that sets it.
+---@field layers { default: any, theme: any, preset: any, user: any, run: any } The value of each layer that sets it.
 
 ---Explains a setting: its value in effect, the layer it comes from, and what each layer says.
 ---@param name string The setting's full name, such as "canvas.grid".

@@ -353,11 +353,12 @@ A **session** uses the same format as a preset, but OpenECS writes it.
 
 ### 10.4 Settings
 
-Settings come in three layers. A higher layer overrides the lower ones:
+Settings come in four layers. A higher layer overrides the lower ones:
 
 1. Defaults: the core's settings file, shipped with OpenECS, and the defaults that plugins declare.
 2. The preset.
 3. The user's settings file.
+4. What a plugin sets for the run only, which no file keeps, such as a colour that shows while a tool is busy.
 
 The settings window changes the user's settings file, and the user can also edit it by hand. The window rewrites the file when it saves a change, so comments in the file are not kept.
 
