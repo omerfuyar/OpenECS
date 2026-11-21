@@ -1278,12 +1278,19 @@ static void ECSIServices_CheckArgument(lua_State *state, int index, ECSIParamete
     }
     case ECSIParameterType_Buffer:
     {
-        // a copy, because the function may write into a buffer and Lua strings must not change
+        // a string is copied, because the function may write into a buffer and Lua strings must not change; other buffers give their own bytes
         usz length = 0;
-        const char *bytes = ECSILua_CheckLString(state, index, &length);
-        void *copy = lua_newuserdata(state, length + 1);
-        SDL_memcpy(copy, bytes, length);
-        retSlot->buffer = cs(copy, length);
+        bool text = false;
+        const char *bytes = ECSILua_CheckBytes(state, index, &length, &text);
+
+        if (text)
+        {
+            void *copy = lua_newuserdata(state, length + 1);
+            SDL_memcpy(copy, bytes, length);
+            bytes = copy;
+        }
+
+        retSlot->buffer = cs((void *)bytes, length);
         break;
     }
     default:
@@ -1887,15 +1894,21 @@ static void ECSIServices_PushArgument(lua_State *state, ECSIParameter parameter,
     }
 }
 
-/// @brief Writes a string that a Lua function gave, at an index of the stack, where C reads it: as a string, or as a buffer.
-/// The anchor keeps the string alive; a buffer gets a copy, because C may write into it.
+/// @brief Writes a string or a buffer that a Lua function gave, at an index of the stack, where C reads it (DESIGN 10.7).
+/// The anchor keeps the value alive; a string as a buffer gets a copy, because C may write into it.
 /// @param anchors Index of the table that keeps strings and buffers alive until the function returns again.
-/// @return false if the Lua value is not a string.
+/// @return false if the Lua value is not a string, or not a buffer.
 static bool ECSIServices_WriteBytes(lua_State *state, int index, int anchors, bool buffer, void *retTarget)
 {
-    bool text = lua_type(state, index) == LUA_TSTRING;
+    bool text = false;
     usz length = 0;
-    const char *bytes = text ? lua_tolstring(state, index, &length) : nullptr;
+    const char *bytes = buffer ? ECSILua_ToBytes(state, index, &length, &text) : nullptr;
+
+    if (!buffer)
+    {
+        text = lua_type(state, index) == LUA_TSTRING;
+        bytes = text ? lua_tolstring(state, index, &length) : nullptr;
+    }
 
     if (buffer && text)
     {
@@ -1919,7 +1932,7 @@ static bool ECSIServices_WriteBytes(lua_State *state, int index, int anchors, bo
         *(const char **)retTarget = bytes;
     }
 
-    return text;
+    return bytes != nullptr;
 }
 
 /// @brief Writes a value that a Lua function gave, at an index of the stack, where C reads it: its return value or an output.
@@ -2359,6 +2372,7 @@ static const char OPENECS_FFI_HELPERS[] =
     "for name, fn in pairs(C.lua) do H[name] = fn end\n"
     "local format, floor = string.format, math.floor\n"
     "function H.text(color) return format('#%06X%02X', color % 16777216, floor(color / 16777216)) end\n"
+    "H.bytesOf = C.bytesOf\n"
     "function H.copy(text)\n"
     "  local length = #text\n"
     "  local bytes = H.bytes(length + 1)\n"
@@ -2667,6 +2681,8 @@ static SHUResult ECSIFfi_PushHelpers(lua_State *state)
     ECSIFfi_SetCode(state, "enter", (void (*)(void))ECSIProfile_Enter);
     ECSIFfi_SetCode(state, "leave", (void (*)(void))ECSIProfile_Leave);
     ECSIFfi_SetCode(state, "parseColor", (void (*)(void))ECSColor_Parse);
+    ECSILua_PushBytesOf(state);
+    lua_setfield(state, -2, "bytesOf");
     lua_newtable(state);
     luaL_setfuncs(state, HELPERS, 0);
     lua_setfield(state, -2, "lua");
@@ -2803,9 +2819,12 @@ static void ECSIFfi_AddCheck(ECSIText *text, ECSIParameter parameter, usz i, int
         ECSIText_Add(text, "  local p%zu\n  if type(a%zu) == 'string' and parseColor(a%zu, color) then p%zu = color[0] else p%zu = H.color(%d, a%zu) end\n", i, i, i, i, i, argument, i);
         break;
     case ECSIParameterType_Buffer:
-        // a copy, because the function may write into a buffer and Lua strings must not change; the bytes stay a local during the call
-        ECSIText_Add(text, "  local b%zu = a%zu\n  if type(b%zu) ~= 'string' then b%zu = H.string(%d, b%zu) end\n", i, i, i, i, argument, i);
-        ECSIText_Add(text, "  local bytes%zu, length%zu = copy(b%zu)\n  local p%zu = s%zu\n  p%zu.data, p%zu.size = bytes%zu, length%zu\n", i, i, i, i, i, i, i, i, i);
+        // a string is copied, because the function may write into a buffer and Lua strings must not change; other buffers give their own bytes
+        // (DESIGN 10.7); the bytes stay a local during the call
+        ECSIText_Add(text, "  local bytes%zu, length%zu\n  if type(a%zu) == 'string' then bytes%zu, length%zu = copy(a%zu) else bytes%zu, length%zu = H.bytesOf(a%zu) end\n", i, i, i,
+                     i, i, i, i, i, i);
+        ECSIText_Add(text, "  if bytes%zu == nil then H.typeError(%d, 'string, string.buffer or cdata', a%zu) end\n", i, argument, i);
+        ECSIText_Add(text, "  local p%zu = s%zu\n  p%zu.data, p%zu.size = bytes%zu, length%zu\n", i, i, i, i, i, i);
         break;
     case ECSIParameterType_Handle:
         ECSIText_Add(text, "  if not istype(C%zu, a%zu) then H.typeError(%d, M%zu, a%zu) end\n", i, i, argument, i, i);
@@ -3638,7 +3657,17 @@ static void ECSIDefinition_AddLuaFunctionOf(ECSIText *lua, const ECSIFunction *f
         if (!parameter.out)
         {
             ECSIText_Add(lua, "---@param %s ", ECSIDefinition_GetLuaName(parameter, i, cs(parameterName, sizeof(parameterName))));
-            ECSIDefinition_AddLuaType(lua, parameter);
+
+            // a C function takes its buffers' bytes from more than strings (DESIGN 10.7)
+            if (parameter.type == ECSIParameterType_Buffer && function->lua == LUA_NOREF)
+            {
+                ECSIText_Add(lua, "string|string.buffer|ffi.cdata*");
+            }
+            else
+            {
+                ECSIDefinition_AddLuaType(lua, parameter);
+            }
+
             ECSIText_Add(lua, "%s%s\n", parameter.documentation == nullptr ? "" : " ", parameter.documentation == nullptr ? "" : parameter.documentation);
         }
     }

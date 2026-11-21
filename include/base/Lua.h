@@ -108,6 +108,19 @@ void ECSILua_SetMisuseFunction(ECSILuaMisuseFunction Misuse);
 /// @param typeName The type it should have.
 [[noreturn]] void ECSILua_TypeErrorAt(lua_State *state, int level, int argument, int index, const char *typeName);
 
+/// @brief Pushes the Lua function that gives the bytes of a buffer that is not a string (DESIGN 10.7): a string.buffer's, or a cdata array's or struct's,
+/// as a uint8_t pointer and a length; or nothing for any other value.
+void ECSILua_PushBytesOf(lua_State *state);
+
+/// @brief Gives the bytes of a buffer at an index of the stack (DESIGN 10.7): a string's, a string.buffer's, or a cdata array's or struct's, valid while
+/// the value is.
+/// @param retText Set to whether they are a string's, which must not change; may be nullptr.
+/// @return nullptr if the value is none of them.
+const char *ECSILua_ToBytes(lua_State *state, int index, usz *retLength, bool *retText);
+
+/// @brief ECSILua_ToBytes of an argument, which raises a type error if the argument is no buffer.
+const char *ECSILua_CheckBytes(lua_State *state, int argument, usz *retLength, bool *retText);
+
 /// @brief The checks of luaL_check..., luaL_opt... and luaL_argcheck, which note the misuse before they raise an error.
 const char *ECSILua_CheckLString(lua_State *state, int argument, usz *retLength);
 const char *ECSILua_CheckString(lua_State *state, int argument);

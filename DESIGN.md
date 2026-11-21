@@ -1032,6 +1032,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 ### 10.7 Buffers
 
 - A buffer argument is valid only during the call. A function that needs it longer copies it.
+- In Lua, a buffer argument to a C function is a string, a `string.buffer`, or a cdata array or struct. A string is copied, as Lua's strings never change. A `string.buffer` and a cdata give their own bytes, without a copy, and the function may write into them. Memory at a pointer goes as a `string.buffer` that `buffer:set(pointer, length)` makes. A Lua function gets the argument as its caller gave it.
 - A returned buffer's lifetime is documented by its function. Lua callers always receive a copy.
 
 ### 10.8 Errors in services
@@ -1057,7 +1058,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - A plugin's folder may hold `types.lua`, a LuaLS meta file of annotations only, which the plugin never runs. `NAME.lua` ends with it, so the classes that `value<Type>` names are there, such as ui's `ui.ButtonProps` with its fields.
 - A plugin's folder may also hold `header.h`, which `NAME.h` ends with. It gives C plugins what the functions alone do not, such as types, inline functions and macros that call the functions, like ui's `UI_COLUMN`. It may use the structure and the functions above it.
 - A struct type (10.11) is a class in `NAME.lua`, with its fields, methods and operators, and a structure in `NAME.h`, named after its full name in PascalCase, such as `GeometryVec2` for `geometry.vec2`. Its fields are in their order, so it has the core's layout. A `struct<geometry.vec2>` parameter is `const GeometryVec2 *`, and an `out struct<geometry.vec2>` is `GeometryVec2 *`.
-- Types: `int` and `int64` are `integer` in Lua and `i32` and `i64` in C, `float` and `double` are `number` and `f32` and `f64`, `color` is `ecs.Color` and `ECSColor`, `buffer` is `string` and `SHUSlice`, and `value` is `any` and `const ECSValue *`, or the type that `value<Type>` names in Lua. The core's handles are `ecs.Panel`, `ecs.Popup` and `ecs.Surface` in Lua and `ECSPanel`, `ECSPopup` and `ECSSurface *` in C; other handles are their type in Lua, such as `net.connection`, and `void *` in C.
+- Types: `int` and `int64` are `integer` in Lua and `i32` and `i64` in C, `float` and `double` are `number` and `f32` and `f64`, `color` is `ecs.Color` and `ECSColor`, `buffer` is `SHUSlice` and, in Lua, `string|string.buffer|ffi.cdata*` as a parameter and `string` as a result, and `value` is `any` and `const ECSValue *`, or the type that `value<Type>` names in Lua. The core's handles are `ecs.Panel`, `ecs.Popup` and `ecs.Surface` in Lua and `ECSPanel`, `ECSPopup` and `ECSSurface *` in C; other handles are their type in Lua, such as `net.connection`, and `void *` in C.
 
 ### 10.11 Structs
 
@@ -1108,7 +1109,7 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 
 - A Lua panel type is a table (4.1). The core registers C callbacks that call its Lua functions in protected calls.
 - Panels are handles. What a panel is, is a field: `panel.id`, `panel.type`, `panel.title` and `panel.unsaved`, of which `title` and `unsaved` can be set: `panel.title = "main.lua"`. What a panel does, is a method: `panel:redraw()`, `panel:setTextInput(...)`, `panel:acceptDrops(types)`, `panel:startDrag(type, value)` and `panel:openPopup(desc)`. Each has one form only. A handle of a destroyed panel raises an error when it is used.
-- `draw(state, surface, seconds)` gets a surface handle (10.6) with `width`, `height` and `scale`, and the methods `fill(x, y, width, height, color)` (5.4), `setPixel(x, y, color)`, `getPixel(x, y)` and `setRow(y, bytes, x)`. Colours are texts (5.2), and `getPixel` gives `"#RRGGBBAA"`; `setRow` takes the row's pixels as a string, ARGB in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
+- `draw(state, surface, seconds)` gets a surface handle (10.6) with `width`, `height` and `scale`, and the methods `fill(x, y, width, height, color)` (5.4), `setPixel(x, y, color)`, `getPixel(x, y)` and `setRow(y, bytes, x)`. Colours are texts (5.2), and `getPixel` gives `"#RRGGBBAA"`; `setRow` takes the row's pixels as a buffer (10.7), ARGB in native byte order. Pixels outside the surface are clipped. A surface is valid only during the call.
 - `event(state, event)` gets a table: `type` (such as `"pointerDown"`), the booleans `shift`, `ctrl`, `alt` and `super`, and the fields of its type: `x` and `y` for pointer and wheel events, `button` for pointer presses, `scrollX` and `scrollY` for the wheel, `key` (SDL's key name) for keys, `width` and `height` for `shown` and `resized`, `x`, `y`, `dataType` and `value` for `drop` (7.9), and `text` for `text` (4.6).
 
 ### 11.5 Parity

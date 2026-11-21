@@ -261,7 +261,7 @@ function Surface:getPixel(x, y) end
 
 ---Copies a row of pixels, clipped to the surface. Lua only: C writes the surface's pixels directly.
 ---@param y integer The row.
----@param bytes string ARGB pixels, 4 bytes each in native byte order.
+---@param bytes string|string.buffer|ffi.cdata* ARGB pixels, 4 bytes each in native byte order.
 ---@param x? integer The first pixel's column; 0 if missing.
 function Surface:setRow(y, bytes, x) end
 
@@ -787,7 +787,7 @@ function ecs.clipboard.getText() end
 
 ---Puts data of a type on the system's clipboard, such as a PNG image.
 ---@param mimeType string Such as "image/png".
----@param bytes string The data.
+---@param bytes string|string.buffer|ffi.cdata* The data.
 ---@return boolean ok true if the clipboard took the data.
 function ecs.clipboard.setData(mimeType, bytes) end
 
