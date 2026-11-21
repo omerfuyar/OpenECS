@@ -13,15 +13,12 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **SDL's tray closes the D-Bus connection of notifications.** On Linux, SDL's D-Bus tray calls `SDL_DBus_Quit` when its last tray goes, which closes the connection that SDL's notifications share: their clicks stop coming after notify's last tray goes. At exit, `SDL_CleanupNotifications` then removes a filter from a new connection, which libdbus aborts on; the core makes that a warning for its quit (`ECSIApp_QuitSDL`), so the workaround can go once SDL is fixed. It is SDL's bug, still in its `main`, for the owner to report: SDL takes no contributions written by AI.
 - **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now, and aarch64 waits for 1.0.0 (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
-- **LuaJIT's part 2, the core's redesign.** OpenECS runs on LuaJIT 2.1 (DESIGN 9.6), through the C API. Measured in a Release build on Linux, with settings, keys, files and console redrawn whole 50 times a second, their Lua code took about 170 ms a second on LuaJIT, against 325 ms on Lua 5.5. A call through the C API ends the JIT's trace, and the FFI calls C from compiled code at C's speed. So the core changes where LuaJIT does a thing better, measured before and after with `ecs.profile` and LuaJIT's profiler. Each step is its own interface change (the interface-change skill), merged in the order of the pull-requests skill.
-  - **What LuaJIT 2.1 has** is in DESIGN 9.6. Read its current `doc/extensions.html` before each step; `v2.1` gains features often. It has no `//`, no metamethods for the bit operators, and no compound assignment that changes its operand in place; if it gains them, use them.
-    1. **Lua's functions in the profile.** While `ecs.profile` is on, the core runs LuaJIT's sampling profiler on the main state, and `ecs.profile.get()` adds `functions`: the Lua functions where the last second went, with their plugin (DESIGN 3.5). std's profiler shows them.
-    2. **ui.** With the tools above, rebuild ui's tree with `table.new` and reused tables (`table.clear`), and check with `jit.p` and `jit.v` that its building and arranging are compiled, not interpreted.
 
 ## Standard plugins
 
 The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md) describes them.
 
+- **ui's interpreted code.** `jit.v` shows that some of ui still runs interpreted: `element`, whose props loop is a loop in a called function, which LuaJIT cannot record in a trace that starts in a constructor such as `ui.text`; the closures that `paintTyped` and `paintScroll` give `draw.clip`; and the recursive walks `measure`, `arrange` and `paint`. Settings, keys, files and console redrawn whole 50 times a second take about 79 ms of Lua a second.
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
 - **The core's libraries.** The standard plugins still use the core's SDL, SDL_ttf and stb_ds (DESIGN 17.2), against the principle that plugins stand alone (DESIGN 0.6). To remove: each plugin would bring what it uses.
 
