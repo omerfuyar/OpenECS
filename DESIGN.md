@@ -1018,7 +1018,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 ### 10.6 Handles
 
 - A handle stands for an object owned by its provider: a pointer plus a type name and a destructor, registered with `ECSHandle_RegisterType(plugin, "sound", Destroy)` by the plugin `audio`. In C, a `handle<audio.sound>` is the object's pointer, as `void *`. A function that takes or gives a handle is written with `void *`, the type its definition file names, as a call through a pointer of another function type is undefined.
-- In Lua, a handle is a userdata whose metatable names its type. A handle of the wrong type is rejected with a clear error. When Lua no longer uses a handle, its garbage collector calls the destructor.
+- In Lua, a handle is cdata of LuaJIT's FFI: a struct of an FFI type that its handle type has alone, which holds the object's pointer. `ffi.metatype` gives the FFI type the handle type's metatable, with its methods, so a function's wrapper (10.4) checks a handle with `ffi.istype` and reads its object in compiled code. A handle of the wrong type is rejected with a clear error. When Lua no longer uses a handle, its garbage collector calls the destructor.
 - The same object always has the same Lua handle. A provider that still uses an object after giving it to Lua counts references, and its destructor drops one.
 - A handle that waits for its finalizer is already gone from Lua, so pushing its object again makes a new handle. The destructor runs once, when the object's last handle is collected.
 - The core's own handle types are `ecs.panel`, Lua's panel handles (11.4), and `ecs.surface`, the surface a panel draws into. A surface handle is valid only during the `Draw` call that gives it, so a panel can pass its surface to a service that draws, such as the draw plugin's (20).
@@ -1638,6 +1638,8 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 
 **Callback.** A function passed to other code so that it can be called later.
 
+**Cdata (LuaJIT).** A value of LuaJIT's FFI that holds C data, such as a number, a pointer or a struct, managed by Lua's garbage collector. Handles are cdata.
+
 **Clay.** A layout library. It computes the sizes and positions of rectangles.
 
 **Closure (libffi).** A small piece of code that libffi generates at run time. It looks like an ordinary C function, but forwards each call to a handler, which here calls a Lua function.
@@ -1668,6 +1670,8 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 
 **Executor.** A plugin that runs something with its own primitives, such as drawing or playing sound, for other plugins.
 
+**FFI (LuaJIT).** LuaJIT's library that declares C types, makes C data and calls C functions from Lua code, which the JIT compiles as C calls.
+
 **First-party plugin.** A plugin made and shipped together with OpenECS.
 
 **Focus.** The one panel that receives keyboard input.
@@ -1691,6 +1695,8 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 **Hit testing.** Finding which element is under a point, such as the pointer.
 
 **Input method.** Software that composes characters a keyboard cannot type directly, for languages such as Chinese or Japanese.
+
+**JIT (just-in-time compiler).** LuaJIT's compiler, which turns the Lua code that runs often into machine code while the program runs. It follows the code's path, a trace, through calls; a call through the C API ends a trace, and a call through the FFI does not.
 
 **Keybinding.** A link between a key combination and a function, written in a keys table (7.2).
 
@@ -1828,7 +1834,7 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 
 **Unsaved work.** A panel's mark that it has changes that are not saved yet.
 
-**Userdata (Lua).** A block of memory managed by Lua's garbage collector that holds data from C. Handles are userdata.
+**Userdata (Lua).** A block of memory managed by Lua's garbage collector that holds data from C, such as a timer's or a worker's handle in Lua.
 
 **Vsync.** Waiting for the display's refresh before showing a new frame, so drawing matches the screen's rate.
 

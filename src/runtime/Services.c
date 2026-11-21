@@ -76,6 +76,7 @@ typedef struct ECSIHandleType
     char **methods;                      // stb_ds array: the names of its methods in Lua
     const struct ECSIFunction **targets; // stb_ds array: the function each method calls, in the same order
     bool kept;                           // its plugin went; it takes the type back when it registers it again
+    int ctype;                           // registry reference of its FFI type, made when the first handle or wrapper needs it, or LUA_NOREF
 } ECSIHandleType;
 
 /// @brief A field of a struct type: one value, or a list of a fixed length.
@@ -102,7 +103,7 @@ typedef struct ECSIStructType
     bool kept;                           // its plugin went; it takes the type back when it registers it again
 } ECSIStructType;
 
-/// @brief A Lua handle: the userdata that stands for an object.
+/// @brief A Lua handle: the memory of the FFI cdata that stands for an object, a struct of its type's own FFI type (DESIGN 10.6).
 typedef struct ECSIHandle
 {
     void *object; // nullptr when the object is gone
@@ -254,6 +255,7 @@ static struct
     } *drawn;                // stb_ds array of the functions that run once the Draw of their surface returns, in the order they were given
     SDL_AtomicInt logErrors; // the setting ecs.logServiceErrors, which threads read
     int ffiHelpers;          // registry reference of the helpers of Lua's wrappers of C functions, made with the first wrapper
+    int handleHelpers;       // registry reference of the Lua functions that make handles' FFI types and tell a handle's type
     struct
     {
         ECSPlugin key;
@@ -1583,6 +1585,62 @@ static int ECSIServices_CallC(lua_State *state)
 
 #pragma region Handles
 
+/// @brief The Lua functions of handles: new(metatable, type) makes a handle type's FFI type, a struct laid out as ECSIHandle whose metatable is the
+/// type's, and typeOf(value) gives the type of a handle, as a light userdata, or nil for another value.
+static const char OPENECS_HANDLE_HELPERS[] =
+    "local ffi = require('ffi')\n"
+    "local types = {}\n"
+    "local function new(metatable, handleType)\n"
+    "  local ctype = ffi.metatype(ffi.typeof('struct { void *ecsObject; void *ecsType; }'), metatable)\n"
+    "  types[tonumber(ctype)] = handleType\n"
+    "  return ctype\n"
+    "end\n"
+    "local function typeOf(value)\n"
+    "  if type(value) ~= 'cdata' then return nil end\n"
+    "  return types[tonumber(ffi.typeof(value))]\n"
+    "end\n"
+    "return { new = new, typeOf = typeOf }\n";
+
+static_assert(sizeof(ECSIHandle) == 2 * sizeof(void *), "a handle's FFI type is two pointers");
+
+/// @brief Pushes the FFI type of a handle type, which it makes the first time. Its metatable cannot change after that, but its __index table can, so
+/// methods are added to that table.
+static void ECSIServices_PushHandleCType(lua_State *state, ECSIHandleType *type)
+{
+    if (type->ctype == LUA_NOREF)
+    {
+        lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.handleHelpers);
+        lua_getfield(state, -1, "new");
+        luaL_getmetatable(state, type->metatable);
+        lua_pushlightuserdata(state, type);
+        lua_call(state, 2, 1);
+        type->ctype = luaL_ref(state, LUA_REGISTRYINDEX);
+        lua_pop(state, 1);
+    }
+
+    lua_rawgeti(state, LUA_REGISTRYINDEX, type->ctype);
+}
+
+/// @brief Gives the handle at an index of the stack, or nullptr for another value.
+static ECSIHandle *ECSIServices_ToHandle(lua_State *state, int index)
+{
+    if (lua_type(state, index) != OPENECS_LUA_TCDATA)
+    {
+        return nullptr;
+    }
+
+    index = lua_absindex(state, index);
+    lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.handleHelpers);
+    lua_getfield(state, -1, "typeOf");
+    lua_pushvalue(state, index);
+    lua_call(state, 1, 1);
+    bool handle = lua_touserdata(state, -1) != nullptr;
+    lua_pop(state, 2);
+
+    // a handle's bytes are where lua_topointer points
+    return handle ? (ECSIHandle *)lua_topointer(state, index) : nullptr;
+}
+
 /// @brief Makes every handle of an object invalid and forgets the object; the handles' userdata stay until they are collected.
 /// @return The object's type, or nullptr if Lua had no handle of it.
 static ECSIHandleType *ECSIServices_DropObject(void *object)
@@ -1629,7 +1687,7 @@ static void ECSIServices_DestroyObject(ECSIHandleType *type, void *object)
 /// @brief Lets go of a Lua handle that the garbage collector frees; the object is destroyed with its last handle.
 static int ECSIServices_HandleCollect(lua_State *state)
 {
-    ECSIHandle *handle = lua_touserdata(state, 1);
+    ECSIHandle *handle = (ECSIHandle *)lua_topointer(state, 1);
     void *object = handle->object;
     ECSIHandleObject *record = object == nullptr || SERVICES.objects == nullptr ? nullptr : hmget(SERVICES.objects, object);
     handle->object = nullptr;
@@ -1662,7 +1720,7 @@ static int ECSIServices_HandleCollect(lua_State *state)
 
 static int ECSIServices_HandleToString(lua_State *state)
 {
-    ECSIHandle *handle = lua_touserdata(state, 1);
+    const ECSIHandle *handle = lua_topointer(state, 1);
     lua_pushfstring(state, "handle<%s>%s", handle->type->name, handle->object == nullptr ? " (gone)" : "");
     return 1;
 }
@@ -1719,13 +1777,17 @@ static SHUResult ECSIServices_RegisterHandleType(ECSPlugin plugin, const char *n
 
     type->plugin = plugin;
     type->Destroy = Destroy;
+    type->ctype = LUA_NOREF;
 
+    // the metatable is the FFI type's, which cannot change once the type is made, so the methods go into its __index table
     lua_State *state = ECSILua_GetState();
     luaL_newmetatable(state, type->metatable);
     lua_pushcfunction(state, ECSIServices_HandleCollect);
     lua_setfield(state, -2, "__gc");
     lua_pushcfunction(state, ECSIServices_HandleToString);
     lua_setfield(state, -2, "__tostring");
+    lua_newtable(state);
+    lua_setfield(state, -2, "__index");
     lua_pop(state, 1);
 
     shput(SERVICES.handleTypes, type->name, type);
@@ -1754,6 +1816,23 @@ static void ECSIServices_DropHandles(const ECSIHandleType *type)
     }
 
     arrfree(objects);
+}
+
+/// @brief Takes the methods out of a handle type's __index table, as they call its plugin's functions, which go. The table stays, as the type's FFI
+/// type keeps its metatable.
+static void ECSIServices_DropHandleMethods(const ECSIHandleType *type)
+{
+    lua_State *state = ECSILua_GetState();
+    luaL_getmetatable(state, type->metatable);
+    lua_getfield(state, -1, "__index");
+
+    for (usz i = 0; i < arrlenu(type->methods); i++)
+    {
+        lua_pushnil(state);
+        lua_setfield(state, -2, type->methods[i]);
+    }
+
+    lua_pop(state, 2);
 }
 
 #pragma endregion Handles
@@ -1856,7 +1935,8 @@ static bool ECSIServices_WriteOutput(lua_State *state, ECSIFunction *function, i
     case ECSIParameterType_Handle:
     {
         // the handle stays alive in the anchors while C may use its object
-        ECSIHandle *handle = luaL_testudata(state, index, parameter.handle->metatable);
+        ECSIHandle *handle = ECSIServices_ToHandle(state, index);
+        handle = handle != nullptr && handle->type == parameter.handle ? handle : nullptr;
         *(void **)retTarget = handle == nullptr ? nullptr : handle->object;
         lua_pushvalue(state, index);
         lua_rawseti(state, anchors, (int)lua_rawlen(state, anchors) + 1);
@@ -2262,12 +2342,12 @@ static void ECSIServices_FreeSpare(ECSIFunction **spare)
 /// @brief The helpers of Lua's wrappers of C functions (DESIGN 10.4). The chunk gets the FFI, a table of the C functions that the wrappers call and of
 /// Lua C functions for the rare cases, and the registry; it gives the table of helpers that each wrapper gets.
 static const char OPENECS_FFI_HELPERS[] =
-    "local ffi, C, R = ...\n"
-    "ffi.cdef('struct ECSIFfiSlice { void *data; size_t size; }; struct ECSIFfiHandle { void *object; void *type; };')\n"
+    "local ffi, C = ...\n"
+    "ffi.cdef('struct ECSIFfiSlice { void *data; size_t size; };')\n"
     "local H = {\n"
-    "  ffi = ffi, R = R,\n"
+    "  ffi = ffi,\n"
     "  slice = ffi.typeof('struct ECSIFfiSlice'),\n"
-    "  handle = ffi.typeof('struct ECSIFfiHandle *'),\n"
+
     "  bytes = ffi.typeof('uint8_t[?]'),\n"
     "  current = ffi.cast('void **', C.current),\n"
     "  misuses = ffi.cast('uint64_t (*)(void)', C.misuses),\n"
@@ -2590,9 +2670,8 @@ static SHUResult ECSIFfi_PushHelpers(lua_State *state)
     lua_newtable(state);
     luaL_setfuncs(state, HELPERS, 0);
     lua_setfield(state, -2, "lua");
-    lua_pushvalue(state, LUA_REGISTRYINDEX);
 
-    if (ECSILua_Call(state, 3, 1))
+    if (ECSILua_Call(state, 2, 1))
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The FFI's helpers do not start: %s", lua_tostring(state, -1));
         lua_pop(state, 1);
@@ -2729,8 +2808,8 @@ static void ECSIFfi_AddCheck(ECSIText *text, ECSIParameter parameter, usz i, int
         ECSIText_Add(text, "  local bytes%zu, length%zu = copy(b%zu)\n  local p%zu = s%zu\n  p%zu.data, p%zu.size = bytes%zu, length%zu\n", i, i, i, i, i, i, i, i, i);
         break;
     case ECSIParameterType_Handle:
-        ECSIText_Add(text, "  local m%zu = getmetatable(a%zu)\n  if m%zu == nil or m%zu ~= R[M%zu] then H.typeError(%d, M%zu, a%zu) end\n", i, i, i, i, i, argument, i, i);
-        ECSIText_Add(text, "  local p%zu = cast(handle, a%zu).object\n  if p%zu == nil then H.argError(%d, 'the object of this handle is gone') end\n", i, i, i, argument);
+        ECSIText_Add(text, "  if not istype(C%zu, a%zu) then H.typeError(%d, M%zu, a%zu) end\n", i, i, argument, i, i);
+        ECSIText_Add(text, "  local p%zu = a%zu.ecsObject\n  if p%zu == nil then H.argError(%d, 'the object of this handle is gone') end\n", i, i, i, argument);
         break;
     case ECSIParameterType_Struct:
         ECSIText_Add(text, "  local p%zu = H.struct(%d, a%zu, T%zu)\n", i, argument, i, i);
@@ -2790,10 +2869,10 @@ static void ECSIFfi_AddValues(ECSIText *text, const ECSISignature *signature, us
 /// @brief Adds the locals that a wrapper keeps between its calls: the function, its helpers, and storage for the outputs.
 static void ECSIFfi_AddHeader(ECSIText *text, const ECSISignature *signature)
 {
-    ECSIText_Add(text, "local H, F = ...\nlocal ffi, R, cast, handle, copy, text, parseColor = H.ffi, H.R, H.ffi.cast, H.handle, H.copy, H.text, H.parseColor\n");
+    ECSIText_Add(text, "local H, F = ...\nlocal ffi, cast, istype, copy, text, parseColor = H.ffi, H.ffi.cast, H.ffi.istype, H.copy, H.text, H.parseColor\n");
     ECSIText_Add(text, "local current, misuses, profiling, enter, leave = H.current, H.misuses, H.profiling, H.enter, H.leave\n");
     ECSIText_Add(text, "local call = cast(F.ctype, F.pointer)\nlocal FUNCTION, PLUGIN, NAME = cast('void *', F.called), cast('void *', F.plugin), cast('const char *', F.name)\n");
-    ECSIText_Add(text, "local scope, color = H.bytes(F.scope), ffi.new('uint32_t[1]')\nlocal M, T = F.metatables, F.types\nlocal TR = T[0]\n");
+    ECSIText_Add(text, "local scope, color = H.bytes(F.scope), ffi.new('uint32_t[1]')\nlocal M, T, C = F.metatables, F.types, F.ctypes\nlocal TR = T[0]\n");
 
     for (usz i = 0; i < arrlenu(signature->parameters); i++)
     {
@@ -2810,7 +2889,7 @@ static void ECSIFfi_AddHeader(ECSIText *text, const ECSISignature *signature)
 
         if (parameter.type == ECSIParameterType_Handle || parameter.type == ECSIParameterType_Struct)
         {
-            ECSIText_Add(text, "local M%zu, T%zu = M[%zu], T[%zu]\n", i, i, i + 1, i + 1);
+            ECSIText_Add(text, "local M%zu, T%zu, C%zu = M[%zu], T[%zu], C[%zu]\n", i, i, i, i + 1, i + 1, i + 1);
         }
     }
 }
@@ -2970,10 +3049,11 @@ static ECSIText ECSIFfi_Write(const ECSIFunction *function)
     return text;
 }
 
-/// @brief Pushes the types of a function's handles and structs, by the parameter's number from 1 and the result's at 0: the table of their metatables'
-/// names, then the table of their types.
-static void ECSIFfi_PushTypes(lua_State *state, const ECSISignature *signature)
+/// @brief Sets the fields of a wrapper's constants about its handles and structs, by the parameter's number from 1 and the result's at 0: metatables,
+/// the names of the handles' types, types, the handle or struct types themselves, and ctypes, the handles' FFI types.
+static void ECSIFfi_SetTypes(lua_State *state, const ECSISignature *signature)
 {
+    lua_newtable(state);
     lua_newtable(state);
     lua_newtable(state);
 
@@ -2984,16 +3064,22 @@ static void ECSIFfi_PushTypes(lua_State *state, const ECSISignature *signature)
         if (parameter.type == ECSIParameterType_Handle)
         {
             lua_pushstring(state, parameter.handle->metatable);
-            lua_rawseti(state, -3, (int)i);
+            lua_rawseti(state, -4, (int)i);
             lua_pushlightuserdata(state, parameter.handle);
+            lua_rawseti(state, -3, (int)i);
+            ECSIServices_PushHandleCType(state, parameter.handle);
             lua_rawseti(state, -2, (int)i);
         }
         else if (parameter.type == ECSIParameterType_Struct)
         {
             lua_pushlightuserdata(state, parameter.structType);
-            lua_rawseti(state, -2, (int)i);
+            lua_rawseti(state, -3, (int)i);
         }
     }
+
+    lua_setfield(state, -4, "ctypes");
+    lua_setfield(state, -3, "types");
+    lua_setfield(state, -2, "metatables");
 }
 
 /// @brief Pushes the constants of a function's wrapper: its C type, its pointer, its plugin and the types of its handles and structs.
@@ -3026,9 +3112,7 @@ static SHUResult ECSIFfi_PushConstants(lua_State *state, const ECSIFunction *fun
     lua_setfield(state, -2, "full");
     lua_pushinteger(state, (lua_Integer)sizeof(ECSIProfileScope));
     lua_setfield(state, -2, "scope");
-    ECSIFfi_PushTypes(state, &function->signature);
-    lua_setfield(state, -3, "types");
-    lua_setfield(state, -2, "metatables");
+    ECSIFfi_SetTypes(state, &function->signature);
     return SHUResult_Ok;
 }
 
@@ -3233,18 +3317,7 @@ static bool ECSIServices_ReadHandle(int index, const char **retType, void **retO
 {
     lua_State *state = ECSILua_GetState();
 
-    // every handle's metatable is named after its type, with a prefix of its own
-    if (!lua_getmetatable(state, index))
-    {
-        return false;
-    }
-
-    lua_getfield(state, -1, "__name");
-    const char *name = lua_tostring(state, -1);
-    bool handle = name != nullptr && SDL_strncmp(name, OPENECS_HANDLE_METATABLE, SDL_strlen(OPENECS_HANDLE_METATABLE)) == 0;
-    lua_pop(state, 2);
-
-    ECSIHandle *found = handle ? lua_touserdata(state, index) : nullptr;
+    ECSIHandle *found = ECSIServices_ToHandle(state, index);
 
     if (found == nullptr || found->object == nullptr)
     {
@@ -3892,6 +3965,15 @@ SHUResult ECSIServices_Initialize(void)
     lua_setmetatable(state, -2);
     SERVICES.handles = luaL_ref(state, LUA_REGISTRYINDEX);
     SERVICES.ffiHelpers = LUA_NOREF;
+
+    if (luaL_loadbuffer(state, OPENECS_HANDLE_HELPERS, sizeof(OPENECS_HANDLE_HELPERS) - 1, "=ecs.handles") != LUA_OK || ECSILua_Call(state, 0, 1))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The handles' Lua functions do not start: %s", lua_tostring(state, -1));
+        lua_pop(state, 1);
+        return SHUResult_ErrInternal;
+    }
+
+    SERVICES.handleHelpers = luaL_ref(state, LUA_REGISTRYINDEX);
     ECSILua_SetHandleFunctions(ECSIServices_ReadHandle, ECSIServices_PushHandle);
 
     // the core's handle types: panels, popups, and the surface a panel or popup draws into, valid during Draw
@@ -4012,8 +4094,9 @@ static void ECSIServices_PushHandleOf(lua_State *state, ECSIHandleType *handleTy
 
     lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.handles);
 
-    if (lua_rawgetp(state, -1, object) == LUA_TUSERDATA && ((ECSIHandle *)lua_touserdata(state, -1))->type == handleType &&
-        ((ECSIHandle *)lua_touserdata(state, -1))->object == object)
+    const ECSIHandle *cached = lua_rawgetp(state, -1, object) == OPENECS_LUA_TCDATA ? lua_topointer(state, -1) : nullptr;
+
+    if (cached != nullptr && cached->type == handleType && cached->object == object)
     {
         lua_remove(state, -2);
         return;
@@ -4045,10 +4128,12 @@ static void ECSIServices_PushHandleOf(lua_State *state, ECSIHandleType *handleTy
         hmput(SERVICES.objects, object, record);
     }
 
-    ECSIHandle *handle = lua_newuserdata(state, sizeof(ECSIHandle));
+    // a cdata's memory does not move, so the record keeps its address
+    ECSIServices_PushHandleCType(state, handleType);
+    lua_call(state, 0, 1);
+    ECSIHandle *handle = (ECSIHandle *)lua_topointer(state, -1);
     *handle = (ECSIHandle){.object = object, .type = handleType};
     arrput(record->handles, handle);
-    luaL_setmetatable(state, handleType->metatable);
     lua_pushvalue(state, -1);
     lua_rawsetp(state, -3, object);
     lua_remove(state, -2);
@@ -4073,7 +4158,12 @@ void *ECSIServices_CheckHandle(int index, const char *type)
 /// @brief Checks that a Lua argument is a handle of a type whose object is there, and gives the object; raises a Lua error otherwise.
 static void *ECSIServices_CheckHandleOf(lua_State *state, int index, ECSIHandleType *handleType)
 {
-    ECSIHandle *handle = ECSILua_CheckUdata(state, index, handleType->metatable);
+    ECSIHandle *handle = ECSIServices_ToHandle(state, index);
+
+    if (handle == nullptr || handle->type != handleType)
+    {
+        ECSILua_TypeError(state, index, handleType->metatable);
+    }
 
     if (handle->object == nullptr)
     {
@@ -4244,15 +4334,7 @@ void ECSIServices_RemovePlugin(ECSPlugin plugin)
             ECSIServices_DropHandles(type);
             type->Destroy = nullptr;
 
-            // the methods call the plugin's functions, which go below, so the type loses them
-            if (arrlenu(type->methods) > 0)
-            {
-                lua_State *state = ECSILua_GetState();
-                luaL_getmetatable(state, type->metatable);
-                lua_pushnil(state);
-                lua_setfield(state, -2, "__index");
-                lua_pop(state, 1);
-            }
+            ECSIServices_DropHandleMethods(type);
 
             for (usz j = 0; j < arrlenu(type->methods); j++)
             {
