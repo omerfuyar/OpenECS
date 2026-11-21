@@ -95,7 +95,7 @@ static int ECSILua_CompareTexts(const void *first, const void *second)
 }
 
 /// @brief Copies the Lua value at an index of the stack into a value. Named fields are added in the order of their names, so the same table always gives the same value.
-/// @param handles Whether handles stay handles: in the core's state only, and not in a value that goes to another thread, where a handle is skipped.
+/// @param handles Whether handles stay handles: in the core's state only, and not in a data file, where a handle is skipped.
 static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue, bool handles, u32 depth)
 {
     index = lua_absindex(state, index);
@@ -159,7 +159,7 @@ static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue
             return ECSValue_SetBuffer(retValue, (SHUSliceView){.data = bytes, .size = length});
         }
 
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, handles ? "A userdata or cdata that is not a handle, or whose object is gone, is not data; it is skipped." : "A handle, userdata or cdata is not data that can go to another thread; it is skipped.");
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, handles ? "A userdata or cdata that is not a handle, or whose object is gone, is not data; it is skipped." : "A handle, userdata or cdata is not data that a file holds; it is skipped.");
         ECSValue_SetNil(retValue);
         return SHUResult_Ok;
     }
@@ -521,14 +521,6 @@ SHUResult ECSILua_GetValue(lua_State *state, int index, ECSValue *retValue)
     SDL_assert(retValue != nullptr);
 
     return ECSILua_ToValue(state, index, retValue, state == LUA.state, 0);
-}
-
-SHUResult ECSILua_GetMessage(lua_State *state, int index, ECSValue *retValue)
-{
-    SDL_assert(state != nullptr);
-    SDL_assert(retValue != nullptr);
-
-    return ECSILua_ToValue(state, index, retValue, false, 0);
 }
 
 void ECSILua_PushValue(lua_State *state, const ECSValue *value)
