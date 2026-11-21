@@ -930,6 +930,30 @@ const char *ECSIPlugin_GetName(ECSPlugin plugin)
     return plugin->name;
 }
 
+const char *ECSIPlugin_FindByPath(const char *path, usz *retFolderLength)
+{
+    SDL_assert(path != nullptr);
+    SDL_assert(retFolderLength != nullptr);
+
+    // a plugin's folder may be inside another's, so the longest folder that holds the file is its plugin's
+    const char *found = nullptr;
+    *retFolderLength = 0;
+
+    for (usz i = 0; i < shlenu(PLUGINS.plugins); i++)
+    {
+        const ECSIPlugin *plugin = PLUGINS.plugins[i].value;
+        usz length = SDL_strlen(plugin->folder);
+
+        if (length > *retFolderLength && SDL_strncmp(path, plugin->folder, length) == 0)
+        {
+            found = plugin->name;
+            *retFolderLength = length;
+        }
+    }
+
+    return found;
+}
+
 const char *ECSIPlugin_GetDescription(ECSPlugin plugin)
 {
     SDL_assert(plugin != nullptr);

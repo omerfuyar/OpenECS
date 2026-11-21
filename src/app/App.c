@@ -592,6 +592,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     ECSIApp_ReadReloadSettings(nullptr);
     ECSSettingDesc profile = {.name = OPENECS_PROFILE, .type = ECSSettingType_Bool, .description = "Measure where the time goes, by step of each frame, by plugin and by panel, for a profiler to show", .Changed = ECSIApp_ReadProfileSetting};
     ECSIApp_ExitOnFailure(ECSISettings_DeclareCore(&profile), "declaring the profile setting", nullptr);
+    ECSIProfile_SetPluginFinder(ECSIPlugin_FindByPath);
     ECSIApp_ReadProfileSetting(nullptr);
     const char *sourcePath = APP.sessionPath != nullptr ? APP.sessionPath : APP.presetPath;
 

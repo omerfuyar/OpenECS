@@ -94,6 +94,12 @@ SHUWUR SHUResult ECSIPlugins_SaveStates(ECSValue *states);
 /// @return The name its manifest gives.
 const char *ECSIPlugin_GetName(ECSPlugin plugin);
 
+/// @brief Finds the plugin whose folder holds a file, for the profile's Lua functions (DESIGN 3.5).
+/// @param path The file's full path.
+/// @param retFolderLength Set to the length of the plugin's folder, at the start of the path.
+/// @return The plugin's name, or nullptr if no plugin's folder holds the file.
+const char *ECSIPlugin_FindByPath(const char *path, usz *retFolderLength);
+
 /// @brief Gets a plugin's description, from its manifest.
 /// @param plugin The plugin.
 /// @return The description, or an empty string. Valid while the plugin is loaded.

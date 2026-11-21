@@ -1,13 +1,16 @@
 #include "base/Profile.h"
 
 #include "base/Log.h"
+#include "base/Lua.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
 
 #pragma region Source Only
 
-#define OPENECS_PROFILE_PASSES 240 // the passes of the loop that the profile keeps, a few seconds of frames
+#define OPENECS_PROFILE_PASSES 240   // the passes of the loop that the profile keeps, a few seconds of frames
+#define OPENECS_PROFILE_FUNCTIONS 50 // the Lua functions that the profile gives, those that took the most
+#define OPENECS_PROFILE_SAMPLE 0.001 // the seconds between LuaJIT's samples
 
 static const char *const OPENECS_PROFILE_STEPS[ECSIProfileStep_Count] = {"wait", "input", "timers", "events", "layout", "panels", "upload", "interface", "present"};
 
@@ -32,6 +35,13 @@ typedef struct
     ECSIProfileTime value;
 } ECSIProfilePanelTimes;
 
+/// @brief The samples of each Lua function, by its file's full path and its name.
+typedef struct
+{
+    char *key;
+    u32 value;
+} ECSIProfileFunctionSamples;
+
 static struct
 {
     bool on;
@@ -53,6 +63,10 @@ static struct
     ECSIProfilePluginTimes *lastPlugins; // and of the last whole second
     ECSIProfilePanelTimes *lastPanels;
     f64 lastSeconds; // how long that second was, in seconds
+
+    ECSIProfileFunctionSamples *functions; // stb_ds string maps of this second and the last, whose keys they own
+    ECSIProfileFunctionSamples *lastFunctions;
+    ECSIProfileFindPluginFunction FindPlugin;
 } PROFILE = {0};
 
 static void ECSIProfile_FreePlugins(ECSIProfilePluginTimes **times)
@@ -75,8 +89,20 @@ static void ECSIProfile_FreePanels(ECSIProfilePanelTimes **times)
     hmfree(*times);
 }
 
+static void ECSIProfile_FreeFunctions(ECSIProfileFunctionSamples **samples)
+{
+    for (usz i = 0; i < shlenu(*samples); i++)
+    {
+        SDL_free((*samples)[i].key);
+    }
+
+    shfree(*samples);
+}
+
 static void ECSIProfile_Clear(void)
 {
+    ECSIProfile_FreeFunctions(&PROFILE.functions);
+    ECSIProfile_FreeFunctions(&PROFILE.lastFunctions);
     ECSIProfile_FreePlugins(&PROFILE.plugins);
     ECSIProfile_FreePlugins(&PROFILE.lastPlugins);
     ECSIProfile_FreePanels(&PROFILE.panels);
@@ -149,6 +175,86 @@ static SHUResult ECSIProfile_ListTimes(ECSValue *list, ECSIProfileTime **times, 
     return SHUResult_Ok;
 }
 
+/// @brief Counts LuaJIT's samples of a Lua function.
+static void ECSIProfile_Sample(const char *function, usz length, int samples)
+{
+    char key[512];
+    SDL_strlcpy(key, function, SDL_min(length + 1, sizeof(key)));
+    ptrdiff_t index = shgeti(PROFILE.functions, key);
+
+    if (index < 0)
+    {
+        char *copy = SDL_strdup(key);
+
+        if (copy == nullptr)
+        {
+            return;
+        }
+
+        shput(PROFILE.functions, copy, 0);
+        index = shgeti(PROFILE.functions, key);
+    }
+
+    PROFILE.functions[index].value += (u32)samples;
+}
+
+/// @brief Orders Lua functions by their samples, the most first.
+static int ECSIProfile_CompareSamples(const void *first, const void *second)
+{
+    u32 firstSamples = (*(const ECSIProfileFunctionSamples *const *)first)->value;
+    u32 secondSamples = (*(const ECSIProfileFunctionSamples *const *)second)->value;
+    return firstSamples < secondSamples ? 1 : firstSamples > secondSamples ? -1
+                                                                           : 0;
+}
+
+/// @brief Fills a list's item with a Lua function: its name from its plugin's folder, its plugin, its samples and its seconds.
+static SHUResult ECSIProfile_SetFunction(ECSValue *item, const ECSIProfileFunctionSamples *function)
+{
+    usz folder = 0;
+    const char *plugin = PROFILE.FindPlugin != nullptr ? PROFILE.FindPlugin(function->key, &folder) : nullptr;
+    ECSValue *field = nullptr;
+    SHU_ReturnResult(ECSValue_SetTableField(item, "name", &field));
+    SHU_ReturnResult(ECSValue_SetString(field, function->key + (plugin != nullptr ? folder : 0)));
+    SHU_ReturnResult(ECSValue_SetTableField(item, "plugin", &field));
+    SHU_ReturnResult(ECSValue_SetString(field, plugin != nullptr ? plugin : "ecs"));
+    SHU_ReturnResult(ECSValue_SetTableField(item, "samples", &field));
+    ECSValue_SetInteger(field, function->value);
+    SHU_ReturnResult(ECSValue_SetTableField(item, "seconds", &field));
+    ECSValue_SetNumber(field, function->value * OPENECS_PROFILE_SAMPLE / SDL_max(PROFILE.lastSeconds, 1e-9));
+    return SHUResult_Ok;
+}
+
+/// @brief Lists the Lua functions that took the most of the last second, the most first.
+static SHUResult ECSIProfile_ListFunctions(ECSValue *list)
+{
+    ECSValue_SetTable(list);
+    usz count = shlenu(PROFILE.lastFunctions);
+    ECSIProfileFunctionSamples **functions = SDL_malloc(sizeof(ECSIProfileFunctionSamples *) * (count + 1));
+
+    if (functions == nullptr)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    for (usz i = 0; i < count; i++)
+    {
+        functions[i] = &PROFILE.lastFunctions[i];
+    }
+
+    SDL_qsort((void *)functions, count, sizeof(ECSIProfileFunctionSamples *), ECSIProfile_CompareSamples);
+    SHUResult result = SHUResult_Ok;
+
+    for (usz i = 0; !result && i < SDL_min(count, OPENECS_PROFILE_FUNCTIONS); i++)
+    {
+        ECSValue *item = nullptr;
+        result = ECSValue_AddListItem(list, &item);
+        result = result ? result : ECSIProfile_SetFunction(item, functions[i]);
+    }
+
+    SDL_free(functions);
+    return result;
+}
+
 static SHUResult ECSIProfile_ListPasses(ECSValue *list)
 {
     ECSValue_SetTable(list);
@@ -204,10 +310,16 @@ static SHUResult ECSIProfile_Fill(ECSValue *profile)
     result = result ? result : ECSValue_SetTableField(profile, "panels", &field);
     result = result ? result : ECSIProfile_ListTimes(field, times, panelCount, "type", true);
     SDL_free(times);
-    return result;
+    result = result ? result : ECSValue_SetTableField(profile, "functions", &field);
+    return result ? result : ECSIProfile_ListFunctions(field);
 }
 
 #pragma endregion Source Only
+
+void ECSIProfile_SetPluginFinder(ECSIProfileFindPluginFunction Find)
+{
+    PROFILE.FindPlugin = Find;
+}
 
 void ECSIProfile_SetOn(bool measure)
 {
@@ -217,6 +329,7 @@ void ECSIProfile_SetOn(bool measure)
     }
 
     ECSIProfile_Clear();
+    ECSILua_SetSampling(measure ? ECSIProfile_Sample : nullptr);
     PROFILE.on = measure;
     PROFILE.frequency = (f64)SDL_GetPerformanceFrequency();
     PROFILE.stepStart = SDL_GetPerformanceCounter();
@@ -357,8 +470,11 @@ void ECSIProfile_EndPass(void)
     {
         ECSIProfile_FreePlugins(&PROFILE.lastPlugins);
         ECSIProfile_FreePanels(&PROFILE.lastPanels);
+        ECSIProfile_FreeFunctions(&PROFILE.lastFunctions);
         PROFILE.lastPlugins = PROFILE.plugins;
         PROFILE.lastPanels = PROFILE.panels;
+        PROFILE.lastFunctions = PROFILE.functions;
+        PROFILE.functions = nullptr;
         PROFILE.lastSeconds = seconds;
         PROFILE.plugins = nullptr;
         PROFILE.panels = nullptr;
@@ -368,6 +484,11 @@ void ECSIProfile_EndPass(void)
 
 void ECSIProfile_Terminate(void)
 {
+    if (PROFILE.on)
+    {
+        ECSILua_SetSampling(nullptr);
+    }
+
     ECSIProfile_Clear();
     PROFILE.on = false;
 }

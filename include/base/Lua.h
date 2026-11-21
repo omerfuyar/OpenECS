@@ -29,6 +29,14 @@ typedef bool (*ECSILuaReadHandleFunction)(int index, const char **retType, void 
 /// @brief Pushes the handle of an object of a type, for values.
 typedef void (*ECSILuaPushHandleFunction)(const char *type, void *object);
 
+/// @brief Gets the samples of LuaJIT's profiler of the core's state: the Lua function that ran, as its file's full path, then its name or the line where it
+/// starts, such as "/plugins/ui/init.lua:element"; not followed by a zero byte.
+typedef void (*ECSILuaSampleFunction)(const char *function, usz length, int samples);
+
+/// @brief Starts LuaJIT's sampling profiler on the core's state, which samples every millisecond, or stops it (DESIGN 3.5).
+/// @param Sample Gets each sample of Lua code; nullptr stops the profiler.
+void ECSILua_SetSampling(ECSILuaSampleFunction Sample);
+
 /// @brief Pushes the table of the fields of the struct at an index of the stack, for values. Gives false, and pushes nothing, for a value that is not a
 /// struct.
 typedef bool (*ECSILuaPushStructFieldsFunction)(int index);
