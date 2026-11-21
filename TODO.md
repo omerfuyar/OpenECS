@@ -99,7 +99,7 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 **std: ui, with draw**
 
-- **P2 · A long list or table is built whole on each show.** `std/plugins/ui/init.lua` `elements.list`, `measure`, `arrange` Every item is built, given an id, measured and arranged, and only those in view are drawn. Measured in a Release build on Linux, with the console full (2000 entries) while a game prints 50 lines a second: a draw takes about 57 ms, so the tool runs at 17 frames a second. Console builds its items in 18 ms; ui gives them ids in 6 ms, measures them in 16 ms and arranges them in 7 ms. (Before ui kept wrapped lines, measuring took 133 ms.) The fix is a list that builds only the items in view: `ui.list(props)` with `count` and `item(index)`, which gives the element of one item, in place of children; in C, a list whose items a function describes, which ui calls back for the items in view. Items may differ in height, as console's do, so ui keeps the height each item had when it was last shown, by its index, and takes their average for the others. Up, Down, `onSelect`, `onActivate`, `onMenu` and `ui.reveal` work by the item's index. Console, settings, keys and files then build their lists this way. Size: L.
+- **P3 · A long table or tree is built whole on each show.** `std/plugins/ui/init.lua` `elements.table`, `elements.tree` A list builds only the items in view (std DESIGN 5), but a table and a tree build every row: they are lists inside, so they could take `count` and `first` the same way, with `ui.range`. Profiler's table is short, and files' tree shows the open folders only; do it when a tool shows a long one. Size: M.
 
 **Core: plugins and threads**
 
