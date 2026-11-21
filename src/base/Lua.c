@@ -141,7 +141,7 @@ static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue
             return ECSIValue_SetLuaHandle(retValue, type, object, luaL_ref(state, LUA_REGISTRYINDEX), handle);
         }
 
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, handles ? "A userdata that is not a handle, or whose object is gone, is not data; it is skipped." : "A handle or other userdata is not data that can go to another thread; it is skipped.");
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, handles ? "A userdata or cdata that is not a handle, or whose object is gone, is not data; it is skipped." : "A handle, userdata or cdata is not data that can go to another thread; it is skipped.");
         ECSValue_SetNil(retValue);
         return SHUResult_Ok;
     }

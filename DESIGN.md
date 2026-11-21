@@ -357,7 +357,7 @@ A worker is a Lua script that runs on a thread of its own, in a Lua state of its
   - `ecs.worker.receive(seconds)` gives the oldest value that the plugin sent. It waits for one at most `seconds`, or without end if `seconds` is missing. It gives nil when the time runs out.
   - `ecs.worker.send(value)` sends a value to the plugin.
 - The script has every Lua library, as plugins do (9.6). Its `require` finds modules in the plugin's folder first. It cannot call the core or other plugins, because they run on the main thread only.
-- Values go between the threads as copies: nil, booleans, numbers, texts, and tables of them. Functions, handles and other userdata are skipped, with a warning.
+- Values go between the threads as copies: nil, booleans, numbers, texts, and tables of them. Functions, handles, userdata and cdata are skipped, with a warning.
 - `message` and `done` run on the main thread, between passes of the loop, like a background task's `done` (3.3). An error in them is reported (14). So is an error in the script, which ends it.
 - `stop` ends the script at its next `receive` or call of `ecs`; a loop that calls neither runs until it ends, as LuaJIT runs no hooks in the code it compiles. After `stop`, its `message` and `done` are not called again. A script that waits in a C function, such as `io.read`, ends when that function returns.
 - A worker runs until its script ends or it is stopped, even when its handle is dropped. On exit, the core stops every worker and waits for it (2.4).
