@@ -135,6 +135,24 @@ Plugins talk only to the plugin API (2.2). They never receive an SDL, Lua, Clay 
   - the bit operators `& | ~ << >>` in place of the `bit` library; they work on 32 bits and give signed results, so `0xFF000000 | 0` is negative (11.7);
   - `const` for a local that never changes, such as a table of constants at a file's top: `const SIZES = { ... }`.
 - A whole division is `math.floor(a / b)`: LuaJIT has no `//`.
+- A Lua plugin's panel type is a class: a table, such as `Canvas`, with `Canvas.__index = Canvas`, whose functions are methods. Its `create` gives the panel's state as an object of the class, `setmetatable({ panel = panel }, Canvas)`, and the type's description names the methods: `draw = Canvas.draw`. The core calls `draw(state, surface, seconds)`, which is `state:draw(surface, seconds)`, so each method takes the state as `self`. The plugin's own functions on a panel are methods too: `self:load(path)`.
+
+  ```lua
+  local Canvas = {}
+  Canvas.__index = Canvas
+
+  function Canvas.create(panel, saved, version)
+    return setmetatable({ panel = panel, strokes = saved or {} }, Canvas)
+  end
+
+  function Canvas:draw(surface, seconds)
+    surface:fill(0, 0, surface.width, surface.height, "background")
+  end
+
+  ecs.panel.registerType({ name = "canvas", title = "Canvas", create = Canvas.create, draw = Canvas.draw, destroy = Canvas.destroy })
+  ```
+
+- A class gives methods, and operators where its values are numbers of a kind, as structs' are (10.11). An `__index` that is a function, or a `__newindex`, does work out of sight and breaks principle 4 (0.6): a setting is read with `ecs.setting.get`, not as a field.
 - Bytes for C, such as vertices, pixels and samples, are built in an FFI array and given as a string: `ffi.new("float[?]", count)`, then `ffi.string(array, ffi.sizeof(array))`. A string's bytes are read through a pointer: `ffi.cast("const float *", text)`, valid while the string is.
 
 ### 1.2 Names
@@ -390,7 +408,7 @@ typedef struct ECSPanelTypeDesc
 } ECSPanelTypeDesc;
 ```
 
-- A Lua panel type is a table with the same fields, in Lua's naming: `create`, `draw`, `saveState` and so on.
+- A Lua panel type is a table with the same fields, in Lua's naming: `create`, `draw`, `saveState` and so on. Its functions are the methods of the plugin's class, and its state an object of it (1.1).
 - `Draw` receives the time in seconds since the panel was last drawn, for animation.
 - `Event` returns nothing, because events never ask for permission (8.1).
 - Registration: `ECSPanelType_Register(plugin, &desc)`, and in Lua `ecs.panel.registerType(desc)`.
