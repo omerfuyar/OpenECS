@@ -35,8 +35,6 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 [Shuild](https://github.com/omerfuyar/shuild) is the owner's; changes go to it as CLAUDE.md says.
 
-- **Reading a build's flags.** The `shuild.c` of OpenECS, OpenECS-std, OpenECS-examples and the template each read their flags with their own loop of `strcmp`: a short and a long name, a value after some, a build type chosen by name, the flag with no value, and a help text written apart from the loop. Shuild would hold a small interface for it: a script lists its flags once, with macros, each with its names, its value's name, its help and where the value goes (a switch, a string, or one of a list of names such as the build types); shuild reads `argv` with that list, reports a flag it does not know or a missing value, and prints the help from the same list. It runs before `SHU_UtilAutomate`, which compiles the script again when it changed, as the scripts' own reading does now. Add an example to shuild for it, then use it in the four scripts.
-
 ## Reaching users
 
 What helps people find OpenECS and stay. Before announcing a release widely:

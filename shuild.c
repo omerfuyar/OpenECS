@@ -13,8 +13,15 @@ typedef enum BuildType
     BuildType_MinSizeRel,
 } BuildType;
 
-static const char *const BUILD_TYPE_STRINGS[] = {"Debug", "Release", "RelWithDebInfo", "MinSizeRel"};
-#define BuildType_String(buildType) BUILD_TYPE_STRINGS[(buildType)]
+// the build types as the flag -b takes them, case aside, and as the build folders are named
+static const SHUFlagChoice BUILD_TYPES[] = {
+    {"Debug", "the default, with the static analyzer and the sanitizers"},
+    {"Release", "an optimized build"},
+    {"RelWithDebInfo", "a release with debug information"},
+    {"MinSizeRel", "a small release"},
+    {NULL, NULL},
+};
+#define BuildType_String(buildType) BUILD_TYPES[(buildType)].name
 
 /// @brief What the build does and where it goes, in groups, as shuild keeps its own state.
 static struct
@@ -22,16 +29,12 @@ static struct
     // what the command line chooses
     struct
     {
-        BuildType type;
+        int type; // a BuildType
         const char *compiler;
-        bool std;              // also build the standard plugins, from std/
-        bool examples;         // also build the examples, from examples/
-        bool test;             // run the examples' tests after the build
-        char **testedExamples; // the examples whose tests run, as the command line names them, or none for every example
-        int testedExampleCount;
-        bool help;                     // print the help, and build nothing
-        const char *badArgument;       // the first argument that cannot be read
-        const char *badArgumentReason; // and why
+        bool noStd;        // do not build the standard plugins, from std/
+        bool examples;     // also build the examples, from examples/
+        SHUFlagList tests; // run the tests of the examples it names, or of every example, after the build
+        bool help;         // print the help, and build nothing
     } FLAGS;
 
     // the build's folders, from the build type and the system the compiler compiles for
@@ -51,12 +54,25 @@ static struct
         int run;
         int failed;
     } TESTS;
-} CONFIG = {.FLAGS = {.type = BuildType_Debug, .std = true, .compiler = SHUM_HOST_WINDOWS || SHUM_HOST_MACOS ? "clang" : "gcc"}};
+} CONFIG = {.FLAGS = {.type = BuildType_Debug, .compiler = SHUM_HOST_WINDOWS || SHUM_HOST_MACOS ? "clang" : "gcc"}};
+
+// the flags, which shuild reads and prints the help of
+static const SHUFlag FLAGS[] = {
+    SHU_FLAG_CHOICE("-b", "--build", "TYPE", &CONFIG.FLAGS.type, BUILD_TYPES, "Build type:"),
+    SHU_FLAG_SWITCH("-n", "--no-std", &CONFIG.FLAGS.noStd, "Do not build the standard plugins of std/"),
+    SHU_FLAG_SWITCH("-e", "--examples", &CONFIG.FLAGS.examples, "Also build the examples of examples/, into bin/examples/"),
+    SHU_FLAG_LIST("-t", "--test", "EXAMPLE", &CONFIG.FLAGS.tests,
+                  "Build in Debug with the examples, then run the tests of the examples named, such as c12_sketch,\n"
+                  "or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report"),
+    SHU_FLAG_STRING("-c", "--compiler", "CC", &CONFIG.FLAGS.compiler,
+                    "The compiler: gcc (default for linux), clang, or on Windows LLVM-MinGW's clang (default for windows).\n"
+                    "A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/"),
+    SHU_FLAG_SWITCH("-h", "--help", &CONFIG.FLAGS.help, "Show this help"),
+};
 
 #pragma endregion Setup
 
-static void ReadArguments(int argc, char **argv);
-static void PrintUsage(void);
+static void CheckArguments(void);
 static void Configure(void);
 static void SetBuildFlags(bool ownCode);
 static bool IsBuilt(const char *library, bool shared);
@@ -75,23 +91,20 @@ static void RunTests(void);
 
 int main(int argc, char **argv)
 {
-    ReadArguments(argc, argv);
+    SHU_FlagsRead(FLAGS, argc, argv);
     SHU_CompilerConfigureTry(CONFIG.FLAGS.compiler);
 
     // a changed shuild.c is compiled again and run with the same arguments, so a bad argument is reported after it, by the new program
     SHU_UtilAutomate(argc, argv);
 
-    if (CONFIG.FLAGS.badArgument != NULL)
-    {
-        PrintUsage();
-        SHU_UtilFail("%s: " SHUM_LOG_VALUE("%s"), CONFIG.FLAGS.badArgumentReason, CONFIG.FLAGS.badArgument);
-    }
-
     if (CONFIG.FLAGS.help)
     {
-        PrintUsage();
+        SHU_FlagsPrintHelp(FLAGS);
         return 0;
     }
+
+    SHU_FlagsCheck(FLAGS);
+    CheckArguments();
 
     Configure();
 
@@ -131,7 +144,7 @@ int main(int argc, char **argv)
     Shuild_OpenECS();
     Shuild_Plugins();
 
-    if (CONFIG.FLAGS.test)
+    if (CONFIG.FLAGS.tests.given)
     {
         RunTests();
     }
@@ -139,120 +152,23 @@ int main(int argc, char **argv)
     return 0;
 }
 
-static void PrintUsage(void)
+/// @brief Checks what the flags cannot check alone: the examples that -t names, and its build type.
+static void CheckArguments(void)
 {
-    printf(SHUM_COLOR_BOLD("Usage:") " ./shuild.ignore [" SHUM_COLOR_GREEN("FLAG") "...]\n");
-    printf("\n");
-    printf(SHUM_COLOR_BOLD("Flags:") "\n");
-    printf("  " SHUM_COLOR_GREEN("-b") ", " SHUM_COLOR_GREEN("--build") " " SHUM_COLOR_CYAN("TYPE") "   Build type:\n");
-    printf("                       " SHUM_LOG_VALUE("debug") "           the default, with the static analyzer and the sanitizers\n");
-    printf("                       " SHUM_LOG_VALUE("release") "         an optimized build\n");
-    printf("                       " SHUM_LOG_VALUE("relwithdebinfo") "  a release with debug information\n");
-    printf("                       " SHUM_LOG_VALUE("minsizerel") "      a small release\n");
-    printf("  " SHUM_COLOR_GREEN("-n") ", " SHUM_COLOR_GREEN("--no-std") "       Do not build the standard plugins of std/\n");
-    printf("  " SHUM_COLOR_GREEN("-e") ", " SHUM_COLOR_GREEN("--examples") "     Also build the examples of examples/, into bin/examples/\n");
-    printf("  " SHUM_COLOR_GREEN("-t") ", " SHUM_COLOR_GREEN("--test") " [" SHUM_COLOR_CYAN("EXAMPLE") "...]\n");
-    printf("                     Build in Debug with the examples, then run the tests of the examples named, such as c12_sketch,\n");
-    printf("                     or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report\n");
-    printf("  " SHUM_COLOR_GREEN("-c") ", " SHUM_COLOR_GREEN("--compiler") " " SHUM_COLOR_CYAN("CC") "  The compiler: gcc (default for linux), clang, or on Windows LLVM-MinGW's clang (default for windows).\n");
-    printf("                     A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/\n");
-    printf("  " SHUM_COLOR_GREEN("-h") ", " SHUM_COLOR_GREEN("--help") "         Show this help\n");
-}
-
-/// @brief Notes the first argument that cannot be read. main reports it, after shuild.c is compiled again if it changed.
-static void NoteBadArgument(const char *reason, const char *argument)
-{
-    if (CONFIG.FLAGS.badArgument == NULL)
+    for (int i = 0; i < CONFIG.FLAGS.tests.count; i++)
     {
-        CONFIG.FLAGS.badArgumentReason = reason;
-        CONFIG.FLAGS.badArgument = argument;
-    }
-}
-
-/// @brief Reads every flag into CONFIG.
-static void ReadArguments(int argc, char **argv)
-{
-    bool buildTypeNamed = false;
-
-    for (int i = 1; i < argc; i++)
-    {
-        const char *flag = argv[i];
-        bool takesValue = !strcmp(flag, "-b") || !strcmp(flag, "--build") || !strcmp(flag, "-c") || !strcmp(flag, "--compiler");
-
-        if (takesValue && i + 1 == argc)
+        if (SHU_UtilFileExists(SHU_UtilFormat("examples/%s/", CONFIG.FLAGS.tests.values[i])) != SHUFileType_Directory)
         {
-            NoteBadArgument("A value is missing after the flag", flag);
-            return;
-        }
-
-        if (!strcmp(flag, "-b") || !strcmp(flag, "--build"))
-        {
-            const char *name = argv[++i];
-            usz type = 0;
-
-            while (type < sizeof(BUILD_TYPE_STRINGS) / sizeof(*BUILD_TYPE_STRINGS) && strcasecmp(name, BuildType_String(type)) != 0)
-            {
-                type++;
-            }
-
-            if (type == sizeof(BUILD_TYPE_STRINGS) / sizeof(*BUILD_TYPE_STRINGS))
-            {
-                NoteBadArgument("Unknown build type", name);
-                return;
-            }
-
-            CONFIG.FLAGS.type = (BuildType)type;
-            buildTypeNamed = true;
-        }
-        else if (!strcmp(flag, "-c") || !strcmp(flag, "--compiler"))
-        {
-            CONFIG.FLAGS.compiler = argv[++i];
-        }
-        else if (!strcmp(flag, "-n") || !strcmp(flag, "--no-std"))
-        {
-            CONFIG.FLAGS.std = false;
-        }
-        else if (!strcmp(flag, "-e") || !strcmp(flag, "--examples"))
-        {
-            CONFIG.FLAGS.examples = true;
-        }
-        else if (!strcmp(flag, "-t") || !strcmp(flag, "--test"))
-        {
-            CONFIG.FLAGS.test = true;
-
-            // the arguments after it that are no flags name examples, such as c12_sketch
-            CONFIG.FLAGS.testedExamples = &argv[i + 1];
-
-            while (i + 1 < argc && argv[i + 1][0] != '-')
-            {
-                if (SHU_UtilFileExists(SHU_UtilFormat("examples/%s/", argv[i + 1])) != SHUFileType_Directory)
-                {
-                    NoteBadArgument("No example is named", argv[i + 1]);
-                    return;
-                }
-
-                CONFIG.FLAGS.testedExampleCount++;
-                i++;
-            }
-        }
-        else if (!strcmp(flag, "-h") || !strcmp(flag, "--help"))
-        {
-            CONFIG.FLAGS.help = true;
-        }
-        else
-        {
-            NoteBadArgument(flag[0] == '-' ? "Unknown flag" : "Unknown argument", flag);
-            return;
+            SHU_UtilFail("No example is named: " SHUM_LOG_VALUE("%s"), CONFIG.FLAGS.tests.values[i]);
         }
     }
 
     // only Debug builds run tests, and the tests are the examples' (DESIGN 17.5)
-    if (CONFIG.FLAGS.test)
+    if (CONFIG.FLAGS.tests.given)
     {
-        if (buildTypeNamed && CONFIG.FLAGS.type != BuildType_Debug)
+        if (CONFIG.FLAGS.type != BuildType_Debug)
         {
-            NoteBadArgument("The tests run with a Debug build, not", BuildType_String(CONFIG.FLAGS.type));
-            return;
+            SHU_UtilFail("The tests run with a Debug build, not " SHUM_LOG_VALUE("%s"), BuildType_String(CONFIG.FLAGS.type));
         }
 
         CONFIG.FLAGS.examples = true;
@@ -271,7 +187,7 @@ static void Configure(void)
     CONFIG.DIRS.dependencies = SHU_UtilFormat("%sdependencies/", CONFIG.DIRS.build);
 
     // a program built for another system cannot run here
-    if (CONFIG.FLAGS.test && !SHUM_PLATFORM_IS_HOST(target))
+    if (CONFIG.FLAGS.tests.given && !SHUM_PLATFORM_IS_HOST(target))
     {
         SHU_UtilFail("the tests cannot run here, as OpenECS is built for " SHUM_LOG_VALUE("%s") ".", SHUPlatform_GetString(target));
     }
@@ -289,7 +205,7 @@ static void Configure(void)
     CONFIG.DIRS.cmake = SHU_UtilFormat("%scmake/%s/", CONFIG.DIRS.build, compilerName);
 
     SHU_UtilLog("building " SHUM_LOG_VALUE("%s") " with " SHUM_LOG_VALUE("%s") " for " SHUM_LOG_VALUE("%s") "; standard plugins: " SHUM_LOG_VALUE("%s") ", examples: " SHUM_LOG_VALUE("%s"),
-                BuildType_String(CONFIG.FLAGS.type), CONFIG.FLAGS.compiler, SHUPlatform_GetString(target), CONFIG.FLAGS.std ? "yes" : "no", CONFIG.FLAGS.examples ? "yes" : "no");
+                BuildType_String(CONFIG.FLAGS.type), CONFIG.FLAGS.compiler, SHUPlatform_GetString(target), !CONFIG.FLAGS.noStd ? "yes" : "no", CONFIG.FLAGS.examples ? "yes" : "no");
 }
 
 // our code gets warnings, and in Debug gcc's static analyzer and the address and undefined-behaviour sanitizers, which MinGW does not have;
@@ -305,7 +221,7 @@ static void SetBuildFlags(bool ownCode)
         SHU_CompilerAddFlags("-w");
     }
 
-    switch (CONFIG.FLAGS.type)
+    switch ((BuildType)CONFIG.FLAGS.type)
     {
     case BuildType_Debug:
         if (ownCode)
@@ -791,7 +707,7 @@ static void Shuild_Plugins(void)
 
     // OpenECS-std builds the standard plugins into bin/plugins/ and their presets into bin/presets/, with the built dependencies that they reuse;
     // OpenECS-examples builds the examples into bin/examples/, with the plugin interface alone, as any plugin's author does
-    if (CONFIG.FLAGS.std)
+    if (!CONFIG.FLAGS.noStd)
     {
         Shuild_Repository("std/", SHU_UtilFormat("-d %s", PathFromFolder("std/", CONFIG.DIRS.dependencies)));
     }
@@ -935,11 +851,11 @@ static bool IsTested(const char *path)
         start--;
     }
 
-    bool named = CONFIG.FLAGS.testedExampleCount == 0;
+    bool named = CONFIG.FLAGS.tests.count == 0;
 
-    for (int i = 0; i < CONFIG.FLAGS.testedExampleCount && !named; i++)
+    for (int i = 0; i < CONFIG.FLAGS.tests.count && !named; i++)
     {
-        named = (int)strlen(CONFIG.FLAGS.testedExamples[i]) == end - start && strncmp(path + start, CONFIG.FLAGS.testedExamples[i], (usz)(end - start)) == 0;
+        named = (int)strlen(CONFIG.FLAGS.tests.values[i]) == end - start && strncmp(path + start, CONFIG.FLAGS.tests.values[i], (usz)(end - start)) == 0;
     }
 
     return named;

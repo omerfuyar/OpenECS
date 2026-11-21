@@ -166,19 +166,18 @@ clang shuild.c -o shuild.ignore.exe -O3
 Usage: ./shuild.ignore [FLAG...]
 
 Flags:
-  -b, --build TYPE   Build type:
-                       debug           the default, with the static analyzer and the sanitizers
-                       release         an optimized build
-                       relwithdebinfo  a release with debug information
-                       minsizerel      a small release
-  -n, --no-std       Do not build the standard plugins of std/
-  -e, --examples     Also build the examples of examples/, into bin/examples/
-  -t, --test [EXAMPLE...]
-                     Build in Debug with the examples, then run the tests of the examples named, such as c12_sketch,
-                     or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report
-  -c, --compiler CC  The compiler: gcc (default for linux), clang, or on Windows LLVM-MinGW's clang (default for windows).
-                     A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/
-  -h, --help         Show this help
+  -b, --build TYPE         Build type:
+                           Debug           the default, with the static analyzer and the sanitizers
+                           Release         an optimized build
+                           RelWithDebInfo  a release with debug information
+                           MinSizeRel      a small release
+  -n, --no-std             Do not build the standard plugins of std/
+  -e, --examples           Also build the examples of examples/, into bin/examples/
+  -t, --test [EXAMPLE...]  Build in Debug with the examples, then run the tests of the examples named, such as c12_sketch,
+                           or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report
+  -c, --compiler CC        The compiler: gcc (default for linux), clang, or on Windows LLVM-MinGW's clang (default for windows).
+                           A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/
+  -h, --help               Show this help
 ```
 
 A cross compiler builds for Windows on Linux, into `build/Debug-Windows/`, for example. A program built for another system cannot run where it was built, so that build writes no definition files, and its examples' C plugins, which include the standard plugins' headers, need them written there first: run that build's `OpenECS.exe --definitions build/Debug-Windows/include/`, with Wine on Linux.
