@@ -2276,6 +2276,30 @@ static void ECSIBindings_AddCore(const char *name, void *data)
     lua_settop(state, top);
 }
 
+/// @brief ecs.check in Lua: a check that holds returns there, so the JIT compiles a plugin's checks with its code; one that fails, or has no message,
+/// goes on to the core's check by a tail call, which names the same line.
+static const char OPENECS_BINDINGS_CHECK[] =
+    "local check = ...\n"
+    "return function(...)\n"
+    "  local condition, message = ...\n"
+    "  if condition and type(message) == 'string' then return end\n"
+    "  return check(...)\n"
+    "end\n";
+
+/// @brief Puts ecs.check in Lua in front of the core's, in the ecs table on the top of the stack.
+static void ECSIBindings_WrapCheck(lua_State *state)
+{
+    if (luaL_loadbuffer(state, OPENECS_BINDINGS_CHECK, sizeof(OPENECS_BINDINGS_CHECK) - 1, "=ecs.check") != LUA_OK)
+    {
+        lua_pop(state, 1);
+        return;
+    }
+
+    lua_getfield(state, -2, "check");
+    lua_call(state, 1, 1);
+    lua_setfield(state, -2, "check");
+}
+
 /// @brief Pushes a new ecs table for a plugin.
 static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
 {
@@ -2283,6 +2307,7 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIWorkers_PushLog(state, plugin);
     lua_setfield(state, -2, "log");
     ECSIWorkers_AddErrors(state, plugin);
+    ECSIBindings_WrapCheck(state);
     ECSIBindings_AddTable(state, plugin, "setting", OPENECS_BINDINGS_SETTING);
     ECSIBindings_AddTable(state, plugin, "timer", OPENECS_BINDINGS_TIMER);
     ECSIBindings_AddTable(state, plugin, "panel", OPENECS_BINDINGS_PANEL);

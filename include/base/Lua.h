@@ -9,6 +9,9 @@
 /// @brief The Lua state, as lua.h declares it, so a header can name it without including Lua.
 typedef struct lua_State lua_State;
 
+/// @brief LuaJIT's type of cdata, which lua.h does not name.
+#define OPENECS_LUA_TCDATA 10
+
 /// @brief Starts the Lua state.
 /// @return SHUResult_Ok, SHUResult_ErrAllocation if Lua cannot start, or SHUResult_ErrInternal if the data file writer does not load.
 SHUWUR SHUResult ECSILua_Initialize(void);
@@ -78,11 +81,32 @@ void ECSILua_SetMisuseFunction(ECSILuaMisuseFunction Misuse);
 /// @param format printf-style format, as lua_pushfstring takes it.
 [[noreturn]] void ECSILua_Misuse(lua_State *state, const char *format, ...);
 
+/// @brief ECSILua_Misuse for a Lua function that a C function checks for: the error names the line at a level of the stack, where 1 is the function that called the C function.
+/// @param state The state whose code called.
+/// @param level The level of the stack whose line the error names.
+/// @param format printf-style format, as lua_pushfstring takes it.
+[[noreturn]] void ECSILua_MisuseAt(lua_State *state, int level, const char *format, ...);
+
 /// @brief luaL_argerror, which notes the misuse first.
 [[noreturn]] void ECSILua_ArgError(lua_State *state, int argument, const char *message);
 
+/// @brief ECSILua_ArgError for the function at a level of the stack, where 0 is the C function that runs, such as a Lua wrapper of a C function that calls a check.
+/// @param state The state whose code called.
+/// @param level The level of the function whose argument is bad.
+/// @param argument The argument's number.
+/// @param message What is wrong with it.
+[[noreturn]] void ECSILua_ArgErrorAt(lua_State *state, int level, int argument, const char *message);
+
 /// @brief luaL_typeerror, which notes the misuse first.
 [[noreturn]] void ECSILua_TypeError(lua_State *state, int argument, const char *typeName);
+
+/// @brief ECSILua_TypeError for the function at a level of the stack, of a value at an index.
+/// @param state The state whose code called.
+/// @param level The level of the function whose argument is bad, as ECSILua_ArgErrorAt takes it.
+/// @param argument The argument's number.
+/// @param index Index of the argument's value on the stack.
+/// @param typeName The type it should have.
+[[noreturn]] void ECSILua_TypeErrorAt(lua_State *state, int level, int argument, int index, const char *typeName);
 
 /// @brief The checks of luaL_check..., luaL_opt... and luaL_argcheck, which note the misuse before they raise an error.
 const char *ECSILua_CheckLString(lua_State *state, int argument, usz *retLength);
@@ -105,6 +129,15 @@ void ECSILua_CheckAny(lua_State *state, int argument);
 void *ECSILua_CheckUdata(lua_State *state, int argument, const char *typeName);
 int ECSILua_CheckOption(lua_State *state, int argument, const char *fallback, const char *const options[]);
 #define ECSILua_ArgCheck(state, condition, argument, message) ((void)((condition) || (ECSILua_ArgError((state), (argument), (message)), 0)))
+
+/// @brief Gives where Lua's wrappers of C functions write the function they call through the FFI, or nullptr between their calls (DESIGN 10.4).
+/// Lua cannot run while it is set, as the call may be compiled code.
+/// @return The place, which lives as long as the program.
+void **ECSILua_GetFfiCall(void);
+
+/// @brief Tells whether a C function that Lua called through the FFI runs, so the core must not use Lua.
+/// @return true during such a call.
+bool ECSILua_InFfiCall(void);
 
 /// @brief Sets the Lua state whose code calls C on this thread, while C runs for it, so a misuse can name the Lua line that made it.
 /// @param state The state, or nullptr when the call returns.

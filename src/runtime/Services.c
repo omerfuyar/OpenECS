@@ -109,6 +109,8 @@ typedef struct ECSIHandle
     ECSIHandleType *type;
 } ECSIHandle;
 
+static_assert(offsetof(ECSIHandle, object) == 0, "a value reads a Lua handle's object at the start of its memory");
+
 /// @brief An object that Lua has handles of, with every one of them that is not collected yet.
 /// A handle the garbage collector is about to finalize has left the weak table already, so the object can get a new handle meanwhile; the object is destroyed when its last handle is collected (10.6).
 typedef struct ECSIHandleObject
@@ -251,6 +253,12 @@ static struct
         void *data;
     } *drawn;                // stb_ds array of the functions that run once the Draw of their surface returns, in the order they were given
     SDL_AtomicInt logErrors; // the setting ecs.logServiceErrors, which threads read
+    int ffiHelpers;          // registry reference of the helpers of Lua's wrappers of C functions, made with the first wrapper
+    struct
+    {
+        ECSPlugin key;
+        bool value;
+    } *luaCallers; // stb_ds hash map of the plugins whose C code looked up a function that calls Lua, so Lua calls theirs through the C API
 } SERVICES = {0};
 
 /// @brief File-level state of each thread.
@@ -1599,12 +1607,8 @@ static ECSIHandleType *ECSIServices_DropObject(void *object)
     arrfree(record->handles);
     SDL_free(record);
 
-    // the weak table may still map the object to a handle that is not collected yet
-    lua_State *state = ECSILua_GetState();
-    lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.handles);
-    lua_pushnil(state);
-    lua_rawsetp(state, -2, object);
-    lua_pop(state, 1);
+    // the weak table may still map the object to the invalid handle until it is collected, which ECSIServices_PushHandleOf passes over; Lua is
+    // not used here, as a C function that Lua calls through the FFI may free its object (DESIGN 10.4)
     return type;
 }
 
@@ -2006,13 +2010,26 @@ static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *
 {
     SDL_assert(SDL_IsMainThread());
     const ECSISignature *signature = &function->signature;
+
+    // a failed call gives C a zero result
+    SDL_memset(result, 0, SDL_max(sizeof(ffi_arg), ECSIServices_GetFfiType(signature->result)->size));
+
+    // a C function that Lua called through the FFI may be compiled code, which Lua cannot run inside (DESIGN 10.4)
+    if (ECSILua_InFfiCall())
+    {
+        const ECSIFunction *running = *ECSILua_GetFfiCall();
+        char *message = nullptr;
+        bool written = SDL_asprintf(&message, "'%s' called the Lua function '%s' while Lua called it; a C function that Lua calls calls Lua only through its callbacks",
+                                    running->name, function->name) >= 0;
+        ECSIPlugin_NoteMisuse(running->plugin, written ? message : "a C function that Lua calls called Lua");
+        SDL_free(message);
+        return;
+    }
+
     lua_State *state = ECSILua_GetState();
     int top = lua_gettop(state);
     usz count = arrlenu(signature->parameters);
     int resultCount = (signature->result.type != ECSIParameterType_Void ? 1 : 0) + (int)signature->outCount;
-
-    // a failed call gives C a zero result
-    SDL_memset(result, 0, SDL_max(sizeof(ffi_arg), ECSIServices_GetFfiType(signature->result)->size));
 
     // the plugin that gave the Lua function was removed, so its code never runs again
     if (function->inert)
@@ -2106,6 +2123,8 @@ static void ECSIServices_CallLuaFor(ffi_cif *cif, void *result, void **arguments
 /// @brief Gives the code that a plugin's C code calls for a function. A Lua function that keeps callbacks gets code of its own for each plugin, made when
 /// the plugin first asks, so a callback it keeps runs nothing once the plugin that gave it is disabled; every other function has one pointer.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+static bool ECSIFfi_CallsLua(ECSPlugin plugin);
+
 static SHUResult ECSIFunction_GetPointerFor(ECSIFunction *function, ECSPlugin plugin, ECSFunction *retPointer)
 {
     bool keeps = false;
@@ -2136,6 +2155,12 @@ static SHUResult ECSIFunction_GetPointerFor(ECSIFunction *function, ECSPlugin pl
         caller->plugin = plugin;
         SDL_memcpy(&caller->pointer, &code, sizeof(code));
         hmput(function->stubs, plugin, caller);
+    }
+
+    // a plugin that can call Lua is not called through the FFI, as Lua cannot run inside compiled code (DESIGN 10.4)
+    if (plugin != nullptr && (function->lua != LUA_NOREF || ECSIFfi_CallsLua(function->plugin)))
+    {
+        hmput(SERVICES.luaCallers, plugin, true);
     }
 
     *retPointer = keeps ? hmget(function->stubs, plugin)->pointer : function->pointer;
@@ -2231,6 +2256,819 @@ static void ECSIServices_FreeSpare(ECSIFunction **spare)
 }
 
 #pragma endregion C Calls Lua
+
+#pragma region Lua Calls C Through the FFI
+
+/// @brief The helpers of Lua's wrappers of C functions (DESIGN 10.4). The chunk gets the FFI, a table of the C functions that the wrappers call and of
+/// Lua C functions for the rare cases, and the registry; it gives the table of helpers that each wrapper gets.
+static const char OPENECS_FFI_HELPERS[] =
+    "local ffi, C, R = ...\n"
+    "ffi.cdef('struct ECSIFfiSlice { void *data; size_t size; }; struct ECSIFfiHandle { void *object; void *type; };')\n"
+    "local H = {\n"
+    "  ffi = ffi, R = R,\n"
+    "  slice = ffi.typeof('struct ECSIFfiSlice'),\n"
+    "  handle = ffi.typeof('struct ECSIFfiHandle *'),\n"
+    "  bytes = ffi.typeof('uint8_t[?]'),\n"
+    "  current = ffi.cast('void **', C.current),\n"
+    "  misuses = ffi.cast('uint64_t (*)(void)', C.misuses),\n"
+    "  profiling = ffi.cast('bool (*)(void)', C.profiling),\n"
+    "  enter = ffi.cast('void (*)(void *, void *, const char *)', C.enter),\n"
+    "  leave = ffi.cast('void (*)(void *)', C.leave),\n"
+    "  parseColor = ffi.cast('bool (*)(const char *, uint32_t *)', C.parseColor),\n"
+    "}\n"
+    "for name, fn in pairs(C.lua) do H[name] = fn end\n"
+    "local format, floor = string.format, math.floor\n"
+    "function H.text(color) return format('#%06X%02X', color % 16777216, floor(color / 16777216)) end\n"
+    "function H.copy(text)\n"
+    "  local length = #text\n"
+    "  local bytes = H.bytes(length + 1)\n"
+    "  ffi.copy(bytes, text, length)\n"
+    "  return bytes, length\n"
+    "end\n"
+    "return H\n";
+
+/// @brief Gives a pointer that Lua passes: a light userdata, or a pointer cdata, whose bytes are where lua_topointer points.
+static void *ECSIFfi_ToPointer(lua_State *state, int index)
+{
+    if (lua_type(state, index) == OPENECS_LUA_TCDATA)
+    {
+        return *(void *const *)lua_topointer(state, index);
+    }
+
+    return lua_touserdata(state, index);
+}
+
+/// @brief H.argError(argument, message): a bad argument of the wrapper that calls it.
+static int ECSIFfi_ArgError(lua_State *state)
+{
+    ECSILua_ArgErrorAt(state, 1, (int)lua_tointeger(state, 1), lua_tostring(state, 2));
+}
+
+/// @brief H.typeError(argument, typeName, value): an argument of the wrapper that calls it has another type.
+static int ECSIFfi_TypeError(lua_State *state)
+{
+    ECSILua_TypeErrorAt(state, 1, (int)lua_tointeger(state, 1), 3, lua_tostring(state, 2));
+}
+
+/// @brief H.number(argument, value): a number, or a text that Lua reads as one.
+static int ECSIFfi_Number(lua_State *state)
+{
+    int isNumber = 0;
+    lua_Number number = lua_tonumberx(state, 2, &isNumber);
+
+    if (!isNumber)
+    {
+        ECSILua_TypeErrorAt(state, 1, (int)lua_tointeger(state, 1), 2, lua_typename(state, LUA_TNUMBER));
+    }
+
+    lua_pushnumber(state, number);
+    return 1;
+}
+
+/// @brief H.int(argument, value) and H.int64(argument, value): a whole number that fits, or for an int64 an int64_t or uint64_t cdata, which goes to C as it is.
+static int ECSIFfi_Integer(lua_State *state, bool wide)
+{
+    int argument = (int)lua_tointeger(state, 1);
+    i64 integer = 0;
+    int isInteger = 0;
+
+    if (wide)
+    {
+        isInteger = ECSILua_ToInt64(state, 2, &integer);
+    }
+    else
+    {
+        integer = (i64)lua_tointegerx(state, 2, &isInteger);
+    }
+
+    if (!isInteger && lua_isnumber(state, 2))
+    {
+        ECSILua_ArgErrorAt(state, 1, argument, "number has no integer representation");
+    }
+
+    if (!isInteger)
+    {
+        ECSILua_TypeErrorAt(state, 1, argument, 2, lua_typename(state, LUA_TNUMBER));
+    }
+
+    if (!wide && (integer < SDL_MIN_SINT32 || integer > SDL_MAX_SINT32))
+    {
+        ECSILua_ArgErrorAt(state, 1, argument, "does not fit in an int");
+    }
+
+    if (lua_type(state, 2) == OPENECS_LUA_TCDATA)
+    {
+        lua_pushvalue(state, 2);
+    }
+    else
+    {
+        lua_pushnumber(state, (lua_Number)integer);
+    }
+
+    return 1;
+}
+
+static int ECSIFfi_Int(lua_State *state)
+{
+    return ECSIFfi_Integer(state, false);
+}
+
+static int ECSIFfi_Int64(lua_State *state)
+{
+    return ECSIFfi_Integer(state, true);
+}
+
+/// @brief H.string(argument, value): a text, or a number as Lua writes it.
+static int ECSIFfi_String(lua_State *state)
+{
+    if (lua_tostring(state, 2) == nullptr)
+    {
+        ECSILua_TypeErrorAt(state, 1, (int)lua_tointeger(state, 1), 2, lua_typename(state, LUA_TSTRING));
+    }
+
+    lua_pushvalue(state, 2);
+    return 1;
+}
+
+/// @brief H.color(argument, value): a colour that the wrapper could not read at once, or the error that it is none.
+static int ECSIFfi_Color(lua_State *state)
+{
+    int argument = (int)lua_tointeger(state, 1);
+    const char *text = lua_tostring(state, 2);
+
+    if (text == nullptr)
+    {
+        ECSILua_TypeErrorAt(state, 1, argument, 2, lua_typename(state, LUA_TSTRING));
+    }
+
+    ECSColor color = 0;
+
+    if (!ECSColor_Parse(text, &color))
+    {
+        ECSILua_ArgErrorAt(state, 1, argument, "is not a colour: \"#RRGGBB\", \"#RRGGBBAA\" or a colour of the theme, such as \"text\"");
+    }
+
+    lua_pushnumber(state, (lua_Number)color);
+    return 1;
+}
+
+/// @brief H.value(value): a new ECSValue of a Lua value, as a light userdata, or nil if it cannot be made.
+static int ECSIFfi_Value(lua_State *state)
+{
+    ECSValue *value = nullptr;
+
+    if (ECSValue_Create(&value))
+    {
+        return 0;
+    }
+
+    if (ECSILua_GetValue(state, 1, value))
+    {
+        ECSValue_Destroy(&value);
+        return 0;
+    }
+
+    lua_pushlightuserdata(state, value);
+    return 1;
+}
+
+/// @brief H.newValue(): a new empty ECSValue for an output, or nil if it cannot be made.
+static int ECSIFfi_NewValue(lua_State *state)
+{
+    ECSValue *value = nullptr;
+
+    if (ECSValue_Create(&value))
+    {
+        return 0;
+    }
+
+    lua_pushlightuserdata(state, value);
+    return 1;
+}
+
+/// @brief H.pushValue(value, destroy): the Lua value of an ECSValue, which it destroys when destroy is true.
+static int ECSIFfi_PushValue(lua_State *state)
+{
+    ECSValue *value = ECSIFfi_ToPointer(state, 1);
+    ECSILua_PushValue(state, value);
+
+    if (lua_toboolean(state, 2))
+    {
+        ECSValue_Destroy(&value);
+    }
+
+    return 1;
+}
+
+/// @brief H.free(...): destroys the ECSValues that H.value and H.newValue made; nil is skipped.
+static int ECSIFfi_Free(lua_State *state)
+{
+    for (int i = 1; i <= lua_gettop(state); i++)
+    {
+        ECSValue *value = ECSIFfi_ToPointer(state, i);
+        ECSValue_Destroy(&value);
+    }
+
+    return 0;
+}
+
+/// @brief H.struct(argument, value, type): the memory of a struct read from a table of its fields, as a userdata, which the FFI passes as a pointer.
+static int ECSIFfi_Struct(lua_State *state)
+{
+    int argument = (int)lua_tointeger(state, 1);
+    const ECSIStructType *type = lua_touserdata(state, 3);
+    void *memory = lua_newuserdata(state, type->size);
+    SDL_memset(memory, 0, type->size);
+    const char *field = nullptr;
+
+    if (!ECSIStructs_Read(state, 2, type, memory, &field))
+    {
+        const char *problem = field == nullptr ? lua_pushfstring(state, "is not a %s, a table of its fields", type->name)
+                                               : lua_pushfstring(state, "is not a %s: its field '%s' is missing or of another type", type->name, field);
+        ECSILua_ArgErrorAt(state, 1, argument, problem);
+    }
+
+    return 1;
+}
+
+/// @brief H.newStruct(type): zeroed memory of a struct for an output, as a userdata.
+static int ECSIFfi_NewStruct(lua_State *state)
+{
+    const ECSIStructType *type = lua_touserdata(state, 1);
+    SDL_memset(lua_newuserdata(state, type->size), 0, type->size);
+    return 1;
+}
+
+/// @brief H.pushStruct(memory, type): the table of a struct that C filled.
+static int ECSIFfi_PushStruct(lua_State *state)
+{
+    ECSIStructs_Push(state, lua_touserdata(state, 2), lua_touserdata(state, 1));
+    return 1;
+}
+
+/// @brief H.pushHandle(type, object): the handle of an object that C gave, or nil.
+static int ECSIFfi_PushHandle(lua_State *state)
+{
+    ECSIServices_PushHandleOf(state, lua_touserdata(state, 1), ECSIFfi_ToPointer(state, 2));
+    return 1;
+}
+
+/// @brief H.raise(): the misuse that the C function noted, raised at the line that called the wrapper, as a misuse in a C function is (DESIGN 1.4).
+static int ECSIFfi_Raise(lua_State *state)
+{
+    ECSIPlugin_ReportDeferredMisuse(state);
+    luaL_where(state, 2);
+    lua_pushstring(state, ECSIPlugin_GetLastMisuse());
+    lua_concat(state, 2);
+    return lua_error(state);
+}
+
+/// @brief H.cannot(name): a value that cannot be made for a call.
+static int ECSIFfi_Cannot(lua_State *state)
+{
+    ECSILua_MisuseAt(state, 2, "cannot convert a value for '%s'", lua_tostring(state, 1));
+}
+
+/// @brief Sets a field of the table on the top of the stack to a C function, as a light userdata; POSIX lets a data pointer hold code.
+static void ECSIFfi_SetCode(lua_State *state, const char *name, void (*code)(void))
+{
+    void *pointer = nullptr;
+    SDL_memcpy(&pointer, &code, sizeof(pointer));
+    lua_pushlightuserdata(state, pointer);
+    lua_setfield(state, -2, name);
+}
+
+/// @brief Pushes the helpers of the wrappers, which are made with the first wrapper.
+static SHUResult ECSIFfi_PushHelpers(lua_State *state)
+{
+    if (SERVICES.ffiHelpers != LUA_NOREF)
+    {
+        lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.ffiHelpers);
+        return SHUResult_Ok;
+    }
+
+    static const luaL_Reg HELPERS[] = {
+        {"argError", ECSIFfi_ArgError},
+        {"typeError", ECSIFfi_TypeError},
+        {"number", ECSIFfi_Number},
+        {"int", ECSIFfi_Int},
+        {"int64", ECSIFfi_Int64},
+        {"string", ECSIFfi_String},
+        {"color", ECSIFfi_Color},
+        {"value", ECSIFfi_Value},
+        {"newValue", ECSIFfi_NewValue},
+        {"pushValue", ECSIFfi_PushValue},
+        {"free", ECSIFfi_Free},
+        {"struct", ECSIFfi_Struct},
+        {"newStruct", ECSIFfi_NewStruct},
+        {"pushStruct", ECSIFfi_PushStruct},
+        {"pushHandle", ECSIFfi_PushHandle},
+        {"raise", ECSIFfi_Raise},
+        {"cannot", ECSIFfi_Cannot},
+        {nullptr, nullptr},
+    };
+
+    if (luaL_loadbuffer(state, OPENECS_FFI_HELPERS, sizeof(OPENECS_FFI_HELPERS) - 1, "=ecs.ffi") != LUA_OK)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The FFI's helpers do not load: %s", lua_tostring(state, -1));
+        lua_pop(state, 1);
+        return SHUResult_Err;
+    }
+
+    lua_getglobal(state, "require");
+    lua_pushliteral(state, "ffi");
+    lua_call(state, 1, 1);
+
+    lua_newtable(state);
+    lua_pushlightuserdata(state, (void *)ECSILua_GetFfiCall());
+    lua_setfield(state, -2, "current");
+    ECSIFfi_SetCode(state, "misuses", (void (*)(void))ECSIPlugin_GetMisuseCount);
+    ECSIFfi_SetCode(state, "profiling", (void (*)(void))ECSIProfile_IsOn);
+    ECSIFfi_SetCode(state, "enter", (void (*)(void))ECSIProfile_Enter);
+    ECSIFfi_SetCode(state, "leave", (void (*)(void))ECSIProfile_Leave);
+    ECSIFfi_SetCode(state, "parseColor", (void (*)(void))ECSColor_Parse);
+    lua_newtable(state);
+    luaL_setfuncs(state, HELPERS, 0);
+    lua_setfield(state, -2, "lua");
+    lua_pushvalue(state, LUA_REGISTRYINDEX);
+
+    if (ECSILua_Call(state, 3, 1))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The FFI's helpers do not start: %s", lua_tostring(state, -1));
+        lua_pop(state, 1);
+        return SHUResult_Err;
+    }
+
+    lua_pushvalue(state, -1);
+    SERVICES.ffiHelpers = luaL_ref(state, LUA_REGISTRYINDEX);
+    return SHUResult_Ok;
+}
+
+/// @brief Tells whether a plugin's C code may call Lua outside its functions' callbacks: it keeps callbacks, or calls Lua functions that it looked up.
+static bool ECSIFfi_CallsLua(ECSPlugin plugin)
+{
+    if (plugin == nullptr || hmget(SERVICES.luaCallers, plugin))
+    {
+        return true;
+    }
+
+    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
+    {
+        const ECSIFunction *function = SERVICES.functions[i].value;
+
+        for (usz j = 0; function->plugin == plugin && j < arrlenu(function->signature.parameters); j++)
+        {
+            if (function->signature.parameters[j].keep)
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/// @brief Tells whether Lua calls a function through a wrapper of the FFI: a plugin's C function whose code calls no Lua. The JIT compiles such a
+/// call with its caller, and Lua cannot run inside compiled code; the others, and the core's own functions, which may run Lua such as a panel's
+/// Create, are called through the C API.
+static bool ECSIFfi_Wraps(const ECSIFunction *function)
+{
+    if (function->pointer == nullptr || function->lua != LUA_NOREF || ECSIFfi_CallsLua(function->plugin))
+    {
+        return false;
+    }
+
+    for (usz i = 0; i < arrlenu(function->signature.parameters); i++)
+    {
+        if (function->signature.parameters[i].type == ECSIParameterType_Callback)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/// @brief The C type through which the FFI passes a parameter or a result of a type.
+static const char *ECSIFfi_GetCType(ECSIParameterType type)
+{
+    switch (type)
+    {
+    case ECSIParameterType_Bool:
+        return "bool";
+    case ECSIParameterType_Int:
+        return "int32_t";
+    case ECSIParameterType_Int64:
+        return "int64_t";
+    case ECSIParameterType_Float:
+        return "float";
+    case ECSIParameterType_Double:
+        return "double";
+    case ECSIParameterType_Color:
+        return "uint32_t";
+    case ECSIParameterType_String:
+        return "const char *";
+    case ECSIParameterType_Buffer:
+        return "struct ECSIFfiSlice";
+    case ECSIParameterType_Void:
+        return "void";
+    default:
+        // handles, values and structs: a pointer
+        return "void *";
+    }
+}
+
+/// @brief Tells whether an output parameter is a pointer to storage that the wrapper keeps, as opposed to a value or a struct that each call makes.
+static bool ECSIFfi_IsKeptOutput(ECSIParameter parameter)
+{
+    return parameter.out && parameter.type != ECSIParameterType_Struct && parameter.type != ECSIParameterType_Value;
+}
+
+/// @brief Adds the C type of a function pointer of a signature, such as "void (*)(void *, float)".
+static void ECSIFfi_AddFunctionType(ECSIText *text, const ECSISignature *signature)
+{
+    ECSIText_Add(text, "%s (*)(", ECSIFfi_GetCType(signature->result.type));
+
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
+    {
+        ECSIParameter parameter = signature->parameters[i];
+        ECSIText_Add(text, "%s%s%s", i > 0 ? ", " : "", ECSIFfi_GetCType(parameter.type), ECSIFfi_IsKeptOutput(parameter) ? " *" : "");
+    }
+
+    ECSIText_Add(text, ")");
+}
+
+/// @brief Adds the Lua code that checks the argument of a parameter, a, into what C gets, p, both numbered by the parameter.
+static void ECSIFfi_AddCheck(ECSIText *text, ECSIParameter parameter, usz i, int argument)
+{
+    switch (parameter.type)
+    {
+    case ECSIParameterType_Bool:
+        ECSIText_Add(text, "  local p%zu = not not a%zu\n", i, i);
+        break;
+    case ECSIParameterType_Int:
+        ECSIText_Add(text, "  local p%zu = a%zu\n  if type(p%zu) ~= 'number' or p%zu %% 1 ~= 0 or p%zu < -2147483648 or p%zu > 2147483647 then p%zu = H.int(%d, p%zu) end\n", i, i, i,
+                     i, i, i, i, argument, i);
+        break;
+    case ECSIParameterType_Int64:
+        ECSIText_Add(text, "  local p%zu = a%zu\n  if type(p%zu) ~= 'number' or p%zu %% 1 ~= 0 then p%zu = H.int64(%d, p%zu) end\n", i, i, i, i, i, argument, i);
+        break;
+    case ECSIParameterType_Float:
+    case ECSIParameterType_Double:
+        ECSIText_Add(text, "  local p%zu = a%zu\n  if type(p%zu) ~= 'number' then p%zu = H.number(%d, p%zu) end\n", i, i, i, i, argument, i);
+        break;
+    case ECSIParameterType_String:
+        ECSIText_Add(text, "  local p%zu = a%zu\n  if type(p%zu) ~= 'string' then p%zu = H.string(%d, p%zu) end\n", i, i, i, i, argument, i);
+        break;
+    case ECSIParameterType_Color:
+        ECSIText_Add(text, "  local p%zu\n  if type(a%zu) == 'string' and parseColor(a%zu, color) then p%zu = color[0] else p%zu = H.color(%d, a%zu) end\n", i, i, i, i, i, argument, i);
+        break;
+    case ECSIParameterType_Buffer:
+        // a copy, because the function may write into a buffer and Lua strings must not change; the bytes stay a local during the call
+        ECSIText_Add(text, "  local b%zu = a%zu\n  if type(b%zu) ~= 'string' then b%zu = H.string(%d, b%zu) end\n", i, i, i, i, argument, i);
+        ECSIText_Add(text, "  local bytes%zu, length%zu = copy(b%zu)\n  local p%zu = s%zu\n  p%zu.data, p%zu.size = bytes%zu, length%zu\n", i, i, i, i, i, i, i, i, i);
+        break;
+    case ECSIParameterType_Handle:
+        ECSIText_Add(text, "  local m%zu = getmetatable(a%zu)\n  if m%zu == nil or m%zu ~= R[M%zu] then H.typeError(%d, M%zu, a%zu) end\n", i, i, i, i, i, argument, i, i);
+        ECSIText_Add(text, "  local p%zu = cast(handle, a%zu).object\n  if p%zu == nil then H.argError(%d, 'the object of this handle is gone') end\n", i, i, i, argument);
+        break;
+    case ECSIParameterType_Struct:
+        ECSIText_Add(text, "  local p%zu = H.struct(%d, a%zu, T%zu)\n", i, argument, i, i);
+        break;
+    default:
+        break;
+    }
+}
+
+/// @brief Adds the code that converts what C gave, an expression, into a result of Lua, r and its number; type names the local of its handle's or
+/// struct's type.
+static void ECSIFfi_AddResult(ECSIText *text, ECSIParameter parameter, usz number, const char *from, const char *type)
+{
+    switch (parameter.type)
+    {
+    case ECSIParameterType_Int64:
+        ECSIText_Add(text, "  local r%zu = tonumber(%s)\n", number, from);
+        break;
+    case ECSIParameterType_Color:
+        ECSIText_Add(text, "  local r%zu = text(%s)\n", number, from);
+        break;
+    case ECSIParameterType_String:
+        ECSIText_Add(text, "  local r%zu = %s\n  if r%zu == nil then r%zu = nil else r%zu = ffi.string(r%zu) end\n", number, from, number, number, number, number);
+        break;
+    case ECSIParameterType_Buffer:
+        ECSIText_Add(text, "  local r%zu = %s\n  if r%zu.data == nil then r%zu = '' else r%zu = ffi.string(r%zu.data, r%zu.size) end\n", number, from, number, number, number, number,
+                     number);
+        break;
+    case ECSIParameterType_Handle:
+        ECSIText_Add(text, "  local r%zu = H.pushHandle(%s, %s)\n", number, type, from);
+        break;
+    case ECSIParameterType_Value:
+        ECSIText_Add(text, "  local r%zu = H.pushValue(%s, %s)\n", number, from, parameter.out ? "true" : "false");
+        break;
+    case ECSIParameterType_Struct:
+        ECSIText_Add(text, "  local r%zu = H.pushStruct(%s, %s)\n", number, from, type);
+        break;
+    default:
+        // booleans and numbers are Lua's as they are
+        ECSIText_Add(text, "  local r%zu = %s\n", number, from);
+        break;
+    }
+}
+
+/// @brief Adds the arguments of H.free: the values that a call made, of the parameters before one.
+static void ECSIFfi_AddValues(ECSIText *text, const ECSISignature *signature, usz before)
+{
+    for (usz i = 0; i < before; i++)
+    {
+        if (signature->parameters[i].type == ECSIParameterType_Value)
+        {
+            ECSIText_Add(text, ", p%zu", i);
+        }
+    }
+}
+
+/// @brief Adds the locals that a wrapper keeps between its calls: the function, its helpers, and storage for the outputs.
+static void ECSIFfi_AddHeader(ECSIText *text, const ECSISignature *signature)
+{
+    ECSIText_Add(text, "local H, F = ...\nlocal ffi, R, cast, handle, copy, text, parseColor = H.ffi, H.R, H.ffi.cast, H.handle, H.copy, H.text, H.parseColor\n");
+    ECSIText_Add(text, "local current, misuses, profiling, enter, leave = H.current, H.misuses, H.profiling, H.enter, H.leave\n");
+    ECSIText_Add(text, "local call = cast(F.ctype, F.pointer)\nlocal FUNCTION, PLUGIN, NAME = cast('void *', F.called), cast('void *', F.plugin), cast('const char *', F.name)\n");
+    ECSIText_Add(text, "local scope, color = H.bytes(F.scope), ffi.new('uint32_t[1]')\nlocal M, T = F.metatables, F.types\nlocal TR = T[0]\n");
+
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
+    {
+        ECSIParameter parameter = signature->parameters[i];
+
+        if (ECSIFfi_IsKeptOutput(parameter))
+        {
+            ECSIText_Add(text, "local o%zu = ffi.new('%s[1]')\n", i, ECSIFfi_GetCType(parameter.type));
+        }
+        else if (parameter.type == ECSIParameterType_Buffer)
+        {
+            ECSIText_Add(text, "local s%zu = H.slice()\n", i);
+        }
+
+        if (parameter.type == ECSIParameterType_Handle || parameter.type == ECSIParameterType_Struct)
+        {
+            ECSIText_Add(text, "local M%zu, T%zu = M[%zu], T[%zu]\n", i, i, i + 1, i + 1);
+        }
+    }
+}
+
+/// @brief Adds what a wrapper does before the call: it checks the arguments, then makes the values, which allocate, and clears the outputs.
+static void ECSIFfi_AddArguments(ECSIText *text, const ECSISignature *signature)
+{
+    int argument = 0;
+
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
+    {
+        if (!signature->parameters[i].out)
+        {
+            ECSIFfi_AddCheck(text, signature->parameters[i], i, ++argument);
+        }
+    }
+
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
+    {
+        ECSIParameter parameter = signature->parameters[i];
+
+        if (parameter.type == ECSIParameterType_Value)
+        {
+            ECSIText_Add(text, parameter.out ? "  local p%zu = H.newValue()\n" : "  local p%zu = H.value(a%zu)\n", i, i);
+            ECSIText_Add(text, "  if p%zu == nil then H.free(nil", i);
+            ECSIFfi_AddValues(text, signature, i);
+            ECSIText_Add(text, ") H.cannot(F.full) end\n");
+        }
+        else if (parameter.out && parameter.type == ECSIParameterType_Struct)
+        {
+            ECSIText_Add(text, "  local p%zu = H.newStruct(T%zu)\n", i, i);
+        }
+        else if (ECSIFfi_IsKeptOutput(parameter))
+        {
+            const char *zero = parameter.type == ECSIParameterType_Bool                                                   ? "false"
+                               : parameter.type == ECSIParameterType_String || parameter.type == ECSIParameterType_Handle ? "nil"
+                               : parameter.type == ECSIParameterType_Buffer                                               ? "H.slice()"
+                                                                                                                          : "0";
+            ECSIText_Add(text, "  o%zu[0] = %s\n  local p%zu = o%zu\n", i, zero, i, i);
+        }
+    }
+}
+
+/// @brief Adds the call and what a wrapper does after it: it raises a misuse that the function noted, and gives nil and why when it failed.
+static void ECSIFfi_AddCall(ECSIText *text, const ECSISignature *signature)
+{
+    usz count = arrlenu(signature->parameters);
+
+    // the function is the core's while it runs: Lua must not run, and its time is its plugin's, not the caller's (DESIGN 3.5)
+    ECSIText_Add(text, "  local before, profiled = misuses(), profiling()\n  if profiled then enter(scope, PLUGIN, NAME) end\n");
+    ECSIText_Add(text, "  local outer = current[0]\n  current[0] = FUNCTION\n  %scall(", signature->result.type != ECSIParameterType_Void ? "local r = " : "");
+
+    for (usz i = 0; i < count; i++)
+    {
+        ECSIText_Add(text, "%sp%zu", i > 0 ? ", " : "", i);
+    }
+
+    ECSIText_Add(text, ")\n  current[0] = outer\n  if profiled then leave(scope) end\n  if misuses() ~= before then H.free(nil");
+    ECSIFfi_AddValues(text, signature, count);
+    ECSIText_Add(text, ") H.raise() end\n");
+
+    // a function that failed gives nil for each result, and why last, as Lua's io.open does
+    if (signature->fails)
+    {
+        ECSIText_Add(text, "  if o%zu[0] ~= nil then\n    H.free(nil", count - 1);
+        ECSIFfi_AddValues(text, signature, count);
+        ECSIText_Add(text, ")\n    return ");
+        usz results = signature->outCount - 1 + (signature->result.type != ECSIParameterType_Void ? 1 : 0);
+
+        for (usz i = 0; i < results; i++)
+        {
+            ECSIText_Add(text, "nil, ");
+        }
+
+        ECSIText_Add(text, "ffi.string(o%zu[0])\n  end\n", count - 1);
+    }
+}
+
+/// @brief Adds the results of a wrapper, frees the values of its call, and returns the result, then the outputs.
+static void ECSIFfi_AddReturn(ECSIText *text, const ECSISignature *signature)
+{
+    usz count = arrlenu(signature->parameters);
+    bool result = signature->result.type != ECSIParameterType_Void;
+
+    if (result)
+    {
+        ECSIFfi_AddResult(text, signature->result, 0, "r", "TR");
+    }
+
+    for (usz i = 0; i < count; i++)
+    {
+        ECSIParameter parameter = signature->parameters[i];
+
+        if (parameter.out)
+        {
+            char from[32];
+            char type[32];
+            (void)SDL_snprintf(from, sizeof(from), ECSIFfi_IsKeptOutput(parameter) ? "o%zu[0]" : "p%zu", i);
+            (void)SDL_snprintf(type, sizeof(type), "T%zu", i);
+            ECSIFfi_AddResult(text, parameter, i + 1, from, type);
+        }
+    }
+
+    ECSIText_Add(text, "  H.free(nil");
+
+    for (usz i = 0; i < count; i++)
+    {
+        if (signature->parameters[i].type == ECSIParameterType_Value && !signature->parameters[i].out)
+        {
+            ECSIText_Add(text, ", p%zu", i);
+        }
+    }
+
+    ECSIText_Add(text, ")\n  return ");
+    bool first = true;
+
+    if (result)
+    {
+        ECSIText_Add(text, "r0");
+        first = false;
+    }
+
+    for (usz i = 0; i < count; i++)
+    {
+        if (signature->parameters[i].out)
+        {
+            ECSIText_Add(text, "%sr%zu", first ? "" : ", ", i + 1);
+            first = false;
+        }
+    }
+
+    ECSIText_Add(text, "\nend\n");
+}
+
+/// @brief Writes the Lua source of a function's wrapper.
+static ECSIText ECSIFfi_Write(const ECSIFunction *function)
+{
+    const ECSISignature *signature = &function->signature;
+    ECSIText text = {0};
+    ECSIFfi_AddHeader(&text, signature);
+    ECSIText_Add(&text, "return function(");
+    bool first = true;
+
+    for (usz i = 0; i < arrlenu(signature->parameters); i++)
+    {
+        if (!signature->parameters[i].out)
+        {
+            ECSIText_Add(&text, "%sa%zu", first ? "" : ", ", i);
+            first = false;
+        }
+    }
+
+    ECSIText_Add(&text, ")\n");
+    ECSIFfi_AddArguments(&text, signature);
+    ECSIFfi_AddCall(&text, signature);
+    ECSIFfi_AddReturn(&text, signature);
+    return text;
+}
+
+/// @brief Pushes the types of a function's handles and structs, by the parameter's number from 1 and the result's at 0: the table of their metatables'
+/// names, then the table of their types.
+static void ECSIFfi_PushTypes(lua_State *state, const ECSISignature *signature)
+{
+    lua_newtable(state);
+    lua_newtable(state);
+
+    for (usz i = 0; i <= arrlenu(signature->parameters); i++)
+    {
+        ECSIParameter parameter = i == 0 ? signature->result : signature->parameters[i - 1];
+
+        if (parameter.type == ECSIParameterType_Handle)
+        {
+            lua_pushstring(state, parameter.handle->metatable);
+            lua_rawseti(state, -3, (int)i);
+            lua_pushlightuserdata(state, parameter.handle);
+            lua_rawseti(state, -2, (int)i);
+        }
+        else if (parameter.type == ECSIParameterType_Struct)
+        {
+            lua_pushlightuserdata(state, parameter.structType);
+            lua_rawseti(state, -2, (int)i);
+        }
+    }
+}
+
+/// @brief Pushes the constants of a function's wrapper: its C type, its pointer, its plugin and the types of its handles and structs.
+static SHUResult ECSIFfi_PushConstants(lua_State *state, const ECSIFunction *function)
+{
+    ECSIText type = {0};
+    ECSIFfi_AddFunctionType(&type, &function->signature);
+
+    if (type.failed)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    void *pointer = nullptr;
+    SDL_memcpy(&pointer, &function->pointer, sizeof(pointer));
+
+    lua_newtable(state);
+    lua_pushstring(state, type.data);
+    SDL_free(type.data);
+    lua_setfield(state, -2, "ctype");
+    lua_pushlightuserdata(state, pointer);
+    lua_setfield(state, -2, "pointer");
+    lua_pushlightuserdata(state, (void *)function);
+    lua_setfield(state, -2, "called");
+    lua_pushlightuserdata(state, function->plugin);
+    lua_setfield(state, -2, "plugin");
+    lua_pushlightuserdata(state, (void *)ECSIPlugin_GetName(function->plugin));
+    lua_setfield(state, -2, "name");
+    lua_pushstring(state, function->name);
+    lua_setfield(state, -2, "full");
+    lua_pushinteger(state, (lua_Integer)sizeof(ECSIProfileScope));
+    lua_setfield(state, -2, "scope");
+    ECSIFfi_PushTypes(state, &function->signature);
+    lua_setfield(state, -3, "types");
+    lua_setfield(state, -2, "metatables");
+    return SHUResult_Ok;
+}
+
+/// @brief Pushes a new wrapper of a C function, which calls it through the FFI (DESIGN 10.4).
+static SHUResult ECSIFfi_PushWrapper(lua_State *state, const ECSIFunction *function)
+{
+    ECSIText source = ECSIFfi_Write(function);
+    char *chunk = nullptr;
+
+    if (source.failed || SDL_asprintf(&chunk, "=%s", function->name) < 0)
+    {
+        SDL_free(source.data);
+        return SHUResult_ErrAllocation;
+    }
+
+    int loaded = luaL_loadbuffer(state, source.data, SDL_strlen(source.data), chunk);
+    SDL_free(chunk);
+    SDL_free(source.data);
+
+    if (loaded != LUA_OK)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The wrapper of '%s' does not load: %s", function->name, lua_tostring(state, -1));
+        lua_pop(state, 1);
+        return SHUResult_Err;
+    }
+
+    SHU_ReturnResult(ECSIFfi_PushHelpers(state), lua_pop(state, 1););
+    SHU_ReturnResult(ECSIFfi_PushConstants(state, function), lua_pop(state, 2););
+
+    if (ECSILua_Call(state, 2, 1))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The wrapper of '%s' does not start: %s", function->name, lua_tostring(state, -1));
+        lua_pop(state, 1);
+        return SHUResult_Err;
+    }
+
+    return SHUResult_Ok;
+}
+
+#pragma endregion Lua Calls C Through the FFI
 
 /// @brief Finds what a line of a function's description documents: the result for "@return text", or the parameter it names for "@param name text".
 /// @param retText Where the line's text after the tag and name starts.
@@ -3053,6 +3891,7 @@ SHUResult ECSIServices_Initialize(void)
     lua_setfield(state, -2, "__mode");
     lua_setmetatable(state, -2);
     SERVICES.handles = luaL_ref(state, LUA_REGISTRYINDEX);
+    SERVICES.ffiHelpers = LUA_NOREF;
     ECSILua_SetHandleFunctions(ECSIServices_ReadHandle, ECSIServices_PushHandle);
 
     // the core's handle types: panels, popups, and the surface a panel or popup draws into, valid during Draw
@@ -3173,7 +4012,8 @@ static void ECSIServices_PushHandleOf(lua_State *state, ECSIHandleType *handleTy
 
     lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.handles);
 
-    if (lua_rawgetp(state, -1, object) == LUA_TUSERDATA && ((ECSIHandle *)lua_touserdata(state, -1))->type == handleType)
+    if (lua_rawgetp(state, -1, object) == LUA_TUSERDATA && ((ECSIHandle *)lua_touserdata(state, -1))->type == handleType &&
+        ((ECSIHandle *)lua_touserdata(state, -1))->object == object)
     {
         lua_remove(state, -2);
         return;
@@ -3363,6 +4203,7 @@ void ECSIServices_Terminate(void)
     }
 
     hmfree(SERVICES.kept);
+    hmfree(SERVICES.luaCallers);
     arrfree(SERVICES.drawn);
     ECSILua_SetHandleFunctions(nullptr, nullptr);
     SDL_zero(SERVICES);
@@ -3384,6 +4225,8 @@ static void ECSIStructs_DropPluginMethods(ECSPlugin plugin)
 void ECSIServices_RemovePlugin(ECSPlugin plugin)
 {
     SDL_assert(plugin != nullptr);
+
+    (void)hmdel(SERVICES.luaCallers, plugin);
 
     // a failed plugin's objects may not be valid, so their handles are only forgotten
     for (usz i = shlenu(SERVICES.handleTypes); i > 0; i--)
@@ -3492,12 +4335,21 @@ SHUResult ECSIServices_PushFunction(ECSPlugin plugin, const char *name, const ch
         return SHUResult_Ok;
     }
 
-    // one Lua function per C function and plugin, made when the plugin first asks for it, so a callback knows which plugin gave it
+    // one Lua function per C function and plugin, made when the plugin first asks for it, so a callback knows which plugin gave it; a function
+    // without callbacks is a wrapper that calls it through the FFI, which the JIT compiles with its caller (DESIGN 10.4)
     if (hmgeti(function->callers, plugin) < 0)
     {
-        lua_pushlightuserdata(state, function);
-        lua_pushlightuserdata(state, plugin);
-        lua_pushcclosure(state, ECSIServices_CallC, 2);
+        if (ECSIFfi_Wraps(function))
+        {
+            SHU_ReturnResult(ECSIFfi_PushWrapper(state, function));
+        }
+        else
+        {
+            lua_pushlightuserdata(state, function);
+            lua_pushlightuserdata(state, plugin);
+            lua_pushcclosure(state, ECSIServices_CallC, 2);
+        }
+
         hmput(function->callers, plugin, luaL_ref(state, LUA_REGISTRYINDEX));
     }
 

@@ -65,19 +65,18 @@ typedef int (*ECSIValueKeepFunction)(int reference);
 /// @brief Lets go of a Lua handle that a value kept.
 typedef void (*ECSIValueDropFunction)(int reference);
 
-/// @brief Gives the object of a Lua handle that a value keeps, or nullptr once the object is gone.
-typedef void *(*ECSIValueObjectFunction)(int reference);
-
 /// @brief Sets the functions for the Lua handles that values keep; the Lua module gives them as it starts, and nullptr functions as it ends.
-void ECSIValue_SetLuaFunctions(ECSIValueKeepFunction Keep, ECSIValueDropFunction Drop, ECSIValueObjectFunction Object);
+void ECSIValue_SetLuaFunctions(ECSIValueKeepFunction Keep, ECSIValueDropFunction Drop);
 
 /// @brief Makes every handle that C set to an object, in a value and in the values it holds, give no object from now on, because the object is freed.
 void ECSIValue_ForgetObject(ECSValue *value, const void *object);
 
 /// @brief Makes a value a handle read from Lua, which keeps the Lua handle itself, so it gives Lua that same handle back, and gives C the object only while it lives.
 /// @param reference A registry reference to the Lua handle; the value owns it.
+/// @param handle The Lua handle's memory, which starts with its object, nullptr once the object is gone; it lives while the reference does, so the value
+/// reads its object without Lua, as a C function that Lua calls through the FFI must (DESIGN 10.4).
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation; the reference is dropped then.
-SHUWUR SHUResult ECSIValue_SetLuaHandle(ECSValue *value, const char *type, void *object, int reference);
+SHUWUR SHUResult ECSIValue_SetLuaHandle(ECSValue *value, const char *type, void *object, int reference, void *const *handle);
 
 /// @brief Gives the registry reference of the Lua handle that a value keeps, or 0 for a handle that C set, and for any other value.
 int ECSIValue_GetLuaHandle(const ECSValue *value);

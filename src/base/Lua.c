@@ -15,6 +15,7 @@ static struct
     ECSILuaReadHandleFunction ReadHandle; // set by the Services module
     ECSILuaPushHandleFunction PushHandle;
     ECSILuaMisuseFunction Misuse;
+    void *ffiCall; // the function that a Lua wrapper calls through the FFI, or nullptr
 } LUA = {0};
 
 /// @brief File-level state of each thread.
@@ -65,9 +66,6 @@ static const char OPENECS_LUA_IS_INT64[] =
     "local ffi = require('ffi')\n"
     "local signed, unsigned = ffi.typeof('int64_t'), ffi.typeof('uint64_t')\n"
     "return function(value) return ffi.istype(signed, value) or ffi.istype(unsigned, value) end\n";
-
-/// @brief LuaJIT's type of cdata, which lua.h does not name.
-#define OPENECS_LUA_TCDATA 10
 
 /// @brief Deepest nesting of tables that converts to a value; deeper tables are most likely cycles.
 #define OPENECS_MAX_VALUE_DEPTH 64
@@ -137,8 +135,9 @@ static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue
         // the value keeps the handle itself, so the handle it gives back is gone once its object is, and the object lives while the value does
         if (handles && LUA.ReadHandle != nullptr && LUA.ReadHandle(index, &type, &object))
         {
+            void *const *handle = lua_touserdata(state, index);
             lua_pushvalue(state, index);
-            return ECSIValue_SetLuaHandle(retValue, type, object, luaL_ref(state, LUA_REGISTRYINDEX));
+            return ECSIValue_SetLuaHandle(retValue, type, object, luaL_ref(state, LUA_REGISTRYINDEX), handle);
         }
 
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, handles ? "A userdata that is not a handle, or whose object is gone, is not data; it is skipped." : "A handle or other userdata is not data that can go to another thread; it is skipped.");
@@ -379,17 +378,6 @@ static void ECSILua_DropHandle(int reference)
     luaL_unref(LUA.state, LUA_REGISTRYINDEX, reference);
 }
 
-/// @brief Gives the object of a Lua handle that a value keeps, or nullptr once it is gone.
-static void *ECSILua_GetHandleObject(int reference)
-{
-    const char *type = nullptr;
-    void *object = nullptr;
-    lua_rawgeti(LUA.state, LUA_REGISTRYINDEX, reference);
-    bool found = LUA.ReadHandle != nullptr && LUA.ReadHandle(lua_gettop(LUA.state), &type, &object);
-    lua_pop(LUA.state, 1);
-    return found ? object : nullptr;
-}
-
 static void ECSILua_Push(lua_State *state, const ECSValue *value);
 
 static void ECSILua_PushField(const char *name, const ECSValue *field, void *userData)
@@ -476,14 +464,14 @@ SHUResult ECSILua_Initialize(void)
     }
 
     LUA.isInt64 = luaL_ref(LUA.state, LUA_REGISTRYINDEX);
-    ECSIValue_SetLuaFunctions(ECSILua_KeepHandle, ECSILua_DropHandle, ECSILua_GetHandleObject);
+    ECSIValue_SetLuaFunctions(ECSILua_KeepHandle, ECSILua_DropHandle);
     return SHUResult_Ok;
 }
 
 void ECSILua_Terminate(void)
 {
     // a value that outlives the state lets go of no handle
-    ECSIValue_SetLuaFunctions(nullptr, nullptr, nullptr);
+    ECSIValue_SetLuaFunctions(nullptr, nullptr);
 
     if (LUA.state != nullptr)
     {
@@ -496,6 +484,7 @@ void ECSILua_Terminate(void)
 lua_State *ECSILua_GetState(void)
 {
     SDL_assert(LUA.state != nullptr);
+    SDL_assert(LUA.ffiCall == nullptr || !SDL_IsMainThread());
 
     return LUA.state;
 }
@@ -575,6 +564,24 @@ void ECSILua_SetMisuseFunction(ECSILuaMisuseFunction Misuse)
     LUA.Misuse = Misuse;
 }
 
+/// @brief Notes a misuse whose message is on the top of the stack, and raises it with the line at a level of the stack before it.
+[[noreturn]] static void ECSILua_RaiseMisuse(lua_State *state, int level)
+{
+    if (LUA.Misuse != nullptr)
+    {
+        lua_State *outer = ECSILua_SetCaller(state);
+        LUA.Misuse(lua_tostring(state, -1));
+        (void)ECSILua_SetCaller(outer);
+    }
+
+    // as luaL_error, with the Lua caller's line before the message
+    luaL_where(state, level);
+    lua_insert(state, -2);
+    lua_concat(state, 2);
+    lua_error(state);
+    unreachable();
+}
+
 void ECSILua_Misuse(lua_State *state, const char *format, ...)
 {
     SDL_assert(state != nullptr);
@@ -582,50 +589,59 @@ void ECSILua_Misuse(lua_State *state, const char *format, ...)
 
     va_list arguments;
     va_start(arguments, format);
-    const char *message = lua_pushvfstring(state, format, arguments);
+    (void)lua_pushvfstring(state, format, arguments);
     va_end(arguments);
+    ECSILua_RaiseMisuse(state, 1);
+}
 
-    if (LUA.Misuse != nullptr)
-    {
-        lua_State *outer = ECSILua_SetCaller(state);
-        LUA.Misuse(message);
-        (void)ECSILua_SetCaller(outer);
-    }
+void ECSILua_MisuseAt(lua_State *state, int level, const char *format, ...)
+{
+    SDL_assert(state != nullptr);
+    SDL_assert(format != nullptr);
 
-    // as luaL_error, with the Lua caller's line before the message
-    luaL_where(state, 1);
-    lua_insert(state, -2);
-    lua_concat(state, 2);
-    lua_error(state);
-    unreachable();
+    va_list arguments;
+    va_start(arguments, format);
+    (void)lua_pushvfstring(state, format, arguments);
+    va_end(arguments);
+    ECSILua_RaiseMisuse(state, level);
 }
 
 void ECSILua_ArgError(lua_State *state, int argument, const char *message)
 {
+    ECSILua_ArgErrorAt(state, 0, argument, message);
+}
+
+void ECSILua_ArgErrorAt(lua_State *state, int level, int argument, const char *message)
+{
     // as luaL_argerror: a method's self is not counted
     lua_Debug info;
 
-    if (!lua_getstack(state, 0, &info))
+    if (!lua_getstack(state, level, &info))
     {
-        ECSILua_Misuse(state, "bad argument #%d (%s)", argument, message);
+        ECSILua_MisuseAt(state, level + 1, "bad argument #%d (%s)", argument, message);
     }
 
     lua_getinfo(state, "n", &info);
 
     if (info.namewhat != nullptr && SDL_strcmp(info.namewhat, "method") == 0 && --argument == 0)
     {
-        ECSILua_Misuse(state, "calling '%s' on bad self (%s)", info.name != nullptr ? info.name : "?", message);
+        ECSILua_MisuseAt(state, level + 1, "calling '%s' on bad self (%s)", info.name != nullptr ? info.name : "?", message);
     }
 
-    ECSILua_Misuse(state, "bad argument #%d to '%s' (%s)", argument, info.name != nullptr ? info.name : "?", message);
+    ECSILua_MisuseAt(state, level + 1, "bad argument #%d to '%s' (%s)", argument, info.name != nullptr ? info.name : "?", message);
 }
 
 void ECSILua_TypeError(lua_State *state, int argument, const char *typeName)
 {
-    const char *given = luaL_getmetafield(state, argument, "__name") == LUA_TSTRING ? lua_tostring(state, -1)
-                        : lua_type(state, argument) == LUA_TLIGHTUSERDATA           ? "light userdata"
-                                                                                    : luaL_typename(state, argument);
-    ECSILua_ArgError(state, argument, lua_pushfstring(state, "%s expected, got %s", typeName, given));
+    ECSILua_TypeErrorAt(state, 0, argument, argument, typeName);
+}
+
+void ECSILua_TypeErrorAt(lua_State *state, int level, int argument, int index, const char *typeName)
+{
+    const char *given = luaL_getmetafield(state, index, "__name") == LUA_TSTRING ? lua_tostring(state, -1)
+                        : lua_type(state, index) == LUA_TLIGHTUSERDATA           ? "light userdata"
+                                                                                 : luaL_typename(state, index);
+    ECSILua_ArgErrorAt(state, level, argument, lua_pushfstring(state, "%s expected, got %s", typeName, given));
 }
 
 const char *ECSILua_CheckLString(lua_State *state, int argument, usz *retLength)
@@ -761,6 +777,16 @@ int ECSILua_CheckOption(lua_State *state, int argument, const char *fallback, co
     }
 
     ECSILua_ArgError(state, argument, lua_pushfstring(state, "invalid option '%s'", name));
+}
+
+void **ECSILua_GetFfiCall(void)
+{
+    return &LUA.ffiCall;
+}
+
+bool ECSILua_InFfiCall(void)
+{
+    return LUA.ffiCall != nullptr && SDL_IsMainThread();
 }
 
 lua_State *ECSILua_SetCaller(lua_State *state)

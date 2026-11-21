@@ -113,6 +113,8 @@ static thread_local struct
     ECSICallback *callback; // the innermost plugin callback that runs on this thread, or nullptr
     u64 misuses;            // how many misuses this thread noted
     char *misuse;           // what the last one said, or nullptr
+    bool deferred;          // the last misuse came during a call through the FFI, and waits to be reported until Lua can run
+    ECSPlugin checker;      // the plugin whose check that misuse failed, or nullptr for the core
 } PLUGINS_THREAD = {0};
 
 /// @brief Tells whether a plugin's code runs: it loaded, did not fail and is not disabled.
@@ -1616,19 +1618,9 @@ bool ECSIPlugin_Leave(ECSICallback *callback)
     return true;
 }
 
-void ECSIPlugin_NoteMisuse(ECSPlugin checker, const char *message)
+/// @brief Logs a misuse in the name of the plugin whose callback runs on this thread, with the Lua stack trace when Lua made the call, and charges it to that callback.
+static void ECSIPlugin_ReportMisuse(ECSPlugin checker, const char *message, lua_State *caller)
 {
-    SDL_assert(message != nullptr);
-
-    PLUGINS_THREAD.misuses++;
-    SDL_free(PLUGINS_THREAD.misuse);
-    PLUGINS_THREAD.misuse = SDL_strdup(message);
-
-    if (PLUGINS.hooks.Misuse != nullptr)
-    {
-        PLUGINS.hooks.Misuse(message);
-    }
-
     // the first misuse of a callback is the one to fix, and the others often follow from it, so only it is logged
     ECSICallback *callback = PLUGINS_THREAD.callback;
     bool charged = callback != nullptr && callback->plugin != nullptr;
@@ -1639,7 +1631,6 @@ void ECSIPlugin_NoteMisuse(ECSPlugin checker, const char *message)
     }
 
     // when Lua made the call, the stack trace names its line; the core's own Lua functions run in the main state
-    lua_State *caller = ECSILua_GetCaller();
     lua_Debug running;
 
     if (caller == nullptr && SDL_IsMainThread() && ECSILua_GetState() != nullptr && lua_getstack(ECSILua_GetState(), 0, &running))
@@ -1675,6 +1666,41 @@ void ECSIPlugin_NoteMisuse(ECSPlugin checker, const char *message)
     }
 
     callback->misuse = text != nullptr ? text : SDL_strdup(message);
+}
+
+void ECSIPlugin_NoteMisuse(ECSPlugin checker, const char *message)
+{
+    SDL_assert(message != nullptr);
+
+    PLUGINS_THREAD.misuses++;
+    SDL_free(PLUGINS_THREAD.misuse);
+    PLUGINS_THREAD.misuse = SDL_strdup(message);
+
+    if (PLUGINS.hooks.Misuse != nullptr)
+    {
+        PLUGINS.hooks.Misuse(message);
+    }
+
+    // a C function that Lua called through the FFI may run as compiled code, where Lua cannot be used; its wrapper reports the misuse once the call returns
+    if (ECSILua_InFfiCall())
+    {
+        PLUGINS_THREAD.deferred = true;
+        PLUGINS_THREAD.checker = checker;
+        return;
+    }
+
+    ECSIPlugin_ReportMisuse(checker, message, ECSILua_GetCaller());
+}
+
+void ECSIPlugin_ReportDeferredMisuse(lua_State *state)
+{
+    SDL_assert(state != nullptr);
+
+    if (PLUGINS_THREAD.deferred)
+    {
+        PLUGINS_THREAD.deferred = false;
+        ECSIPlugin_ReportMisuse(PLUGINS_THREAD.checker, ECSIPlugin_GetLastMisuse(), state);
+    }
 }
 
 u64 ECSIPlugin_GetMisuseCount(void)
