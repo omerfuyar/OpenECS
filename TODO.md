@@ -100,7 +100,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 **std: ui, with draw**
 
-- **P3 · A column in a row measures its text at its parent's width.** `std/plugins/ui/init.lua` A row narrows its wrapped texts and columns only when its children need more than its width; a column that grows in a row still breaks its text at the width it had before it grew. Measure wrapped text again once widths are arranged. Size: M.
 - **P3 · A long list or table is built whole each frame.** `std/plugins/ui/init.lua:536-545`, `:398-419` Each row is a node with two more for each cell, and a closure for each item with `onActivate`; all are measured and arranged, and only those in view are drawn. Rows have one height, so build and measure the rows in view, and share one handler among the items. A list takes children that are built already, so this needs a form of `ui.list` that takes a count and a function that builds one item; the owner leaves it until a tool needs it. Size: M.
 
 **Core: plugins and threads**
