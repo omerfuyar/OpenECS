@@ -19,6 +19,7 @@ DESIGN.md holds the rules; this skill names the sections each step needs and wha
 
 - Where it goes: in OpenECS-std, `plugins/<name>/`, shown and tested by an example (std DESIGN 1.2); in an example, a folder beside its preset (DESIGN 17.6); in a tool from the template, `plugins/<name>/`, tested by its `test.lua`.
 - Lua unless the plugin needs a C library or speed that Lua lacks. A C plugin is built from every C file in its folder (DESIGN 17.2), so it needs no build settings.
+- A Lua panel type is a class, and its state an object of it: `create` gives `setmetatable({ panel = panel }, Class)`, and the type names the methods, `draw = Class.draw` (DESIGN 1.1). No `__index` function or `__newindex` that does work out of sight.
 - Declare by local names; look up, emit, subscribe and bind by full names (9.9). Name each dependency in the manifest, and get its functions with `require` (10.5).
 - A failure from outside gives `nil, message`, or `out string error` last for a service; a wrong argument is a misuse, checked with `ecs.check` or `ECS_Check` (1.4). A plugin never logs a failure that it returns.
 - Every call into the core costs about a third of a microsecond in a Debug build, so a Lua panel paints runs of pixels with `surface:fill` and rows with `setRow`, as c12_sketch's Lua panel paints each row of a dab with one `fill`. A panel that keeps its picture (`kept`) draws only what changed, and names it with `surface:changed` (5.1). ui does both for the panels it shows.
