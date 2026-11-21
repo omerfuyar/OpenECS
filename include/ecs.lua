@@ -148,7 +148,7 @@ function ecs.timer.start(seconds, repeats, callback) end
 local Worker = {}
 
 ---Sends a copy of a value to the worker, which its ecs.worker.receive gives. A worker that ended or was stopped gets nothing.
----@param value any Nil, a boolean, a number, a text, or a table of them; functions and handles are skipped.
+---@param value any Nil, a boolean, a number, a text, or a table of them, which string.buffer encodes; a function, a handle or a struct is an error.
 function Worker:send(value) end
 
 ---Stops the worker: its script ends at its next receive, or within a few thousand instructions. Its message and done functions are not called again.
@@ -175,7 +175,7 @@ function ecs.worker.start(desc) end
 function ecs.worker.receive(seconds) end
 
 ---In a worker's script only: sends a copy of a value to the plugin, whose message function gets it.
----@param value any Nil, a boolean, a number, a text, or a table of them; functions and handles are skipped.
+---@param value any Nil, a boolean, a number, a text, or a table of them, which string.buffer encodes; a function, a handle or a struct is an error.
 function ecs.worker.send(value) end
 
 -- Panels
