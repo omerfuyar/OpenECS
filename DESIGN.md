@@ -847,7 +847,8 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 - For other names, `require` first looks in the plugin's folder: `require("parts.shapes")` finds `parts/shapes.lua`, or else `parts/shapes/init.lua`. It runs the module once, in the plugin's environment, so the module can also `require("ecs")`, and gives what the module returns, or `true` if it returns nothing. Each plugin has its own modules, so two plugins can have modules of the same name.
 - A name that the plugin's folder does not hold, and that is a plugin's name, gives that plugin's functions as a table, by local name: `local draw = require("draw")` gives `draw.fill` for `draw.fill` (10.5).
 - Other names go to Lua's `require`.
-- Plugins have Lua's standard libraries: `string`, `table`, `math`, `utf8`, `coroutine`, `io`, `os`, `package` and `debug`. `io` reads and writes files, and `os` renames and removes them, runs commands and gives the time and the environment. Lua cannot list or make folders; the standard plugin `fs` does (20.2). A plugin never calls `os.exit`, which would quit OpenECS without saving.
+- Lua plugins run on Lua 5.5, and have its standard libraries: `string`, `table`, `math`, `utf8`, `coroutine`, `io`, `os`, `package` and `debug`. `io` reads and writes files, and `os` renames and removes them, runs commands and gives the time and the environment. Lua cannot list or make folders; the standard plugin `fs` does (20.2). A plugin never calls `os.exit`, which would quit OpenECS without saving.
+- What Lua plugins run on is stated, never hidden: this section names the Lua runtime and every library that comes with OpenECS and that plugins can use, with its project and version, and links to its documentation. A release that changes one says so in its description (19.5).
 - `include/ecs.lua` describes the `ecs` module for editors: every function's parameters, results and documentation, in LuaLS annotations. It changes with the bindings.
 - It also describes the files plugin authors write: `ecs.Manifest`, `ecs.Preset`, `ecs.Session` and `ecs.SettingsFile`. `---@type ecs.Preset` above a file's `return` gives editors completion and checks for its fields. A plugin's author adds the build's `include/` folder to `workspace.library` in the plugin's `.luarc.json`.
 - A Lua plugin's `init.lua` runs once, in a protected call. An error fails the plugin.
@@ -1545,6 +1546,7 @@ The core provides the clipboard (text and other typed data), drag and drop with 
 - They use plain words and short sentences, for users and plugin authors.
 - They say what is new, and what people can do with it.
 - They say what breaks after the release: what plugins, presets, settings and sessions must change, and how.
+- They name the Lua runtime or a library for plugins that changed (9.6), with its new version.
 - They name the small fixes briefly.
 - Each repository's description says what changed in that repository. OpenECS's names the others' releases and links to them, so each change is explained in one place.
 
