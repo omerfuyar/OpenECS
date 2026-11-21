@@ -4294,6 +4294,13 @@ static void ECSIServices_PushHandleOf(lua_State *state, ECSIHandleType *handleTy
 
     lua_pop(state, 1);
 
+    // the cdata is made before the object's record is found: making it may run the garbage collector, whose finalizer of the object's last
+    // other handle frees the record. A cdata's memory does not move, so the record keeps its address
+    ECSIServices_PushHandleCType(state, handleType);
+    lua_call(state, 0, 1);
+    ECSIHandle *handle = (ECSIHandle *)lua_topointer(state, -1);
+    *handle = (ECSIHandle){0};
+
     // an object at the address of a gone object of another type is another object
     ECSIHandleObject *record = SERVICES.objects == nullptr ? nullptr : hmget(SERVICES.objects, object);
 
@@ -4309,7 +4316,7 @@ static void ECSIServices_PushHandleOf(lua_State *state, ECSIHandleType *handleTy
 
         if (record == nullptr)
         {
-            lua_pop(state, 1);
+            lua_pop(state, 2);
             lua_pushnil(state);
             return;
         }
@@ -4318,10 +4325,6 @@ static void ECSIServices_PushHandleOf(lua_State *state, ECSIHandleType *handleTy
         hmput(SERVICES.objects, object, record);
     }
 
-    // a cdata's memory does not move, so the record keeps its address
-    ECSIServices_PushHandleCType(state, handleType);
-    lua_call(state, 0, 1);
-    ECSIHandle *handle = (ECSIHandle *)lua_topointer(state, -1);
     *handle = (ECSIHandle){.object = object, .type = handleType};
     arrput(record->handles, handle);
     lua_pushvalue(state, -1);
