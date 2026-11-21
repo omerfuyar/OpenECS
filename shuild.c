@@ -322,7 +322,19 @@ static void Shuild_SDL_ttf(void)
 /// @brief Tells whether the target's lj_arch.h defines a macro with a value, as LuaJIT's Makefile finds it in TARGET_TESTARCH.
 static bool LuaJitArchHas(const char *defines, const char *name, const char *value)
 {
-    return strstr(defines, SHU_UtilFormat("#define %s %s\n", name, value)) != NULL;
+    // the line ends with \r\n where the compiler writes Windows' line ends
+    const char *line = SHU_UtilFormat("#define %s %s", name, value);
+    usz length = strlen(line);
+
+    for (const char *found = strstr(defines, line); found != NULL; found = strstr(found + 1, line))
+    {
+        if (found[length] == '\n' || found[length] == '\r')
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /// @brief Writes LuaJIT's generated files into its folder of the build, as LuaJIT's src/Makefile does, and gives the name of its architecture,
