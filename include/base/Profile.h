@@ -1,6 +1,7 @@
 #pragma once
 
-// Profile: where the main thread's time goes, by step of the main loop, by plugin and by panel, while the setting ecs.profile is on (DESIGN 3.5).
+// Profile: where the main thread's time goes, by step of the main loop, by plugin, by panel and by Lua function, while the setting ecs.profile is on
+// (DESIGN 3.5).
 
 #include "OpenECS.h"
 
@@ -34,7 +35,16 @@ typedef struct ECSIProfileScope
 
 #pragma endregion Types
 
+/// @brief Finds the plugin whose folder holds a file.
+/// @param path The file's full path.
+/// @param retFolderLength Set to the length of the plugin's folder, at the start of the path.
+/// @return The plugin's name, or nullptr if no plugin's folder holds the file.
+typedef const char *(*ECSIProfileFindPluginFunction)(const char *path, usz *retFolderLength);
+
 #pragma region Declarations
+
+/// @brief Sets the function that finds the plugin of a Lua function's file, which the Plugins module owns. Without it, every function is the core's.
+void ECSIProfile_SetPluginFinder(ECSIProfileFindPluginFunction Find);
 
 /// @brief Turns measuring on or off. Off, the other functions do nothing, and the measures are dropped. Main thread only.
 /// @param measure Whether to measure.

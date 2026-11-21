@@ -544,11 +544,19 @@ function ecs.plugins.reload(name) end
 ---@field longest number Its longest call, in seconds.
 ---@field calls integer
 
+---A Lua function's time in the last whole second, as LuaJIT's sampling profiler counted it, as ecs.profile.get gives it.
+---@class ecs.ProfileFunction
+---@field name string Its file, from its plugin's folder, and its name or the line where it starts, such as "init.lua:element".
+---@field plugin string The plugin whose folder holds the file; "ecs" for the core's own Lua code.
+---@field samples integer The samples that found it running, one each millisecond.
+---@field seconds number Its time in that second, from its samples.
+
 ---Where the main thread's time went, as ecs.profile.get gives it.
 ---@class ecs.Profile
 ---@field passes ecs.ProfilePass[] The last passes of the main loop, the oldest first.
 ---@field plugins ecs.ProfileTime[] The plugins whose code ran in the last whole second, the most time first.
 ---@field panels ecs.ProfileTime[] The panels that drew in the last whole second, the most time first.
+---@field functions ecs.ProfileFunction[] The 50 Lua functions that took the most of the last whole second, the most first.
 
 ---@class ecs.profile
 ecs.profile = {}

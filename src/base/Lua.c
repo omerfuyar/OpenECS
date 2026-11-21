@@ -1,6 +1,7 @@
 #include "base/Lua.h"
 
 #include "lua/compat-5.3.h"
+#include "lua/luajit.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -15,6 +16,7 @@ static struct
     ECSILuaReadHandleFunction ReadHandle; // set by the Services module
     ECSILuaPushHandleFunction PushHandle;
     ECSILuaPushStructFieldsFunction PushStructFields;
+    ECSILuaSampleFunction Sample; // while LuaJIT's profiler samples the core's state
     ECSILuaMisuseFunction Misuse;
     void *ffiCall; // the function that a Lua wrapper calls through the FFI, or nullptr
 } LUA = {0};
@@ -487,10 +489,48 @@ SHUResult ECSILua_Initialize(void)
     return SHUResult_Ok;
 }
 
+/// @brief LuaJIT's profiler's callback, which runs on the main thread when the VM can stop: it names the Lua function that ran.
+static void ECSILua_Sample(void *data, lua_State *state, int samples, int vmstate)
+{
+    (void)data;
+
+    // a sample in C code is that C's plugin's time
+    if (vmstate == 'C' || LUA.Sample == nullptr)
+    {
+        return;
+    }
+
+    size_t length = 0;
+    const char *function = luaJIT_profile_dumpstack(state, "pF", 1, &length);
+    LUA.Sample(function, length, samples);
+}
+
+void ECSILua_SetSampling(ECSILuaSampleFunction Sample)
+{
+    SDL_assert(LUA.state != nullptr);
+
+    if (LUA.Sample != nullptr)
+    {
+        luaJIT_profile_stop(LUA.state);
+    }
+
+    LUA.Sample = Sample;
+
+    if (Sample != nullptr)
+    {
+        luaJIT_profile_start(LUA.state, "fi1", ECSILua_Sample, nullptr);
+    }
+}
+
 void ECSILua_Terminate(void)
 {
     // a value that outlives the state lets go of no handle
     ECSIValue_SetLuaFunctions(nullptr, nullptr);
+
+    if (LUA.Sample != nullptr)
+    {
+        luaJIT_profile_stop(LUA.state);
+    }
 
     if (LUA.state != nullptr)
     {
