@@ -121,7 +121,7 @@ int main(int argc, char **argv)
         Shuild_SDL_ttf();
     }
 
-    if (!IsBuilt("luajit", false))
+    if (!IsBuilt("luajit", false) || !SHU_UtilFileExists(SHU_UtilFormat("%sshare/luajit/jit/vmdef.lua", CONFIG.DIRS.dependencies)))
     {
         Shuild_luajit();
     }
@@ -458,6 +458,11 @@ static void Shuild_luajit(void)
     SHU_UtilCopyFile(SHU_UtilFormat("%sluajit.h", generated), headerOutputDir);
     SHU_UtilCopyFile("dependencies/lua-compat-5.3/c-api/compat-5.3.h", headerOutputDir);
 
+    // the jit modules, with the generated vmdef.lua, are kept with the built dependencies, which the checks cache without the generated files
+    char *jitDir = SHU_UtilFormat("%sshare/luajit/jit/", CONFIG.DIRS.dependencies);
+    SHU_UtilCopyFile("dependencies/luajit/src/jit/", jitDir);
+    SHU_UtilCopyFile(SHU_UtilFormat("%sjit/vmdef.lua", generated), jitDir);
+
     char *generatedFromRoot = SHU_UtilFormat("../../../%s", generated);
     char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.DIRS.dependencies);
 
@@ -506,9 +511,7 @@ static void Shuild_luajit(void)
 // the Lua files of LuaJIT's jit module go next to the program as jit/, so require("jit.p"), jit.v and jit.dump work for whoever studies traces
 static void CopyLuaJitModules(void)
 {
-    char *jitDir = SHU_UtilFormat("%sbin/jit/", CONFIG.DIRS.output);
-    SHU_UtilCopyFile("dependencies/luajit/src/jit/", jitDir);
-    SHU_UtilCopyFile(SHU_UtilFormat("%sgenerated/luajit/jit/vmdef.lua", CONFIG.DIRS.build), jitDir);
+    SHU_UtilCopyFile(SHU_UtilFormat("%sshare/luajit/jit/", CONFIG.DIRS.dependencies), SHU_UtilFormat("%sbin/jit/", CONFIG.DIRS.output));
 }
 
 static void Shuild_clay(void)
