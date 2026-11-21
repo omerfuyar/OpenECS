@@ -9,8 +9,7 @@
 #include "runtime/Services.h"
 #include "runtime/Settings.h"
 
-#include "lua/lauxlib.h"
-#include "lua/lua.h"
+#include "lua/compat-5.3.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -219,7 +218,7 @@ static int ECSIBindings_SettingDeclare(lua_State *state)
     // the choices stay alive in the table on the stack
     const char **choices = nullptr;
 
-    for (lua_Integer i = 1; lua_istable(state, -2) && lua_rawgeti(state, -2, i) == LUA_TSTRING; i++)
+    for (int i = 1; lua_istable(state, -2) && lua_rawgeti(state, -2, i) == LUA_TSTRING; i++)
     {
         arrput(choices, lua_tostring(state, -1));
         lua_pop(state, 1);
@@ -380,7 +379,7 @@ static int ECSIBindings_TimerStart(lua_State *state)
         return luaL_error(state, "out of memory");
     }
 
-    ECSILuaTimer **handle = lua_newuserdatauv(state, sizeof(ECSILuaTimer *), 0);
+    ECSILuaTimer **handle = lua_newuserdata(state, sizeof(ECSILuaTimer *));
     *handle = timer;
     luaL_setmetatable(state, OPENECS_LUA_TIMER);
 
@@ -724,7 +723,7 @@ static int ECSIBindings_EventSubscribe(lua_State *state)
         return luaL_error(state, "out of memory");
     }
 
-    ECSILuaSubscription **handle = lua_newuserdatauv(state, sizeof(ECSILuaSubscription *), 0);
+    ECSILuaSubscription **handle = lua_newuserdata(state, sizeof(ECSILuaSubscription *));
     *handle = subscription;
     luaL_setmetatable(state, OPENECS_LUA_SUBSCRIPTION);
 
@@ -1127,7 +1126,7 @@ static void ECSIBindings_DialogDone(void *data, const char *const *files, usz co
         for (usz i = 0; i < count; i++)
         {
             lua_pushstring(state, files[i]);
-            lua_rawseti(state, -2, (lua_Integer)i + 1);
+            lua_rawseti(state, -2, (int)i + 1);
         }
     }
 
@@ -1154,7 +1153,7 @@ static int ECSIBindings_DialogShow(lua_State *state)
 
     ECSDialogFilter *filters = nullptr;
 
-    for (lua_Integer i = 1; lua_istable(state, -1) && lua_rawgeti(state, -1, i) == LUA_TTABLE; i++)
+    for (int i = 1; lua_istable(state, -1) && lua_rawgeti(state, -1, i) == LUA_TTABLE; i++)
     {
         lua_getfield(state, -1, "name");
         lua_getfield(state, -2, "pattern");
@@ -1216,7 +1215,7 @@ static int ECSIBindings_DialogShowMessage(lua_State *state)
     const char **buttons = nullptr;
 
     // the button texts stay alive in the table on the stack
-    for (lua_Integer i = 1; lua_istable(state, 3) && lua_rawgeti(state, 3, i) == LUA_TSTRING; i++)
+    for (int i = 1; lua_istable(state, 3) && lua_rawgeti(state, 3, i) == LUA_TSTRING; i++)
     {
         arrput(buttons, lua_tostring(state, -1));
         lua_pop(state, 1);
@@ -1755,7 +1754,7 @@ static int ECSIBindings_PanelAcceptDrops(lua_State *state)
     // the table keeps its strings alive while the core copies them
     const char **types = nullptr;
 
-    for (lua_Integer i = 1; lua_rawgeti(state, 2, i) != LUA_TNIL; i++)
+    for (int i = 1; lua_rawgeti(state, 2, i) != LUA_TNIL; i++)
     {
         if (lua_type(state, -1) != LUA_TSTRING)
         {
@@ -2355,7 +2354,7 @@ static int ECSIBindings_Require(lua_State *state)
         }
 
         lua_pushvalue(state, lua_upvalueindex(2));
-        lua_setupvalue(state, -2, 1);
+        lua_setfenv(state, -2);
         lua_pushvalue(state, 1);
         lua_pushstring(state, path);
         lua_call(state, 2, 1);
@@ -2478,7 +2477,7 @@ SHUResult ECSIBindings_StartPlugin(ECSPlugin plugin, const char *folder, const c
     lua_pushglobaltable(state);
     lua_setfield(state, -2, "__index");
     lua_setmetatable(state, -2);
-    lua_setupvalue(state, -2, 1);
+    lua_setfenv(state, -2);
 
     if (ECSILua_Call(state, 0, 0))
     {

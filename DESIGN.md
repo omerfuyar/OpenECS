@@ -97,7 +97,7 @@ What depends on the platform stays behind an interface, so porting changes as li
 |  Core logic: layout, workspaces, input, events, services,    |
 |  settings, presets and sessions, plugin loading              |
 +--------------------------------------------------------------+
-|  Libraries: SDL3, SDL3_ttf, Clay, Lua, libffi                |
+|  Libraries: SDL3, SDL3_ttf, Clay, LuaJIT, libffi             |
 +--------------------------------------------------------------+
 ```
 
@@ -127,7 +127,15 @@ Plugins talk only to the plugin API (2.2). They never receive an SDL, Lua, Clay 
 ### 1.1 Language
 
 - C23 standard is used everywhere. Its forms are preferred to older ones: `nullptr` instead of `NULL`, `static_assert`, `constexpr`, `bool` as a keyword, and enumerations with a fixed type.
-- Lua is the standard implementation, latest release.
+- Lua is LuaJIT 2.1, with its extensions (9.6). Lua code writes LuaJIT's syntax where it is shorter or safer:
+  - `+=`, `-=`, `*=` and `..=` for a value that changes by itself: `count += 1`, `text ..= line`;
+  - `continue` to skip the rest of a loop's pass, in place of nesting the rest in an `if`;
+  - `??` for a default that may be `false`, as `or` replaces `false` too: `props.visible ?? true`;
+  - `?.` to read through a value that may be nil: `state.selected?.name`;
+  - the bit operators `& | ~ << >>` in place of the `bit` library; they work on 32 bits and give signed results, so `0xFF000000 | 0` is negative (11.7);
+  - `const` for a local that never changes, such as a table of constants at a file's top: `const SIZES = { ... }`.
+- A whole division is `math.floor(a / b)`: LuaJIT has no `//`.
+- Bytes for C, such as vertices, pixels and samples, are built in an FFI array and given as a string: `ffi.new("float[?]", count)`, then `ffi.string(array, ffi.sizeof(array))`. A string's bytes are read through a pointer: `ffi.cast("const float *", text)`, valid while the string is.
 
 ### 1.2 Names
 
@@ -333,7 +341,7 @@ A worker is a Lua script that runs on a thread of its own, in a Lua state of its
 - The script has every Lua library, as plugins do (9.6). Its `require` finds modules in the plugin's folder first. It cannot call the core or other plugins, because they run on the main thread only.
 - Values go between the threads as copies: nil, booleans, numbers, texts, and tables of them. Functions, handles and other userdata are skipped, with a warning.
 - `message` and `done` run on the main thread, between passes of the loop, like a background task's `done` (3.3). An error in them is reported (14). So is an error in the script, which ends it.
-- `stop` ends the script at its next `receive`, or within a few thousand of its Lua instructions. After `stop`, its `message` and `done` are not called again. A script that waits in a C function, such as `io.read`, ends when that function returns.
+- `stop` ends the script at its next `receive` or call of `ecs`; a loop that calls neither runs until it ends, as LuaJIT runs no hooks in the code it compiles. After `stop`, its `message` and `done` are not called again. A script that waits in a C function, such as `io.read`, ends when that function returns.
 - A worker runs until its script ends or it is stopped, even when its handle is dropped. On exit, the core stops every worker and waits for it (2.4).
 - Lua only: a native plugin runs work with `ECS_RunInBackground`, or on threads of its own (3.3).
 
@@ -847,7 +855,13 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 - For other names, `require` first looks in the plugin's folder: `require("parts.shapes")` finds `parts/shapes.lua`, or else `parts/shapes/init.lua`. It runs the module once, in the plugin's environment, so the module can also `require("ecs")`, and gives what the module returns, or `true` if it returns nothing. Each plugin has its own modules, so two plugins can have modules of the same name.
 - A name that the plugin's folder does not hold, and that is a plugin's name, gives that plugin's functions as a table, by local name: `local draw = require("draw")` gives `draw.fill` for `draw.fill` (10.5).
 - Other names go to Lua's `require`.
-- Lua plugins run on Lua 5.5, and have its standard libraries: `string`, `table`, `math`, `utf8`, `coroutine`, `io`, `os`, `package` and `debug`. `io` reads and writes files, and `os` renames and removes them, runs commands and gives the time and the environment. Lua cannot list or make folders; the standard plugin `fs` does (20.2). A plugin never calls `os.exit`, which would quit OpenECS without saving.
+- Lua plugins run on [LuaJIT](https://luajit.org/) 2.1, at the release that `jit.version` gives, such as `LuaJIT 2.1.1795119671`: Lua 5.1 with a compiler that makes Lua code run at nearly C's speed. It is built with `LUAJIT_ENABLE_LUA52COMPAT`, so plugins have:
+  - [Lua 5.1](https://www.lua.org/manual/5.1/)'s language and standard libraries: `string`, `table`, `math`, `coroutine`, `io`, `os`, `package` and `debug`. `io` reads and writes files, and `os` renames and removes them, runs commands and gives the time and the environment.
+  - [The extensions from Lua 5.2 and 5.3](https://luajit.org/extensions.html): `goto`, `load` with a mode and an environment, `table.pack`, `table.unpack`, `table.move`, `rawlen`, `__pairs`, `__ipairs`, `__len` on tables, and `xpcall` with arguments.
+  - [The syntax that LuaJIT 2.1 takes from LuaJIT 3.0](https://luajit.org/extensions.html#backports): the bit operators `~ & | << >> ~>>`, the compound assignments such as `+=` and `..=`, `continue`, `?.`, `??`, `a ? b : c`, `const`, short functions (`x -> x + 1`), `!`, `&&`, `||`, `!=` and `1_000`. It has no `//`, no metamethods for the bit operators, and no compound assignment that changes its operand in place.
+  - LuaJIT's own libraries: [`bit`](https://bitop.luajit.org/api.html), [`ffi`](https://luajit.org/ext_ffi.html), which calls C and makes C data, [`jit`](https://luajit.org/ext_jit.html) with its profiler [`jit.profile`](https://luajit.org/ext_profiler.html), [`string.buffer`](https://luajit.org/ext_buffer.html), [`table.new` and `table.clear`](https://luajit.org/extensions.html). `require("jit.p")`, `jit.v` and `jit.dump` find their modules in `jit/` next to the executable.
+  - `utf8` from [lua-compat-5.3](https://github.com/lunarmodules/lua-compat-5.3) 0.15.1, which is Lua 5.3's [`utf8`](https://www.lua.org/manual/5.3/manual.html#6.5).
+- LuaJIT has no integers: numbers are doubles, whole up to 2^53, and `math.type` and `string.pack` are missing (11.7). Lua cannot list or make folders; the standard plugin `fs` does (20.2). A plugin never calls `os.exit`, which would quit OpenECS without saving.
 - What Lua plugins run on is stated, never hidden: this section names the Lua runtime and every library that comes with OpenECS and that plugins can use, with its project and version, and links to its documentation. A release that changes one says so in its description (19.5).
 - `include/ecs.lua` describes the `ecs` module for editors: every function's parameters, results and documentation, in LuaLS annotations. It changes with the bindings.
 - It also describes the files plugin authors write: `ecs.Manifest`, `ecs.Preset`, `ecs.Session` and `ecs.SettingsFile`. `---@type ecs.Preset` above a file's `return` gives editors completion and checks for its fields. A plugin's author adds the build's `include/` folder to `workspace.library` in the plugin's `.luarc.json`.
@@ -929,7 +943,7 @@ ecs.service.register({
 | -------------------- | ------------------------------------------------------------------------------------------------------ |
 | `void`               | no value (return only)                                                                                 |
 | `bool`               | true or false                                                                                          |
-| `int`, `int64`       | whole numbers                                                                                          |
+| `int`, `int64`       | whole numbers (11.7)                                                                                   |
 | `float`, `double`    | decimal numbers                                                                                        |
 | `color`              | a colour (5.2): an `ECSColor` in C, a text in Lua                                                      |
 | `string`             | text ending in a zero byte                                                                             |
@@ -950,7 +964,7 @@ ecs.service.register({
 
 ### 10.3 Values
 
-A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a string, a buffer, a handle, or a table (a list or named fields). Saved state, settings, plugin events and generic calls use values.
+A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a string, a buffer, a handle, or a table (a list or named fields). Saved state, settings, plugin events and generic calls use values. From Lua, a whole number is an integer, and any other number a number (11.7).
 
 - A plugin fills a value that the core gives it, with `ECSValue_SetInteger`, `ECSValue_SetTableField` and so on. To pass a value of its own, a plugin makes it with `ECSValue_Create` and destroys it with `ECSValue_Destroy`.
 - Getters take a fallback, returned when the value has another type or is missing: `ECSValue_GetInteger(ECSValue_GetTableField(state, "document"), 0)`. So saved state from an older or edited file never needs extra checks.
@@ -1088,6 +1102,14 @@ Every call from the core into Lua is a protected call. A caught error becomes an
 ### 11.6 Keeping Lua values
 
 Lua functions and values that C code keeps are stored in Lua's registry and referenced by a number. They are released when their owner goes away.
+
+### 11.7 Numbers
+
+- LuaJIT's numbers are doubles. A number is an integer when it is whole: `n % 1 == 0`. Doubles hold every whole number up to 2^53 exactly.
+- So a setting of type `integer`, an `int` or `int64` parameter and a value's integer (10.3) take a whole number, and refuse one with a fraction. An `int` must fit in 32 bits.
+- An `int64` parameter, or struct field, also takes an `int64_t` or `uint64_t` cdata of the FFI, such as `123LL`, for a whole number past 2^53. Results and values give numbers.
+- The bit operators work on 32 bits and give signed results: `0xFF000000 | 0` is `-16777216`. Where a result must be positive, `% 2^32` makes it so. An FFI array of `uint32_t` keeps such a number as its 32 bits, so pixels and colours are built there (1.1).
+- Files written by the core write a whole number without a fraction, and others in the shortest form that reads back exactly (13.4).
 
 ## 12. Settings
 
@@ -1366,7 +1388,8 @@ OpenECS follows the XDG Base Directory specification:
 | SDL3                        | core                                                  |
 | SDL3_ttf                    | core: text in the core's interface                    |
 | Clay                        | core: the core's own interface                        |
-| Lua                         | core                                                  |
+| LuaJIT                      | core: Lua                                             |
+| lua-compat-5.3              | core: the C API's Lua 5.3 forms, and `utf8` (9.6)     |
 | libffi                      | core: calls by signature                              |
 | shu                         | core: basic types and results                         |
 | stb (`stb_ds.h`)            | core: dynamic arrays and hash maps                    |
@@ -1376,7 +1399,9 @@ OpenECS follows the XDG Base Directory specification:
 ### 17.2 Linking
 
 - SDL3 and SDL3_ttf are shared libraries shipped next to the executable. On Linux it finds them through an `$ORIGIN` run path; Windows finds a program's DLLs in its own folder. So the core and every plugin share one copy of SDL.
-- Lua, Clay, libffi and stb are linked statically into the executable.
+- LuaJIT, lua-compat-5.3, Clay, libffi and stb are linked statically into the executable.
+- LuaJIT is built as its `src/Makefile` builds it, and writes what it generates into the build's folder: the build compiles its host tools `minilua` and `buildvm`, reads its architecture from its `lj_arch.h`, makes the virtual machine with DynASM and `buildvm`, and compiles `ljamalg.c` with `LUAJIT_ENABLE_LUA52COMPAT`. Debug builds add LuaJIT's checks of the C API and its assertions. Errors unwind with the system's unwinder, through the C frames between a protected call and the error. The modules of `jit/`, such as `jit.p`, go next to the executable.
+- lua-compat-5.3's C functions and its `utf8` library are compiled into LuaJIT's library under their own prefix. The core reaches Lua through lua-compat-5.3's header, which gives it the C API of Lua 5.3, such as `lua_getfield` that gives the type.
 - libffi is compiled without its configure script. Its configuration is a glue header for Linux on x86_64 and aarch64 and Windows on x86_64, `dependencies/other/libffi/fficonfig.h`, and the build makes `ffi.h` from libffi's template.
 - The executable exports the functions marked `OPENECS_EXPORT` and nothing else. The core is compiled with hidden symbols by default, and with `OPENECS_CORE` defined, so `OPENECS_EXPORT` exports.
 - The build writes what people use into `build/<type>/`: the program, its plugins, presets and resources in `bin/`, the plugin interface in `include/` (10.10), and on Windows OpenECS's import library in `lib/`. What only the build uses, such as the dependencies' headers and libraries, stays in `.shu/<type>/`.
@@ -1397,7 +1422,7 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.4 Dependency versions
 
-- Every dependency is a git submodule at a fixed commit: the latest commit of its development branch, or of a release tag when the branch lacks files that its release makes. An update moves each submodule to its newest such commit, and passes the checks (19.3) like any change.
+- Every dependency is a git submodule at a fixed commit: the latest commit of its development branch, or of a release tag when the branch lacks files that its release makes. LuaJIT's is its branch `v2.1`, from which it releases; its release number is the time of that commit. An update moves each submodule to its newest such commit, and passes the checks (19.3) like any change.
 - SDL_ttf brings FreeType, HarfBuzz and PlutoSVG as its own submodules, at the commits SDL_ttf names.
 
 ### 17.5 Tests
@@ -1665,6 +1690,8 @@ The standard plugins are in OpenECS-std (17.7). Their design is in [OpenECS-std 
 **Local name.** The part of a name after the plugin's name and a dot, such as `view` in `canvas.view`.
 
 **Lua.** A small scripting language, used for plugins and for presets, sessions, settings and manifests.
+
+**LuaJIT.** A Lua 5.1 that compiles Lua code to machine code while it runs, with extensions of its own, such as the FFI (9.6).
 
 **LuaLS (Lua language server).** The program behind Lua support in editors such as VS Code. It reads annotations in comments, such as `---@param`, to give completion, documentation and warnings.
 

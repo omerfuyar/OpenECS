@@ -908,4 +908,44 @@ function ecs.dialog.showMessage(title, message, buttons) end
 ---@field tools? table<string, table<string, any>> Settings for one tool, by its app id.
 ---@field themes? table<string, table<string, any>> Values of settings for each theme, by its name, "dark" or "light", which add to the core's.
 
+-- utf8, which plugins have from lua-compat-5.3 as Lua 5.3 has it, and LuaJIT lacks (DESIGN 9.6)
+
+---@class utf8lib
+---@field charpattern string The pattern of one UTF-8 character.
+utf8 = {}
+
+---Gives the UTF-8 text of code points.
+---@param ... integer
+---@return string
+function utf8.char(...) end
+
+---Gives an iterator over a text's characters: their positions and code points.
+---@param text string
+---@return fun(text: string, position: integer): integer, integer
+---@return string
+---@return integer
+function utf8.codes(text) end
+
+---Gives the code points of the characters that start between two positions.
+---@param text string
+---@param i? integer 1 if missing.
+---@param j? integer i if missing.
+---@return integer ...
+function utf8.codepoint(text, i, j) end
+
+---Gives the number of characters that start between two positions, or nil and the position of the first invalid byte.
+---@param text string
+---@param i? integer 1 if missing.
+---@param j? integer -1 if missing.
+---@return integer?
+---@return integer? invalid
+function utf8.len(text, i, j) end
+
+---Gives the position where the n-th character, counted from i, starts.
+---@param text string
+---@param n integer
+---@param i? integer 1 if n is 0 or more, #text + 1 otherwise.
+---@return integer?
+function utf8.offset(text, n, i) end
+
 return ecs

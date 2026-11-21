@@ -1,8 +1,6 @@
 #include "base/Lua.h"
 
-#include "lua/lua.h"
-#include "lua/lauxlib.h"
-#include "lua/lualib.h"
+#include "lua/compat-5.3.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -13,9 +11,9 @@ static struct
 {
     lua_State *state;
     int writer;                           // registry reference of the writer function
+    int isInt64;                          // registry reference of the function that tells LuaJIT's 64-bit integer cdata
     ECSILuaReadHandleFunction ReadHandle; // set by the Services module
     ECSILuaPushHandleFunction PushHandle;
-    char *warning; // the pieces of a warning that Lua gives in pieces, joined so far, or nullptr
     ECSILuaMisuseFunction Misuse;
 } LUA = {0};
 
@@ -29,9 +27,9 @@ static thread_local struct
 static const char OPENECS_LUA_WRITER[] =
     "local format, concat = string.format, table.concat\n"
     "local keywords = {}\n"
-    "for word in ('and break do else elseif end false for function global goto if in local nil not or repeat return then true until while'):gmatch('%a+') do keywords[word] = true end\n"
+    "for word in ('and break const continue do else elseif end false for function global goto if in local nil not or repeat return then true until while'):gmatch('%a+') do keywords[word] = true end\n"
     "local function number(n)\n"
-    "  if math.type(n) == 'integer' then return format('%d', n) end\n"
+    "  if n % 1 == 0 and n > -2^63 and n < 2^63 then return format('%d', n) end\n"
     "  if n ~= n or n == math.huge or n == -math.huge then return format('%q', n) end\n"
     "  local text = format('%.15g', n)\n"
     "  if tonumber(text) ~= n then text = format('%.17g', n) end\n"
@@ -61,6 +59,15 @@ static const char OPENECS_LUA_WRITER[] =
     "  out[#out + 1] = '\\n'\n"
     "  return concat(out)\n"
     "end\n";
+
+/// @brief A function that tells whether a value is a 64-bit integer cdata of LuaJIT's FFI, which only the FFI tells apart from other cdata.
+static const char OPENECS_LUA_IS_INT64[] =
+    "local ffi = require('ffi')\n"
+    "local signed, unsigned = ffi.typeof('int64_t'), ffi.typeof('uint64_t')\n"
+    "return function(value) return ffi.istype(signed, value) or ffi.istype(unsigned, value) end\n";
+
+/// @brief LuaJIT's type of cdata, which lua.h does not name.
+#define OPENECS_LUA_TCDATA 10
 
 /// @brief Deepest nesting of tables that converts to a value; deeper tables are most likely cycles.
 #define OPENECS_MAX_VALUE_DEPTH 64
@@ -160,7 +167,7 @@ static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue
         ECSValue *item = nullptr;
         SHU_ReturnResult(ECSValue_AddListItem(retValue, &item));
 
-        lua_rawgeti(state, index, (lua_Integer)i);
+        lua_rawgeti(state, index, (int)i);
         SHUResult result = ECSILua_ToValue(state, -1, item, handles, depth + 1);
         lua_pop(state, 1);
         SHU_ReturnResult(result);
@@ -269,7 +276,7 @@ static void ECSILua_PushOrderedValue(const ECSValue *value)
     for (usz i = 0; i < count; i++)
     {
         ECSILua_PushOrderedValue(ECSValue_GetListItem(value, i));
-        lua_rawseti(state, -2, (lua_Integer)i + 1);
+        lua_rawseti(state, -2, (int)i + 1);
     }
 
     lua_pushinteger(state, (lua_Integer)count);
@@ -285,7 +292,7 @@ static void ECSILua_PushOrderedField(const char *name, const ECSValue *field, vo
 {
     (void)userData;
     lua_State *state = LUA.state;
-    lua_Integer length = (lua_Integer)lua_rawlen(state, -1);
+    int length = (int)lua_rawlen(state, -1);
 
     // a field that is a handle is left out with its name, so the names and values after it keep their places
     if (ECSValue_GetType(field) == ECSValueType_Handle)
@@ -341,32 +348,23 @@ static int ECSILua_Panic(lua_State *state)
     return 0;
 }
 
-/// @brief Logs Lua's warnings. A warning may come in pieces, which are joined first; control messages such as "@on" are ignored.
-static void ECSILua_Warn(void *userData, const char *message, int toContinue)
+// lua-compat-5.3's utf8 library, which lutf8lib.c names so beside LuaJIT's own libraries
+int luaopen_compat53_utf8(lua_State *state);
+
+/// @brief Opens every library for a state: LuaJIT's, with bit, ffi and jit, and utf8 from lua-compat-5.3. require finds LuaJIT's jit modules, such as jit.p,
+/// in the program's folder, where the build puts them.
+static void ECSILua_OpenLibraries(lua_State *state)
 {
-    (void)userData;
+    luaL_openlibs(state);
+    luaL_requiref(state, "utf8", luaopen_compat53_utf8, 1);
+    lua_pop(state, 1);
 
-    if (LUA.warning == nullptr && !toContinue && message[0] == '@')
-    {
-        return;
-    }
-
-    char *joined = nullptr;
-
-    if (SDL_asprintf(&joined, "%s%s", LUA.warning == nullptr ? "" : LUA.warning, message) < 0)
-    {
-        joined = nullptr;
-    }
-
-    SDL_free(LUA.warning);
-    LUA.warning = joined;
-
-    if (!toContinue && LUA.warning != nullptr)
-    {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Lua: %s", LUA.warning);
-        SDL_free(LUA.warning);
-        LUA.warning = nullptr;
-    }
+    lua_getglobal(state, "package");
+    lua_pushfstring(state, "%s?.lua;", SDL_GetBasePath());
+    lua_getfield(state, -2, "path");
+    lua_concat(state, 2);
+    lua_setfield(state, -2, "path");
+    lua_pop(state, 1);
 }
 
 /// @brief Takes another reference to a Lua handle that a value keeps.
@@ -441,7 +439,7 @@ static void ECSILua_Push(lua_State *state, const ECSValue *value)
     for (usz i = 0; i < count; i++)
     {
         ECSILua_Push(state, ECSValue_GetListItem(value, i));
-        lua_rawseti(state, -2, (lua_Integer)i + 1);
+        lua_rawseti(state, -2, (int)i + 1);
     }
 
     ECSIValue_TableForEachField(value, ECSILua_PushField, state);
@@ -451,7 +449,7 @@ static void ECSILua_Push(lua_State *state, const ECSValue *value)
 
 SHUResult ECSILua_Initialize(void)
 {
-    LUA.state = lua_newstate(ECSILua_Allocate, nullptr, luaL_makeseed(nullptr));
+    LUA.state = lua_newstate(ECSILua_Allocate, nullptr);
 
     if (LUA.state == nullptr)
     {
@@ -459,10 +457,9 @@ SHUResult ECSILua_Initialize(void)
     }
 
     lua_atpanic(LUA.state, ECSILua_Panic);
-    lua_setwarnf(LUA.state, ECSILua_Warn, nullptr);
 
     // every library is open for plugins; data files see only a few, through their own environment
-    luaL_openlibs(LUA.state);
+    ECSILua_OpenLibraries(LUA.state);
 
     if (luaL_loadbufferx(LUA.state, OPENECS_LUA_WRITER, sizeof(OPENECS_LUA_WRITER) - 1, "=writer", "t") != LUA_OK || lua_pcall(LUA.state, 0, 1, 0) != LUA_OK)
     {
@@ -471,6 +468,14 @@ SHUResult ECSILua_Initialize(void)
     }
 
     LUA.writer = luaL_ref(LUA.state, LUA_REGISTRYINDEX);
+
+    if (luaL_loadbufferx(LUA.state, OPENECS_LUA_IS_INT64, sizeof(OPENECS_LUA_IS_INT64) - 1, "=int64", "t") != LUA_OK || lua_pcall(LUA.state, 0, 1, 0) != LUA_OK)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The test of 64-bit integers does not load: %s", lua_tostring(LUA.state, -1));
+        return SHUResult_ErrInternal;
+    }
+
+    LUA.isInt64 = luaL_ref(LUA.state, LUA_REGISTRYINDEX);
     ECSIValue_SetLuaFunctions(ECSILua_KeepHandle, ECSILua_DropHandle, ECSILua_GetHandleObject);
     return SHUResult_Ok;
 }
@@ -479,7 +484,6 @@ void ECSILua_Terminate(void)
 {
     // a value that outlives the state lets go of no handle
     ECSIValue_SetLuaFunctions(nullptr, nullptr, nullptr);
-    SDL_free(LUA.warning);
 
     if (LUA.state != nullptr)
     {
@@ -531,7 +535,11 @@ void ECSILua_CheckFunctionField(lua_State *state, int index, const char *name)
     SDL_assert(name != nullptr);
 
     int type = lua_getfield(state, index, name);
-    luaL_argexpected(state, type == LUA_TFUNCTION || type == LUA_TNIL, index, lua_pushfstring(state, "%s as a function or nil", name));
+    if (type != LUA_TFUNCTION && type != LUA_TNIL)
+    {
+        luaL_typerror(state, index, lua_pushfstring(state, "%s as a function or nil", name));
+    }
+
     lua_pop(state, 1);
 }
 
@@ -551,12 +559,12 @@ int ECSILua_ReferenceFunctionField(lua_State *state, int index, const char *name
 
 lua_State *ECSILua_NewState(void)
 {
-    lua_State *state = lua_newstate(ECSILua_Allocate, nullptr, luaL_makeseed(nullptr));
+    lua_State *state = lua_newstate(ECSILua_Allocate, nullptr);
 
     if (state != nullptr)
     {
         lua_atpanic(state, ECSILua_Panic);
-        luaL_openlibs(state);
+        ECSILua_OpenLibraries(state);
     }
 
     return state;
@@ -666,6 +674,29 @@ i64 ECSILua_CheckInteger(lua_State *state, int argument)
     return (i64)integer;
 }
 
+bool ECSILua_ToInt64(lua_State *state, int index, i64 *retValue)
+{
+    SDL_assert(state != nullptr);
+    SDL_assert(retValue != nullptr);
+
+    if (lua_type(state, index) != OPENECS_LUA_TCDATA || state != LUA.state)
+    {
+        int isInteger = 0;
+        *retValue = (i64)lua_tointegerx(state, index, &isInteger);
+        return isInteger;
+    }
+
+    // a cdata's bytes are where lua_topointer points
+    index = lua_absindex(state, index);
+    lua_rawgeti(state, LUA_REGISTRYINDEX, LUA.isInt64);
+    lua_pushvalue(state, index);
+    lua_call(state, 1, 1);
+    bool isInteger = lua_toboolean(state, -1);
+    lua_pop(state, 1);
+    *retValue = isInteger ? *(const i64 *)lua_topointer(state, index) : 0;
+    return isInteger;
+}
+
 i64 ECSILua_OptInteger(lua_State *state, int argument, i64 fallback)
 {
     return lua_isnoneornil(state, argument) ? fallback : ECSILua_CheckInteger(state, argument);
@@ -773,9 +804,8 @@ SHUResult ECSILua_ReadData(const char *path, ECSValue *retValue)
         return SHUResult_ErrFile;
     }
 
-    // the first upvalue of a loaded chunk is its environment
     ECSILua_PushDataEnvironment();
-    lua_setupvalue(state, -2, 1);
+    lua_setfenv(state, -2);
 
     if (lua_pcall(state, 0, 1, 0) != LUA_OK)
     {

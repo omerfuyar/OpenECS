@@ -9,8 +9,7 @@
 #include "runtime/Services.h"
 #include "runtime/Settings.h"
 
-#include "lua/lauxlib.h"
-#include "lua/lua.h"
+#include "lua/compat-5.3.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -519,7 +518,7 @@ static int ECSITest_DropFiles(lua_State *state)
     // the table keeps its strings alive while they are copied
     const char **paths = nullptr;
 
-    for (lua_Integer i = 1; lua_rawgeti(state, 3, i) == LUA_TSTRING; i++)
+    for (int i = 1; lua_rawgeti(state, 3, i) == LUA_TSTRING; i++)
     {
         arrput(paths, lua_tostring(state, -1));
         lua_pop(state, 1);
@@ -688,7 +687,7 @@ static void ECSITest_AddPanels(lua_State *state, const ECSValue *node, usz works
         lua_setfield(state, -2, "workspace");
         lua_pushinteger(state, (lua_Integer)window);
         lua_setfield(state, -2, "window");
-        lua_rawseti(state, -2, (lua_Integer)lua_rawlen(state, -2) + 1);
+        lua_rawseti(state, -2, (int)lua_rawlen(state, -2) + 1);
     }
 
     for (usz i = 0; i < ECSValue_GetListCount(node); i++)
@@ -788,9 +787,9 @@ static int ECSITest_Dialog(lua_State *state)
         SDL_FRect rect = {0};
         ECSIWindow_DialogButtonRect(i, &rect);
         lua_pushstring(state, dialog->buttons[i]);
-        lua_rawseti(state, -3, (lua_Integer)i + 1);
+        lua_rawseti(state, -3, (int)i + 1);
         ECSITest_PushRect(state, rect);
-        lua_rawseti(state, -2, (lua_Integer)i + 1);
+        lua_rawseti(state, -2, (int)i + 1);
     }
 
     lua_setfield(state, -3, "rects");
@@ -957,7 +956,7 @@ SHUResult ECSITest_Load(const char *path, char **retPreset)
     lua_pushglobaltable(state);
     lua_setfield(state, -2, "__index");
     lua_setmetatable(state, -2);
-    lua_setupvalue(state, -2, 1);
+    lua_setfenv(state, -2);
 
     if (ECSILua_Call(state, 0, 1))
     {
@@ -989,7 +988,7 @@ SHUResult ECSITest_Load(const char *path, char **retPreset)
     // files are paths relative to the test file too, opened as if the command line named them
     lua_getfield(state, -2, "files");
 
-    for (lua_Integer i = 1; lua_istable(state, -1) && lua_rawgeti(state, -1, i) == LUA_TSTRING; i++)
+    for (int i = 1; lua_istable(state, -1) && lua_rawgeti(state, -1, i) == LUA_TSTRING; i++)
     {
         const char *name = lua_tostring(state, -1);
         char *copy = nullptr;
@@ -1122,15 +1121,15 @@ bool ECSITest_Step(void)
     }
 
     lua_State *state = ECSILua_GetState();
-    int results = 0;
     TEST.resuming = true;
-    int status = lua_resume(TEST.thread, state, TEST.started ? 0 : 1, &results);
+    int status = lua_resume(TEST.thread, state, TEST.started ? 0 : 1);
     TEST.resuming = false;
     TEST.started = true;
 
     if (status == LUA_YIELD)
     {
-        lua_pop(TEST.thread, results);
+        // the thread's stack holds only what it yielded
+        lua_settop(TEST.thread, 0);
         return true;
     }
 

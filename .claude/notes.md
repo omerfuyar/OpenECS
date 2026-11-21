@@ -9,11 +9,12 @@ Notes for agents and the owner that belong in no other document: why the tools a
 - The core's build gives the dependencies' headers as system headers (`-isystem`), so clang-tidy leaves their macros alone, such as stb_ds's `arrput`.
 - In a cloud session, `.claude/hooks/session-start.sh` installs at its start what the build, `check.sh` and the tests need, and checks out the submodules; elsewhere it does nothing.
 - The plugin `clangd-lsp` gives Claude Code clangd's errors after each edit, from `compile_commands.json`. It needs `clangd` on the PATH and works only in local sessions; cloud sessions start no language servers. Each person installs it once with `claude plugin install clangd-lsp@claude-plugins-official --scope project`, and drops gcc's flags in a `.clangd` of their own (above).
-- `check.sh` checks Lua files with LuaLS over the whole folder and prints only the named files' problems, because LuaLS 3.15 finds nothing in a file that it checks alone.
+- `check.sh` checks Lua files with LuaLS over the whole folder and prints only the named files' problems, because LuaLS, up to 3.19.2, finds nothing in a file that it checks alone.
 - `check.sh` skips clang-tidy on `src/base/Sanitizers.c`: it includes gcc's sanitizer headers, which clang does not have.
 - Checks that are off in `.clang-tidy`, because they only flagged ordinary C here:
   - `bugprone-multi-level-implicit-pointer-conversion`: `void *` with `memcpy`, `qsort` and stb_ds.
-  - `bugprone-assignment-in-if-condition` and `bugprone-inc-dec-in-conditions`: deliberate, in chains of `||` and `&&`.
+  - `bugprone-assignment-in-if-condition`, its newer name `bugprone-assignment-in-selection-statement`, and `bugprone-inc-dec-in-conditions`: deliberate, in chains of `||` and `&&`.
+  - `bugprone-signed-bitwise`: flags (`int`) tested against enum values, such as `event->modifiers & ECSModifier_Shift`.
   - `bugprone-narrowing-conversions`: gcc's `-Wconversion` covers it.
   - `bugprone-branch-clone`: branches in a fixed order that do the same thing for different reasons.
   - `cert-err33-c`: unchecked `fprintf` and `fputs` to stderr. `SHUWUR` marks the results that must be checked.

@@ -3,8 +3,7 @@
 #include "base/Log.h"
 #include "base/Lua.h"
 
-#include "lua/lauxlib.h"
-#include "lua/lua.h"
+#include "lua/compat-5.3.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"

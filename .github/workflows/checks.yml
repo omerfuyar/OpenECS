@@ -210,7 +210,7 @@ jobs:
     name: Lua (LuaLS)
     runs-on: ubuntu-24.04
     env:
-      LUALS_VERSION: 3.15.0
+      LUALS_VERSION: 3.19.2
     steps:
       - uses: actions/checkout@v4
 
@@ -219,8 +219,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/luals"
           curl -sSL "https://github.com/LuaLS/lua-language-server/releases/download/$LUALS_VERSION/lua-language-server-$LUALS_VERSION-linux-x64.tar.gz" | tar -xz -C "$RUNNER_TEMP/luals"
 
-      # ecs.lua describes the ecs module; the check finds Lua code that misuses it, and mistakes in ecs.lua itself
+      # ecs.lua describes the ecs module; the check finds Lua code that misuses it, and mistakes in ecs.lua itself;
+      # the build writes .luarc.json, which git ignores, so the check writes its runtime: LuaJIT with its extensions (DESIGN 9.6)
       - name: Check the Lua files
         run: |
+          echo '{ "runtime.version": "LuaJIT", "runtime.enableLuaJITExtensions": true }' > .luarc.json
           "$RUNNER_TEMP/luals/bin/lua-language-server" --check="$GITHUB_WORKSPACE" --checklevel=Warning --logpath="$RUNNER_TEMP/luals-log" | tee luals.log
           grep -q "no problems found" luals.log
