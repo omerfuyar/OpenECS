@@ -16,8 +16,8 @@ See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples 
 
 ## Documents
 
-- [OVERVIEW.md](OVERVIEW.md): what OpenECS is, its scope, and its product decisions.
-- [DESIGN.md](DESIGN.md): how OpenECS is built technically.
+- [GUIDE.md](GUIDE.md): how to use a tool made with OpenECS.
+- [DESIGN.md](DESIGN.md): what OpenECS is and how it is built.
 - [TODO.md](TODO.md): open questions and pending work.
 - [CLAUDE.md](CLAUDE.md): instructions for AI agents working in this repository.
 

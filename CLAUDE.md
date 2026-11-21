@@ -9,11 +9,11 @@ This is the only file written for agents. Everything else is written for humans.
 | File                       | What it holds                                                                                    |
 | -------------------------- | ------------------------------------------------------------------------------------------------ |
 | [README.md](README.md)     | Short introduction, cloning and building.                                                        |
-| [OVERVIEW.md](OVERVIEW.md) | What OpenECS is: scope, the line between core and plugins, principles and product decisions.     |
-| [DESIGN.md](DESIGN.md)     | How OpenECS is built: modules, interfaces, conventions, dependencies and rules for contributors. |
+| [DESIGN.md](DESIGN.md)     | What OpenECS is and how it is built: scope, principles, product decisions, modules, interfaces, conventions, dependencies and rules for contributors. |
+| [GUIDE.md](GUIDE.md)       | How to use a tool made with OpenECS: starting it, its files, and the first keys.                 |
 | [TODO.md](TODO.md)         | Open questions and pending tasks, of OpenECS and the repositories it ships.                      |
 
-Before you propose or change anything, read the Contents of OVERVIEW.md and DESIGN.md, then every section the task touches. Read DESIGN.md section 1 before you write code.
+Before you propose or change anything, read the Contents of DESIGN.md, then section 0 and every section the task touches. Read DESIGN.md section 1 before you write code.
 
 | Path            | What it holds                                                                                                                                                                                                                       |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -95,8 +95,8 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 
 - Markdown only.
 - One source of truth: write each thing in one place only. Elsewhere, link to it instead of repeating it.
-- Put each thing in its place: product decisions in OVERVIEW.md, technical decisions in DESIGN.md, open questions and pending work in TODO.md, introduction and building in README.md, instructions for agents in this file.
-- OVERVIEW.md and DESIGN.md explain the design and nothing else: no history, sources, research evidence, comparisons with alternatives, status or open questions. Everything in them is decided.
+- Put each thing in its place: product and technical decisions in DESIGN.md, how to use a tool in GUIDE.md, open questions and pending work in TODO.md, introduction and building in README.md, instructions for agents in this file.
+- DESIGN.md explains the design and nothing else: no history, sources, research evidence, comparisons with alternatives, status or open questions. Everything in them is decided.
 - Explain terms only in the glossary of the document that uses them, never inline.
 - Do not invent framings, categories or rules, such as "three rules shape the architecture". Do not make vague claims, such as "an ordinary screen".
 - Keep section and list numbers in order, and update cross-references when they change.
