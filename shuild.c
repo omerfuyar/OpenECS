@@ -336,11 +336,13 @@ static const char *MakeLuaJitFiles(const char *generated)
     bool cross = !SHUM_PLATFORM_IS_HOST(SHU_CompilerGetTarget());
     const char *hostCompiler = cross ? "cc" : CONFIG.FLAGS.compiler;
     const char *exe = SHUM_HOST_WINDOWS ? ".exe" : "";
+    // cmd.exe drops the first and last quotes of a command that starts with one; call keeps them
+    const char *run = SHUM_HOST_WINDOWS ? "call " : "";
     SHU_UtilCreateDirectory(SHU_UtilFormat("%sjit/", generated));
 
     // the target's architecture, from the macros that its compiler defines in lj_arch.h
     char *archFile = SHU_UtilFormat("%sarch.txt", generated);
-    SHU_UtilRunLogged(log, "\"%s\" -E -dM -x c \"%slj_arch.h\" -o \"%s%s\"", CONFIG.FLAGS.compiler, source, root, archFile);
+    SHU_UtilRunLogged(log, "%s\"%s\" -E -dM -x c \"%slj_arch.h\" -o \"%s%s\"", run, CONFIG.FLAGS.compiler, source, root, archFile);
     SHUSlice archText = SHU_UtilReadFile(archFile);
     const char *defines = archText.data;
     const char *arch = LuaJitArchHas(defines, "LJ_TARGET_X64", "1") ? "x64" : LuaJitArchHas(defines, "LJ_TARGET_ARM64", "1") ? "arm64"
@@ -386,8 +388,8 @@ static const char *MakeLuaJitFiles(const char *generated)
     }
 
     char *minilua = SHU_UtilFormat("%sminilua%s", out, exe);
-    SHU_UtilRunLogged(log, "\"%s\" %s -o \"%s\" \"%shost/minilua.c\"%s", hostCompiler, hostFlags, minilua, source, SHUM_HOST_WINDOWS ? "" : " -lm");
-    SHU_UtilRunLogged(log, "\"%s\" \"%sdependencies/luajit/dynasm/dynasm.lua\" %s -o \"%sbuildvm_arch.h\" \"%svm_%s.dasc\"", minilua, root, dasmFlags, out, source, arch);
+    SHU_UtilRunLogged(log, "%s\"%s\" %s -o \"%s\" \"%shost/minilua.c\"%s", run, hostCompiler, hostFlags, minilua, source, SHUM_HOST_WINDOWS ? "" : " -lm");
+    SHU_UtilRunLogged(log, "%s\"%s\" \"%sdependencies/luajit/dynasm/dynasm.lua\" %s -o \"%sbuildvm_arch.h\" \"%svm_%s.dasc\"", run, minilua, root, dasmFlags, out, source, arch);
 
     // luajit.h gets the release number: the time of the submodule's commit, or .relver in a source archive
     char *relver = SHU_UtilFormat("%sluajit_relver.txt", out);
@@ -398,11 +400,11 @@ static const char *MakeLuaJitFiles(const char *generated)
         relver = SHU_UtilFormat("%s.relver", out);
     }
 
-    SHU_UtilRunLogged(log, "\"%s\" \"%shost/genversion.lua\" \"%sluajit_rolling.h\" \"%s\" \"%sluajit.h\"", minilua, source, source, relver, out);
+    SHU_UtilRunLogged(log, "%s\"%s\" \"%shost/genversion.lua\" \"%sluajit_rolling.h\" \"%s\" \"%sluajit.h\"", run, minilua, source, source, relver, out);
 
     // buildvm makes the VM's assembly and the tables of the library functions
     char *buildvm = SHU_UtilFormat("%sbuildvm%s", out, exe);
-    SHU_UtilRunLogged(log, "\"%s\" %s -o \"%s\" \"%shost/buildvm.c\" \"%shost/buildvm_asm.c\" \"%shost/buildvm_peobj.c\" \"%shost/buildvm_lib.c\" \"%shost/buildvm_fold.c\"",
+    SHU_UtilRunLogged(log, "%s\"%s\" %s -o \"%s\" \"%shost/buildvm.c\" \"%shost/buildvm_asm.c\" \"%shost/buildvm_peobj.c\" \"%shost/buildvm_lib.c\" \"%shost/buildvm_fold.c\"", run,
                       hostCompiler, hostFlags, buildvm, source, source, source, source, source);
 
     const char *const libraries[] = {"lib_base", "lib_math", "lib_bit", "lib_string", "lib_table", "lib_io", "lib_os", "lib_package", "lib_debug", "lib_jit", "lib_ffi", "lib_buffer"};
@@ -413,16 +415,16 @@ static const char *MakeLuaJitFiles(const char *generated)
         libraryFiles = SHU_UtilFormat("%s \"%s%s.c\"", libraryFiles, source, libraries[i]);
     }
 
-    SHU_UtilRunLogged(log, "\"%s\" -m %s -o \"%s%s\"", buildvm, CONFIG.windows ? "peobj" : "elfasm", out, CONFIG.windows ? "lj_vm.o" : "lj_vm.S");
+    SHU_UtilRunLogged(log, "%s\"%s\" -m %s -o \"%s%s\"", run, buildvm, CONFIG.windows ? "peobj" : "elfasm", out, CONFIG.windows ? "lj_vm.o" : "lj_vm.S");
     const char *const tables[] = {"bcdef", "ffdef", "libdef", "recdef"};
 
     for (usz i = 0; i < sizeof(tables) / sizeof(*tables); i++)
     {
-        SHU_UtilRunLogged(log, "\"%s\" -m %s -o \"%slj_%s.h\"%s", buildvm, tables[i], out, tables[i], libraryFiles);
+        SHU_UtilRunLogged(log, "%s\"%s\" -m %s -o \"%slj_%s.h\"%s", run, buildvm, tables[i], out, tables[i], libraryFiles);
     }
 
-    SHU_UtilRunLogged(log, "\"%s\" -m folddef -o \"%slj_folddef.h\" \"%slj_opt_fold.c\"", buildvm, out, source);
-    SHU_UtilRunLogged(log, "\"%s\" -m vmdef -o \"%sjit/vmdef.lua\"%s", buildvm, out, libraryFiles);
+    SHU_UtilRunLogged(log, "%s\"%s\" -m folddef -o \"%slj_folddef.h\" \"%slj_opt_fold.c\"", run, buildvm, out, source);
+    SHU_UtilRunLogged(log, "%s\"%s\" -m vmdef -o \"%sjit/vmdef.lua\"%s", run, buildvm, out, libraryFiles);
     return arch;
 }
 
@@ -485,7 +487,7 @@ static void Shuild_luajit(void)
 
     if (CONFIG.windows)
     {
-        SHU_UtilRun("\"%s\" rs \"%s%s\" \"%slj_vm.o\"", SHU_CompilerGetTool("ar", "llvm-ar"), binOutputDir, SHU_UtilLibraryFile("luajit", SHUModuleType_LibraryStatic), generated);
+        SHU_UtilRun("%s\"%s\" rs \"%s%s\" \"%slj_vm.o\"", SHUM_HOST_WINDOWS ? "call " : "", SHU_CompilerGetTool("ar", "llvm-ar"), binOutputDir, SHU_UtilLibraryFile("luajit", SHUModuleType_LibraryStatic), generated);
     }
 }
 
