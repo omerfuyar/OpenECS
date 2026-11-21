@@ -20,7 +20,7 @@ const char *__asan_default_options(void)
     return "detect_leaks=1:strict_string_checks=1:check_initialization_order=1";
 }
 
-/// @brief Leaks inside the system libraries that SDL loads: graphics drivers, display servers, input methods and D-Bus. They are not OpenECS's. The libraries are kept loaded, so their names can be matched.
+/// @brief Leaks inside the system libraries that SDL loads: graphics drivers, display servers, input methods and D-Bus, and SDL's own tray on D-Bus. They are not OpenECS's. The libraries are kept loaded, so their names can be matched.
 const char *__lsan_default_suppressions(void)
 {
     return "leak:libdbus-1.so\n"
@@ -49,7 +49,9 @@ const char *__lsan_default_suppressions(void)
            // drivers that SDL unloads before the check at exit; also matched by the SDL function that called them
            "leak:SDL_EGL_InitializeOffscreen\n"
            "leak:SDL_EGL_LoadLibrary\n"
-           "leak:GL_RunCommandQueue\n";
+           "leak:GL_RunCommandQueue\n"
+           // SDL's tray on D-Bus frees neither a tray's D-Bus data nor its entries', where a tray host runs, such as a desktop's bar
+           "leak:SDL_dbustray.c\n";
 }
 
 /// @brief Replaces the system's dlclose, as the executable's symbols come before the libraries': no library is unloaded until the program exits,

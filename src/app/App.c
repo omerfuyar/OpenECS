@@ -408,7 +408,8 @@ static char *ECSIApp_FindSessionsFolder(void)
     return folder;
 }
 
-/// @brief Starts SDL's video. A test, and writing definitions, need no display and make no sound; the environment variables still choose other drivers.
+/// @brief Starts SDL's video. A test, and writing definitions, need no display, make no sound and see no real gamepad; the environment variables still choose
+/// other drivers.
 static void ECSIApp_StartSDL(void)
 {
     if (APP.test || APP.definitions)
@@ -416,6 +417,8 @@ static void ECSIApp_StartSDL(void)
         SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
         SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
         SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+        // only devices with no vendor and product are allowed, which none has; virtual gamepads skip this list, so a test sees only its own
+        SDL_SetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT, "0x0000/0x0000");
     }
 
     // the core quits when the main window closes, after asking about unsaved work; SDL's own quit for the last window would come with the close and answer that question
