@@ -29,10 +29,16 @@ typedef bool (*ECSILuaReadHandleFunction)(int index, const char **retType, void 
 /// @brief Pushes the handle of an object of a type, for values.
 typedef void (*ECSILuaPushHandleFunction)(const char *type, void *object);
 
-/// @brief Sets the functions that turn handles into values and back. The Services module, which owns handles, sets them; without them, handles are skipped.
+/// @brief Pushes the table of the fields of the struct at an index of the stack, for values. Gives false, and pushes nothing, for a value that is not a
+/// struct.
+typedef bool (*ECSILuaPushStructFieldsFunction)(int index);
+
+/// @brief Sets the functions that turn handles and structs into values, and handles back. The Services module, which owns them, sets them; without
+/// them, handles and structs are skipped.
 /// @param Read Reads a handle.
 /// @param Push Pushes a handle.
-void ECSILua_SetHandleFunctions(ECSILuaReadHandleFunction Read, ECSILuaPushHandleFunction Push);
+/// @param PushStructFields Pushes a struct's fields.
+void ECSILua_SetValueFunctions(ECSILuaReadHandleFunction Read, ECSILuaPushHandleFunction Push, ECSILuaPushStructFieldsFunction PushStructFields);
 
 /// @brief Copies the Lua value at an index of a state's stack into a value, by the rules of ECSILua_ReadData. A string with a zero byte becomes a buffer.
 /// In the core's state a handle stays a handle; another state's value goes to another thread, so a handle is skipped there.
