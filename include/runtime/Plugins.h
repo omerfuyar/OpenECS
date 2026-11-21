@@ -2,6 +2,7 @@
 
 // Plugins: finding plugins, reading their manifests, and loading them in dependency order.
 
+#include "base/Lua.h"
 #include "base/Profile.h"
 #include "base/Values.h"
 
@@ -217,6 +218,10 @@ bool ECSIPlugin_Leave(ECSICallback *callback);
 /// @param checker The plugin whose check failed, or nullptr for the core.
 /// @param message What the check says.
 void ECSIPlugin_NoteMisuse(ECSPlugin checker, const char *message);
+
+/// @brief Reports the misuse that a C function noted while Lua called it through the FFI, which waited until Lua can run (DESIGN 10.4).
+/// @param state The Lua state whose code made the call; its stack trace names the line.
+void ECSIPlugin_ReportDeferredMisuse(lua_State *state);
 
 /// @brief Counts the misuses on this thread, so a caller sees whether a call misused a function.
 u64 ECSIPlugin_GetMisuseCount(void);

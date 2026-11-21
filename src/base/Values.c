@@ -31,7 +31,8 @@ struct ECSIValue
         {
             char *handleType;
             void *object;
-            int reference; // a registry reference to the Lua handle it was read from, or 0 for one that C set
+            int reference;       // a registry reference to the Lua handle it was read from, or 0 for one that C set
+            void *const *handle; // that Lua handle's memory, which starts with its object
         };
 
         // table
@@ -52,7 +53,6 @@ static struct
 {
     ECSIValueKeepFunction Keep;
     ECSIValueDropFunction Drop;
-    ECSIValueObjectFunction Object;
 } VALUES = {0};
 
 /// @brief Frees what a value holds and makes it nil.
@@ -150,7 +150,7 @@ SHUResult ECSIValue_Copy(ECSValue *retCopy, const ECSValue *source)
         return ECSValue_SetBuffer(retCopy, (SHUSliceView){.data = source->bytes, .size = source->size});
     case ECSValueType_Handle:
         // a handle whose object was freed while it waited has no object
-        return ECSIValue_SetLuaHandle(retCopy, source->handleType, source->object, source->reference != 0 && VALUES.Keep != nullptr ? VALUES.Keep(source->reference) : 0);
+        return ECSIValue_SetLuaHandle(retCopy, source->handleType, source->object, source->reference != 0 && VALUES.Keep != nullptr ? VALUES.Keep(source->reference) : 0, source->handle);
     case ECSValueType_Table:
         break;
     }
@@ -423,7 +423,7 @@ void *ECSValue_GetHandle(const ECSValue *value, const char *type)
     }
 
     // a handle read from Lua gives its object only while the object lives
-    return value->reference != 0 && VALUES.Object != nullptr ? VALUES.Object(value->reference) : value->object;
+    return value->handle != nullptr ? *value->handle : value->object;
 }
 
 int ECSIValue_GetLuaHandle(const ECSValue *value)
@@ -431,11 +431,10 @@ int ECSIValue_GetLuaHandle(const ECSValue *value)
     return ECSValue_GetType(value) == ECSValueType_Handle ? value->reference : 0;
 }
 
-void ECSIValue_SetLuaFunctions(ECSIValueKeepFunction Keep, ECSIValueDropFunction Drop, ECSIValueObjectFunction Object)
+void ECSIValue_SetLuaFunctions(ECSIValueKeepFunction Keep, ECSIValueDropFunction Drop)
 {
     VALUES.Keep = Keep;
     VALUES.Drop = Drop;
-    VALUES.Object = Object;
 }
 
 void ECSIValue_ForgetObject(ECSValue *value, const void *object)
@@ -585,10 +584,10 @@ SHUResult ECSValue_SetHandle(ECSValue *value, const char *type, void *object)
 {
     ECSILog_Check(object != nullptr, SHUResult_ErrAssertion);
 
-    return ECSIValue_SetLuaHandle(value, type, object, 0);
+    return ECSIValue_SetLuaHandle(value, type, object, 0, nullptr);
 }
 
-SHUResult ECSIValue_SetLuaHandle(ECSValue *value, const char *type, void *object, int reference)
+SHUResult ECSIValue_SetLuaHandle(ECSValue *value, const char *type, void *object, int reference, void *const *handle)
 {
     SDL_assert(value != nullptr);
     SDL_assert(type != nullptr);
@@ -610,6 +609,7 @@ SHUResult ECSIValue_SetLuaHandle(ECSValue *value, const char *type, void *object
     value->handleType = copy;
     value->object = object;
     value->reference = reference;
+    value->handle = handle;
     return SHUResult_Ok;
 }
 
