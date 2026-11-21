@@ -645,6 +645,88 @@ void ECSILua_TypeErrorAt(lua_State *state, int level, int argument, int index, c
     ECSILua_ArgErrorAt(state, level, argument, lua_pushfstring(state, "%s expected, got %s", typeName, given));
 }
 
+/// @brief The function that ECSILua_PushBytesOf pushes. A cdata gives its bytes if it is an array or a struct, which its type's name tells once for each
+/// type; a pointer's or a number's bytes are not its data.
+static const char OPENECS_LUA_BYTES_OF[] =
+    "local ffi, buffer = require('ffi'), require('string.buffer')\n"
+    "local typeof, sizeof, cast, find = ffi.typeof, ffi.sizeof, ffi.cast, string.find\n"
+    "local bytes, bufferMetatable, whole = ffi.typeof('uint8_t *'), getmetatable(buffer.new()), {}\n"
+    "return function(value)\n"
+    "  local kind = type(value)\n"
+    "  if kind == 'cdata' then\n"
+    "    local ctype = typeof(value)\n"
+    "    local id = tonumber(ctype)\n"
+    "    local isWhole = whole[id]\n"
+    "    if isWhole == nil then\n"
+    "      local name = tostring(ctype)\n"
+    "      isWhole = find(name, '%]>$') ~= nil or (find(name, '^ctype<struct ') ~= nil or find(name, '^ctype<union ') ~= nil) and find(name, '[*&]>$') == nil\n"
+    "      whole[id] = isWhole\n"
+    "    end\n"
+    "    if isWhole then return cast(bytes, value), sizeof(value) end\n"
+    "  elseif kind == 'userdata' and getmetatable(value) == bufferMetatable then\n"
+    "    return value:ref()\n"
+    "  end\n"
+    "end\n";
+
+/// @brief The registry's key of the function that ECSILua_PushBytesOf pushes, made once for each state.
+static const char OPENECS_LUA_BYTES_OF_KEY = 0;
+
+void ECSILua_PushBytesOf(lua_State *state)
+{
+    lua_rawgetp(state, LUA_REGISTRYINDEX, &OPENECS_LUA_BYTES_OF_KEY);
+
+    if (lua_isnil(state, -1))
+    {
+        lua_pop(state, 1);
+        int loaded = luaL_loadbufferx(state, OPENECS_LUA_BYTES_OF, sizeof(OPENECS_LUA_BYTES_OF) - 1, "=bytes", "t");
+        SDL_assert(loaded == LUA_OK);
+        lua_call(state, 0, 1);
+        lua_pushvalue(state, -1);
+        lua_rawsetp(state, LUA_REGISTRYINDEX, &OPENECS_LUA_BYTES_OF_KEY);
+    }
+}
+
+const char *ECSILua_ToBytes(lua_State *state, int index, usz *retLength, bool *retText)
+{
+    size_t length = 0;
+    bool text = lua_type(state, index) == LUA_TSTRING;
+
+    if (retText != nullptr)
+    {
+        *retText = text;
+    }
+
+    if (text)
+    {
+        const char *string = lua_tolstring(state, index, &length);
+        *retLength = length;
+        return string;
+    }
+
+    index = lua_absindex(state, index);
+    ECSILua_PushBytesOf(state);
+    lua_pushvalue(state, index);
+    lua_call(state, 1, 2);
+
+    // the pointer's cdata holds the pointer; the bytes are the value's, which stays on the stack
+    const char *bytes = lua_isnil(state, -2) ? nullptr : *(const char *const *)lua_topointer(state, -2);
+    *retLength = bytes == nullptr ? 0 : (usz)lua_tointeger(state, -1);
+    lua_pop(state, 2);
+    return bytes;
+}
+
+const char *ECSILua_CheckBytes(lua_State *state, int argument, usz *retLength, bool *retText)
+{
+    const char *bytes = ECSILua_ToBytes(state, argument, retLength, retText);
+
+    if (bytes == nullptr)
+    {
+        ECSILua_TypeError(state, argument, "string, string.buffer or cdata");
+    }
+
+    return bytes;
+}
+
 const char *ECSILua_CheckLString(lua_State *state, int argument, usz *retLength)
 {
     size_t length = 0;

@@ -1067,7 +1067,7 @@ static int ECSIBindings_ClipboardSetData(lua_State *state)
 {
     usz size = 0;
     const char *mimeType = ECSILua_CheckString(state, 1);
-    const char *bytes = ECSILua_CheckLString(state, 2, &size);
+    const char *bytes = ECSILua_CheckBytes(state, 2, &size, nullptr);
     lua_pushboolean(state, ECSClipboard_SetData(mimeType, (SHUSliceView){.data = bytes, .size = size}) == SHUResult_Ok);
     return 1;
 }
@@ -2122,7 +2122,7 @@ static int ECSIBindings_SurfaceSetRow(lua_State *state)
     ECSSurface *surface = ECSIBindings_CheckPixelSurface(state, 1);
     lua_Integer y = ECSILua_CheckInteger(state, 2);
     usz length = 0;
-    const char *bytes = ECSILua_CheckLString(state, 3, &length);
+    const char *bytes = ECSILua_CheckBytes(state, 3, &length, nullptr);
     lua_Integer x = ECSILua_OptInteger(state, 4, 0);
 
     // the row is clipped to the surface
