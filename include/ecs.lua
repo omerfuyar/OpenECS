@@ -706,7 +706,7 @@ function ecs.handle.value(handle, name) end
 
 -- Structs
 
----Plain data with fixed fields, typed by name, such as "geometry.vec2": a table of its fields, with its type's methods and operators.
+---Plain data with fixed fields, typed by name, such as "geometry.vec2": cdata of its type's own FFI type, laid out as C, with its type's methods and operators. A function also takes a table of its fields.
 ---@class ecs.Struct: { [string]: any }
 
 ---@class ecs.struct
@@ -717,15 +717,15 @@ ecs.struct = {}
 ---@param fields string Its fields in order, as a signature writes parameters: "float x, float y". A field may be a list of a fixed length, "float m[16]", or another struct, "struct<geometry.vec2> position"; a struct of one list without a name, "float[16]", is that list. Fields are bool, int, int64, float, double, color or struct.
 function ecs.struct.register(name, fields) end
 
----Makes a function of the plugin a method of one of its struct types, so Lua calls it on a struct: `a:length()`. A method named add, sub, mul, div, unm, eq, lt, le, len or tostring is also Lua's operator: `a + b` calls add.
+---Makes a function of the plugin a method of one of its struct types, so Lua calls it on a struct: `a:length()`. A method named add, sub, mul, div, mod, pow, unm, concat, eq, lt, le, len or tostring is also Lua's operator: `a + b` calls add.
 ---@param type string The struct type's local name, such as "vec2".
 ---@param method string The method's name, such as "length".
 ---@param functionName string The local name of one of the plugin's functions, registered with ecs.service.register, whose first parameter is a struct of the type.
 function ecs.struct.addMethod(type, method, functionName) end
 
----Makes a struct from a table of its fields, with the methods of its type. Other fields of the table are left out.
+---Makes a struct from a table of its fields, or a copy of a struct of its type. Other fields of the table are left out.
 ---@param name string The struct type, by its full name, such as "geometry.vec2".
----@param fields table A table with every field of the type.
+---@param fields table|ecs.Struct A table with every field of the type, or a struct of the type.
 ---@return ecs.Struct struct The new struct.
 function ecs.struct.new(name, fields) end
 

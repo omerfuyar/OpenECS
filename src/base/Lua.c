@@ -14,6 +14,7 @@ static struct
     int isInt64;                          // registry reference of the function that tells LuaJIT's 64-bit integer cdata
     ECSILuaReadHandleFunction ReadHandle; // set by the Services module
     ECSILuaPushHandleFunction PushHandle;
+    ECSILuaPushStructFieldsFunction PushStructFields;
     ECSILuaMisuseFunction Misuse;
     void *ffiCall; // the function that a Lua wrapper calls through the FFI, or nullptr
 } LUA = {0};
@@ -139,6 +140,23 @@ static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue
             void *const *handle = lua_topointer(state, index);
             lua_pushvalue(state, index);
             return ECSIValue_SetLuaHandle(retValue, type, object, luaL_ref(state, LUA_REGISTRYINDEX), handle);
+        }
+
+        // a struct is the table of its fields (DESIGN 10.11); struct types are the core's state's
+        if (state == LUA.state && LUA.PushStructFields != nullptr && LUA.PushStructFields(index))
+        {
+            SHUResult result = ECSILua_ToValue(state, -1, retValue, handles, depth);
+            lua_pop(state, 1);
+            return result;
+        }
+
+        // a string.buffer's or an FFI array's bytes are a buffer, as an argument's are (DESIGN 10.7)
+        usz length = 0;
+        const char *bytes = ECSILua_ToBytes(state, index, &length, nullptr);
+
+        if (bytes != nullptr)
+        {
+            return ECSValue_SetBuffer(retValue, (SHUSliceView){.data = bytes, .size = length});
         }
 
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, handles ? "A userdata or cdata that is not a handle, or whose object is gone, is not data; it is skipped." : "A handle, userdata or cdata is not data that can go to another thread; it is skipped.");
@@ -490,10 +508,11 @@ lua_State *ECSILua_GetState(void)
     return LUA.state;
 }
 
-void ECSILua_SetHandleFunctions(ECSILuaReadHandleFunction Read, ECSILuaPushHandleFunction Push)
+void ECSILua_SetValueFunctions(ECSILuaReadHandleFunction Read, ECSILuaPushHandleFunction Push, ECSILuaPushStructFieldsFunction PushStructFields)
 {
     LUA.ReadHandle = Read;
     LUA.PushHandle = Push;
+    LUA.PushStructFields = PushStructFields;
 }
 
 SHUResult ECSILua_GetValue(lua_State *state, int index, ECSValue *retValue)

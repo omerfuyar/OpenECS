@@ -529,7 +529,13 @@ static int ECSIBindings_StructAddMethod(lua_State *state)
 static int ECSIBindings_StructNew(lua_State *state)
 {
     const char *type = ECSILua_CheckString(state, 1);
-    ECSILua_CheckType(state, 2, LUA_TTABLE);
+
+    // a table of the fields, or a struct of the type, which ECSIServices_PushStruct checks
+    if (!lua_istable(state, 2) && lua_type(state, 2) != OPENECS_LUA_TCDATA)
+    {
+        ECSILua_TypeError(state, 2, "table or struct");
+    }
+
     ECSIServices_PushStruct(2, type);
     return 1;
 }

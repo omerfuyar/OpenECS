@@ -46,19 +46,8 @@ static const char *const OPENECS_PARAMETER_TYPE_NAMES[ECSIParameterType_Count] =
 /// @brief The most parameters whose call storage a call from Lua keeps on the C stack; a function with more gets a userdata.
 #define OPENECS_CALL_PARAMETERS 16
 
-/// @brief The methods whose names make them Lua's operators too, with the metatable fields of those operators: a struct type's add is also its +.
-static const char *const OPENECS_STRUCT_OPERATORS[][2] = {
-    {"add", "__add"},
-    {"sub", "__sub"},
-    {"mul", "__mul"},
-    {"div", "__div"},
-    {"unm", "__unm"},
-    {"eq", "__eq"},
-    {"lt", "__lt"},
-    {"le", "__le"},
-    {"len", "__len"},
-    {"tostring", "__tostring"},
-};
+/// @brief The methods whose names make them Lua's operators too: a struct type's add is also its +. OPENECS_HANDLE_HELPERS names them as well.
+static const char *const OPENECS_STRUCT_OPERATORS[] = {"add", "sub", "mul", "div", "mod", "pow", "unm", "concat", "eq", "lt", "le", "len", "tostring"};
 
 /// @brief A bound function that takes the focused panel: void(handle<ecs.panel>).
 typedef void (*ECSIPanelFunction)(ECSPanel panel);
@@ -89,11 +78,12 @@ typedef struct ECSIStructField
     usz offset;                              // in the C struct
 } ECSIStructField;
 
-/// @brief A registered struct type: plain data that crosses between C and Lua by value, a C struct in C and a table in Lua (10.11).
+/// @brief A registered struct type: plain data that crosses between C and Lua by value, a C struct in C and cdata of its own FFI type in Lua (10.11).
 typedef struct ECSIStructType
 {
     char *name;
-    char *metatable;         // name of its metatable in the registry
+    char *metatable;         // name of its table of methods in the registry, which its FFI type's metatable reads
+    int ctype;               // registry reference of its FFI type, made when Lua first needs it; LUA_NOREF before
     ECSPlugin plugin;        // nullptr for the core
     ECSIStructField *fields; // stb_ds array, in the order of the C struct
     usz size;
@@ -925,6 +915,101 @@ static bool ECSIStructs_ReadFields(const char *text, ECSIStructType *type)
     return arrlenu(type->fields) > 0;
 }
 
+static const char *ECSIFfi_GetCType(ECSIParameterType type);
+
+/// @brief Pushes the FFI type of a struct type, which it makes the first time, after the types of the structs in its fields (DESIGN 10.11). Its
+/// metatable gives the methods and operators.
+static void ECSIStructs_PushCType(lua_State *state, ECSIStructType *type)
+{
+    if (type->ctype != LUA_NOREF)
+    {
+        lua_rawgeti(state, LUA_REGISTRYINDEX, type->ctype);
+        return;
+    }
+
+    // a struct in a field is $, which the FFI fills with that struct's type; a list struct's list is ecsList
+    ECSIText declaration = {0};
+    ECSIText_Add(&declaration, "struct {");
+
+    for (usz i = 0; i < arrlenu(type->fields); i++)
+    {
+        const ECSIStructField *field = &type->fields[i];
+        const char *cType = field->type == ECSIParameterType_Struct ? "$" : ECSIFfi_GetCType(field->type);
+        ECSIText_Add(&declaration, " %s %s", cType, field->name != nullptr ? field->name : "ecsList");
+
+        if (field->count > 0)
+        {
+            ECSIText_Add(&declaration, "[%zu]", field->count);
+        }
+
+        ECSIText_Add(&declaration, ";");
+    }
+
+    ECSIText_Add(&declaration, " }");
+    SDL_assert(!declaration.failed);
+
+    lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.handleHelpers);
+    lua_getfield(state, -1, "newStruct");
+    luaL_getmetatable(state, type->metatable);
+    lua_pushstring(state, declaration.data);
+    lua_pushinteger(state, (lua_Integer)type->size);
+    lua_pushstring(state, type->name);
+    bool list = type->fields[0].name == nullptr;
+    list ? lua_pushinteger(state, (lua_Integer)type->fields[0].count) : lua_pushnil(state);
+    lua_createtable(state, (int)arrlenu(type->fields), 0);
+
+    for (usz i = 0; !list && i < arrlenu(type->fields); i++)
+    {
+        lua_pushstring(state, type->fields[i].name);
+        lua_rawseti(state, -2, (int)i + 1);
+    }
+
+    lua_pushlightuserdata(state, type);
+    int nested = 0;
+
+    for (usz i = 0; i < arrlenu(type->fields); i++)
+    {
+        if (type->fields[i].type == ECSIParameterType_Struct)
+        {
+            ECSIStructs_PushCType(state, (ECSIStructType *)type->fields[i].structType);
+            nested++;
+        }
+    }
+
+    lua_call(state, 7 + nested, 1);
+    SDL_free(declaration.data);
+    lua_remove(state, -2);
+    lua_pushvalue(state, -1);
+    type->ctype = luaL_ref(state, LUA_REGISTRYINDEX);
+}
+
+/// @brief Gives the type of the struct at an index of the stack, and its memory, or nullptr for another value.
+static ECSIStructType *ECSIStructs_GetType(lua_State *state, int index, void **retMemory)
+{
+    *retMemory = nullptr;
+
+    if (lua_type(state, index) != OPENECS_LUA_TCDATA)
+    {
+        return nullptr;
+    }
+
+    index = lua_absindex(state, index);
+    lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.handleHelpers);
+    lua_getfield(state, -1, "structOf");
+    lua_pushvalue(state, index);
+    lua_call(state, 1, 2);
+    ECSIStructType *type = lua_touserdata(state, -2);
+
+    // the memory comes as a pointer's cdata, as a struct inside another is a reference
+    if (type != nullptr)
+    {
+        *retMemory = *(void *const *)lua_topointer(state, -1);
+    }
+
+    lua_pop(state, 3);
+    return type;
+}
+
 static bool ECSIStructs_Read(lua_State *state, int index, const ECSIStructType *type, void *retMemory, const char **retField);
 
 /// @brief Reads one Lua value of a field's type into memory.
@@ -959,12 +1044,21 @@ static bool ECSIStructs_ReadValue(lua_State *state, int index, const ECSIStructF
     }
 }
 
-/// @brief Reads a table, at an index of the stack, into a struct's memory: each field by its name, and a list's values by their positions. Any table with the fields will do.
+/// @brief Reads a struct of the type, or a table, at an index of the stack, into a struct's memory: a table's fields by their names, and a list's values
+/// by their positions. Any table with the fields will do.
 /// @param retField The name of the first field that is missing or of another type, or nullptr if the value is not a table.
-/// @return false if the value is not a table, or a field is missing or of another type.
+/// @return false if the value is neither, or a field is missing or of another type.
 static bool ECSIStructs_Read(lua_State *state, int index, const ECSIStructType *type, void *retMemory, const char **retField)
 {
     *retField = nullptr;
+    void *bytes = nullptr;
+
+    // a struct of the type is copied whole
+    if (ECSIStructs_GetType(state, index, &bytes) == type)
+    {
+        SDL_memcpy(retMemory, bytes, type->size);
+        return true;
+    }
 
     if (!lua_istable(state, index))
     {
@@ -1017,7 +1111,7 @@ static bool ECSIStructs_Read(lua_State *state, int index, const ECSIStructType *
     return true;
 }
 
-static void ECSIStructs_Push(lua_State *state, const ECSIStructType *type, const void *memory);
+static void ECSIStructs_PushFields(lua_State *state, const ECSIStructType *type, const void *memory);
 
 static void ECSIServices_PushColor(lua_State *state, ECSColor color);
 
@@ -1045,13 +1139,13 @@ static void ECSIStructs_PushValue(lua_State *state, const ECSIStructField *field
         ECSIServices_PushColor(state, *(const ECSColor *)memory);
         break;
     default:
-        ECSIStructs_Push(state, field->structType, memory);
+        ECSIStructs_PushFields(state, field->structType, memory);
         break;
     }
 }
 
-/// @brief Pushes a struct's memory as a new table of its fields, with the type's metatable, which gives its methods and operators.
-static void ECSIStructs_Push(lua_State *state, const ECSIStructType *type, const void *memory)
+/// @brief Pushes a struct's memory as a new table of its fields, which values and saved state hold (DESIGN 10.11).
+static void ECSIStructs_PushFields(lua_State *state, const ECSIStructType *type, const void *memory)
 {
     bool list = type->fields[0].name == nullptr;
     lua_createtable(state, list ? (int)type->fields[0].count : 0, list ? 0 : (int)arrlenu(type->fields));
@@ -1085,8 +1179,16 @@ static void ECSIStructs_Push(lua_State *state, const ECSIStructType *type, const
             lua_setfield(state, -2, field->name);
         }
     }
+}
 
-    luaL_setmetatable(state, type->metatable);
+/// @brief Pushes a struct's memory as a new struct for Lua: cdata of its type's FFI type, with its methods and operators.
+static void ECSIStructs_Push(lua_State *state, ECSIStructType *type, const void *memory)
+{
+    ECSIStructs_PushCType(state, type);
+    lua_call(state, 0, 1);
+
+    // a struct's bytes are where lua_topointer points
+    SDL_memcpy((void *)lua_topointer(state, -1), memory, type->size);
 }
 
 static void ECSIStructs_FreeType(ECSIStructType *type)
@@ -1170,10 +1272,11 @@ static SHUResult ECSIStructs_Register(ECSPlugin plugin, const char *name, const 
         return SHUResult_ErrAssertion;
     }
 
-    // the methods go into __index once there are some
+    // its FFI type's metatable reads the methods from this table, so they can come and go
     lua_State *state = ECSILua_GetState();
-    luaL_newmetatable(state, type->metatable);
-    lua_pop(state, 1);
+    lua_newtable(state);
+    lua_setfield(state, LUA_REGISTRYINDEX, type->metatable);
+    type->ctype = LUA_NOREF;
 
     shput(SERVICES.structTypes, type->name, type);
     return SHUResult_Ok;
@@ -1184,21 +1287,15 @@ static void ECSIStructs_DropMethods(ECSIStructType *type)
 {
     lua_State *state = ECSILua_GetState();
     luaL_getmetatable(state, type->metatable);
-    lua_pushnil(state);
-    lua_setfield(state, -2, "__index");
-
-    for (usz i = 0; i < SDL_arraysize(OPENECS_STRUCT_OPERATORS); i++)
-    {
-        lua_pushnil(state);
-        lua_setfield(state, -2, OPENECS_STRUCT_OPERATORS[i][1]);
-    }
-
-    lua_pop(state, 1);
 
     for (usz i = 0; i < arrlenu(type->methods); i++)
     {
+        lua_pushnil(state);
+        lua_setfield(state, -2, type->methods[i]);
         SDL_free(type->methods[i]);
     }
+
+    lua_pop(state, 1);
 
     arrfree(type->methods);
     arrfree(type->targets);
@@ -1606,7 +1703,66 @@ static const char OPENECS_HANDLE_HELPERS[] =
     "  if type(value) ~= 'cdata' then return nil end\n"
     "  return types[tonumber(ffi.typeof(value))]\n"
     "end\n"
-    "return { new = new, typeOf = typeOf }\n";
+    // a struct type's operators call its methods, which come and go with its plugin, as its metatable cannot change
+    "local format, istype, structs = string.format, ffi.istype, {}\n"
+    "local OPERATORS = { add = '__add', sub = '__sub', mul = '__mul', div = '__div', mod = '__mod', pow = '__pow', unm = '__unm', concat = '__concat',\n"
+    "  lt = '__lt', le = '__le', len = '__len', tostring = '__tostring' }\n"
+    "local function newStruct(methods, declaration, size, name, count, fields, structType, ...)\n"
+    "  local ctype = ffi.typeof(declaration, ...)\n"
+    "  assert(ffi.sizeof(ctype) == size, 'a struct type has the layout of the core')\n"
+    "  local metatable = { __index = methods }\n"
+    // a list struct is its list, whose positions start at 1 as Lua's lists do
+    "  if count ~= nil then\n"
+    "    metatable.__index = function(self, key)\n"
+    "      if type(key) ~= 'number' then return methods[key] end\n"
+    "      if key >= 1 and key <= count then return self.ecsList[key - 1] end\n"
+    "    end\n"
+    "    metatable.__newindex = function(self, key, value)\n"
+    "      if type(key) ~= 'number' or key % 1 ~= 0 or key < 1 or key > count then error(format('a %s has the positions 1 to %d', name, count), 2) end\n"
+    "      self.ecsList[key - 1] = value\n"
+    "    end\n"
+    "  end\n"
+    // pairs gives the fields in their order, or a list's positions and values, as it does for a table of them; ipairs gives a list's
+    "  metatable.__pairs = function(self)\n"
+    "    local i = 0\n"
+    "    return function()\n"
+    "      i = i + 1\n"
+    "      if count ~= nil then\n"
+    "        if i <= count then return i, self.ecsList[i - 1] end\n"
+    "      elseif fields[i] ~= nil then\n"
+    "        return fields[i], self[fields[i]]\n"
+    "      end\n"
+    "    end\n"
+    "  end\n"
+    "  if count ~= nil then metatable.__ipairs = metatable.__pairs end\n"
+    "  for method, event in pairs(OPERATORS) do\n"
+    "    metatable[event] = function(a, b)\n"
+    "      local operator = methods[method]\n"
+    "      if operator ~= nil then return operator(a, b) end\n"
+    "      if method == 'tostring' then return name end\n"
+    "      if method == 'len' and count ~= nil then return count end\n"
+    "      error(format('a %s has no method %s', name, method), 2)\n"
+    "    end\n"
+    "  end\n"
+    // == also compares a struct with other values, such as nil, which are never equal to it
+    "  metatable.__eq = function(a, b)\n"
+    "    local operator = methods.eq\n"
+    "    if operator == nil or not istype(ctype, a) or not istype(ctype, b) then return rawequal(a, b) end\n"
+    "    return operator(a, b)\n"
+    "  end\n"
+    "  ctype = ffi.metatype(ctype, metatable)\n"
+    // a struct inside another is a reference, of a type of its own
+    "  structs[tonumber(ctype)], structs[tonumber(ffi.typeof('$ &', ctype))] = structType, structType\n"
+    "  return ctype\n"
+    "end\n"
+    "local voidPointer = ffi.typeof('void *')\n"
+    "local function structOf(value)\n"
+    "  if type(value) ~= 'cdata' then return nil end\n"
+    "  local structType = structs[tonumber(ffi.typeof(value))]\n"
+    "  if structType == nil then return nil end\n"
+    "  return structType, ffi.cast(voidPointer, value)\n"
+    "end\n"
+    "return { new = new, typeOf = typeOf, newStruct = newStruct, structOf = structOf }\n";
 
 static_assert(sizeof(ECSIHandle) == 2 * sizeof(void *), "a handle's FFI type is two pointers");
 
@@ -2566,7 +2722,8 @@ static int ECSIFfi_Free(lua_State *state)
     return 0;
 }
 
-/// @brief H.struct(argument, value, type): the memory of a struct read from a table of its fields, as a userdata, which the FFI passes as a pointer.
+/// @brief H.struct(argument, value, type): the memory of a struct read from a table of its fields, or from a struct inside another, as a userdata,
+/// which the FFI passes as a pointer.
 static int ECSIFfi_Struct(lua_State *state)
 {
     int argument = (int)lua_tointeger(state, 1);
@@ -2582,21 +2739,6 @@ static int ECSIFfi_Struct(lua_State *state)
         ECSILua_ArgErrorAt(state, 1, argument, problem);
     }
 
-    return 1;
-}
-
-/// @brief H.newStruct(type): zeroed memory of a struct for an output, as a userdata.
-static int ECSIFfi_NewStruct(lua_State *state)
-{
-    const ECSIStructType *type = lua_touserdata(state, 1);
-    SDL_memset(lua_newuserdata(state, type->size), 0, type->size);
-    return 1;
-}
-
-/// @brief H.pushStruct(memory, type): the table of a struct that C filled.
-static int ECSIFfi_PushStruct(lua_State *state)
-{
-    ECSIStructs_Push(state, lua_touserdata(state, 2), lua_touserdata(state, 1));
     return 1;
 }
 
@@ -2654,8 +2796,6 @@ static SHUResult ECSIFfi_PushHelpers(lua_State *state)
         {"pushValue", ECSIFfi_PushValue},
         {"free", ECSIFfi_Free},
         {"struct", ECSIFfi_Struct},
-        {"newStruct", ECSIFfi_NewStruct},
-        {"pushStruct", ECSIFfi_PushStruct},
         {"pushHandle", ECSIFfi_PushHandle},
         {"raise", ECSIFfi_Raise},
         {"cannot", ECSIFfi_Cannot},
@@ -2831,7 +2971,8 @@ static void ECSIFfi_AddCheck(ECSIText *text, ECSIParameter parameter, usz i, int
         ECSIText_Add(text, "  local p%zu = a%zu.ecsObject\n  if p%zu == nil then H.argError(%d, 'the object of this handle is gone') end\n", i, i, i, argument);
         break;
     case ECSIParameterType_Struct:
-        ECSIText_Add(text, "  local p%zu = H.struct(%d, a%zu, T%zu)\n", i, argument, i, i);
+        // a struct is passed as it is, and a table of its fields is read
+        ECSIText_Add(text, "  local p%zu = a%zu\n  if not istype(C%zu, p%zu) then p%zu = H.struct(%d, a%zu, T%zu) end\n", i, i, i, i, i, argument, i, i);
         break;
     default:
         break;
@@ -2864,7 +3005,8 @@ static void ECSIFfi_AddResult(ECSIText *text, ECSIParameter parameter, usz numbe
         ECSIText_Add(text, "  local r%zu = H.pushValue(%s, %s)\n", number, from, parameter.out ? "true" : "false");
         break;
     case ECSIParameterType_Struct:
-        ECSIText_Add(text, "  local r%zu = H.pushStruct(%s, %s)\n", number, from, type);
+        // the struct that C filled
+        ECSIText_Add(text, "  local r%zu = %s\n", number, from);
         break;
     default:
         // booleans and numbers are Lua's as they are
@@ -2939,7 +3081,7 @@ static void ECSIFfi_AddArguments(ECSIText *text, const ECSISignature *signature)
         }
         else if (parameter.out && parameter.type == ECSIParameterType_Struct)
         {
-            ECSIText_Add(text, "  local p%zu = H.newStruct(T%zu)\n", i, i);
+            ECSIText_Add(text, "  local p%zu = C%zu()\n", i, i);
         }
         else if (ECSIFfi_IsKeptOutput(parameter))
         {
@@ -3012,17 +3154,19 @@ static void ECSIFfi_AddReturn(ECSIText *text, const ECSISignature *signature)
         }
     }
 
-    ECSIText_Add(text, "  H.free(nil");
+    // the values that the call made are freed; a call without them calls nothing more, so the JIT compiles it whole
+    bool values = false;
 
     for (usz i = 0; i < count; i++)
     {
         if (signature->parameters[i].type == ECSIParameterType_Value && !signature->parameters[i].out)
         {
-            ECSIText_Add(text, ", p%zu", i);
+            ECSIText_Add(text, values ? ", p%zu" : "  H.free(p%zu", i);
+            values = true;
         }
     }
 
-    ECSIText_Add(text, ")\n  return ");
+    ECSIText_Add(text, values ? ")\n  return " : "  return ");
     bool first = true;
 
     if (result)
@@ -3093,6 +3237,8 @@ static void ECSIFfi_SetTypes(lua_State *state, const ECSISignature *signature)
         {
             lua_pushlightuserdata(state, parameter.structType);
             lua_rawseti(state, -3, (int)i);
+            ECSIStructs_PushCType(state, parameter.structType);
+            lua_rawseti(state, -2, (int)i);
         }
     }
 
@@ -3329,6 +3475,21 @@ static SHUResult ECSIServices_CreateFunction(ECSPlugin plugin, const char *name,
 
     *retFunction = function;
     return SHUResult_Ok;
+}
+
+/// @brief Pushes the table of the fields of the struct at an index of the core's state's stack, for values; false for another value.
+static bool ECSIServices_PushStructFields(int index)
+{
+    lua_State *state = ECSILua_GetState();
+    void *memory = nullptr;
+    const ECSIStructType *type = ECSIStructs_GetType(state, index, &memory);
+
+    if (type != nullptr)
+    {
+        ECSIStructs_PushFields(state, type, memory);
+    }
+
+    return type != nullptr;
 }
 
 /// @brief Reads a Lua handle for a value: its type's name and its object.
@@ -3736,7 +3897,7 @@ static void ECSIDefinition_AddLuaStruct(ECSIText *lua, const ECSIStructType *typ
     char className[256];
     ECSIDefinition_ToPascalCase(type->name, cs(className, sizeof(className)));
     bool list = type->fields[0].name == nullptr;
-    ECSIText_Add(lua, "\n---A struct of the type %s: plain data, which a table of its fields stands for.\n---@class %s", type->name, type->name);
+    ECSIText_Add(lua, "\n---A struct of the type %s: plain data, cdata of its own FFI type; a function also takes a table of its fields.\n---@class %s", type->name, type->name);
 
     if (list)
     {
@@ -3761,7 +3922,7 @@ static void ECSIDefinition_AddLuaStruct(ECSIText *lua, const ECSIStructType *typ
         {
             const ECSISignature *signature = &type->targets[i]->signature;
 
-            if (SDL_strcmp(type->methods[i], OPENECS_STRUCT_OPERATORS[j][0]) != 0 || SDL_strcmp(type->methods[i], "tostring") == 0 || SDL_strcmp(type->methods[i], "eq") == 0)
+            if (SDL_strcmp(type->methods[i], OPENECS_STRUCT_OPERATORS[j]) != 0 || SDL_strcmp(type->methods[i], "tostring") == 0 || SDL_strcmp(type->methods[i], "eq") == 0)
             {
                 continue;
             }
@@ -4003,7 +4164,7 @@ SHUResult ECSIServices_Initialize(void)
     }
 
     SERVICES.handleHelpers = luaL_ref(state, LUA_REGISTRYINDEX);
-    ECSILua_SetHandleFunctions(ECSIServices_ReadHandle, ECSIServices_PushHandle);
+    ECSILua_SetValueFunctions(ECSIServices_ReadHandle, ECSIServices_PushHandle, ECSIServices_PushStructFields);
 
     // the core's handle types: panels, popups, and the surface a panel or popup draws into, valid during Draw
     SHU_ReturnResult(ECSIServices_RegisterHandleType(nullptr, "ecs.panel", nullptr));
@@ -4324,7 +4485,7 @@ void ECSIServices_Terminate(void)
     hmfree(SERVICES.kept);
     hmfree(SERVICES.luaCallers);
     arrfree(SERVICES.drawn);
-    ECSILua_SetHandleFunctions(nullptr, nullptr);
+    ECSILua_SetValueFunctions(nullptr, nullptr, nullptr);
     SDL_zero(SERVICES);
 }
 
@@ -4733,33 +4894,13 @@ SHUResult ECSIServices_RegisterCoreStruct(const char *name, const char *fields)
     return ECSIStructs_Register(nullptr, name, fields);
 }
 
-/// @brief Sets the function on top of the stack as a method, and as an operator if the method's name makes one, of a struct type's metatable; pops it.
+/// @brief Sets the function on top of the stack as a method of a struct type, which is also an operator if its name makes one; pops it.
 static void ECSIStructs_SetMethod(lua_State *state, const ECSIStructType *type, const char *method)
 {
     luaL_getmetatable(state, type->metatable);
-
-    if (lua_getfield(state, -1, "__index") != LUA_TTABLE)
-    {
-        lua_pop(state, 1);
-        lua_newtable(state);
-        lua_pushvalue(state, -1);
-        lua_setfield(state, -3, "__index");
-    }
-
-    lua_pushvalue(state, -3);
+    lua_insert(state, -2);
     lua_setfield(state, -2, method);
     lua_pop(state, 1);
-
-    for (usz i = 0; i < SDL_arraysize(OPENECS_STRUCT_OPERATORS); i++)
-    {
-        if (SDL_strcmp(method, OPENECS_STRUCT_OPERATORS[i][0]) == 0)
-        {
-            lua_pushvalue(state, -2);
-            lua_setfield(state, -2, OPENECS_STRUCT_OPERATORS[i][1]);
-        }
-    }
-
-    lua_pop(state, 2);
 }
 
 SHUResult ECSStruct_AddMethod(ECSPlugin plugin, const char *type, const char *method, const char *function)
@@ -4815,7 +4956,7 @@ SHUResult ECSStruct_AddMethod(ECSPlugin plugin, const char *type, const char *me
 void ECSIServices_PushStruct(int index, const char *type)
 {
     lua_State *state = ECSILua_GetState();
-    const ECSIStructType *structType = ECSIServices_FindStructType(type);
+    ECSIStructType *structType = ECSIServices_FindStructType(type);
 
     if (structType == nullptr)
     {
