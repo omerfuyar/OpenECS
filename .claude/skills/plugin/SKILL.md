@@ -41,7 +41,7 @@ Read it against this list, in this order, and name the lines for each finding:
 3. **Lifetimes.** Nothing keeps a surface after `Draw`. Handles are freed or forgotten as 10.6 says. A plugin disabled and enabled again (9.10) leaves no timer, worker, subscription or binding behind.
 4. **Names.** Local names when declaring, full names elsewhere (9.9); C names as 1.2 and std DESIGN 1.3 say. ui elements that keep state have ids.
 5. **Drawing.** No whole redraw where `kept` allows a part; `surface:changed` names what changed; no call into the core per pixel.
-6. **Calls written out.** Functions are called and registered by the names a reader can find (OVERVIEW, "Calls are written out").
+6. **Calls written out.** Functions are called and registered by the names a reader can find (DESIGN 0.6, "Calls are written out").
 7. **Tests.** Each promise of the plugin is checked by its example's test.
 
 Fix what the audit finds with the plugin, or, for OpenECS and OpenECS-std, record it as the review skill says.
