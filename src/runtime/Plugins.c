@@ -477,12 +477,21 @@ static SHUResult ECSIPlugin_LoadLibrary(const char *name, const char *folder, SD
     *retLibrary = nullptr;
     *retCopy = nullptr;
 
-    if (SDL_asprintf(&path, OPENECS_LIBRARY_FORMAT, folder, name) >= 0)
+    if (SDL_asprintf(&path, OPENECS_LIBRARY_FORMAT, folder, name) < 0)
     {
-        *retCopy = PLUGINS.copyLibraries ? ECSIPlugin_CopyLibrary(name, folder, path) : nullptr;
-        *retLibrary = SDL_LoadObject(*retCopy != nullptr ? *retCopy : path);
+        return SHUResult_ErrAllocation;
     }
 
+    // a folder with the plugin's sources and no library is a plugin that was not built, such as an example run from its repository
+    if (!SDL_GetPathInfo(path, nullptr))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Cannot load plugin '%s': %s does not exist. A native plugin is built before it loads.", name, path);
+        SDL_free(path);
+        return SHUResult_ErrFile;
+    }
+
+    *retCopy = PLUGINS.copyLibraries ? ECSIPlugin_CopyLibrary(name, folder, path) : nullptr;
+    *retLibrary = SDL_LoadObject(*retCopy != nullptr ? *retCopy : path);
     SDL_free(path);
 
     if (*retLibrary == nullptr)

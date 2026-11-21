@@ -138,6 +138,30 @@ static void ECSIApp_RemoveRegistrations(ECSPlugin plugin)
     ECSIKeys_RemovePlugin(plugin);
 }
 
+/// @brief Quits SDL. On Linux, SDL closes the D-Bus connection with its last tray, and its notifications then remove a filter from a new connection,
+/// on which libdbus would abort; for this quit alone it only warns, unless the user chose with DBUS_FATAL_WARNINGS, and a restart starts with the
+/// environment as it was.
+static void ECSIApp_QuitSDL(void)
+{
+#if defined(SDL_PLATFORM_LINUX)
+    bool chosen = SDL_getenv_unsafe("DBUS_FATAL_WARNINGS") != nullptr;
+
+    if (!chosen)
+    {
+        (void)SDL_setenv_unsafe("DBUS_FATAL_WARNINGS", "0", 1);
+    }
+
+    SDL_Quit();
+
+    if (!chosen)
+    {
+        (void)SDL_unsetenv_unsafe("DBUS_FATAL_WARNINGS");
+    }
+#else
+    SDL_Quit();
+#endif
+}
+
 /// @brief Stops the program if a start-up step failed. The dialog names the step, its file, the last error and where the log is.
 /// @param file The file the step reads, or nullptr.
 static void ECSIApp_ExitOnFailure(SHUResult result, const char *step, const char *file)
@@ -162,7 +186,7 @@ static void ECSIApp_ExitOnFailure(SHUResult result, const char *step, const char
 
     SDL_free(message);
 
-    SDL_Quit();
+    ECSIApp_QuitSDL();
     exit((int)result);
 }
 
@@ -408,7 +432,8 @@ static char *ECSIApp_FindSessionsFolder(void)
     return folder;
 }
 
-/// @brief Starts SDL's video. A test, and writing definitions, need no display and make no sound; the environment variables still choose other drivers.
+/// @brief Starts SDL's video. A test, and writing definitions, need no display, make no sound and see no real gamepad; the environment variables still choose
+/// other drivers.
 static void ECSIApp_StartSDL(void)
 {
     if (APP.test || APP.definitions)
@@ -416,6 +441,8 @@ static void ECSIApp_StartSDL(void)
         SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
         SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
         SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+        // only devices with no vendor and product are allowed, which none has; virtual gamepads skip this list, so a test sees only its own
+        SDL_SetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT, "0x0000/0x0000");
     }
 
     // the core quits when the main window closes, after asking about unsaved work; SDL's own quit for the last window would come with the close and answer that question
@@ -635,7 +662,7 @@ int ECSIApp_Install(const ECSIArguments *arguments)
     SDL_free(APP.dataFolder);
     ECSILua_Terminate();
     ECSISanitizers_CheckLeaks();
-    SDL_Quit();
+    ECSIApp_QuitSDL();
     ECSILog_CloseFile();
     return result ? 1 : 0;
 }
@@ -1218,7 +1245,7 @@ ECSIRestart ECSIApp_Stop(void)
     // Debug builds check for leaks here, when OpenECS has freed its memory but SDL still holds its own
     ECSISanitizers_CheckLeaks();
 
-    SDL_Quit();
+    ECSIApp_QuitSDL();
     ECSILog_CloseFile();
     return restart;
 }
