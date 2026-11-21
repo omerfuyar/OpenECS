@@ -138,6 +138,30 @@ static void ECSIApp_RemoveRegistrations(ECSPlugin plugin)
     ECSIKeys_RemovePlugin(plugin);
 }
 
+/// @brief Quits SDL. On Linux, SDL closes the D-Bus connection with its last tray, and its notifications then remove a filter from a new connection,
+/// on which libdbus would abort; for this quit alone it only warns, unless the user chose with DBUS_FATAL_WARNINGS, and a restart starts with the
+/// environment as it was.
+static void ECSIApp_QuitSDL(void)
+{
+#if defined(SDL_PLATFORM_LINUX)
+    bool chosen = SDL_getenv_unsafe("DBUS_FATAL_WARNINGS") != nullptr;
+
+    if (!chosen)
+    {
+        (void)SDL_setenv_unsafe("DBUS_FATAL_WARNINGS", "0", 1);
+    }
+
+    SDL_Quit();
+
+    if (!chosen)
+    {
+        (void)SDL_unsetenv_unsafe("DBUS_FATAL_WARNINGS");
+    }
+#else
+    SDL_Quit();
+#endif
+}
+
 /// @brief Stops the program if a start-up step failed. The dialog names the step, its file, the last error and where the log is.
 /// @param file The file the step reads, or nullptr.
 static void ECSIApp_ExitOnFailure(SHUResult result, const char *step, const char *file)
@@ -162,7 +186,7 @@ static void ECSIApp_ExitOnFailure(SHUResult result, const char *step, const char
 
     SDL_free(message);
 
-    SDL_Quit();
+    ECSIApp_QuitSDL();
     exit((int)result);
 }
 
@@ -638,7 +662,7 @@ int ECSIApp_Install(const ECSIArguments *arguments)
     SDL_free(APP.dataFolder);
     ECSILua_Terminate();
     ECSISanitizers_CheckLeaks();
-    SDL_Quit();
+    ECSIApp_QuitSDL();
     ECSILog_CloseFile();
     return result ? 1 : 0;
 }
@@ -1221,7 +1245,7 @@ ECSIRestart ECSIApp_Stop(void)
     // Debug builds check for leaks here, when OpenECS has freed its memory but SDL still holds its own
     ECSISanitizers_CheckLeaks();
 
-    SDL_Quit();
+    ECSIApp_QuitSDL();
     ECSILog_CloseFile();
     return restart;
 }
