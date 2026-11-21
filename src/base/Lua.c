@@ -128,6 +128,7 @@ static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue
         return SDL_strlen(text) == length ? ECSValue_SetString(retValue, text) : ECSValue_SetBuffer(retValue, (SHUSliceView){.data = text, .size = length});
     }
     case LUA_TUSERDATA:
+    case OPENECS_LUA_TCDATA:
     {
         const char *type = nullptr;
         void *object = nullptr;
@@ -135,12 +136,12 @@ static SHUResult ECSILua_ToValue(lua_State *state, int index, ECSValue *retValue
         // the value keeps the handle itself, so the handle it gives back is gone once its object is, and the object lives while the value does
         if (handles && LUA.ReadHandle != nullptr && LUA.ReadHandle(index, &type, &object))
         {
-            void *const *handle = lua_touserdata(state, index);
+            void *const *handle = lua_topointer(state, index);
             lua_pushvalue(state, index);
             return ECSIValue_SetLuaHandle(retValue, type, object, luaL_ref(state, LUA_REGISTRYINDEX), handle);
         }
 
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, handles ? "A userdata that is not a handle, or whose object is gone, is not data; it is skipped." : "A handle or other userdata is not data that can go to another thread; it is skipped.");
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, handles ? "A userdata or cdata that is not a handle, or whose object is gone, is not data; it is skipped." : "A handle, userdata or cdata is not data that can go to another thread; it is skipped.");
         ECSValue_SetNil(retValue);
         return SHUResult_Ok;
     }
