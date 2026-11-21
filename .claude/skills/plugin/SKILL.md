@@ -10,7 +10,7 @@ DESIGN.md holds the rules; this skill names the sections each step needs and wha
 ## 1. Read only what the plugin needs
 
 - Always: DESIGN.md 9.1, 9.2, 9.9 and 9.10 (folder, manifest, names, disabling), 1.4 (failures and misuses) and 15 (ownership).
-- A panel: 4.1 to 4.3, and 5.1. A service: 10.1 to 10.8. Lua: 11. C: 1.2, 1.3 and 1.6, and std's DESIGN.md 1.3 for a plugin's own function names.
+- A panel: 4.1 to 4.3, and 5.1. A service: 10.1 to 10.8. Lua: 1.1, for its conventions, 9.6, for the libraries it has, and 11. C: 1.2, 1.3 and 1.6, and std's DESIGN.md 1.3 for a plugin's own function names.
 - In OpenECS-std: std's DESIGN.md 1 whole, and the section of each plugin it uses.
 - The example that teaches a part, read before writing it: `c1_hello` a Lua panel, `c2_native` a C plugin, `c3_ui` ui, `c4_settings` settings, `c5_services` services, `c6_keys` keys, `c7_events` events, `c8_state` saved state, `c9_drag_drop` dragged data, `c10_text_input` typing, `c11_popups` popups, `c12_sketch` drawing only what changed, `c13_workers` threads, `c14_structs` structs. The `s` examples each show a standard plugin.
 - Signatures, not source: `include/OpenECS.h` and `include/ecs.lua` for the core, and a built plugin's definition header, `build/Debug/include/<plugin>.h`, for another plugin's functions.

@@ -89,6 +89,14 @@ const char *ECSILua_CheckLString(lua_State *state, int argument, usz *retLength)
 const char *ECSILua_CheckString(lua_State *state, int argument);
 const char *ECSILua_OptString(lua_State *state, int argument, const char *fallback);
 i64 ECSILua_CheckInteger(lua_State *state, int argument);
+
+/// @brief Reads a 64-bit integer at an index of the core's state: a whole number, or an int64_t or uint64_t cdata of LuaJIT's FFI, such as 123LL,
+/// for one past 2^53. Another state reads a whole number only.
+/// @param state The state.
+/// @param index Index of the value.
+/// @param retValue The integer, or 0 when the value is not one.
+/// @return Whether the value is an integer.
+bool ECSILua_ToInt64(lua_State *state, int index, i64 *retValue);
 i64 ECSILua_OptInteger(lua_State *state, int argument, i64 fallback);
 f64 ECSILua_CheckNumber(lua_State *state, int argument);
 f64 ECSILua_OptNumber(lua_State *state, int argument, f64 fallback);

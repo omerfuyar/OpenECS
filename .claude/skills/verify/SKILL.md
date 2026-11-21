@@ -20,7 +20,7 @@ Run the check script of the repository you changed: `.github/scripts/check.sh` i
 The Lua check runs only when `lua-language-server` is on the PATH. Install the version that the check `Lua (LuaLS)` uses, `LUALS_VERSION` in `.github/workflows/checks.yml`, once:
 
 ```sh
-mkdir -p ~/.local/luals && curl -sSL https://github.com/LuaLS/lua-language-server/releases/download/3.15.0/lua-language-server-3.15.0-linux-x64.tar.gz | tar -xz -C ~/.local/luals
+mkdir -p ~/.local/luals && curl -sSL https://github.com/LuaLS/lua-language-server/releases/download/3.19.2/lua-language-server-3.19.2-linux-x64.tar.gz | tar -xz -C ~/.local/luals
 ln -sf ~/.local/luals/bin/lua-language-server ~/.local/bin/lua-language-server
 ```
 

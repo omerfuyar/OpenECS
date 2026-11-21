@@ -79,7 +79,8 @@ static bool IsBuilt(const char *library, bool shared);
 
 static void Shuild_SDL(void);
 static void Shuild_SDL_ttf(void);
-static void Shuild_lua(void);
+static void Shuild_luajit(void);
+static void CopyLuaJitModules(void);
 static void Shuild_clay(void);
 static void Shuild_stb(void);
 static void Shuild_libffi(void);
@@ -120,9 +121,9 @@ int main(int argc, char **argv)
         Shuild_SDL_ttf();
     }
 
-    if (!IsBuilt("lua", false))
+    if (!IsBuilt("luajit", false))
     {
-        Shuild_lua();
+        Shuild_luajit();
     }
 
     if (!IsBuilt("clay", false))
@@ -318,33 +319,182 @@ static void Shuild_SDL_ttf(void)
                  "-DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF"); // options
 }
 
-static void Shuild_lua(void)
+/// @brief Tells whether the target's lj_arch.h defines a macro with a value, as LuaJIT's Makefile finds it in TARGET_TESTARCH.
+static bool LuaJitArchHas(const char *defines, const char *name, const char *value)
 {
-    char *headerOutputDir = SHU_UtilFormat("%sinclude/lua/", CONFIG.DIRS.dependencies);
-    SHU_UtilCopyFile("dependencies/lua/lua.h", headerOutputDir);
-    SHU_UtilCopyFile("dependencies/lua/lauxlib.h", headerOutputDir);
-    SHU_UtilCopyFile("dependencies/lua/lualib.h", headerOutputDir);
-    SHU_UtilCopyFile("dependencies/lua/luaconf.h", headerOutputDir);
+    return strstr(defines, SHU_UtilFormat("#define %s %s\n", name, value)) != NULL;
+}
 
+/// @brief Writes LuaJIT's generated files into its folder of the build, as LuaJIT's src/Makefile does, and gives the name of its architecture,
+/// such as x64. The host tools minilua and buildvm are built with the host's compiler, which is the configured one unless it builds for another system.
+static const char *MakeLuaJitFiles(const char *generated)
+{
+    const char *root = SHU_UtilGetScriptDirectory();
+    char *source = SHU_UtilFormat("%sdependencies/luajit/src/", root);
+    char *out = SHU_UtilFormat("%s%s", root, generated);
+    char *log = SHU_UtilFormat("%sluajit.log", generated);
+    bool cross = !SHUM_PLATFORM_IS_HOST(SHU_CompilerGetTarget());
+    const char *hostCompiler = cross ? "cc" : CONFIG.FLAGS.compiler;
+    const char *exe = SHUM_HOST_WINDOWS ? ".exe" : "";
+    SHU_UtilCreateDirectory(SHU_UtilFormat("%sjit/", generated));
+
+    // the target's architecture, from the macros that its compiler defines in lj_arch.h
+    char *archFile = SHU_UtilFormat("%sarch.txt", generated);
+    SHU_UtilRunLogged(log, "\"%s\" -E -dM -x c \"%slj_arch.h\" -o \"%s%s\"", CONFIG.FLAGS.compiler, source, root, archFile);
+    SHUSlice archText = SHU_UtilReadFile(archFile);
+    const char *defines = archText.data;
+    const char *arch = LuaJitArchHas(defines, "LJ_TARGET_X64", "1") ? "x64" : LuaJitArchHas(defines, "LJ_TARGET_ARM64", "1") ? "arm64"
+                                                                                                                             : NULL;
+
+    if (arch == NULL)
+    {
+        SHU_UtilFail(SHUM_LOG_NAME("LuaJIT") " is built for x64 and arm64 only.");
+    }
+
+    // DASM_AFLAGS of the Makefile
+    const char *const flags[][3] = {
+        {"LJ_LE", "1", "-D ENDIAN_LE"},
+        {"LJ_ARCH_BITS", "64", "-D P64"},
+        {"LJ_HASJIT", "1", "-D JIT"},
+        {"LJ_HASFFI", "1", "-D FFI"},
+        {"LJ_DUALNUM", "1", "-D DUALNUM"},
+        {"LJ_ARCH_HASFPU", "1", "-D FPU"},
+        {"LJ_NO_UNWIND", "1", "-D NO_UNWIND"},
+        {"LJ_ABI_PAUTH", "1", "-D PAUTH"},
+        {"LJ_ABI_BRANCH_TRACK", "1", "-D BRANCH_TRACK"},
+        {"LJ_ABI_SHADOW_STACK", "1", "-D SHADOW_STACK"},
+    };
+    char *dasmFlags = LuaJitArchHas(defines, "LJ_LE", "1") ? "" : "-D ENDIAN_BE";
+
+    for (usz i = 0; i < sizeof(flags) / sizeof(*flags); i++)
+    {
+        dasmFlags = LuaJitArchHas(defines, flags[i][0], flags[i][1]) ? SHU_UtilFormat("%s %s", dasmFlags, flags[i][2]) : dasmFlags;
+    }
+
+    const char *version = strstr(defines, "#define LJ_ARCH_VERSION ");
+    char *archVersion = version != NULL ? SHU_UtilFormat("%ld", strtol(version + strlen("#define LJ_ARCH_VERSION "), NULL, 10)) : "";
+    dasmFlags = SHU_UtilFormat("%s%s -D VER=%s%s", dasmFlags, LuaJitArchHas(defines, "LJ_ABI_SOFTFP", "1") ? "" : " -D HFABI", archVersion, CONFIG.windows ? " -D WIN" : "");
+    free(archText.data);
+
+    // the host tools build for the target: its architecture, its system when that is not the host's, and Lua 5.2's functions, as buildvm
+    // writes the tables of the library functions
+    char *hostFlags = SHU_UtilFormat("-O1 -DLUAJIT_ENABLE_LUA52COMPAT -DLUAJIT_TARGET=LUAJIT_ARCH_%s -I\"%s\" -I\"%s\"", arch, out, source);
+
+    if (cross)
+    {
+        hostFlags = SHU_UtilFormat("%s %s", hostFlags, CONFIG.windows ? "-malign-double -DLUAJIT_OS=LUAJIT_OS_WINDOWS" : "-DLUAJIT_OS=LUAJIT_OS_LINUX");
+    }
+
+    char *minilua = SHU_UtilFormat("%sminilua%s", out, exe);
+    SHU_UtilRunLogged(log, "\"%s\" %s -o \"%s\" \"%shost/minilua.c\"%s", hostCompiler, hostFlags, minilua, source, SHUM_HOST_WINDOWS ? "" : " -lm");
+    SHU_UtilRunLogged(log, "\"%s\" \"%sdependencies/luajit/dynasm/dynasm.lua\" %s -o \"%sbuildvm_arch.h\" \"%svm_%s.dasc\"", minilua, root, dasmFlags, out, source, arch);
+
+    // luajit.h gets the release number: the time of the submodule's commit, or .relver in a source archive
+    char *relver = SHU_UtilFormat("%sluajit_relver.txt", out);
+
+    if (SHU_UtilRunTry("git -C \"%sdependencies/luajit\" show -s --format=%%ct > \"%s\"", root, relver) != 0)
+    {
+        SHU_UtilCopyFile("dependencies/luajit/.relver", generated);
+        relver = SHU_UtilFormat("%s.relver", out);
+    }
+
+    SHU_UtilRunLogged(log, "\"%s\" \"%shost/genversion.lua\" \"%sluajit_rolling.h\" \"%s\" \"%sluajit.h\"", minilua, source, source, relver, out);
+
+    // buildvm makes the VM's assembly and the tables of the library functions
+    char *buildvm = SHU_UtilFormat("%sbuildvm%s", out, exe);
+    SHU_UtilRunLogged(log, "\"%s\" %s -o \"%s\" \"%shost/buildvm.c\" \"%shost/buildvm_asm.c\" \"%shost/buildvm_peobj.c\" \"%shost/buildvm_lib.c\" \"%shost/buildvm_fold.c\"",
+                      hostCompiler, hostFlags, buildvm, source, source, source, source, source);
+
+    const char *const libraries[] = {"lib_base", "lib_math", "lib_bit", "lib_string", "lib_table", "lib_io", "lib_os", "lib_package", "lib_debug", "lib_jit", "lib_ffi", "lib_buffer"};
+    char *libraryFiles = "";
+
+    for (usz i = 0; i < sizeof(libraries) / sizeof(*libraries); i++)
+    {
+        libraryFiles = SHU_UtilFormat("%s \"%s%s.c\"", libraryFiles, source, libraries[i]);
+    }
+
+    SHU_UtilRunLogged(log, "\"%s\" -m %s -o \"%s%s\"", buildvm, CONFIG.windows ? "peobj" : "elfasm", out, CONFIG.windows ? "lj_vm.o" : "lj_vm.S");
+    const char *const tables[] = {"bcdef", "ffdef", "libdef", "recdef"};
+
+    for (usz i = 0; i < sizeof(tables) / sizeof(*tables); i++)
+    {
+        SHU_UtilRunLogged(log, "\"%s\" -m %s -o \"%slj_%s.h\"%s", buildvm, tables[i], out, tables[i], libraryFiles);
+    }
+
+    SHU_UtilRunLogged(log, "\"%s\" -m folddef -o \"%slj_folddef.h\" \"%slj_opt_fold.c\"", buildvm, out, source);
+    SHU_UtilRunLogged(log, "\"%s\" -m vmdef -o \"%sjit/vmdef.lua\"%s", buildvm, out, libraryFiles);
+    return arch;
+}
+
+// LuaJIT is built as its src/Makefile builds it, with every generated file in the build's folder, never in dependencies/
+static void Shuild_luajit(void)
+{
+    char *generated = SHU_UtilFormat("%sgenerated/luajit/", CONFIG.DIRS.build);
+    MakeLuaJitFiles(generated);
+
+    // the core includes Lua's headers from lua/, and lua-compat-5.3's beside them, as its header for the 5.3 forms includes them (DESIGN 17.4)
+    char *headerOutputDir = SHU_UtilFormat("%sinclude/lua/", CONFIG.DIRS.dependencies);
+    const char *const headers[] = {"lua.h", "lauxlib.h", "lualib.h", "luaconf.h", "lua.hpp"};
+
+    for (usz i = 0; i < sizeof(headers) / sizeof(*headers); i++)
+    {
+        SHU_UtilCopyFile(SHU_UtilFormat("dependencies/luajit/src/%s", headers[i]), headerOutputDir);
+    }
+
+    SHU_UtilCopyFile(SHU_UtilFormat("%sluajit.h", generated), headerOutputDir);
+    SHU_UtilCopyFile("dependencies/lua-compat-5.3/c-api/compat-5.3.h", headerOutputDir);
+
+    char *generatedFromRoot = SHU_UtilFormat("../../../%s", generated);
     char *binOutputDir = SHU_UtilFormat("%slib/", CONFIG.DIRS.dependencies);
 
-    SHU_Module("lua", "dependencies/lua", SHUModuleType_LibraryStatic, binOutputDir)
+    SHU_Module("luajit", "dependencies/luajit/src", SHUModuleType_LibraryStatic, binOutputDir)
     {
         SetBuildFlags(false);
+        // LuaJIT's C is older than C23, so it compiles as its Makefile compiles it, with the compiler's own standard
+        SHU_CompilerAddFlags("-std=gnu11", "-U_FORTIFY_SOURCE");
+        SHU_CompilerAddDefinitions("LUAJIT_ENABLE_LUA52COMPAT", NULL, "_FILE_OFFSET_BITS", "64", "_LARGEFILE_SOURCE", NULL);
 
-        // Lua finds Windows by itself
-        if (SHU_CompilerGetTarget() == SHUPlatform_Linux)
+        // errors unwind with the system's unwinder, through the C frames between a protected call and the error, which gcc and clang give
+        // unwind tables on x64; Windows always unwinds that way
+        if (!CONFIG.windows)
         {
-            SHU_CompilerAddDefinitions("LUA_USE_LINUX", NULL);
-        }
-        else if (SHU_CompilerGetTarget() == SHUPlatform_MacOS)
-        {
-            SHU_CompilerAddDefinitions("LUA_USE_MACOSX", NULL);
+            SHU_CompilerAddFlags("-funwind-tables", "-fno-stack-protector");
+            SHU_CompilerAddDefinitions("LUAJIT_UNWIND_EXTERNAL", NULL);
         }
 
-        SHU_CompilerAddDefinitions("MAKE_LIB", NULL);
-        SHU_ModuleAddSourceFiles("onelua.c");
+        // Debug builds check the C API's use and LuaJIT's own invariants
+        if (CONFIG.FLAGS.type == BuildType_Debug)
+        {
+            SHU_CompilerAddDefinitions("LUA_USE_APICHECK", NULL, "LUA_USE_ASSERT", NULL);
+        }
+
+        SHU_ModuleAddSourceFiles("ljamalg.c");
+
+        // lua-compat-5.3's functions for the C API's 5.3 forms, and its utf8 library, under names of their own beside Lua's
+        SHU_CompilerAddDefinitions("COMPAT53_PREFIX", "compat53");
+        SHU_ModuleAddSourceFiles("../../lua-compat-5.3/c-api/compat-5.3.c", "../../lua-compat-5.3/lutf8lib.c");
+
+        // on Windows, buildvm writes the VM as an object file with its unwind data, which goes into the library below
+        if (!CONFIG.windows)
+        {
+            SHU_ModuleAddSourceFiles(SHU_UtilFormat("%slj_vm.S", generatedFromRoot));
+        }
+
+        SHU_ModuleAddIncludeDirectories(generatedFromRoot, "./", "../../lua-compat-5.3/");
     }
+
+    if (CONFIG.windows)
+    {
+        SHU_UtilRun("\"%s\" rs \"%s%s\" \"%slj_vm.o\"", SHU_CompilerGetTool("ar", "llvm-ar"), binOutputDir, SHU_UtilLibraryFile("luajit", SHUModuleType_LibraryStatic), generated);
+    }
+}
+
+// the Lua files of LuaJIT's jit module go next to the program as jit/, so require("jit.p"), jit.v and jit.dump work for whoever studies traces
+static void CopyLuaJitModules(void)
+{
+    char *jitDir = SHU_UtilFormat("%sbin/jit/", CONFIG.DIRS.output);
+    SHU_UtilCopyFile("dependencies/luajit/src/jit/", jitDir);
+    SHU_UtilCopyFile(SHU_UtilFormat("%sgenerated/luajit/jit/vmdef.lua", CONFIG.DIRS.build), jitDir);
 }
 
 static void Shuild_clay(void)
@@ -623,10 +773,13 @@ static void Shuild_OpenECS(void)
         // the dependencies' headers are system headers, so their warnings and macros stay out of our checks: shu.h, which OpenECS.h includes, and
         // the built dependencies'; ffi.h includes ffitarget.h beside it as <ffitarget.h>, which must not be a system copy of another libffi
         SHU_CompilerAddFlags(SHU_UtilFormat("-isystem %sdependencies/shu", SHU_UtilGetScriptDirectory()), SHU_UtilFormat("-isystem %s", dependenciesIncludeDir),
-                             SHU_UtilFormat("-isystem %slibffi", dependenciesIncludeDir));
+                             SHU_UtilFormat("-isystem %slibffi", dependenciesIncludeDir), SHU_UtilFormat("-isystem %slua", dependenciesIncludeDir));
+
+        // lua-compat-5.3's header gives the C API's 5.3 forms, whose functions LuaJIT's library holds under its prefix
+        SHU_CompilerAddDefinitions("COMPAT53_PREFIX", "compat53");
 
         SHU_ModuleAddLibraryDirectories(libraryDir);
-        SHU_ModuleLinkLibraries("clay", "SDL3_ttf", "SDL3", "lua", "ffi", "stb");
+        SHU_ModuleLinkLibraries("clay", "SDL3_ttf", "SDL3", "luajit", "ffi", "stb");
 
         if (!CONFIG.windows)
         {
@@ -725,15 +878,17 @@ static void Shuild_other(void)
 {
     char *resourcesDir = SHU_UtilFormat("%sbin/resources/", CONFIG.DIRS.output);
     SHU_UtilCopyFile("resources/", resourcesDir);
+    CopyLuaJitModules();
 }
 
-/// @brief Writes a .luarc.json file that points LuaLS at the build's include/, with ecs.lua and the definition files, so editors complete what Lua code uses.
+/// @brief Writes a .luarc.json file that points LuaLS at the build's include/, with ecs.lua and the definition files, so editors complete what Lua code uses,
+/// and reads it as LuaJIT with its extensions, which plugins run on (DESIGN 9.6).
 /// @param ignore Files LuaLS leaves out of the workspace, in .gitignore's grammar: the plugins' types.lua, whose classes the definition files hold already,
 /// and OpenECS's own ecs.lua, as the build's copy is the one in the library.
 static void WriteLuaConfig(const char *folder, const char *include, const char *ignore)
 {
     char *path = SHU_UtilFormat("%s.luarc.json", folder);
-    char *text = SHU_UtilFormat("{\n  \"workspace.library\": [\"%s\"]%s%s%s\n}\n", include, ignore[0] == '\0' ? "" : ",\n  \"workspace.ignoreDir\": [", ignore, ignore[0] == '\0' ? "" : "]");
+    char *text = SHU_UtilFormat("{\n  \"runtime.version\": \"LuaJIT\",\n  \"runtime.enableLuaJITExtensions\": true,\n  \"workspace.library\": [\"%s\"]%s%s%s\n}\n", include, ignore[0] == '\0' ? "" : ",\n  \"workspace.ignoreDir\": [", ignore, ignore[0] == '\0' ? "" : "]");
     SHU_UtilWriteFile(path, csv(cs(text, strlen(text))));
 }
 

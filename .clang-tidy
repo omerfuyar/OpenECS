@@ -9,6 +9,8 @@ Checks: >
   -bugprone-macro-parentheses,
   -bugprone-multi-level-implicit-pointer-conversion,
   -bugprone-assignment-in-if-condition,
+  -bugprone-assignment-in-selection-statement,
+  -bugprone-signed-bitwise,
   -bugprone-inc-dec-in-conditions,
   -bugprone-narrowing-conversions,
   -bugprone-branch-clone,
@@ -32,7 +34,7 @@ CheckOptions:
   readability-identifier-length.IgnoredParameterNames: '^(i|j|k|x|y|z|w|h|id)$'
   readability-identifier-length.IgnoredLoopCounterNames: '^(i|j|k|x|y|z|w|h|id)$'
   readability-identifier-naming.FunctionCase: UPPER_CASE
-  readability-identifier-naming.FunctionIgnoredRegexp: '^(ECSI?([A-Z][A-Za-z0-9]*)?_[A-Z][A-Za-z0-9]*|main)$'
+  readability-identifier-naming.FunctionIgnoredRegexp: '^(ECSI?([A-Z][A-Za-z0-9]*)?_[A-Z][A-Za-z0-9]*|main|luaopen_compat53_utf8)$'
   readability-identifier-naming.TypedefCase: UPPER_CASE
   readability-identifier-naming.TypedefIgnoredRegexp: '^(ECSI?[A-Z][A-Za-z0-9]*|lua_State)$'
   readability-identifier-naming.StructCase: UPPER_CASE

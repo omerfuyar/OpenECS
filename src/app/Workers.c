@@ -5,8 +5,7 @@
 #include "runtime/Plugins.h"
 #include "runtime/Services.h"
 
-#include "lua/lauxlib.h"
-#include "lua/lua.h"
+#include "lua/compat-5.3.h"
 
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
@@ -16,8 +15,8 @@
 /// @brief Name of the metatable of worker handles.
 #define OPENECS_LUA_WORKER "ecs.worker"
 
-/// @brief How many Lua instructions a worker runs between checks of whether it was stopped.
-#define OPENECS_WORKER_CHECK_INTERVAL 1000
+/// @brief The registry key of a worker's state under which its worker is: the address of this constant, as each state has its own registry.
+static const char OPENECS_WORKER_KEY = 0;
 
 /// @brief A Lua script that runs on a thread of its own, in a Lua state of its own.
 typedef struct ECSIWorker
@@ -31,7 +30,7 @@ typedef struct ECSIWorker
     ECSValue *input;
     SDL_Thread *thread;
 
-    SDL_AtomicInt stopping; // stop was asked: the script ends at its next receive, or within a few instructions
+    SDL_AtomicInt stopping; // stop was asked: the script ends at its next receive or call of ecs
 
     // the lock guards the messages both ways and the end of the script
     SDL_Mutex *lock;
@@ -93,10 +92,32 @@ static void ECSIWorkers_FreeMessages(ECSValue ***messages)
     arrfree(*messages);
 }
 
+/// @brief Gets the worker whose state runs the code.
+static ECSIWorker *ECSIWorkers_GetCurrent(lua_State *state)
+{
+    lua_rawgetp(state, LUA_REGISTRYINDEX, &OPENECS_WORKER_KEY);
+    ECSIWorker *worker = lua_touserdata(state, -1);
+    lua_pop(state, 1);
+    return worker;
+}
+
+/// @brief Ends a worker's script with an error once the worker should stop. Each call of ecs checks it, as LuaJIT runs no hooks in the code it compiles.
+/// The log and error functions are the main state's too, which has no worker.
+static void ECSIWorkers_CheckStopped(lua_State *state)
+{
+    ECSIWorker *worker = ECSIWorkers_GetCurrent(state);
+
+    if (worker != nullptr && SDL_GetAtomicInt(&worker->stopping))
+    {
+        luaL_error(state, "the worker was stopped");
+    }
+}
+
 #pragma region Log
 
 static int ECSIWorkers_Log(lua_State *state, ECSLogLevel level)
 {
+    ECSIWorkers_CheckStopped(state);
     ECS_Log(lua_touserdata(state, lua_upvalueindex(1)), level, "%s", ECSILua_CheckString(state, 1));
     return 0;
 }
@@ -132,6 +153,7 @@ static const luaL_Reg OPENECS_WORKERS_LOG[] = {
 /// @brief ecs.fail(message): logs a failure the plugin returns, while ecs.logServiceErrors is on, and gives the message, for return nil, ecs.fail(message).
 static int ECSIWorkers_Fail(lua_State *state)
 {
+    ECSIWorkers_CheckStopped(state);
     const char *message = ECSILua_CheckString(state, 1);
     const char *error = nullptr;
     ECS_Fail(lua_touserdata(state, lua_upvalueindex(1)), &error, "%s", message);
@@ -142,6 +164,7 @@ static int ECSIWorkers_Fail(lua_State *state)
 /// @brief ecs.check(condition, message): a misuse when the condition is false or nil. It stops the Lua code, with the line that called the checking function.
 static int ECSIWorkers_Check(lua_State *state)
 {
+    ECSIWorkers_CheckStopped(state);
     ECSILua_CheckAny(state, 1);
     const char *message = ECSILua_CheckString(state, 2);
 
@@ -171,26 +194,10 @@ static const luaL_Reg OPENECS_WORKERS_ERRORS[] = {
 
 #pragma region Worker Thread
 
-/// @brief Gets the worker whose state runs the code.
-static ECSIWorker *ECSIWorkers_GetCurrent(lua_State *state)
-{
-    return *(ECSIWorker **)lua_getextraspace(state);
-}
-
-/// @brief Ends the script with an error once the worker should stop, so a loop that never receives ends too.
-static void ECSIWorkers_Hook(lua_State *state, lua_Debug *debug)
-{
-    (void)debug;
-
-    if (SDL_GetAtomicInt(&ECSIWorkers_GetCurrent(state)->stopping))
-    {
-        luaL_error(state, "the worker was stopped");
-    }
-}
-
 /// @brief ecs.worker.send(value): sends a copy of a value to the main thread.
 static int ECSIWorkers_SendToMain(lua_State *state)
 {
+    ECSIWorkers_CheckStopped(state);
     ECSILua_CheckAny(state, 1);
     ECSIWorker *worker = ECSIWorkers_GetCurrent(state);
     ECSValue *message = ECSIWorkers_CopyMessage(state, 1);
@@ -263,7 +270,7 @@ static int ECSIWorkers_Script(lua_State *state)
 {
     ECSIWorker *worker = ECSIWorkers_GetCurrent(state);
 
-    luaL_getsubtable(state, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    luaL_getsubtable(state, LUA_REGISTRYINDEX, "_LOADED");
     lua_newtable(state);
     ECSIWorkers_PushLog(state, worker->plugin);
     lua_setfield(state, -2, "log");
@@ -316,8 +323,8 @@ static int SDLCALL ECSIWorkers_Run(void *data)
     }
     else
     {
-        *(ECSIWorker **)lua_getextraspace(state) = worker;
-        lua_sethook(state, ECSIWorkers_Hook, LUA_MASKCOUNT, OPENECS_WORKER_CHECK_INTERVAL);
+        lua_pushlightuserdata(state, worker);
+        lua_rawsetp(state, LUA_REGISTRYINDEX, &OPENECS_WORKER_KEY);
         lua_pushcfunction(state, ECSIWorkers_Script);
         ECSICallback callback;
         ECSIPlugin_Enter(&callback, worker->plugin, nullptr, ECSICallbackType_Plugin);
@@ -345,7 +352,7 @@ static int SDLCALL ECSIWorkers_Run(void *data)
 
 #pragma region Main Thread
 
-/// @brief Asks a worker to stop: its receive ends the script, and so does its next check.
+/// @brief Asks a worker to stop: its next receive or call of ecs ends the script.
 static void ECSIWorkers_Stop(ECSIWorker *worker)
 {
     SDL_SetAtomicInt(&worker->stopping, 1);
@@ -512,7 +519,7 @@ static int ECSIWorkers_Start(lua_State *state)
     }
 
     // the handle comes first, since making it may raise an error, which would leave the worker unfreed
-    ECSIWorker **handle = lua_newuserdatauv(state, sizeof(ECSIWorker *), 0);
+    ECSIWorker **handle = lua_newuserdata(state, sizeof(ECSIWorker *));
     *handle = nullptr;
     luaL_setmetatable(state, OPENECS_LUA_WORKER);
     ECSIWorker *worker = SDL_calloc(1, sizeof(ECSIWorker));

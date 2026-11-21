@@ -6,8 +6,7 @@
 #include "runtime/Plugins.h"
 #include "runtime/Settings.h"
 
-#include "lua/lauxlib.h"
-#include "lua/lua.h"
+#include "lua/compat-5.3.h"
 
 #include "libffi/ffi.h"
 
@@ -936,8 +935,7 @@ static bool ECSIStructs_ReadValue(lua_State *state, int index, const ECSIStructF
         return isNumber && integer >= SDL_MIN_SINT32 && integer <= SDL_MAX_SINT32;
     }
     case ECSIParameterType_Int64:
-        *(i64 *)retMemory = (i64)lua_tointegerx(state, index, &isNumber);
-        return isNumber;
+        return ECSILua_ToInt64(state, index, retMemory);
     case ECSIParameterType_Float:
         *(f32 *)retMemory = (f32)lua_tonumberx(state, index, &isNumber);
         return isNumber;
@@ -991,7 +989,7 @@ static bool ECSIStructs_Read(lua_State *state, int index, const ECSIStructType *
 
             for (usz j = 0; valid && j < field->count; j++)
             {
-                lua_rawgeti(state, -1, (lua_Integer)j + 1);
+                lua_rawgeti(state, -1, (int)j + 1);
                 valid = ECSIStructs_ReadValue(state, -1, field, memory + j * ECSIStructs_GetFieldSize(field));
                 lua_pop(state, 1);
             }
@@ -1069,7 +1067,7 @@ static void ECSIStructs_Push(lua_State *state, const ECSIStructType *type, const
         for (usz j = 0; j < field->count; j++)
         {
             ECSIStructs_PushValue(state, field, start + j * ECSIStructs_GetFieldSize(field));
-            lua_rawseti(state, -2, (lua_Integer)j + 1);
+            lua_rawseti(state, -2, (int)j + 1);
         }
 
         if (field->name != nullptr)
@@ -1255,7 +1253,7 @@ static void ECSIServices_CheckArgument(lua_State *state, int index, ECSIParamete
     {
         // the struct's memory is a userdata, so it lives on the stack during the call; C gets a pointer to it
         const char *field = nullptr;
-        void *memory = lua_newuserdatauv(state, parameter.structType->size, 0);
+        void *memory = lua_newuserdata(state, parameter.structType->size);
         SDL_memset(memory, 0, parameter.structType->size);
 
         if (!ECSIStructs_Read(state, index, parameter.structType, memory, &field))
@@ -1273,7 +1271,7 @@ static void ECSIServices_CheckArgument(lua_State *state, int index, ECSIParamete
         // a copy, because the function may write into a buffer and Lua strings must not change
         usz length = 0;
         const char *bytes = ECSILua_CheckLString(state, index, &length);
-        void *copy = lua_newuserdatauv(state, length + 1, 0);
+        void *copy = lua_newuserdata(state, length + 1);
         SDL_memcpy(copy, bytes, length);
         retSlot->buffer = cs(copy, length);
         break;
@@ -1316,7 +1314,7 @@ static void ECSIServices_CheckArguments(lua_State *state, const ECSISignature *s
         if (signature->parameters[i].out && signature->parameters[i].type == ECSIParameterType_Struct)
         {
             // an output struct is memory of its size, which C fills through the pointer it gets
-            void *memory = lua_newuserdatauv(state, signature->parameters[i].structType->size, 0);
+            void *memory = lua_newuserdata(state, signature->parameters[i].structType->size);
             SDL_memset(memory, 0, signature->parameters[i].structType->size);
             call->slot.pointer = memory;
             call->output.pointer = memory;
@@ -1527,7 +1525,7 @@ static int ECSIServices_CallC(lua_State *state)
 
     if (count > OPENECS_CALL_PARAMETERS)
     {
-        parameters = lua_newuserdatauv(state, count * (sizeof(ECSICallParameter) + sizeof(void *)), 0);
+        parameters = lua_newuserdata(state, count * (sizeof(ECSICallParameter) + sizeof(void *)));
         arguments = (void **)(parameters + count);
     }
 
@@ -1818,7 +1816,7 @@ static bool ECSIServices_WriteBytes(lua_State *state, int index, int anchors, bo
 
     if (buffer && text)
     {
-        void *copy = lua_newuserdatauv(state, length + 1, 0);
+        void *copy = lua_newuserdata(state, length + 1);
         SDL_memcpy(copy, bytes, length);
         bytes = copy;
     }
@@ -1827,7 +1825,7 @@ static bool ECSIServices_WriteBytes(lua_State *state, int index, int anchors, bo
         lua_pushvalue(state, index);
     }
 
-    lua_rawseti(state, anchors, (lua_Integer)lua_rawlen(state, anchors) + 1);
+    lua_rawseti(state, anchors, (int)lua_rawlen(state, anchors) + 1);
 
     if (buffer)
     {
@@ -1857,7 +1855,7 @@ static bool ECSIServices_WriteOutput(lua_State *state, ECSIFunction *function, i
         ECSIHandle *handle = luaL_testudata(state, index, parameter.handle->metatable);
         *(void **)retTarget = handle == nullptr ? nullptr : handle->object;
         lua_pushvalue(state, index);
-        lua_rawseti(state, anchors, (lua_Integer)lua_rawlen(state, anchors) + 1);
+        lua_rawseti(state, anchors, (int)lua_rawlen(state, anchors) + 1);
         return handle != nullptr || lua_isnil(state, index);
     }
     case ECSIParameterType_Bool:
@@ -1887,8 +1885,7 @@ static bool ECSIServices_WriteOutput(lua_State *state, ECSIFunction *function, i
         return isNumber && integer >= SDL_MIN_SINT32 && integer <= SDL_MAX_SINT32;
     }
     case ECSIParameterType_Int64:
-        *(i64 *)retTarget = (i64)lua_tointegerx(state, index, &isNumber);
-        return isNumber;
+        return ECSILua_ToInt64(state, index, retTarget);
     case ECSIParameterType_Float:
         *(f32 *)retTarget = (f32)lua_tonumberx(state, index, &isNumber);
         return isNumber;
@@ -1963,7 +1960,7 @@ static void ECSIServices_PushCallback(lua_State *state, const ECSIFunction *serv
     }
 
     // the record borrows the service's name and the callback's signature, which live as long as the service; one that is not kept is never used after the call
-    ECSIFunction *callback = lua_newuserdatauv(state, sizeof(ECSIFunction), 0);
+    ECSIFunction *callback = lua_newuserdata(state, sizeof(ECSIFunction));
     *callback = (ECSIFunction){.name = service->name, .plugin = service->plugin, .signature = *parameter.callback, .pointer = pointer, .lua = LUA_NOREF, .anchors = LUA_NOREF};
     callback->giver = giver;
     callback->generation = giver == nullptr ? 0 : ECSIPlugin_GetGeneration(giver);
@@ -1971,7 +1968,7 @@ static void ECSIServices_PushCallback(lua_State *state, const ECSIFunction *serv
     if (!parameter.keep)
     {
         lua_pushvalue(state, -1);
-        lua_rawseti(state, callbacks, (lua_Integer)lua_rawlen(state, callbacks) + 1);
+        lua_rawseti(state, callbacks, (int)lua_rawlen(state, callbacks) + 1);
     }
 
     lua_pushcclosure(state, ECSIServices_CallC, 1);
@@ -1980,7 +1977,7 @@ static void ECSIServices_PushCallback(lua_State *state, const ECSIFunction *serv
 /// @brief Makes the callbacks that C passed to a Lua function invalid, now that the call returned.
 static void ECSIServices_EndCallbacks(lua_State *state, int callbacks)
 {
-    for (lua_Integer i = 1; i <= (lua_Integer)lua_rawlen(state, callbacks); i++)
+    for (int i = 1; i <= (int)lua_rawlen(state, callbacks); i++)
     {
         lua_rawgeti(state, callbacks, i);
         ((ECSIFunction *)lua_touserdata(state, -1))->pointer = nullptr;
@@ -3208,7 +3205,7 @@ static void ECSIServices_PushHandleOf(lua_State *state, ECSIHandleType *handleTy
         hmput(SERVICES.objects, object, record);
     }
 
-    ECSIHandle *handle = lua_newuserdatauv(state, sizeof(ECSIHandle), 0);
+    ECSIHandle *handle = lua_newuserdata(state, sizeof(ECSIHandle));
     *handle = (ECSIHandle){.object = object, .type = handleType};
     arrput(record->handles, handle);
     luaL_setmetatable(state, handleType->metatable);
@@ -3295,7 +3292,7 @@ void ECSIServices_PushHandleMetatable(const char *type)
 void ECSIServices_DestroyHandles(void)
 {
     // handles that wait for their finalizer are no longer in the weak table, so a full collection runs those finalizers now, while the types and their plugins' code exist
-    lua_gc(ECSILua_GetState(), LUA_GCCOLLECT);
+    lua_gc(ECSILua_GetState(), LUA_GCCOLLECT, 0);
 
     // objects are destroyed while their plugins' code is still loaded
     ECSIServices_DropHandles(nullptr);
@@ -3306,7 +3303,7 @@ void ECSIServices_DestroyHandlesOfPlugin(ECSPlugin plugin)
     SDL_assert(plugin != nullptr);
 
     // as at exit: finalizers that wait run first, while the plugin's code is loaded
-    lua_gc(ECSILua_GetState(), LUA_GCCOLLECT);
+    lua_gc(ECSILua_GetState(), LUA_GCCOLLECT, 0);
 
     for (usz i = 0; i < shlenu(SERVICES.handleTypes); i++)
     {
@@ -3865,7 +3862,7 @@ void ECSIServices_PushStruct(int index, const char *type)
 
     // the fields are checked and copied, so the new struct holds only its own fields, with its type's methods
     const char *field = nullptr;
-    void *memory = lua_newuserdatauv(state, structType->size, 0);
+    void *memory = lua_newuserdata(state, structType->size);
     SDL_memset(memory, 0, structType->size);
 
     if (!ECSIStructs_Read(state, index, structType, memory, &field))
