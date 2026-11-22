@@ -18,7 +18,7 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md) describes them.
 
-- **ui's interpreted code.** `jit.v` shows that some of ui still runs interpreted: `element`, whose props loop is a loop in a called function, which LuaJIT cannot record in a trace that starts in a constructor such as `ui.text`; the closures that `paintTyped` and `paintScroll` give `draw.clip`; and the recursive walks `measure`, `arrange` and `paint`. Settings, keys, files and console redrawn whole 50 times a second take about 79 ms of Lua a second.
+- **ui's redraws.** Settings, keys, files and console redrawn whole 50 times a second take about 79 ms of Lua a second. Of `jit.p`'s samples while they redraw, 44% are compiled Lua, 43% C, mostly draw's `fill` and `text`, 7% interpreted Lua and 6% the garbage collector. So compiling what stays interpreted saves little: `element`, which LuaJIT blacklists as the props loop in `shallowCopy` is an inner loop of a trace that a constructor such as `ui.text` starts; the closures that `paintTyped` and `paintScroll` give `draw.clip`; and the recursive walks `measure`, `arrange` and `paint`. Larger gains would come from drawing less, or from building only the elements that changed.
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
 - **The core's libraries.** The standard plugins still use the core's SDL, SDL_ttf and stb_ds (DESIGN 17.2), against the principle that plugins stand alone (DESIGN 0.6). To remove: each plugin would bring what it uses.
 
