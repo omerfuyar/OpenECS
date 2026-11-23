@@ -330,7 +330,8 @@ The wait uses `SDL_WaitEventTimeout` with the time until the next timer or the n
 - Plugins ask for timers: once or repeating, with an interval. Timers run on the main thread, in step 3 of the loop.
 - `ECSTimer_Start(plugin, &timer, 0.1, true, function, data)` writes a new timer into `timer`; `ECSTimer_Stop(&timer)` stops it. Lua: `ecs.timer.start(0.1, true, callback)` returns a handle, and `handle:stop()` stops it.
 - Timers belong to the plugin, as subscriptions do. A panel that starts a timer stops it in its type's `Destroy`.
-- A one-shot timer ends after its function returns, and its handle is invalid then. A repeating timer that falls behind skips the calls it missed.
+- A one-shot timer ends when its function runs. Stopping a timer that ended or stopped does nothing, so a panel stops its timers in `Destroy` whether they fired or not. A repeating timer that falls behind skips the calls it missed.
+- The core keeps timers in a table of slots, with a free list. A handle names a slot and its generation, which grows when the timer ends or stops, so an old handle names nothing.
 
 ### 3.3 Threads
 

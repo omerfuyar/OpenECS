@@ -1042,7 +1042,7 @@ OPENECS_EXPORT void ECSEvent_Unsubscribe(ECSSubscription *subscription);
 
 /// @brief Starts a timer that calls a function on the main thread, once or repeatedly. A panel's timer is stopped in the panel type's Destroy, as its subscriptions end there. Main thread only.
 /// @param plugin The plugin that owns the timer.
-/// @param retTimer The new timer. A one-shot timer's handle is invalid after its function returns.
+/// @param retTimer The new timer. A one-shot timer ends when its function runs; stopping it after that does nothing.
 /// @param seconds Time until the first call, and between repeated calls. Must be positive for a repeating timer; 0 for a one-shot timer means the next pass of the main loop.
 /// @param repeat true to call the function until the timer is stopped.
 /// @param function Function to call.
@@ -1051,7 +1051,7 @@ OPENECS_EXPORT void ECSEvent_Unsubscribe(ECSSubscription *subscription);
 /// @lua ecs.timer.start
 OPENECS_EXPORT SHUWUR SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data);
 
-/// @brief Stops a timer and sets the handle to nullptr. A timer may stop itself from its own function. Main thread only.
+/// @brief Stops a timer and sets the handle to nullptr. A timer may stop itself from its own function. A timer that ended or stopped already does nothing. Main thread only.
 /// @param timer Timer to stop, or a handle to nullptr.
 /// @lua timer:stop
 OPENECS_EXPORT void ECSTimer_Stop(ECSTimer *timer);
