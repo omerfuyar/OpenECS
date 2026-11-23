@@ -418,6 +418,9 @@ void ECSIEvents_Deliver(void)
         // a copy, because delivering may queue more events and move the queue
         ECSIQueuedEvent queued = EVENTS.queue[i];
         queued.Deliver(queued.target, &queued.event);
+
+        // the delivery freed the value, so a handle freed by a later event's handler does not look into it
+        EVENTS.queue[i].value = nullptr;
     }
 
     arrfree(EVENTS.queue);
