@@ -754,9 +754,10 @@ SHUResult ECSKey_Set(const char *scope, const char *key, const ECSValue *functio
         return SHUResult_ErrAssertion;
     }
 
-    SHU_ReturnResult(ECSISettings_SetKey(scope, key, function));
+    // the user's keys are read again even when the file cannot be written, so the bindings, which point into them, are made again whatever the result
+    SHUResult result = ECSISettings_SetKey(scope, key, function);
     KEYS.tablesDirty = true;
-    return SHUResult_Ok;
+    return result;
 }
 
 SHUResult ECSKey_ListFunctions(ECSValue *retList)
