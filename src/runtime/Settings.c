@@ -75,6 +75,12 @@ static struct
     bool userFileUnread;                       // the user's settings file is there but cannot be read, so it is never written over
     char *appID;                               // chooses the tool's own part of the user's files
     ECSISetting **changed;                     // stb_ds array of settings whose owners are not told yet
+    struct
+    {
+        char *key; // the theme colour's name, such as "textDim"
+        ECSColor value;
+    } *colors;        // stb_ds hash map with copied keys: the colour settings, parsed, made again when one changes
+    bool colorsStale; // a colour setting changed since colors was made
 } SETTINGS = {0};
 
 /// @brief Checks that a value has the type of a setting.
@@ -147,6 +153,8 @@ static void ECSISetting_ReportType(const ECSISetting *setting, const char *file)
 /// @brief Finds the value in effect of a setting: the highest layer that sets it with the right type, or the default.
 static void ECSISetting_Resolve(ECSISetting *setting)
 {
+    SETTINGS.colorsStale = SETTINGS.colorsStale || setting->type == ECSSettingType_Color;
+
     for (i32 layer = ECSISettingsLayer_Run; layer >= ECSISettingsLayer_Theme; layer--)
     {
         const ECSValue *value = ECSValue_GetTableField(SETTINGS.layers[layer], setting->name);
@@ -690,6 +698,38 @@ void ECSISettings_ApplyTheme(void)
     SDL_Log("The theme is '%s'.", name);
 }
 
+/// @brief Parses every core colour setting, ecs.colorTextDim as "textDim", into the map of the theme's colours.
+static void ECSISettings_ParseColors(void)
+{
+    shfree(SETTINGS.colors);
+    sh_new_strdup(SETTINGS.colors);
+    usz prefix = SDL_strlen("ecs.color");
+
+    for (usz i = 0; i < shlenu(SETTINGS.settings); i++)
+    {
+        const ECSISetting *setting = SETTINGS.settings[i].value;
+        const char *name = SETTINGS.settings[i].key;
+        ECSColor color = 0;
+
+        if (setting->type != ECSSettingType_Color || SDL_strncmp(name, "ecs.color", prefix) != 0 || name[prefix] == '\0' ||
+            !ECSIColor_ParseHex(ECSValue_GetString(setting->value, ""), &color))
+        {
+            continue;
+        }
+
+        char *key = SDL_strdup(name + prefix);
+
+        if (key != nullptr)
+        {
+            key[0] = (char)SDL_tolower((unsigned char)key[0]);
+            shput(SETTINGS.colors, key, color);
+            SDL_free(key);
+        }
+    }
+
+    SETTINGS.colorsStale = false;
+}
+
 bool ECSColor_Parse(const char *text, ECSColor *retColor)
 {
     ECSILog_Check(text != nullptr, false);
@@ -701,15 +741,21 @@ bool ECSColor_Parse(const char *text, ECSColor *retColor)
     }
 
     // a colour of the theme is the core's colour setting of that name: "textDim" is ecs.colorTextDim
-    char name[64];
+    // the theme's colours are kept parsed by name, as panels name them at each draw call
+    if (SETTINGS.colorsStale || SETTINGS.colors == nullptr)
+    {
+        ECSISettings_ParseColors();
+    }
 
-    if (text[0] == '\0' || SDL_snprintf(name, sizeof(name), "ecs.color%c%s", SDL_toupper((unsigned char)text[0]), text + 1) >= (int)sizeof(name))
+    ptrdiff_t index = shgeti(SETTINGS.colors, text);
+
+    if (index < 0)
     {
         return false;
     }
 
-    ECSISetting *setting = ECSISettings_Find(name);
-    return setting != nullptr && setting->type == ECSSettingType_Color && ECSIColor_ParseHex(ECSValue_GetString(setting->value, ""), retColor);
+    *retColor = SETTINGS.colors[index].value;
+    return true;
 }
 
 void ECSIColor_Format(ECSColor color, char retText[OPENECS_COLOR_TEXT_SIZE])
@@ -771,6 +817,7 @@ void ECSISettings_Terminate(void)
     }
 
     shfree(SETTINGS.settings);
+    shfree(SETTINGS.colors);
     arrfree(SETTINGS.changed);
     ECSValue_Destroy(&SETTINGS.plugins);
     ECSValue_Destroy(&SETTINGS.themes);

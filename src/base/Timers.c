@@ -22,7 +22,7 @@ typedef struct ECSITimer
 } ECSITimer;
 
 // a handle holds the slot's index and its generation in one pointer-sized number
-static_assert(sizeof(uintptr_t) >= sizeof(u64), "a timer's handle holds a 32-bit index and a 32-bit generation");
+static_assert(sizeof(ECSTimer) == sizeof(u64), "a timer's handle holds a 32-bit index and a 32-bit generation");
 
 static struct
 {
@@ -35,14 +35,19 @@ static struct
 
 static ECSTimer ECSITimers_Handle(usz index)
 {
-    return (ECSTimer)(uintptr_t)(((u64)TIMERS.slots[index].generation << 32U) | (u64)(index + 1));
+    // the handle is never followed as a pointer, so its bits are copied, not cast
+    u64 value = ((u64)TIMERS.slots[index].generation << 32U) | (u64)(index + 1);
+    ECSTimer handle = nullptr;
+    SDL_memcpy(&handle, &value, sizeof(value));
+    return handle;
 }
 
 /// @brief Finds the running timer that a handle names.
 /// @return Its slot's index, or -1 if it stopped or ended.
 static i64 ECSITimers_Find(ECSTimer timer)
 {
-    u64 value = (u64)(uintptr_t)timer;
+    u64 value = 0;
+    SDL_memcpy(&value, &timer, sizeof(value));
     u64 index = (value & 0xFFFFFFFFU) - 1;
 
     if (value == 0 || index >= arrlenu(TIMERS.slots))
