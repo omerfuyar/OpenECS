@@ -62,7 +62,7 @@ static const SHUFlag FLAGS[] = {
     SHU_FLAG_SWITCH("-n", "--no-std", &CONFIG.FLAGS.noStd, "Do not build the standard plugins of std/"),
     SHU_FLAG_SWITCH("-e", "--examples", &CONFIG.FLAGS.examples, "Also build the examples of examples/, into bin/examples/"),
     SHU_FLAG_LIST("-t", "--test", "EXAMPLE", &CONFIG.FLAGS.tests,
-                  "Build in Debug with the examples, then run the tests of the examples named, such as c12_sketch,\n"
+                  "Build with the examples, then run the tests of the examples named, such as c12_sketch,\n"
                   "or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report"),
     SHU_FLAG_STRING("-c", "--compiler", "CC", &CONFIG.FLAGS.compiler,
                     "The compiler: gcc (default for linux), clang, or on Windows LLVM-MinGW's clang (default for windows).\n"
@@ -153,7 +153,7 @@ int main(int argc, char **argv)
     return 0;
 }
 
-/// @brief Checks what the flags cannot check alone: the examples that -t names, and its build type.
+/// @brief Checks what the flags cannot check alone: the examples that -t names.
 static void CheckArguments(void)
 {
     for (int i = 0; i < CONFIG.FLAGS.tests.count; i++)
@@ -164,14 +164,9 @@ static void CheckArguments(void)
         }
     }
 
-    // only Debug builds run tests, and the tests are the examples' (DESIGN 17.5)
+    // the tests are the examples' (DESIGN 17.5)
     if (CONFIG.FLAGS.tests.given)
     {
-        if (CONFIG.FLAGS.type != BuildType_Debug)
-        {
-            SHU_UtilFail("The tests run with a Debug build, not " SHUM_LOG_VALUE("%s"), BuildType_String(CONFIG.FLAGS.type));
-        }
-
         CONFIG.FLAGS.examples = true;
     }
 }
@@ -1042,7 +1037,7 @@ static void RunExampleTests(const char *path, SHUFileType type, void *data)
     }
 }
 
-// the examples are the tests: each test of bin/examples/, or of the examples the command line names, runs with the Debug build, on SDL's offscreen driver
+// the examples are the tests: each test of bin/examples/, or of the examples the command line names, runs with the build, on SDL's offscreen driver
 // unless SDL_VIDEO_DRIVER names another (DESIGN 17.5)
 static void RunTests(void)
 {

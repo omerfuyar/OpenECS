@@ -37,7 +37,7 @@ Options:
   -p, --preset NAME|FILE  Start from a preset: a name from the presets folders, or a file
   -s, --session FILE      Open a saved session
   -f, --fresh             Start from the preset, not from the tool's last session
-  -t, --test FILE         Run a test; Debug builds only
+  -t, --test FILE         Run a test
   -d, --definitions DIR   Write the plugin interface and every plugin's definitions into DIR, and exit
   -i, --install           Add the preset's tool to the system's launcher, and exit
   -u, --uninstall         Remove the preset's tool from the system's launcher, and exit
@@ -173,7 +173,7 @@ Flags:
                            MinSizeRel      a small release
   -n, --no-std             Do not build the standard plugins of std/
   -e, --examples           Also build the examples of examples/, into bin/examples/
-  -t, --test [EXAMPLE...]  Build in Debug with the examples, then run the tests of the examples named, such as c12_sketch,
+  -t, --test [EXAMPLE...]  Build with the examples, then run the tests of the examples named, such as c12_sketch,
                            or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report
   -c, --compiler CC        The compiler: gcc (default for linux), clang, or on Windows LLVM-MinGW's clang (default for windows).
                            A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/
@@ -196,7 +196,7 @@ Debug builds run the static analyzer while compiling, and the sanitizers while t
 
 ### Testing
 
-The examples are the tests. Each example has a test, which Debug builds run with `--test`. A test needs no display, and prints "The test passed." or the reason it failed. `-t` builds in Debug with the examples, runs every test, and names the ones that fail; named examples, such as `-t c12_sketch`, run their tests alone:
+The examples are the tests. Each example has a test, which any build runs with `--test`. A test needs no display, and prints "The test passed." or the reason it failed. `-t` builds with the examples, in Debug unless `-b` names another type, runs every test, and names the ones that fail; named examples, such as `-t c12_sketch`, run their tests alone:
 
 ``` shell
 ./shuild.ignore -t

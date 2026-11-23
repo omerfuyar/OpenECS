@@ -14,8 +14,6 @@
 #include "SDL3/SDL.h"
 #include "stb/stbSDL3.h"
 
-#ifdef DEBUG
-
 #pragma region Source Only
 
 /// @brief Preset of a test that names none.
@@ -1163,59 +1161,3 @@ void ECSITest_NoteMisuse(void)
 {
     SDL_SetAtomicInt(&TEST.misused, 1);
 }
-
-#else
-
-SHUResult ECSITest_Load(const char *path, char **retPreset)
-{
-    (void)path;
-    *retPreset = nullptr;
-    SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Only Debug builds run tests.");
-    return SHUResult_ErrPrivileges;
-}
-
-char **ECSITest_GetFiles(usz *retCount)
-{
-    *retCount = 0;
-    return nullptr;
-}
-
-const char *ECSITest_GetPresetsFolder(void)
-{
-    return nullptr;
-}
-
-const char *ECSITest_GetSessionsFolder(void)
-{
-    return nullptr;
-}
-
-void ECSITest_Terminate(void)
-{
-}
-
-void ECSITest_NoteMisuse(void)
-{
-}
-
-bool ECSITest_IsRunning(void)
-{
-    return false;
-}
-
-i32 ECSITest_GetWait(void)
-{
-    return -1;
-}
-
-bool ECSITest_Step(void)
-{
-    return true;
-}
-
-int ECSITest_GetStatus(void)
-{
-    return 0;
-}
-
-#endif

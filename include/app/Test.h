@@ -1,15 +1,15 @@
 #pragma once
 
-// Test: runs a test in Debug builds (DESIGN 17.5). In other builds it refuses tests.
+// Test: runs a test (DESIGN 17.5).
 
 #include "app/Session.h"
 
 #pragma region Declarations
 
-/// @brief Reads a test file and prepares its run function. Builds other than Debug refuse it.
+/// @brief Reads a test file and prepares its run function.
 /// @param path Path of the test file.
 /// @param retPreset The preset the test starts from: a name, or a path. Free it with SDL_free.
-/// @return SHUResult_Ok, SHUResult_ErrFile if the file cannot be read, SHUResult_ErrBadData if it fails or returns no test, SHUResult_ErrAllocation, or SHUResult_ErrPrivileges in builds other than Debug.
+/// @return SHUResult_Ok, SHUResult_ErrFile if the file cannot be read, SHUResult_ErrBadData if it fails or returns no test, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSITest_Load(const char *path, char **retPreset);
 
 /// @brief Gets the files that the test's files field names, which the program opens as if the command line named them.

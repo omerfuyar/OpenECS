@@ -27,7 +27,7 @@
       "  " O "-p" R ", " O "--preset" R " " V "NAME" R "|" V "FILE" R "  Start from a preset: a name from the presets folders, or a file\n"              \
       "  " O "-s" R ", " O "--session" R " " V "FILE" R "      Open a saved session\n"                                                                   \
       "  " O "-f" R ", " O "--fresh" R "             Start from the preset, not from the tool's last session\n"                                          \
-      "  " O "-t" R ", " O "--test" R " " V "FILE" R "         Run a test; Debug builds only\n"                                                          \
+      "  " O "-t" R ", " O "--test" R " " V "FILE" R "         Run a test\n"                                                                             \
       "  " O "-d" R ", " O "--definitions" R " " V "DIR" R "   Write the plugin interface and every plugin's definitions into " V "DIR" R ", and exit\n" \
       "  " O "-i" R ", " O "--install" R "           Add the preset's tool to the system's launcher, and exit\n"                                         \
       "  " O "-u" R ", " O "--uninstall" R "         Remove the preset's tool from the system's launcher, and exit\n"                                    \

@@ -13,7 +13,7 @@ A review finds what to improve and records it for the owner. It changes no code.
 - The area's sections in areas.md, then its DESIGN.md sections. Not the whole documents.
 - Source by function, not whole files: `grep -n` for the function or the struct, then read that range. The large files (Services.c, Window.c, Bindings.c, Layout.c, ui's `init.lua`) never need reading whole.
 - Never `dependencies/`. Read a dependency's header only to check how the code uses it.
-- No build and no tests, unless a finding needs proof, such as a claim about speed or a crash. Then use the verify skill, and name the proof in the finding.
+- No build and no tests, unless a finding needs proof: prove a crash with the verify skill, and a claim about speed with the measure skill. Name the proof in the finding.
 
 ## 2. Split the work
 
