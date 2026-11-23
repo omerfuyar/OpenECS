@@ -93,6 +93,14 @@ void ECSIServices_RemovePlugin(ECSPlugin plugin);
 /// @return SHUResult_Ok, SHUResult_ErrBadData if the name or signature is invalid or the name is taken, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIServices_RegisterCore(const char *name, ECSFunction function, const char *signature, const char *description);
 
+/// @brief Pushes a Lua function that calls one of the core's functions through the FFI, for the methods of the core's handles. The function must run
+/// no Lua, and checks its arguments with ECS_Check. No name finds it: it is not a service, and keys do not run it.
+/// @param name Full name of the function, which errors name, such as "ecs.surface.fill".
+/// @param function The function.
+/// @param signature The function's signature.
+/// @return SHUResult_Ok, SHUResult_ErrBadData if the signature is invalid, or SHUResult_ErrAllocation; nothing is pushed when it fails.
+SHUWUR SHUResult ECSIServices_PushCoreMethod(const char *name, ECSFunction function, const char *signature);
+
 /// @brief Calls a function that a key is bound to. It takes no arguments, or the focused panel.
 /// @param name Name of the function.
 /// @param focus The focused panel, or nullptr.

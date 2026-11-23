@@ -167,6 +167,7 @@ typedef struct ECSIFunction
     u32 generation;       // a callback that C gave to Lua: its giver's generation then; once the giver's differs, its code is gone and nothing runs
     bool inert;           // a callback whose giver was removed: C may still call it, and nothing runs
     int lua;              // registry reference of the Lua function, or LUA_NOREF for a C function
+    bool direct;          // a core function that runs no Lua, which Lua calls through the FFI, as a handle's method
     int anchors;          // registry reference of a table that keeps the strings and buffers a Lua function last gave C
     ECSValue *result;     // the value a Lua function last returned to C, or nullptr
     ffi_closure *closure; // the code that C calls for a Lua function, or nullptr
@@ -262,7 +263,8 @@ static struct
     {
         const char *name;
         ECSIHandleType *type;
-    } coreTypes[3]; // the core's handle types that ECSIServices_CheckHandle met, by the address of their names, as they live until exit
+    } coreTypes[3];             // the core's handle types that ECSIServices_CheckHandle met, by the address of their names, as they live until exit
+    ECSIFunction **coreMethods; // stb_ds array of the core's functions that are only its handles' methods, which no name finds
 } SERVICES = {0};
 
 /// @brief File-level state of each thread.
@@ -2939,7 +2941,7 @@ static bool ECSIFfi_CallsLua(ECSPlugin plugin)
 /// Create, are called through the C API.
 static bool ECSIFfi_Wraps(const ECSIFunction *function)
 {
-    if (function->pointer == nullptr || function->lua != LUA_NOREF || ECSIFfi_CallsLua(function->plugin))
+    if (function->pointer == nullptr || function->lua != LUA_NOREF || (!function->direct && ECSIFfi_CallsLua(function->plugin)))
     {
         return false;
     }
@@ -3166,12 +3168,15 @@ static void ECSIFfi_AddArguments(ECSIText *text, const ECSISignature *signature)
 }
 
 /// @brief Adds the call and what a wrapper does after it: it raises a misuse that the function noted, and gives nil and why when it failed.
-static void ECSIFfi_AddCall(ECSIText *text, const ECSISignature *signature)
+static void ECSIFfi_AddCall(ECSIText *text, const ECSIFunction *function)
 {
+    const ECSISignature *signature = &function->signature;
     usz count = arrlenu(signature->parameters);
 
-    // the function is the core's while it runs: Lua must not run, and its time is its plugin's, not the caller's (DESIGN 3.5)
-    ECSIText_Add(text, "  local before, profiled = misuses(), profiling()\n  if profiled then enter(scope, PLUGIN, NAME) end\n");
+    // the function is the core's while it runs: Lua must not run, and its time is its plugin's, not the caller's (DESIGN 3.5); the core's own
+    // functions, its handles' methods, count as their caller's time
+    bool scoped = function->plugin != nullptr;
+    ECSIText_Add(text, scoped ? "  local before, profiled = misuses(), profiling()\n  if profiled then enter(scope, PLUGIN, NAME) end\n" : "  local before, profiled = misuses(), false\n");
     ECSIText_Add(text, "  local outer = current[0]\n  current[0] = FUNCTION\n  %scall(", signature->result.type != ECSIParameterType_Void ? "local r = " : "");
 
     for (usz i = 0; i < count; i++)
@@ -3278,7 +3283,7 @@ static ECSIText ECSIFfi_Write(const ECSIFunction *function)
 
     ECSIText_Add(&text, ")\n");
     ECSIFfi_AddArguments(&text, signature);
-    ECSIFfi_AddCall(&text, signature);
+    ECSIFfi_AddCall(&text, function);
     ECSIFfi_AddReturn(&text, signature);
     return text;
 }
@@ -3342,7 +3347,7 @@ static SHUResult ECSIFfi_PushConstants(lua_State *state, const ECSIFunction *fun
     lua_setfield(state, -2, "called");
     lua_pushlightuserdata(state, function->plugin);
     lua_setfield(state, -2, "plugin");
-    lua_pushlightuserdata(state, (void *)ECSIPlugin_GetName(function->plugin));
+    lua_pushlightuserdata(state, (void *)(function->plugin != nullptr ? ECSIPlugin_GetName(function->plugin) : "ecs"));
     lua_setfield(state, -2, "name");
     lua_pushstring(state, function->name);
     lua_setfield(state, -2, "full");
@@ -4579,6 +4584,13 @@ void ECSIServices_Terminate(void)
 
     shfree(SERVICES.functions);
 
+    for (usz i = 0; i < arrlenu(SERVICES.coreMethods); i++)
+    {
+        ECSIFunction_Free(SERVICES.coreMethods[i]);
+    }
+
+    arrfree(SERVICES.coreMethods);
+
     // what C still keeps is freed with the Lua state's references
     for (usz i = 0; i < hmlenu(SERVICES.kept); i++)
     {
@@ -4786,6 +4798,21 @@ SHUResult ECSIServices_RegisterCore(const char *name, ECSFunction function, cons
     registered->pointer = function;
     shput(SERVICES.functions, registered->name, registered);
     return SHUResult_Ok;
+}
+
+SHUResult ECSIServices_PushCoreMethod(const char *name, ECSFunction function, const char *signature)
+{
+    SDL_assert(name != nullptr);
+    SDL_assert(function != nullptr);
+    SDL_assert(signature != nullptr);
+
+    // the function is kept apart from the named ones, so it is only a method: services, keys and the ecs table do not see it
+    ECSIFunction *made = nullptr;
+    SHU_ReturnResult(ECSIServices_CreateFunction(nullptr, name, signature, nullptr, &made));
+    made->pointer = function;
+    made->direct = true;
+    arrput(SERVICES.coreMethods, made);
+    return ECSIFfi_PushWrapper(ECSILua_GetState(), made);
 }
 
 SHUResult ECSIServices_CallBound(const char *name, ECSPanel focus)
