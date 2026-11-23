@@ -231,7 +231,7 @@ Every function, of the core or of a plugin, in C or in Lua, fails in one of two 
 - Before writing a function, check that no dependency already has it.
 - The core calls SDL directly, without wrappers, for memory, text, files and paths, shared libraries, logging and assertions: `SDL_malloc`, `SDL_strdup`, `SDL_asprintf`, `SDL_GetPrefPath`, `SDL_LoadObject`, `SDL_Log`, `SDL_assert`.
 - Dynamic arrays and hash maps come from `stb_ds.h`. The core includes it through the glue header `stb/stbSDL3.h`, which sets it to use SDL's allocator and assertions. The core has no fixed limits on counts, such as the number of plugins or panels.
-- Each job has one implementation, used everywhere. For example, all logging goes through SDL's log, and all memory comes from SDL's allocator, Lua's included.
+- Each job has one implementation, used everywhere. For example, all logging goes through SDL's log, and all memory comes from SDL's allocator, except Lua's: LuaJIT's own allocator gives Lua its many small objects.
 
 ## 2. Program structure
 
@@ -266,7 +266,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Desktop    | The tools' entries in the system's application launcher (13.9).                                                                                                |
 |           | Workers    | Lua scripts on threads of their own, and the messages between them and the main thread (3.4).                                                                  |
 |           | Bindings   | The `ecs` module: the plugin interface for Lua plugins (11.3).                                                                                                 |
-|           | Test       | Runs a test in Debug builds (17.5).                                                                                                                            |
+|           | Test       | Runs a test (17.5).                                                                                                                                            |
 |           | App        | Start-up, the main loop and shutdown (2.3, 3.1, 2.4).                                                                                                          |
 
 ### 2.2 The boundary
@@ -1449,7 +1449,7 @@ OpenECS follows the XDG Base Directory specification:
 
 ### 17.5 Tests
 
-- The examples are the tests (17.6). A test is a Lua file of an example whose name starts with `test`. Debug builds run it with `OpenECS --test FILE`; other builds refuse the option.
+- The examples are the tests (17.6). A test is a Lua file of an example whose name starts with `test`. Every build runs it with `OpenECS --test FILE`: a Debug build checks memory with the sanitizers, and a Release build runs at the speed users get.
 - The file returns a table: `preset`, the preset to start from (a name, or a path relative to the test file; `launcher` if left out), `files`, paths relative to the test file that are opened as if the command line named them (13.6), `presets` and `sessions`, folders relative to the test file that stand for the user's presets and the saved sessions (16), and `run`, a function that gets the `test` table.
 - The examples teach plugin authors and check that the core and the standard plugins work, with one set of files. A feature of the core or of a standard plugin is checked by the test of the example that shows it.
 - Tests run from the build's copy of the examples, `bin/examples/`, so a test reads the build's copies of the plugin header, `ecs.lua` and the core's settings file.
@@ -1489,7 +1489,7 @@ OpenECS follows the XDG Base Directory specification:
 - A Lua error fails the test and logs it with its stack trace. So does a misuse (1.4) by any plugin, while the test goes on to its end. When `run` returns, the program quits without asking about unsaved work.
 - While a message dialog waits (7.7), the test goes on, so it can read and answer the dialog. A dialog that the test's own step opens, as `call` can, cannot wait for the test, so it is answered with its last button, and so is one that waits when the test ends.
 - The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
-- OpenECS's build runs the tests with `-t`, `--test`: it builds in Debug with the examples, then runs every test in `bin/examples/`, or only the tests of the examples named after it, such as `-t c12_sketch`. It prints `pass` or `FAIL` for each test, and fails when one fails. A test fails when the program fails, or when its output has a sanitizer's report: `Sanitizer` or `runtime error:`.
+- OpenECS's build runs the tests with `-t`, `--test`: it builds with the examples, in Debug unless `-b` names another type, then runs every test in `bin/examples/`, or only the tests of the examples named after it, such as `-t c12_sketch`. It prints `pass` or `FAIL` for each test, and fails when one fails. A test fails when the program fails, or when its output has a sanitizer's report: `Sanitizer` or `runtime error:`.
 - The checks (19.3) also run them on Wayland, in a headless sway that tiles the windows. There, popups and pop-out windows are windows of their own.
 
 ### 17.6 Examples
@@ -1518,7 +1518,7 @@ OpenECS follows the XDG Base Directory specification:
   | (none)                  | `std/shuild.c`: the standard plugins into `bin/plugins/`, and their presets into `bin/presets/` |
   | `-n`, `--no-std`        | not `std/shuild.c`, so the build holds the core alone                                           |
   | `-e`, `--examples`      | `examples/shuild.c`: the examples into `bin/examples/`                                          |
-  | `-t`, `--test`          | a Debug build with the examples, then the examples' tests, or the named examples' (17.5)        |
+  | `-t`, `--test`          | a build with the examples, then the examples' tests, or the named examples' (17.5)              |
 
 - A repository that is not checked out is skipped with a warning.
 - Each repository has its own checks (19.3). They check out OpenECS's `dev` with its submodules, put the repository's own commit in its folder, build OpenECS with it and the examples, and run the examples' tests.

@@ -345,21 +345,6 @@ static int ECSILua_WriteProtected(lua_State *state)
     return 1;
 }
 
-/// @brief Lua's allocator: SDL's, like the rest of the core.
-static void *ECSILua_Allocate(void *userData, void *block, size_t oldSize, size_t newSize)
-{
-    (void)userData;
-    (void)oldSize;
-
-    if (newSize == 0)
-    {
-        SDL_free(block);
-        return nullptr;
-    }
-
-    return SDL_realloc(block, newSize);
-}
-
 /// @brief Logs an error raised outside a protected call. Lua aborts the program after it.
 static int ECSILua_Panic(lua_State *state)
 {
@@ -458,7 +443,7 @@ static void ECSILua_Push(lua_State *state, const ECSValue *value)
 
 SHUResult ECSILua_Initialize(void)
 {
-    LUA.state = lua_newstate(ECSILua_Allocate, nullptr);
+    LUA.state = luaL_newstate();
 
     if (LUA.state == nullptr)
     {
@@ -600,7 +585,7 @@ int ECSILua_ReferenceFunctionField(lua_State *state, int index, const char *name
 
 lua_State *ECSILua_NewState(void)
 {
-    lua_State *state = lua_newstate(ECSILua_Allocate, nullptr);
+    lua_State *state = luaL_newstate();
 
     if (state != nullptr)
     {

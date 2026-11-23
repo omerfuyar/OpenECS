@@ -51,3 +51,15 @@ The plugin most tools build on.
 - Files: `std/plugins/<name>/`, one plugin at a time, and `std/shuild.c` for how it builds.
 - std DESIGN.md: 1, and the plugin's own section.
 - Ask: does it follow std's rules (1.3) and use no other plugin's dependencies; does its interface match the other plugins'; what its examples do not test.
+
+## std: Lua plugins
+
+- Files: `std/plugins/<name>/init.lua` other than ui's, such as files, console, profiler, keys, settings and launcher.
+- std DESIGN: 1, and the plugin's own section. OpenECS DESIGN: 1.1, 9.6, 11.
+- Ask: is each panel type a class (DESIGN 1.1); what each draw makes again that could be kept, such as lists, trees and formatted texts; helpers that two plugins repeat; LuaJIT's own tools where they fit: `string.buffer`, `table.new`, `table.clear`, and FFI arrays for numbers.
+
+## Tools
+
+- Files: `shuild.c`, `.github/scripts/`, `.claude/` (settings, hooks, skills, notes), `.clang-tidy`, `.clang-format`, `.luarc.json`.
+- DESIGN: 17, 19.
+- Ask: work that a check, a hook or a skill could do instead of a person or an agent; skills that repeat each other or CLAUDE.md, instead of linking; what an agent had to work around, such as a measurement no tool makes.
