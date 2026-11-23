@@ -520,8 +520,7 @@ static void ECSIApp_Misused(const ECSICallback *callback)
 /// @brief Notes a misuse as it happens: a test fails on it.
 static void ECSIApp_Misuse(const char *message)
 {
-    (void)message;
-    ECSITest_NoteMisuse();
+    ECSITest_NoteMisuse(message);
 }
 
 /// @brief Notes a misuse of a core function, which the Lua module found in an argument from Lua.

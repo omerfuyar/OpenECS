@@ -43,12 +43,14 @@ static struct
     SDL_WindowID grabID;            // the window that got the press while buttons are held, as the system keeps the pointer there; 0 for the event's own
     f32 grabX;                      // where that window shows in the event's own, so positions move into it
     f32 grabY;
-    SDL_Point *sizes;      // stb_ds array of each OS window's size when the test last went on
-    char **files;          // stb_ds array of the paths that the test's files field names
-    char **keptTexts;      // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
-    char *presets;         // the folder that the test's presets field names, ending with a separator, or nullptr
-    char *sessions;        // the folder that the test's sessions field names, ending with a separator, or nullptr
-    SDL_AtomicInt misused; // a function was misused while the test ran, on any thread, so the test fails
+    SDL_Point *sizes;        // stb_ds array of each OS window's size when the test last went on
+    char **files;            // stb_ds array of the paths that the test's files field names
+    char **keptTexts;        // stb_ds array of the files and texts the test drops or types, kept until it ends because their events point to them
+    char *presets;           // the folder that the test's presets field names, ending with a separator, or nullptr
+    char *sessions;          // the folder that the test's sessions field names, ending with a separator, or nullptr
+    char **misuses;          // stb_ds array of the misuses that test.misuses did not take; the test fails on them
+    bool collecting;         // a test runs, so misuses are kept
+    SDL_SpinLock misuseLock; // guards misuses and collecting, as a misuse comes from any thread
 } TEST = {0};
 
 /// @brief test.match: compares by contents and names the path of the first difference.
@@ -847,6 +849,27 @@ static int ECSITest_Pixel(lua_State *state)
     return 1;
 }
 
+/// @brief test.misuses(): takes the misuses (1.4) since the last call, so the test does not fail on them, as their messages.
+static int ECSITest_Misuses(lua_State *state)
+{
+    SDL_LockSpinlock(&TEST.misuseLock);
+    char **misuses = TEST.misuses;
+    TEST.misuses = nullptr;
+    SDL_UnlockSpinlock(&TEST.misuseLock);
+
+    lua_createtable(state, (int)arrlen(misuses), 0);
+
+    for (usz i = 0; i < arrlenu(misuses); i++)
+    {
+        lua_pushstring(state, misuses[i]);
+        lua_rawseti(state, -2, (int)i + 1);
+        SDL_free(misuses[i]);
+    }
+
+    arrfree(misuses);
+    return 1;
+}
+
 /// @brief test.errors(): the errors that plugins reported (14.2) since the program started, each once, as "plugin: message".
 static int ECSITest_Errors(lua_State *state)
 {
@@ -887,6 +910,7 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"screenshot", ECSITest_Screenshot},
     {"pixel", ECSITest_Pixel},
     {"errors", ECSITest_Errors},
+    {"misuses", ECSITest_Misuses},
     {nullptr, nullptr},
 };
 
@@ -920,6 +944,21 @@ static void ECSITest_Finish(void)
     arrfree(TEST.eventModifiers);
     arrfree(TEST.sizes);
     TEST.nextEvent = 0;
+}
+
+/// @brief Frees the misuses that the test did not take.
+static void ECSITest_FreeMisuses(void)
+{
+    SDL_LockSpinlock(&TEST.misuseLock);
+
+    for (usz i = 0; i < arrlenu(TEST.misuses); i++)
+    {
+        SDL_free(TEST.misuses[i]);
+    }
+
+    arrfree(TEST.misuses);
+    TEST.collecting = false;
+    SDL_UnlockSpinlock(&TEST.misuseLock);
 }
 
 /// @brief Reads a field of the test table, at -2, that names a folder relative to the test file.
@@ -1042,6 +1081,9 @@ SHUResult ECSITest_Load(const char *path, char **retPreset)
     TEST.started = false;
     TEST.failed = false;
     TEST.ended = false;
+    SDL_LockSpinlock(&TEST.misuseLock);
+    TEST.collecting = true;
+    SDL_UnlockSpinlock(&TEST.misuseLock);
     ECSIDialogs_SetTest(ECSITest_StepDialog, ECSITest_GetWait);
     return SHUResult_Ok;
 }
@@ -1067,6 +1109,7 @@ const char *ECSITest_GetSessionsFolder(void)
 void ECSITest_Terminate(void)
 {
     ECSITest_Finish();
+    ECSITest_FreeMisuses();
     ECSIDialogs_SetTest(nullptr, nullptr);
 
     for (usz i = 0; i < arrlenu(TEST.files); i++)
@@ -1147,7 +1190,7 @@ bool ECSITest_Step(void)
         return true;
     }
 
-    if (status == LUA_OK && SDL_GetAtomicInt(&TEST.misused) != 0)
+    if (status == LUA_OK && arrlen(TEST.misuses) != 0)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The test failed: a function was misused; the log has where.");
         TEST.failed = true;
@@ -1173,7 +1216,14 @@ int ECSITest_GetStatus(void)
     return TEST.failed || TEST.thread != nullptr ? 1 : 0;
 }
 
-void ECSITest_NoteMisuse(void)
+void ECSITest_NoteMisuse(const char *message)
 {
-    SDL_SetAtomicInt(&TEST.misused, 1);
+    SDL_LockSpinlock(&TEST.misuseLock);
+
+    if (TEST.collecting)
+    {
+        arrput(TEST.misuses, SDL_strdup(message != nullptr ? message : ""));
+    }
+
+    SDL_UnlockSpinlock(&TEST.misuseLock);
 }

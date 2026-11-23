@@ -1822,7 +1822,9 @@ static void ECSIWindow_UpdatePopup(ECSPopup popup)
     bool moved = made || rect.x != view->rect.x || rect.y != view->rect.y || rect.w != view->rect.w || rect.h != view->rect.h;
     view->rect = rect;
     SDL_Renderer *renderer = view->renderer != nullptr ? view->renderer : osWindow->renderer;
+    ECSILayout_SetFrozen(true);
     bool drawn = ECSIPopup_Draw(popup);
+    ECSILayout_SetFrozen(false);
 
     if (popup->pixels != nullptr)
     {
@@ -2006,7 +2008,9 @@ static void ECSIWindow_DrawFrame(ECSIOSWindow *osWindow, u64 nowTicks)
 
     // the interface's commands point to the panels' titles, so panels draw first; their Draw may change a title
     ECSIProfileStep step = ECSIProfile_SetStep(ECSIProfileStep_Panels);
+    ECSILayout_SetFrozen(true);
     ECSILayout_ForEachGroup(root, ECSIWindow_DrawGroup, &context);
+    ECSILayout_SetFrozen(false);
     (void)ECSIProfile_SetStep(ECSIProfileStep_Interface);
     Clay_RenderCommandArray commands = ECSIWindow_DeclareInterface(osWindow, root);
     ECSIWindow_FitTabs(osWindow);

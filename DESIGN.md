@@ -569,6 +569,7 @@ After every operation:
 - Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)` (also from another workspace), `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles.
 - Workspaces are numbered from 1, in C and in Lua: `ECSWorkspace_Switch(10)` switches to workspace 10.
 - Closing a panel from code still asks about unsaved work. Focusing a panel shows its workspace and its tab.
+- A panel's or popup's draw that opens, moves or closes a panel misuses the function (1.4): the frame walks the layout while panels draw. It does so in an event, a timer or a function instead.
 - Locks (6.4) stop the user, not code. A core function called without arguments is the user's action (7.8).
 - Every change of focus tells the panel that loses it and the panel that gets it (`ECSPanelEventType_Unfocused`, `ECSPanelEventType_Focused`).
 
@@ -1482,12 +1483,13 @@ OpenECS follows the XDG Base Directory specification:
   | `popup(number)`                                                      | An open popup, the oldest first: its rectangle `x`, `y`, `width` and `height` in its OS window, and `window`, the number of that window (4.6).                                                                                                     |
   | `dialog()`                                                           | The message dialog that waits for an answer (7.7), or nil: its `title`, `message` and `buttons`, the number of the `selected` button, and `rects`, each button's rectangle in its OS window. A test answers it with `key` or `click`.              |
   | `errors()`                                                           | The errors that plugins reported (14.2) since the program started, each once and in order, as `"plugin: message"`.                                                                                                                               |
+  | `misuses()`                                                         | Takes the misuses (1.4) since the last call, so the test does not fail on them, and gives what each check says. A test that checks a misuse reads it so.                                                                                         |
   | `match(actual, expected, message)`                                   | Checks that `actual` has the same number of list items as `expected`, and each item and field it names.                                                                                                                                            |
 
 - Before `run` goes on, each OS window gets the size the system gives it, as a tiling compositor does, and the layout follows it.
 - A pointer event over a shown popup window goes to that popup, in its own positions, as the system gives it. While a button is held, the events go to the window that got the press.
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
-- A Lua error fails the test and logs it with its stack trace. So does a misuse (1.4) by any plugin, while the test goes on to its end. When `run` returns, the program quits without asking about unsaved work.
+- A Lua error fails the test and logs it with its stack trace. So does a misuse (1.4) by any plugin that `misuses` did not take, while the test goes on to its end. When `run` returns, the program quits without asking about unsaved work.
 - While a message dialog waits (7.7), the test goes on, so it can read and answer the dialog. A dialog that the test's own step opens, as `call` can, cannot wait for the test, so it is answered with its last button, and so is one that waits when the test ends.
 - The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
 - OpenECS's build runs the tests with `-t`, `--test`: it builds with the examples, in Debug unless `-b` names another type, then runs every test in `bin/examples/`, or only the tests of the examples named after it, such as `-t c12_sketch`. It prints `pass` or `FAIL` for each test, and fails when one fails. A test fails when the program fails, or when its output has a sanitizer's report: `Sanitizer` or `runtime error:`.

@@ -41,6 +41,7 @@ static struct
     bool emptied; // the user closed the last panel of every workspace
     u32 lastRootID;
     ECSILayoutForgetFunction Forget; // the window's, or nullptr
+    bool frozen;                     // panels and popups draw, while the frame walks the trees, so the layout must not change
 
     // from the settings
     f32 tabRowHeight;
@@ -1957,12 +1958,23 @@ void ECSILayout_ToggleMaximize(void)
     ECSILayout_Changed();
 }
 
+/// @brief Checks that the layout may change: a panel's or popup's draw that opens, moves or closes panels misuses the function (DESIGN 14.2).
+static bool ECSILayout_CheckUnfrozen(void)
+{
+    return ECS_Check(nullptr, !LAYOUT.frozen, "A panel's or popup's draw cannot open, move or close panels; do it in an event, a timer or a function.");
+}
+
+void ECSILayout_SetFrozen(bool frozen)
+{
+    LAYOUT.frozen = frozen;
+}
+
 void ECSILayout_ClosePanel(ECSPanel panel)
 {
     ECSIWorkspace *workspace = nullptr;
     ECSINode *group = nullptr;
 
-    if (!ECSILayout_Locate(panel, &workspace, nullptr, &group))
+    if (!ECSILayout_CheckUnfrozen() || !ECSILayout_Locate(panel, &workspace, nullptr, &group))
     {
         return;
     }
@@ -2146,6 +2158,11 @@ SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type,
     ECSILog_Check(retPanel != nullptr, SHUResult_ErrAssertion);
     ECSILog_Check(type != nullptr, SHUResult_ErrAssertion);
 
+    if (!ECSILayout_CheckUnfrozen())
+    {
+        return SHUResult_ErrAssertion;
+    }
+
     ECSIWorkspace *workspace = ECSILayout_GetCurrent();
     ECSINode *group = nullptr;
 
@@ -2191,6 +2208,11 @@ SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone)
     ECSILog_Check(panel != nullptr, SHUResult_ErrAssertion);
     ECSILog_Check(target != nullptr || zone == ECSZone_Window, SHUResult_ErrAssertion);
 
+    if (!ECSILayout_CheckUnfrozen())
+    {
+        return SHUResult_ErrAssertion;
+    }
+
     ECSIWorkspace *workspace = nullptr;
     ECSIWorkspace *targetWorkspace = nullptr;
     ECSIRoot *root = nullptr;
@@ -2232,7 +2254,7 @@ bool ECSLayout_Close(ECSPanel panel)
 {
     ECSILog_Check(panel != nullptr, false);
 
-    if (!ECSILayout_HasPanel(panel) || !ECSIPanels_ConfirmClose(&panel, 1, false))
+    if (!ECSILayout_CheckUnfrozen() || !ECSILayout_HasPanel(panel) || !ECSIPanels_ConfirmClose(&panel, 1, false))
     {
         return false;
     }

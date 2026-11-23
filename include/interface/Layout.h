@@ -236,6 +236,9 @@ bool ECSILayout_RootWantsFrame(ECSIRoot *root);
 /// @brief Computes every rectangle of the current workspace's roots for their sizes, and tells the panels that became visible or hidden, or changed size. A frame starts with it, so it clears the request for one.
 void ECSILayout_Update(void);
 
+/// @brief Freezes the layout while panels and popups draw, as the frame walks its trees: opening, moving or closing a panel then is a misuse (DESIGN 14.2).
+void ECSILayout_SetFrozen(bool frozen);
+
 /// @brief Calls a function for every visible group of a root.
 /// @param root The root, or nullptr for none.
 /// @param function The function.
