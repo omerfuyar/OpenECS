@@ -26,15 +26,21 @@ SHUWUR SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, ECSSubscription *retSubs
 /// @param plugin The plugin.
 void ECSIEvents_RemovePlugin(ECSPlugin plugin);
 
-/// @brief Tells the named events that wait to be delivered that an object of a handle type is freed, so a value that names it gives no object.
+/// @brief Tells the events that wait to be delivered, and the values that ECSIEvents_WatchValue names, that an object of a handle type is freed, so a
+/// value that names it gives no object.
 void ECSIEvents_ForgetObject(const void *object);
+
+/// @brief Makes ECSIEvents_ForgetObject forget objects in a value that a module keeps outside the queue, as the dragged data.
+/// @param value Where the module keeps its value, which may be nullptr when it has none. It stays until exit.
+void ECSIEvents_WatchValue(ECSValue *const *value);
 
 /// @brief Queues an event. ECSIEvents_Deliver delivers it, after the current callback returns.
 /// @param deliver Function that delivers the event.
 /// @param release Function that frees the target if the event is never delivered, as at exit, or nullptr.
 /// @param target Passed to the functions.
+/// @param value A value in the target that may name objects of handle types, which ECSIEvents_ForgetObject forgets, or nullptr.
 /// @param event The event. The queue keeps a copy.
-void ECSIEvents_Post(ECSIEventDeliverFunction deliver, ECSTimerFunction release, void *target, const ECSPanelEvent *event);
+void ECSIEvents_Post(ECSIEventDeliverFunction deliver, ECSTimerFunction release, void *target, ECSValue *value, const ECSPanelEvent *event);
 
 /// @brief Delivers the queued events in order, and the events queued while they are delivered, until the queue is empty. A named event emitted meanwhile
 /// waits for the next call, and a subscription made meanwhile hears the next emission.

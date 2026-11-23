@@ -1012,6 +1012,9 @@ static void ECSIInput_AddDroppedFile(const char *path)
 
 SHUResult ECSIInput_Initialize(void)
 {
+    // a handle in the dragged data gives no object once its object is freed
+    ECSIEvents_WatchValue(&INPUT.dragValue);
+
     ECSSettingDesc focus = {
         .name = "ecs.focus",
         .type = ECSSettingType_Choice,

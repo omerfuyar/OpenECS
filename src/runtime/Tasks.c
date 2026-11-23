@@ -134,7 +134,7 @@ static SHUResult ECSITasks_Post(ECSPlugin plugin, u32 generation, ECSTaskFunctio
 
         *copy = task;
         ECSPanelEvent event = {0};
-        ECSIEvents_Post(ECSITasks_DeliverMainTask, ECSITasks_FreeMainTask, copy, &event);
+        ECSIEvents_Post(ECSITasks_DeliverMainTask, ECSITasks_FreeMainTask, copy, nullptr, &event);
         return SHUResult_Ok;
     }
 
