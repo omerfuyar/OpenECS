@@ -138,7 +138,9 @@ typedef struct ECSISignature
     ECSIParameter *parameters; // stb_ds array
     ffi_type **types;          // stb_ds array of the parameters' libffi types
     usz outCount;
-    bool fails; // its last parameter is "out string error": the function can fail, and gives nothing else then (DESIGN 10.8)
+    bool fails;     // its last parameter is "out string error": the function can fail, and gives nothing else then (DESIGN 10.8)
+    bool callbacks; // it takes a callback
+    bool anchors;   // it gives C a handle, a string or a buffer, which Lua keeps alive until the function runs again
     ffi_cif cif;
     char *text; // the signature written the same way every time, such as "int(string, out float)"
 } ECSISignature;
@@ -662,6 +664,12 @@ static ECSIText ECSISignature_Write(const ECSISignature *signature)
     return written;
 }
 
+/// @brief Checks whether Lua keeps a value of a type that a Lua function gives C alive until the function runs again: a handle, a string or a buffer.
+static bool ECSISignature_IsAnchored(ECSIParameterType type)
+{
+    return type == ECSIParameterType_Handle || type == ECSIParameterType_String || type == ECSIParameterType_Buffer;
+}
+
 /// @brief Parses a signature such as "int(string path, out float)", and prepares its libffi call description. Parameter names are kept apart from the signature's text, so they never change how signatures compare.
 static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignature)
 {
@@ -705,7 +713,11 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
         }
 
         retSignature->fails = error;
+        retSignature->callbacks = retSignature->callbacks || parameter->type == ECSIParameterType_Callback;
+        retSignature->anchors = retSignature->anchors || (parameter->out && ECSISignature_IsAnchored(parameter->type));
     }
+
+    retSignature->anchors = retSignature->anchors || ECSISignature_IsAnchored(retSignature->result.type);
 
     ECSIText written = ECSISignature_Write(retSignature);
     retSignature->text = written.data;
@@ -1483,6 +1495,19 @@ static SHUResult ECSIServices_MakeValues(lua_State *state, const ECSISignature *
     return result;
 }
 
+/// @brief Makes the registry's table of anchors of a Lua function that C calls, which keeps what it gives C alive until it runs again.
+/// @return The table's registry reference, or LUA_NOREF for a signature that gives C nothing to keep.
+static int ECSIServices_NewAnchors(lua_State *state, const ECSISignature *signature)
+{
+    if (!signature->anchors)
+    {
+        return LUA_NOREF;
+    }
+
+    lua_newtable(state);
+    return luaL_ref(state, LUA_REGISTRYINDEX);
+}
+
 /// @brief Makes the Lua functions that a call passes into closures that C calls. A closure is valid until the call returns, or until C releases it if C keeps it.
 static SHUResult ECSIServices_MakeCallbacks(lua_State *state, ECSIFunction *function, ECSPlugin caller, ECSICallParameter *parameters)
 {
@@ -1507,8 +1532,7 @@ static SHUResult ECSIServices_MakeCallbacks(lua_State *state, ECSIFunction *func
             call->callback->giver = caller;
             lua_pushvalue(state, call->index);
             call->callback->lua = luaL_ref(state, LUA_REGISTRYINDEX);
-            lua_newtable(state);
-            call->callback->anchors = luaL_ref(state, LUA_REGISTRYINDEX);
+            call->callback->anchors = ECSIServices_NewAnchors(state, &call->callback->signature);
         }
         else
         {
@@ -2291,11 +2315,23 @@ static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *
         return;
     }
 
-    lua_newtable(state);
-    int anchors = lua_gettop(state);
-    lua_newtable(state);
-    int callbacks = lua_gettop(state);
+    // the tables of anchors and callbacks are made only for a signature that needs them; 0 is none
+    int anchors = 0;
+    int callbacks = 0;
 
+    if (signature->anchors)
+    {
+        lua_newtable(state);
+        anchors = lua_gettop(state);
+    }
+
+    if (signature->callbacks)
+    {
+        lua_newtable(state);
+        callbacks = lua_gettop(state);
+    }
+
+    int results = lua_gettop(state);
     lua_rawgeti(state, LUA_REGISTRYINDEX, function->lua);
     int pushed = 0;
 
@@ -2320,12 +2356,20 @@ static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *
     ECSIProfile_Enter(&profile, function->plugin, function->plugin != nullptr ? ECSIPlugin_GetName(function->plugin) : nullptr);
     bool failed = ECSILua_Call(state, pushed, resultCount) != SHUResult_Ok;
     ECSIProfile_Leave(&profile);
-    ECSIServices_EndCallbacks(state, callbacks);
+
+    if (callbacks != 0)
+    {
+        ECSIServices_EndCallbacks(state, callbacks);
+    }
 
     // the new anchor table replaces the last call's only now, so what C got from the last call stayed valid until the Lua code returned,
     // also when that code called this function again
-    lua_pushvalue(state, anchors);
-    lua_rawseti(state, LUA_REGISTRYINDEX, function->anchors);
+    if (anchors != 0)
+    {
+        lua_pushvalue(state, anchors);
+        lua_rawseti(state, LUA_REGISTRYINDEX, function->anchors);
+    }
+
     ECSIServices_RenewResult(function, result);
 
     if (failed)
@@ -2335,11 +2379,11 @@ static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *
         return;
     }
 
-    int index = callbacks + 1;
+    int index = results + 1;
 
     // a Lua function that failed gives nil for its results, and why last: C gets zeros for them
     // one that worked gives nil for why, its last output, which C gets as nullptr (DESIGN 10.8)
-    int last = callbacks + resultCount;
+    int last = results + resultCount;
     bool failedCall = signature->fails && lua_type(state, last) == LUA_TSTRING;
 
     if (signature->result.type != ECSIParameterType_Void && !ECSIServices_WriteOutput(state, function, index++, anchors, signature->result, result, true) &&
@@ -2460,8 +2504,7 @@ static SHUResult ECSIFunction_MakeClosure(lua_State *state, int index, ECSIFunct
     SDL_memcpy(&function->pointer, &code, sizeof(code));
     lua_pushvalue(state, index);
     function->lua = luaL_ref(state, LUA_REGISTRYINDEX);
-    lua_newtable(state);
-    function->anchors = luaL_ref(state, LUA_REGISTRYINDEX);
+    function->anchors = ECSIServices_NewAnchors(state, &function->signature);
     return SHUResult_Ok;
 }
 

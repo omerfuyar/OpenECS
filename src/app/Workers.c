@@ -163,6 +163,23 @@ static int ECSIWorkers_Decode(lua_State *state)
     return 1;
 }
 
+/// @brief The key of each state's ECSIWorkers_Decode in its registry.
+static const char OPENECS_WORKERS_DECODE_KEY = 0;
+
+/// @brief Pushes ECSIWorkers_Decode. LuaJIT has no light C functions, so it is made once for each state and kept in its registry.
+static void ECSIWorkers_PushDecode(lua_State *state)
+{
+    lua_rawgetp(state, LUA_REGISTRYINDEX, &OPENECS_WORKERS_DECODE_KEY);
+
+    if (lua_isnil(state, -1))
+    {
+        lua_pop(state, 1);
+        lua_pushcfunction(state, ECSIWorkers_Decode);
+        lua_pushvalue(state, -1);
+        lua_rawsetp(state, LUA_REGISTRYINDEX, &OPENECS_WORKERS_DECODE_KEY);
+    }
+}
+
 /// @brief Frees a list of messages.
 static void ECSIWorkers_FreeMessages(ECSIMessage ***messages)
 {
@@ -335,7 +352,7 @@ static int ECSIWorkers_Receive(lua_State *state)
     }
 
     // the message is freed even if decoding it fails, which only running out of memory does
-    lua_pushcfunction(state, ECSIWorkers_Decode);
+    ECSIWorkers_PushDecode(state);
     lua_pushlightuserdata(state, message);
     int failed = lua_pcall(state, 1, 1, 0);
     SDL_free(message);
@@ -505,7 +522,7 @@ static void ECSIWorkers_Call(ECSIWorker *worker, int function, int argumentCount
 static void ECSIWorkers_Deliver(ECSIWorker *worker, int function, const ECSIMessage *message, int count)
 {
     lua_State *state = ECSILua_GetState();
-    lua_pushcfunction(state, ECSIWorkers_Decode);
+    ECSIWorkers_PushDecode(state);
     lua_pushlightuserdata(state, (void *)message);
 
     if (lua_pcall(state, 1, 1, 0) != LUA_OK)
