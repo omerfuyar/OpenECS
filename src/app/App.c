@@ -127,9 +127,27 @@ static char *ECSIApp_FindXdgFolder(const char *variable, const char *fallback)
 #endif
 }
 
-/// @brief Removes everything a failed plugin registered: its panel types, functions, settings, timers, events and keys.
+/// @brief Frees what a worker or pool thread kept, as it ends.
+static void ECSIApp_EndThread(void)
+{
+    ECSIServices_EndThread();
+    ECSIPlugins_EndThread();
+}
+
+/// @brief Stops a plugin's code that runs apart from the main loop: its workers, and its background work, whose done functions run now.
+static void ECSIApp_StopPluginCode(ECSPlugin plugin)
+{
+    ECSIWorkers_StopPlugin(plugin);
+    ECSIPlugin_StopWork(plugin);
+    ECSITasks_ForgetPlugin(plugin);
+}
+
+/// @brief Stops a failed or disabled plugin's code, then removes everything it registered: its panel types, functions, settings, timers, events and
+/// keys.
 static void ECSIApp_RemoveRegistrations(ECSPlugin plugin)
 {
+    // a plugin whose start fails may have started workers and background work before it failed
+    ECSIApp_StopPluginCode(plugin);
     ECSIPanels_RemovePlugin(plugin);
     ECSIServices_RemovePlugin(plugin);
     ECSISettings_RemovePlugin(plugin);
@@ -508,20 +526,16 @@ static void ECSIApp_Misused(const ECSICallback *callback)
     {
         ECSIApp_RequestMisusedPlugin(request);
     }
-    else if (!SDL_RunOnMainThread(ECSIApp_RequestMisusedPlugin, request, false))
+    else
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' misused a function, and cannot be disabled: %s", name, SDL_GetError());
-        SDL_free(request);
-        SDL_free(name);
-        SDL_free(misuse);
+        ECSITasks_RunOnMainThread(ECSIApp_RequestMisusedPlugin, request);
     }
 }
 
 /// @brief Notes a misuse as it happens: a test fails on it.
 static void ECSIApp_Misuse(const char *message)
 {
-    (void)message;
-    ECSITest_NoteMisuse();
+    ECSITest_NoteMisuse(message);
 }
 
 /// @brief Notes a misuse of a core function, which the Lua module found in an argument from Lua.
@@ -542,7 +556,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     // read the preset first, because SDL needs the tool's identity before it starts
     ECSIApp_ExitOnFailure(ECSILua_Initialize(), "starting Lua", nullptr);
     ECSIApp_ExitOnFailure(ECSIEvents_Initialize(), "declaring the core's events", nullptr);
-    ECSIApp_ExitOnFailure(ECSITasks_Initialize(), "preparing worker threads", nullptr);
+    ECSIApp_ExitOnFailure(ECSITasks_Initialize(ECSIApp_EndThread), "preparing worker threads", nullptr);
     ECSIApp_ExitOnFailure(ECSIServices_Initialize(), "preparing services", nullptr);
     ECSIApp_ExitOnFailure(ECSIServices_RegisterCore("ecs.app.quit", (ECSFunction)ECSApp_Quit, "void()", "Quit"), "registering the core's functions", nullptr);
 
@@ -779,9 +793,7 @@ static void ECSIApp_UnloadPlugins(ECSPlugin *plugins, ECSPanel *affected, const 
             }
         }
 
-        ECSIWorkers_StopPlugin(plugins[i]);
-        ECSIPlugin_StopWork(plugins[i]);
-        ECSITasks_ForgetPlugin(plugins[i]);
+        ECSIApp_StopPluginCode(plugins[i]);
         ECSIServices_DestroyHandlesOfPlugin(plugins[i]);
 
         if (noted)
@@ -1105,6 +1117,7 @@ int ECSIApp_Run(void)
         i32 wait = ECSIApp_ShorterWait(ECSIEvents_GetWait(), ECSIWindow_GetFrameWait());
         wait = ECSIApp_ShorterWait(wait, ECSITest_GetWait());
         wait = ECSIApp_ShorterWait(wait, ECSIApp_GetWatchWait());
+        wait = ECSIApp_ShorterWait(wait, ECSITasks_GetWait());
         (void)ECSIProfile_SetStep(ECSIProfileStep_Wait);
         bool woken = SDL_WaitEventTimeout(&event, wait);
         (void)ECSIProfile_SetStep(ECSIProfileStep_Input);
@@ -1122,6 +1135,9 @@ int ECSIApp_Run(void)
             break;
         }
 
+        // functions that other threads sent run here, then the code of the plugins disabled before them is unloaded
+        ECSITasks_RunMain();
+        ECSIPlugins_UnloadDisabled();
         (void)ECSIProfile_SetStep(ECSIProfileStep_Timers);
         ECSITimers_Run();
         (void)ECSIProfile_SetStep(ECSIProfileStep_Events);

@@ -69,6 +69,12 @@ void ECSIPanels_SetScale(f32 scale);
 /// @brief Draws every panel again, whole, when it is next shown, as a setting that changed may change how it looks.
 void ECSIPanels_RedrawAll(void);
 
+/// @brief Whether a tab's title or unsaved mark changed since ECSIPanels_ClearTabsChanged, so the interface needs a frame.
+bool ECSIPanels_TabsChanged(void);
+
+/// @brief Notes that a frame shows the tabs as they are.
+void ECSIPanels_ClearTabsChanged(void);
+
 /// @brief Registers a panel type like ECSPanelType_Register, with data kept in the type.
 /// @param plugin The plugin that provides the panel type.
 /// @param desc Description of the panel type.

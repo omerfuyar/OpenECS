@@ -8,21 +8,7 @@
 
 #pragma region Source Only
 
-/// @brief A timer that a plugin started: base/Timers runs it, and this record says whose it is, so a plugin's timers stop with it.
-typedef struct ECSIPluginTimer
-{
-    ECSPlugin plugin;
-    ECSTimer timer;
-    ECSTimerFunction Function;
-    ECSTimerFunction Release; // nullptr if the data needs no release
-    void *data;
-} ECSIPluginTimer;
-
-/// @brief The timers that plugins started, apart from EVENTS because their records go when base/Timers frees the timers, after Events stops.
-static struct
-{
-    ECSIPluginTimer **timers; // stb_ds array
-} PLUGIN_TIMERS = {0};
+static void ECSIEvents_RunPluginTimer(void *owner, ECSTimerFunction function, void *data);
 
 /// @brief An event waiting in the queue.
 typedef struct ECSIQueuedEvent
@@ -30,6 +16,7 @@ typedef struct ECSIQueuedEvent
     ECSIEventDeliverFunction Deliver;
     ECSTimerFunction Release; // frees the target of an event that is never delivered, or nullptr
     void *target;
+    ECSValue *value; // a value in the target whose objects ECSIEvents_ForgetObject forgets, or nullptr
     ECSPanelEvent event;
 } ECSIQueuedEvent;
 
@@ -80,6 +67,8 @@ static struct
         ECSINamedEvent value;
     } *named;                                // stb_ds hash map of the declared named events, with copied keys
     struct ECSISubscription **subscriptions; // stb_ds array; handles point to them, so each is allocated on its own
+    ECSValue *const *watched[2];             // where modules keep values outside the queue (ECSIEvents_WatchValue)
+    usz watchedCount;
 } EVENTS = {0};
 
 /// @brief The declared event of a name, or nullptr; its record moves when events are declared or removed, so it is found again after any of those.
@@ -216,7 +205,7 @@ static SHUResult ECSIEvents_Emit(const char *name, const ECSValue *value)
     SDL_memcpy(emission->name, name, length + 1);
 
     // an event emitted while events are delivered waits for the next delivery, so a subscriber that emits each time it hears one cannot hold the main loop
-    ECSIQueuedEvent queued = {.Deliver = ECSIEvents_DeliverEmission, .Release = ECSIEvents_FreeEmission, .target = emission};
+    ECSIQueuedEvent queued = {.Deliver = ECSIEvents_DeliverEmission, .Release = ECSIEvents_FreeEmission, .target = emission, .value = emission->value};
 
     if (EVENTS.delivering)
     {
@@ -234,6 +223,7 @@ static SHUResult ECSIEvents_Emit(const char *name, const ECSValue *value)
 
 SHUResult ECSIEvents_Initialize(void)
 {
+    ECSITimers_SetRunner(ECSIEvents_RunPluginTimer);
     for (usz i = 0; i < SDL_arraysize(OPENECS_CORE_EVENTS); i++)
     {
         SHU_ReturnResult(ECSIEvents_Declare(nullptr, OPENECS_CORE_EVENTS[i][0], OPENECS_CORE_EVENTS[i][1]));
@@ -323,14 +313,14 @@ void ECSIEvents_RemovePlugin(ECSPlugin plugin)
     ECSIEvents_FreeCancelled();
 }
 
-/// @brief Makes the named events of a queue that wait to be delivered give no object where they name one.
+/// @brief Makes the events of a queue that wait to be delivered give no object where their values name one.
 static void ECSIEvents_ForgetObjectIn(ECSIQueuedEvent *queue, const void *object)
 {
     for (usz i = 0; i < arrlenu(queue); i++)
     {
-        if (queue[i].Deliver == ECSIEvents_DeliverEmission)
+        if (queue[i].value != nullptr)
         {
-            ECSIValue_ForgetObject(((ECSIEmission *)queue[i].target)->value, object);
+            ECSIValue_ForgetObject(queue[i].value, object);
         }
     }
 }
@@ -341,6 +331,22 @@ void ECSIEvents_ForgetObject(const void *object)
 
     ECSIEvents_ForgetObjectIn(EVENTS.queue, object);
     ECSIEvents_ForgetObjectIn(EVENTS.later, object);
+
+    for (usz i = 0; i < EVENTS.watchedCount; i++)
+    {
+        if (*EVENTS.watched[i] != nullptr)
+        {
+            ECSIValue_ForgetObject(*EVENTS.watched[i], object);
+        }
+    }
+}
+
+void ECSIEvents_WatchValue(ECSValue *const *value)
+{
+    SDL_assert(value != nullptr);
+    SDL_assert(EVENTS.watchedCount < SDL_arraysize(EVENTS.watched));
+
+    EVENTS.watched[EVENTS.watchedCount++] = value;
 }
 
 SHUResult ECSEvent_Declare(ECSPlugin plugin, const char *name, const char *description)
@@ -392,12 +398,12 @@ void ECSEvent_Unsubscribe(ECSSubscription *subscription)
     }
 }
 
-void ECSIEvents_Post(ECSIEventDeliverFunction deliver, ECSTimerFunction release, void *target, const ECSPanelEvent *event)
+void ECSIEvents_Post(ECSIEventDeliverFunction deliver, ECSTimerFunction release, void *target, ECSValue *value, const ECSPanelEvent *event)
 {
     SDL_assert(deliver != nullptr);
     SDL_assert(event != nullptr);
 
-    ECSIQueuedEvent queued = {.Deliver = deliver, .Release = release, .target = target, .event = *event};
+    ECSIQueuedEvent queued = {.Deliver = deliver, .Release = release, .target = target, .value = value, .event = *event};
     arrput(EVENTS.queue, queued);
 }
 
@@ -412,6 +418,9 @@ void ECSIEvents_Deliver(void)
         // a copy, because delivering may queue more events and move the queue
         ECSIQueuedEvent queued = EVENTS.queue[i];
         queued.Deliver(queued.target, &queued.event);
+
+        // the delivery freed the value, so a handle freed by a later event's handler does not look into it
+        EVENTS.queue[i].value = nullptr;
     }
 
     arrfree(EVENTS.queue);
@@ -458,41 +467,13 @@ void ECSIEvents_Terminate(void)
     SDL_zero(EVENTS);
 }
 
-static void ECSIEvents_RunPluginTimer(void *data)
+/// @brief Runs a plugin's timer inside its callback.
+static void ECSIEvents_RunPluginTimer(void *owner, ECSTimerFunction function, void *data)
 {
-    ECSIPluginTimer *record = data;
     ECSICallback callback;
-    ECSIPlugin_Enter(&callback, record->plugin, nullptr, ECSICallbackType_Plugin);
-    record->Function(record->data);
+    ECSIPlugin_Enter(&callback, owner, nullptr, ECSICallbackType_Plugin);
+    function(data);
     (void)ECSIPlugin_Leave(&callback);
-}
-
-/// @brief Forgets a plugin's timer when base/Timers frees it, and releases its data.
-static void ECSIEvents_ReleasePluginTimer(void *data)
-{
-    ECSIPluginTimer *record = data;
-
-    for (usz i = 0; i < arrlenu(PLUGIN_TIMERS.timers); i++)
-    {
-        if (PLUGIN_TIMERS.timers[i] == record)
-        {
-            arrdel(PLUGIN_TIMERS.timers, i);
-            break;
-        }
-    }
-
-    if (record->Release != nullptr)
-    {
-        record->Release(record->data);
-    }
-
-    SDL_free(record);
-
-    // the last timer gone, the list goes too, also after Events stops
-    if (arrlenu(PLUGIN_TIMERS.timers) == 0)
-    {
-        arrfree(PLUGIN_TIMERS.timers);
-    }
 }
 
 SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, ECSTimerFunction release, void *data)
@@ -501,47 +482,15 @@ SHUResult ECSIEvents_StartTimer(ECSPlugin plugin, ECSTimer *retTimer, f64 second
     SDL_assert(retTimer != nullptr);
     SDL_assert(function != nullptr);
 
-    ECSIPluginTimer *record = SDL_malloc(sizeof(ECSIPluginTimer));
-
-    if (record == nullptr)
-    {
-        return SHUResult_ErrAllocation;
-    }
-
-    *record = (ECSIPluginTimer){.plugin = plugin, .Function = function, .Release = release, .data = data};
-
-    if (ECSITimers_Start(&record->timer, seconds, repeat, ECSIEvents_RunPluginTimer, ECSIEvents_ReleasePluginTimer, record))
-    {
-        SDL_free(record);
-        return SHUResult_ErrAllocation;
-    }
-
-    arrput(PLUGIN_TIMERS.timers, record);
-    *retTimer = record->timer;
-    return SHUResult_Ok;
+    // a plugin's timers stop with it, and run inside its callback
+    return ECSITimers_Start(retTimer, seconds, repeat, function, release, data, plugin);
 }
 
 void ECSIEvents_StopTimersOfPlugin(ECSPlugin plugin)
 {
     SDL_assert(plugin != nullptr);
 
-    // stopping may free a timer, which takes its record off the list, so the plugin's timers are found first
-    ECSTimer *stopped = nullptr;
-
-    for (usz i = 0; i < arrlenu(PLUGIN_TIMERS.timers); i++)
-    {
-        if (PLUGIN_TIMERS.timers[i]->plugin == plugin)
-        {
-            arrput(stopped, PLUGIN_TIMERS.timers[i]->timer);
-        }
-    }
-
-    for (usz i = 0; i < arrlenu(stopped); i++)
-    {
-        ECSITimers_Stop(stopped[i]);
-    }
-
-    arrfree(stopped);
+    ECSITimers_StopOwnedBy(plugin);
 }
 
 SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data)
@@ -553,12 +502,8 @@ void ECSTimer_Stop(ECSTimer *timer)
 {
     ECSILog_Check(timer != nullptr);
 
-    // the handle is cleared first, as stopping may free the memory that holds it, such as a Lua timer's
+    // the handle is cleared first, as stopping may free the memory that holds it, such as a Lua timer's; a timer that ended stops nothing
     ECSTimer stopped = *timer;
     *timer = nullptr;
-
-    if (stopped != nullptr)
-    {
-        ECSITimers_Stop(stopped);
-    }
+    ECSITimers_Stop(stopped);
 }

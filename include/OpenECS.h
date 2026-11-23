@@ -558,7 +558,7 @@ OPENECS_EXPORT OPENECS_PRINTF(3, 4) bool ECS_Check(ECSPlugin plugin, bool condit
 /// @lua none: Lua code never runs on worker threads; Lua plugins use services that work in the background
 OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFunction work, ECSTaskDoneFunction done, void *data);
 
-/// @brief Runs a function on the main thread, between passes of the main loop. Thread-safe. A function that a plugin's thread sent runs before the plugin's library is unloaded, after its Destroy.
+/// @brief Runs a function on the main thread, at a step of the main loop; never while a message dialog waits. Thread-safe. A function that a plugin's thread sent runs before the plugin's library is unloaded, after its Destroy.
 /// @param function The function.
 /// @param data Passed to the function.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
@@ -786,7 +786,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSetting_List(ECSValue *retList);
 /// @lua ecs.setting.explain
 OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation);
 
-/// @brief Registers a type of handles, for services that pass objects as handle<name>. In Lua, a handle is a userdata that names its type; the same object always gets the same Lua handle. Main thread only.
+/// @brief Registers a type of handles, for services that pass objects as handle<name>. In Lua, a handle is a cdata that names its type; the same object always gets the same Lua handle. Main thread only.
 /// @param plugin The plugin that provides the objects.
 /// @param name The type's local name, such as "sound"; the core adds the plugin's name and a dot, so signatures name it "handle<mixer.sound>".
 /// @param Destroy Called with the object when Lua no longer uses its handle, or nullptr. A provider that keeps using the object counts references.
@@ -811,7 +811,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char
 /// @lua ecs.struct.register
 OPENECS_EXPORT SHUWUR SHUResult ECSStruct_Register(ECSPlugin plugin, const char *name, const char *fields);
 
-/// @brief Makes a function of the plugin a method of one of its struct types, so Lua calls it on a struct: a:dot(b) calls the function with the struct first. A method named add, sub, mul, div, unm, eq, lt, le, len or tostring is also Lua's operator: a + b calls add. C calls the function itself. Main thread only.
+/// @brief Makes a function of the plugin a method of one of its struct types, so Lua calls it on a struct: a:dot(b) calls the function with the struct first. A method named add, sub, mul, div, mod, pow, unm, concat, eq, lt, le, len or tostring is also Lua's operator: a + b calls add. C calls the function itself. Main thread only.
 /// @param plugin The plugin that provides the struct type and the function.
 /// @param type The struct type's local name, such as "vec3".
 /// @param method The method's name in Lua, such as "dot".
@@ -867,7 +867,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSKey_Set(const char *scope, const char *key, c
 /// @lua ecs.key.functions
 OPENECS_EXPORT SHUWUR SHUResult ECSKey_ListFunctions(ECSValue *retList);
 
-/// @brief Opens a panel in the current workspace and focuses it. Any plugin may open any panel type. Main thread only.
+/// @brief Opens a panel in the current workspace and focuses it. Any plugin may open any panel type. Main thread only. Not in a panel's or popup's Draw.
 /// @param plugin The plugin that opens the panel.
 /// @param retPanel The new panel. A missing type gives a placeholder.
 /// @param type Name of the panel type.
@@ -878,7 +878,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSKey_ListFunctions(ECSValue *retList);
 /// @lua ecs.layout.open
 OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPanel, const char *type, const ECSValue *state, ECSPanel target, ECSZone zone);
 
-/// @brief Moves a panel into a target's group, or beside it, also from another workspace or OS window; or out into a new pop-out window. Main thread only.
+/// @brief Moves a panel into a target's group, or beside it, also from another workspace or OS window; or out into a new pop-out window. Main thread only. Not in a panel's or popup's Draw.
 /// @param panel Panel to move.
 /// @param target The target panel, or nullptr with ECSZone_Window.
 /// @param zone Where next to the target, or ECSZone_Window for a new pop-out window in the panel's workspace. A panel alone in its OS window stays.
@@ -886,7 +886,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Open(ECSPlugin plugin, ECSPanel *retPa
 /// @lua ecs.layout.move
 OPENECS_EXPORT SHUWUR SHUResult ECSLayout_Move(ECSPanel panel, ECSPanel target, ECSZone zone);
 
-/// @brief Closes a panel. If it has unsaved work, the user is asked first and may cancel. Main thread only.
+/// @brief Closes a panel. If it has unsaved work, the user is asked first and may cancel. Main thread only. Not in a panel's or popup's Draw.
 /// @param panel Panel to close. Its handle is invalid after the panel closes.
 /// @return true if the panel closed; false if the user kept its unsaved work.
 /// @note Keys run ecs.layout.close, the user's close: it closes the focused panel, unless its group is locked.
@@ -1042,7 +1042,7 @@ OPENECS_EXPORT void ECSEvent_Unsubscribe(ECSSubscription *subscription);
 
 /// @brief Starts a timer that calls a function on the main thread, once or repeatedly. A panel's timer is stopped in the panel type's Destroy, as its subscriptions end there. Main thread only.
 /// @param plugin The plugin that owns the timer.
-/// @param retTimer The new timer. A one-shot timer's handle is invalid after its function returns.
+/// @param retTimer The new timer. A one-shot timer ends when its function runs; stopping it after that does nothing.
 /// @param seconds Time until the first call, and between repeated calls. Must be positive for a repeating timer; 0 for a one-shot timer means the next pass of the main loop.
 /// @param repeat true to call the function until the timer is stopped.
 /// @param function Function to call.
@@ -1051,7 +1051,7 @@ OPENECS_EXPORT void ECSEvent_Unsubscribe(ECSSubscription *subscription);
 /// @lua ecs.timer.start
 OPENECS_EXPORT SHUWUR SHUResult ECSTimer_Start(ECSPlugin plugin, ECSTimer *retTimer, f64 seconds, bool repeat, ECSTimerFunction function, void *data);
 
-/// @brief Stops a timer and sets the handle to nullptr. A timer may stop itself from its own function. Main thread only.
+/// @brief Stops a timer and sets the handle to nullptr. A timer may stop itself from its own function. A timer that ended or stopped already does nothing. Main thread only.
 /// @param timer Timer to stop, or a handle to nullptr.
 /// @lua timer:stop
 OPENECS_EXPORT void ECSTimer_Stop(ECSTimer *timer);

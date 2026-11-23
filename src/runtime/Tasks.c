@@ -34,6 +34,7 @@ typedef struct ECSIMainTask
 /// @brief The worker threads and their queue, which other threads use.
 static struct
 {
+    ECSITasksEndThreadFunction EndThread;
     SDL_Mutex *lock;
     SDL_Condition *ready;
     ECSIWork *queue;       // stb_ds array, guarded by lock
@@ -43,9 +44,15 @@ static struct
     bool stopping;         // guarded by lock
     SDL_AtomicInt stopped; // tasks that reach the main thread after this are dropped, because plugins may be gone
     SDL_AtomicU32 wakeEvent;
+
+    // functions that other threads send to the main thread wait here until the loop runs them, at one step (DESIGN 3.3)
+    SDL_Mutex *mainLock;
+    ECSIMainTask *mainQueue;   // stb_ds array, guarded by mainLock
+    ECSIMainTask *mainRunning; // stb_ds array of the tasks that run now, swapped with mainQueue so both keep their room; main thread only
+    SDL_AtomicInt mainCount;   // the tasks in mainQueue, read without the lock
 } TASKS = {0};
 
-/// @brief Wakes the main loop with an event that does nothing, so it makes a pass after a task ran.
+/// @brief Wakes the main loop with an event that does nothing, so it makes a pass that runs the tasks.
 static void ECSITasks_Wake(void)
 {
     u32 type = SDL_GetAtomicU32(&TASKS.wakeEvent);
@@ -60,32 +67,35 @@ static void ECSITasks_Wake(void)
     SDL_PushEvent(&event);
 }
 
-/// @brief Runs a task that reached the main thread.
-static void SDLCALL ECSITasks_RunMainTask(void *data)
+/// @brief Runs a task on the main thread. A done function of a plugin disabled since then runs with dropped, so it frees its data while the
+/// plugin's code is still loaded (ECSIPlugins_UnloadDisabled); another function of such a plugin is dropped.
+static void ECSITasks_RunMainTask(const ECSIMainTask *task)
 {
-    ECSIMainTask *task = data;
-
-    // a plugin disabled since then has unloaded the code of its done function
-    if (!SDL_GetAtomicInt(&TASKS.stopped) && (task->plugin == nullptr || ECSIPlugin_GetGeneration(task->plugin) == task->generation))
+    if (SDL_GetAtomicInt(&TASKS.stopped))
     {
-        ECSICallback callback;
-        ECSIPlugin_Enter(&callback, task->plugin, nullptr, ECSICallbackType_Plugin);
-
-        if (task->Done != nullptr)
-        {
-            task->Done(task->data, false);
-        }
-        else
-        {
-            task->Function(task->data);
-        }
-
-        (void)ECSIPlugin_Leave(&callback);
-
-        ECSITasks_Wake();
+        return;
     }
 
-    SDL_free(task);
+    bool current = task->plugin == nullptr || ECSIPlugin_GetGeneration(task->plugin) == task->generation;
+
+    if (!current && task->Done == nullptr)
+    {
+        return;
+    }
+
+    ECSICallback callback;
+    ECSIPlugin_Enter(&callback, task->plugin, nullptr, current ? ECSICallbackType_Plugin : ECSICallbackType_Quiet);
+
+    if (task->Done != nullptr)
+    {
+        task->Done(task->data, !current);
+    }
+    else
+    {
+        task->Function(task->data);
+    }
+
+    (void)ECSIPlugin_Leave(&callback);
 }
 
 /// @brief Frees a task that the main thread queued for itself and that never ran.
@@ -99,6 +109,7 @@ static void ECSITasks_DeliverMainTask(void *target, const ECSPanelEvent *event)
 {
     (void)event;
     ECSITasks_RunMainTask(target);
+    SDL_free(target);
 }
 
 /// @brief Sends a function to the main thread, for a plugin's background work or for anyone.
@@ -110,27 +121,33 @@ static SHUResult ECSITasks_Post(ECSPlugin plugin, u32 generation, ECSTaskFunctio
 {
     SDL_assert((function != nullptr) != (done != nullptr));
 
-    ECSIMainTask *task = SDL_malloc(sizeof(ECSIMainTask));
+    ECSIMainTask task = {.plugin = plugin, .generation = generation, .Function = function, .Done = done, .data = data};
 
-    if (task == nullptr)
-    {
-        return SHUResult_ErrAllocation;
-    }
-
-    *task = (ECSIMainTask){.plugin = plugin, .generation = generation, .Function = function, .Done = done, .data = data};
-
-    // SDL would run it at once on the main thread, inside the caller's callback; the event queue runs it after
+    // the main thread's own function runs after the caller's callback, with the queued events
     if (SDL_IsMainThread())
     {
+        ECSIMainTask *copy = SDL_malloc(sizeof(ECSIMainTask));
+
+        if (copy == nullptr)
+        {
+            return SHUResult_ErrAllocation;
+        }
+
+        *copy = task;
         ECSPanelEvent event = {0};
-        ECSIEvents_Post(ECSITasks_DeliverMainTask, ECSITasks_FreeMainTask, task, &event);
+        ECSIEvents_Post(ECSITasks_DeliverMainTask, ECSITasks_FreeMainTask, copy, nullptr, &event);
         return SHUResult_Ok;
     }
 
-    if (!SDL_RunOnMainThread(ECSITasks_RunMainTask, task, false))
+    SDL_LockMutex(TASKS.mainLock);
+    arrput(TASKS.mainQueue, task);
+    bool first = SDL_AddAtomicInt(&TASKS.mainCount, 1) == 0;
+    SDL_UnlockMutex(TASKS.mainLock);
+
+    // one wake is enough until the loop runs the queue
+    if (first)
     {
-        SDL_free(task);
-        return SHUResult_ErrAllocation;
+        ECSITasks_Wake();
     }
 
     return SHUResult_Ok;
@@ -152,6 +169,7 @@ static int SDLCALL ECSITasks_Worker(void *unused)
         if (TASKS.stopping)
         {
             SDL_UnlockMutex(TASKS.lock);
+            TASKS.EndThread();
             return 0;
         }
 
@@ -211,12 +229,46 @@ static SHUResult ECSITasks_StartWorkers(void)
 
 #pragma endregion Source Only
 
-SHUResult ECSITasks_Initialize(void)
+SHUResult ECSITasks_Initialize(ECSITasksEndThreadFunction EndThread)
 {
+    SDL_assert(EndThread != nullptr);
+
+    TASKS.EndThread = EndThread;
     TASKS.lock = SDL_CreateMutex();
     TASKS.ready = SDL_CreateCondition();
     TASKS.idle = SDL_CreateCondition();
-    return TASKS.lock == nullptr || TASKS.ready == nullptr || TASKS.idle == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
+    TASKS.mainLock = SDL_CreateMutex();
+    return TASKS.lock == nullptr || TASKS.ready == nullptr || TASKS.idle == nullptr || TASKS.mainLock == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
+}
+
+void ECSITasks_RunMain(void)
+{
+    SDL_assert(SDL_IsMainThread());
+
+    if (SDL_GetAtomicInt(&TASKS.mainCount) == 0)
+    {
+        return;
+    }
+
+    // the tasks that come while these run wait for the next pass
+    SDL_LockMutex(TASKS.mainLock);
+    ECSIMainTask *running = TASKS.mainQueue;
+    TASKS.mainQueue = TASKS.mainRunning;
+    SDL_SetAtomicInt(&TASKS.mainCount, 0);
+    SDL_UnlockMutex(TASKS.mainLock);
+
+    for (usz i = 0; i < arrlenu(running); i++)
+    {
+        ECSITasks_RunMainTask(&running[i]);
+    }
+
+    arrsetlen(running, 0);
+    TASKS.mainRunning = running;
+}
+
+i32 ECSITasks_GetWait(void)
+{
+    return SDL_GetAtomicInt(&TASKS.mainCount) != 0 ? 0 : -1;
 }
 
 /// @brief Takes the waiting work of a plugin, or of every plugin for nullptr, out of the queue; the caller holds the lock.
@@ -241,8 +293,7 @@ static ECSIWork *ECSITasks_TakeWaiting(ECSPlugin plugin)
     return taken;
 }
 
-/// @brief Tells the done functions of work that never ran that it was dropped, so they free its data, then runs the done functions of the work
-/// that finished meanwhile. Main thread only, while the plugins' code is loaded.
+/// @brief Tells the done functions of work that never ran that it was dropped, so they free its data. Main thread only, while the plugins' code is loaded.
 static void ECSITasks_FinishDropped(ECSIWork *dropped)
 {
     for (usz i = 0; i < arrlenu(dropped); i++)
@@ -258,7 +309,6 @@ static void ECSITasks_FinishDropped(ECSIWork *dropped)
     }
 
     arrfree(dropped);
-    SDL_PumpEvents();
 }
 
 void ECSITasks_ForgetPlugin(ECSPlugin plugin)
@@ -285,6 +335,33 @@ void ECSITasks_ForgetPlugin(ECSPlugin plugin)
 
     SDL_UnlockMutex(TASKS.lock);
     ECSITasks_FinishDropped(dropped);
+
+    // the done functions of its work that finished run now, before its Destroy; the queue keeps every other function
+    SDL_LockMutex(TASKS.mainLock);
+    ECSIMainTask *finished = nullptr;
+
+    for (usz i = 0; i < arrlenu(TASKS.mainQueue);)
+    {
+        if (TASKS.mainQueue[i].plugin == plugin)
+        {
+            arrput(finished, TASKS.mainQueue[i]);
+            arrdel(TASKS.mainQueue, i);
+            (void)SDL_AddAtomicInt(&TASKS.mainCount, -1);
+        }
+        else
+        {
+            i++;
+        }
+    }
+
+    SDL_UnlockMutex(TASKS.mainLock);
+
+    for (usz i = 0; i < arrlenu(finished); i++)
+    {
+        ECSITasks_RunMainTask(&finished[i]);
+    }
+
+    arrfree(finished);
 }
 
 void ECSITasks_Stop(void)
@@ -308,6 +385,8 @@ void ECSITasks_Stop(void)
 
     ECSITasks_FinishDropped(dropped);
 
+    // the done functions of the work that finished meanwhile run while the plugins' code is loaded
+    ECSITasks_RunMain();
     SDL_SetAtomicInt(&TASKS.stopped, 1);
     arrfree(TASKS.workers);
 }
@@ -317,6 +396,10 @@ void ECSITasks_Terminate(void)
     ECSITasks_Stop();
     arrfree(TASKS.queue);
     arrfree(TASKS.busy);
+    arrfree(TASKS.mainQueue);
+    arrfree(TASKS.mainRunning);
+    SDL_DestroyMutex(TASKS.mainLock);
+    TASKS.mainLock = nullptr;
     SDL_DestroyCondition(TASKS.idle);
     SDL_DestroyCondition(TASKS.ready);
     SDL_DestroyMutex(TASKS.lock);
@@ -349,8 +432,14 @@ SHUResult ECS_RunOnMainThread(ECSTaskFunction function, void *data)
 {
     ECSILog_Check(function != nullptr, SHUResult_ErrAssertion);
 
-    // on the main thread, the function is a plugin's whose callback sends it, such as its Destroy, so it is dropped once that plugin's code is
-    // unloaded; another thread's function waits in SDL's queue, which the core delivers before it unloads a plugin
+    // on the main thread, the function is a plugin's whose callback sends it, such as its Destroy, so it is dropped once that plugin is disabled;
+    // another thread's function waits in the core's queue, and a disabled plugin's code stays loaded until the queue ran (ECSIPlugins_UnloadDisabled)
     ECSPlugin plugin = SDL_IsMainThread() ? ECSIPlugin_GetCalling() : nullptr;
     return ECSITasks_Post(plugin, plugin != nullptr ? ECSIPlugin_GetGeneration(plugin) : 0, function, nullptr, data);
+}
+
+void ECSITasks_RunOnMainThread(ECSTaskFunction function, void *data)
+{
+    SDL_assert(function != nullptr);
+    (void)ECSITasks_Post(nullptr, 0, function, nullptr, data);
 }

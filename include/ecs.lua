@@ -375,7 +375,7 @@ ecs.layout = {}
 ---@return ecs.Panel? panel The panel, or nil if no open panel has the id.
 function ecs.layout.findPanel(id) end
 
----Opens a panel.
+---Opens a panel. Not in a panel's or popup's draw.
 ---@param type string The panel type, such as "canvas.view".
 ---@param saved? any The saved state the panel starts from.
 ---@param target? ecs.Panel The panel to open it next to.
@@ -384,7 +384,7 @@ function ecs.layout.findPanel(id) end
 ---@return string? message Why the panel is not opened.
 function ecs.layout.open(type, saved, target, zone) end
 
----Moves a panel next to another one, also from another workspace or OS window; or out into a new pop-out window with the zone "window". A panel alone in its OS window stays.
+---Moves a panel next to another one, also from another workspace or OS window; or out into a new pop-out window with the zone "window". A panel alone in its OS window stays. Not in a panel's or popup's draw.
 ---@param panel ecs.Panel The panel to move.
 ---@param target? ecs.Panel Needed, except with the zone "window".
 ---@param zone? ecs.Zone "center" if missing.
@@ -392,7 +392,7 @@ function ecs.layout.open(type, saved, target, zone) end
 ---@return string? message Why the panel did not move.
 function ecs.layout.move(panel, target, zone) end
 
----Closes a panel. If it has unsaved work, the user is asked first and may cancel.
+---Closes a panel. If it has unsaved work, the user is asked first and may cancel. Not in a panel's or popup's draw.
 ---Keys run ecs.layout.close as the user's close: it closes the focused panel, unless its group is locked.
 ---@param panel ecs.Panel The panel to close.
 ---@return boolean closed true if the panel closed; false if the user kept its unsaved work.
@@ -668,7 +668,7 @@ ecs.event = {}
 
 ---Declares an event that the plugin emits.
 ---@param name string The local name, such as "changed"; the event is "canvas.changed".
----@param description? string What the event says, for the user and for other plugins.
+---@param description string What the event says, for the user and for other plugins.
 function ecs.event.declare(name, description) end
 
 ---Emits a declared event of the plugin.

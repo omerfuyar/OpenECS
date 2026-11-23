@@ -105,6 +105,11 @@ static struct
         u64 value; // how often it happened
     } *errors;     // stb_ds hash map with copied keys
     ECSIPluginHooks hooks;
+    struct
+    {
+        SDL_SharedObject *library;
+        char *copy;
+    } *unloading; // stb_ds array of disabled plugins' libraries, unloaded once the functions their threads sent to the main thread ran
 } PLUGINS = {0};
 
 /// @brief File-level state of each thread.
@@ -432,6 +437,28 @@ static void ECSIPlugin_UnloadLibrary(SDL_SharedObject *library, char *copy)
     }
 }
 
+/// @brief Unloads a disabled plugin's library once the main thread's queue ran (ECSIPlugins_UnloadDisabled), as it may hold the plugin's functions.
+static void ECSIPlugin_UnloadLater(ECSIPlugin *plugin)
+{
+    if (plugin->library != nullptr)
+    {
+        typeof(*PLUGINS.unloading) unloading = {.library = plugin->library, .copy = plugin->libraryCopy};
+        arrput(PLUGINS.unloading, unloading);
+        plugin->library = nullptr;
+        plugin->libraryCopy = nullptr;
+    }
+}
+
+void ECSIPlugins_UnloadDisabled(void)
+{
+    for (usz i = 0; i < arrlenu(PLUGINS.unloading); i++)
+    {
+        ECSIPlugin_UnloadLibrary(PLUGINS.unloading[i].library, PLUGINS.unloading[i].copy);
+    }
+
+    arrsetlen(PLUGINS.unloading, 0);
+}
+
 /// @brief Copies a native plugin's library to a hidden file in its folder, so it loads from the copy and a build can replace the library meanwhile.
 /// The copy stays in the folder, so the libraries that the plugin keeps beside its own are found as before.
 /// @return The copy's path, or nullptr if it cannot be made, so the library loads from its own file. Free it with SDL_free.
@@ -536,13 +563,7 @@ static SHUResult ECSIPlugin_Fail(ECSIPlugin *plugin, const char *what, SHUResult
     // a plugin that the user enables while the program runs stays disabled when it fails, so it can be enabled again
     if (PLUGINS.enabling)
     {
-        if (plugin->library != nullptr)
-        {
-            ECSIPlugin_UnloadLibrary(plugin->library, plugin->libraryCopy);
-            plugin->library = nullptr;
-            plugin->libraryCopy = nullptr;
-        }
-
+        ECSIPlugin_UnloadLater(plugin);
         plugin->failed = false;
         plugin->disabled = true;
         (void)SDL_AddAtomicInt(&plugin->generation, 1);
@@ -903,6 +924,8 @@ void ECSIPlugins_Unload(void)
         SDL_free(plugin);
     }
 
+    ECSIPlugins_UnloadDisabled();
+    arrfree(PLUGINS.unloading);
     shfree(PLUGINS.plugins);
     shfree(PLUGINS.errors);
     arrfree(PLUGINS.loading);
@@ -1109,6 +1132,11 @@ void ECSIPlugin_ReportError(ECSPlugin plugin, const char *message)
     {
         ECS_Log(plugin, ECSLogLevel_Error, "%s", message);
     }
+}
+
+const char *ECSIPlugins_GetError(usz index)
+{
+    return index < shlenu(PLUGINS.errors) ? PLUGINS.errors[index].key : nullptr;
 }
 
 bool ECSIPlugin_DependsOn(ECSPlugin plugin, ECSPlugin other)
@@ -1408,15 +1436,8 @@ void ECSIPlugins_Disable(ECSPlugin plugin, const char *misuse)
     PLUGINS.hooks.RemoveRegistrations(plugin);
     ECSIPlugin_Forget(plugin);
 
-    // the functions that the plugin's threads sent to the main thread before Destroy stopped them run now, while their code is loaded
-    SDL_PumpEvents();
-
-    if (plugin->library != nullptr)
-    {
-        ECSIPlugin_UnloadLibrary(plugin->library, plugin->libraryCopy);
-        plugin->library = nullptr;
-        plugin->libraryCopy = nullptr;
-    }
+    // the functions that the plugin's threads sent to the main thread before Destroy stopped them run at the loop's step, while its code is loaded
+    ECSIPlugin_UnloadLater(plugin);
 
     // work that Destroy itself started is dropped too
     plugin->disabled = true;
@@ -1714,6 +1735,12 @@ void ECSIPlugin_NoteMisuse(ECSPlugin checker, const char *message)
     }
 
     ECSIPlugin_ReportMisuse(checker, message, ECSILua_GetCaller());
+}
+
+void ECSIPlugins_EndThread(void)
+{
+    SDL_free(PLUGINS_THREAD.misuse);
+    PLUGINS_THREAD.misuse = nullptr;
 }
 
 void ECSIPlugin_ReportDeferredMisuse(lua_State *state)

@@ -34,6 +34,7 @@ static struct
     ECSIDrawing drawing; // the pixels surface that a panel draws into now
     f32 scale;           // ecs.scale: the pixels of a layout unit of panels and popups
     u32 look;            // grows each time the settings change, so every panel draws again whole
+    bool tabsChanged;    // a tab's title or unsaved mark changed, which a frame of the interface shows
 } PANELS = {.scale = 1.0f};
 
 static void ECSIPanelType_Free(ECSIPanelType *type)
@@ -808,7 +809,7 @@ void ECSIPanel_PostEvent(ECSPanel panel, const ECSPanelEvent *event)
     SDL_assert(panel != nullptr);
     SDL_assert(event != nullptr);
 
-    ECSIEvents_Post(ECSIPanel_DeliverEvent, nullptr, panel, event);
+    ECSIEvents_Post(ECSIPanel_DeliverEvent, nullptr, panel, nullptr, event);
 }
 
 bool ECSIPanel_Accepts(ECSPanel panel, const char *type)
@@ -859,7 +860,7 @@ void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const EC
     }
 
     ECSPanelEvent event = {.type = ECSPanelEventType_Drop, .modifiers = modifiers, .drop = {.x = x, .y = y, .data = data}};
-    ECSIEvents_Post(ECSIPanel_DeliverDrop, ECSIPanel_FreeDrop, data, &event);
+    ECSIEvents_Post(ECSIPanel_DeliverDrop, ECSIPanel_FreeDrop, data, data->value, &event);
 }
 
 void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers)
@@ -880,7 +881,7 @@ void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers)
     SDL_memcpy(typed->text, text, size);
 
     ECSPanelEvent event = {.type = ECSPanelEventType_Text, .modifiers = modifiers, .text = {.text = typed->text}};
-    ECSIEvents_Post(ECSIPanel_DeliverText, ECSIPanel_FreeText, typed, &event);
+    ECSIEvents_Post(ECSIPanel_DeliverText, ECSIPanel_FreeText, typed, nullptr, &event);
 }
 
 void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f32 y, f32 width, f32 height)
@@ -1292,8 +1293,8 @@ void ECSPanel_SetUnsaved(ECSPanel panel, bool unsaved)
 {
     ECSILog_Check(panel != nullptr);
 
-    // the tab shows the mark
-    panel->needsDraw = panel->needsDraw || panel->unsaved != unsaved;
+    // the tab shows the mark, which a frame of the interface draws without the panel's own draw
+    PANELS.tabsChanged = PANELS.tabsChanged || panel->unsaved != unsaved;
     panel->unsaved = unsaved;
 }
 
@@ -1403,5 +1404,16 @@ void ECSPanel_SetTitle(ECSPanel panel, const char *title)
     {
         SDL_free(panel->title);
         panel->title = copy;
+        PANELS.tabsChanged = true;
     }
+}
+
+bool ECSIPanels_TabsChanged(void)
+{
+    return PANELS.tabsChanged;
+}
+
+void ECSIPanels_ClearTabsChanged(void)
+{
+    PANELS.tabsChanged = false;
 }

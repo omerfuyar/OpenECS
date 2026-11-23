@@ -73,6 +73,12 @@ void ECSIPlugins_Destroy(void);
 /// @brief Reports each error of a plugin's callback that happened more than once, with how often it happened.
 void ECSIPlugins_ReportRepeatedErrors(void);
 
+/// @brief Unloads the libraries of the plugins disabled since the last call. Call it after the main thread's queue ran, which may hold their functions.
+void ECSIPlugins_UnloadDisabled(void);
+
+/// @brief Frees what the calling thread kept of its misuses. A worker or pool thread calls it as it ends.
+void ECSIPlugins_EndThread(void);
+
 /// @brief Frees every plugin and closes their libraries. Call it after ECSIPlugins_Destroy, when no worker thread runs their code.
 void ECSIPlugins_Unload(void);
 
@@ -109,6 +115,10 @@ const char *ECSIPlugin_GetDescription(ECSPlugin plugin);
 /// @param plugin The plugin.
 /// @return The version its manifest gives.
 const char *ECSIPlugin_GetVersion(ECSPlugin plugin);
+
+/// @brief Gives an error that plugins reported, in the order they came, as "plugin: message", each once.
+/// @return The error, or nullptr past the last one.
+const char *ECSIPlugins_GetError(usz index);
 
 /// @brief Reports an error of a plugin's callback. Repeats of the same error are counted, not reported again; ECSIPlugins_ReportRepeatedErrors reports the counts.
 /// @param plugin The plugin.

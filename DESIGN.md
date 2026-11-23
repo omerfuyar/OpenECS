@@ -311,7 +311,7 @@ One pass of the loop:
 
 1. Wait for one of the reasons above.
 2. Handle input: hit testing, focus and key dispatch (7).
-3. Run the timers that are due.
+3. Run the functions that other threads sent to the main thread (3.3), and the timers that are due.
 4. Deliver queued events (8).
 5. Recompute the layout if it changed.
 6. Draw the visible panels that need it: continuous panels, and panels that asked to be redrawn or changed size or scale.
@@ -330,7 +330,8 @@ The wait uses `SDL_WaitEventTimeout` with the time until the next timer or the n
 - Plugins ask for timers: once or repeating, with an interval. Timers run on the main thread, in step 3 of the loop.
 - `ECSTimer_Start(plugin, &timer, 0.1, true, function, data)` writes a new timer into `timer`; `ECSTimer_Stop(&timer)` stops it. Lua: `ecs.timer.start(0.1, true, callback)` returns a handle, and `handle:stop()` stops it.
 - Timers belong to the plugin, as subscriptions do. A panel that starts a timer stops it in its type's `Destroy`.
-- A one-shot timer ends after its function returns, and its handle is invalid then. A repeating timer that falls behind skips the calls it missed.
+- A one-shot timer ends when its function runs. Stopping a timer that ended or stopped does nothing, so a panel stops its timers in `Destroy` whether they fired or not. A repeating timer that falls behind skips the calls it missed.
+- The core keeps timers in a table of slots, with a free list. A handle names a slot and its generation, which grows when the timer ends or stops, so an old handle names nothing.
 
 ### 3.3 Threads
 
@@ -338,7 +339,7 @@ The wait uses `SDL_WaitEventTimeout` with the time until the next timer or the n
 - Background work posts its result to the main thread, which delivers it.
 - `ECS_RunInBackground(plugin, work, done, data)`: `work` runs on a worker thread from a small pool, then `done(data, dropped)` runs on the main thread. `done` runs once for each call: `dropped` is true when the work never ran, so `done` is where the plugin frees `data`. A plugin's Lua code never runs on these threads. A Lua plugin uses services that work in the background, or starts a worker (3.4), which runs a script of its own.
 - The pool has one thread for each processor core but one, at most 4. It starts when background work first comes.
-- A function that reaches the main thread runs between passes of the main loop, and the loop makes a pass after it. A function that the main thread sends to itself runs after the current callback returns, with the queued events (8.2).
+- A function that another thread sends to the main thread waits in the core's queue, which the loop empties at one step of each pass (3.1); the functions that come meanwhile wait for the next pass. Message dialogs (7.7) and disabling a plugin (9.10) never empty it, so these functions never run inside other code; disabling takes out only the plugin's own `done` functions, and runs them. A function that the main thread sends to itself runs after the current callback returns, with the queued events (8.2).
 - On exit, running work finishes and waiting work does not run; its `done` gets `dropped`. Both happen before the plugins' `Destroy` functions run (2.4), so no work uses what `Destroy` freed.
 - The thread-safe functions are: running a function on the main thread (`ECS_RunOnMainThread`, built on `SDL_RunOnMainThread`), `ECS_RunInBackground`, and logging. Every other function is for the main thread only. Each function documents its thread rule.
 - Native plugins may create their own threads, under the same rule.
@@ -569,6 +570,7 @@ After every operation:
 - Plugins: `ECSLayout_Open`, `ECSLayout_Move(panel, target, ECSZone_Left)` (also from another workspace), `ECSLayout_Close`, `ECSLayout_Focus` and `ECSLayout_GetFocus`; `ECSWorkspace_Switch` and functions that count and name workspaces. Lua: `ecs.layout.move(panel, target, "left")` and so on, with panel handles.
 - Workspaces are numbered from 1, in C and in Lua: `ECSWorkspace_Switch(10)` switches to workspace 10.
 - Closing a panel from code still asks about unsaved work. Focusing a panel shows its workspace and its tab.
+- A panel's or popup's draw that opens, moves or closes a panel misuses the function (1.4): the frame walks the layout while panels draw. It does so in an event, a timer or a function instead.
 - Locks (6.4) stop the user, not code. A core function called without arguments is the user's action (7.8).
 - Every change of focus tells the panel that loses it and the panel that gets it (`ECSPanelEventType_Unfocused`, `ECSPanelEventType_Focused`).
 
@@ -715,7 +717,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - `ECSDialog_ShowMessage(title, message, buttons, count, &button)` waits for the user. Lua: `ecs.dialog.showMessage(title, text, buttons)`.
 - The core draws a message dialog itself, over the OS window of the event that asks, or over the main window: a shade over the window, and a box in its middle with the title, the message and the buttons. It needs no other program. SDL's system message boxes need zenity on Wayland, and a compositor may never show its window, so OpenECS would wait for an answer that cannot come.
 - Return and Space press the chosen button, at first the first; Left, Right and Tab choose another, and Escape presses the last. A click is a press and a release of the left button on the same button. Closing the window, or the system's request to quit, presses the last button too.
-- While a dialog waits, no plugin code runs, as with a system dialog: no timers, no events and no drawing of panels. The panels show the pixels of their last frame. The OS windows' events, such as resizes, reach the main loop after the answer, and other input is the dialog's. One dialog shows at a time; a second one cannot be shown.
+- While a dialog waits, no plugin code runs, as with a system dialog: no timers, no events, no functions that other threads sent to the main thread (3.3), no workers' messages (3.4) and no drawing of panels. The panels show the pixels of their last frame. The OS windows' events, such as resizes, reach the main loop after the answer, and other input is the dialog's. One dialog shows at a time; a second one cannot be shown.
 
 ### 7.8 Binding keys
 
@@ -779,7 +781,7 @@ A plugin can declare its own events, such as `canvas.selectionChanged`, and emit
 
 ### 8.3 Named events
 
-- A plugin declares the named events it emits: `ECSEvent_Declare(plugin, "canvas.selectionChanged", description)`. The name starts with the plugin's name. Only the declaring plugin emits it: `ECSEvent_Emit(plugin, name, value)`. The value may be `NULL`; the core copies it.
+- A plugin declares the named events it emits by their local names: `ECSEvent_Declare(plugin, "selectionChanged", description)` declares `canvas.selectionChanged`, whose name starts with the plugin's name. Only the declaring plugin emits it: `ECSEvent_Emit(plugin, name, value)`. The value may be `NULL`; the core copies it.
 - `ECSEvent_Subscribe(plugin, &subscription, name, fn, data)` calls `fn(data, name, value)` for each emission; `ECSEvent_Unsubscribe` ends it. A subscriber hears the core's events, its own, and those of plugins its manifest depends on. The event must be declared first, so a plugin subscribes after its dependencies have loaded.
 - Emissions are queued like every other event (8.2).
 - When a plugin fails, its events, its subscriptions and the subscriptions to its events are removed.
@@ -888,7 +890,7 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 
 ### 9.7 Lifecycle
 
-- The core records everything each plugin registers. If `ECSPlugin_Init` fails, the plugin's registrations are removed and it is marked failed.
+- The core records everything each plugin registers. If `ECSPlugin_Init` fails, the plugin's workers and background work stop as when it is disabled (3.3), its registrations are removed and it is marked failed.
 - A native plugin's library is unloaded when the plugin is disabled (9.10), and at exit. Its `Destroy` stops the threads it started and waits for them, so none of its code runs after it. The functions that those threads sent with `ECS_RunOnMainThread` run after `Destroy` and before the library is unloaded. A function that the plugin's own code sends from the main thread, such as from its `Destroy`, belongs to the plugin, and is dropped once its library is unloaded.
 
 ### 9.8 The GPU device
@@ -912,10 +914,10 @@ OPENECS_PLUGIN SHUResult ECSPlugin_Init(ECSPlugin plugin);
 - A plugin that an enabled plugin depends on is not disabled: the core reports it, and names a plugin that depends on it. So the plugins that use a plugin are disabled before it, and no enabled plugin holds a function or an object of a disabled one.
 - The core asks about the unsaved work in the plugin's panels (4.5); Cancel keeps it enabled. Then every popup closes, and:
   1. Each of its panels saves its state, and becomes a placeholder that keeps it (14.2) and says that its plugin is disabled.
-  2. Its Lua workers stop (3.4). Its background work that waits is dropped, its running work finishes, and the `done` function of each runs, with `dropped` for work that never ran. From now on `ECS_RunInBackground` refuses its work.
+  2. Its Lua workers stop (3.4). Its background work that waits is dropped, its running work finishes, and the `done` function of each runs, with `dropped` for work that never ran; the `done` functions of its work that finished run then too, out of the core's queue (3.3). From now on `ECS_RunInBackground` refuses its work.
   3. The objects of its handle types are destroyed, and their handles become invalid (10.6).
   4. Its `SaveState` runs, and the core keeps the state. Then its `Destroy` runs (9.4).
-  5. Everything it registered is removed, as for a plugin that failed (9.7), and its library is unloaded. Its handle types and struct types stay without their methods, as other plugins' signatures and Lua's values name them.
+  5. Everything it registered is removed, as for a plugin that failed (9.7). Its library is unloaded at the loop's next step, after the functions that its threads sent to the main thread ran (3.3). Its handle types and struct types stay without their methods, as other plugins' signatures and Lua's values name them.
 - Enabling a plugin loads it as at start, after the plugins it depends on, which are enabled too. When it registers its handle types and struct types again, it gets them back; a struct type must have the same fields. It gets back the state it kept. Then the placeholders of its panel types are created again from their saved state. A plugin that cannot be enabled is reported, and stays disabled.
 - A plugin that is not loaded, such as one the user installed (16), is enabled the same way.
 - A plugin whose callback misused a function (14.2) is disabled the same way, without the question about unsaved work, as the user did not ask for it, and with the plugins that depend on it, first. Its panels keep their state in their placeholders, which show the misuse. Enabling it again brings them back.
@@ -990,14 +992,14 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - Each part of a value is allocated on its own with SDL's allocator. Values are small and short-lived, so they need no arena.
 - A table is a list and named fields together. From Lua, integer keys from 1 up to the first missing one are the list, and text keys are the fields. Other keys are reported and skipped.
 - A buffer is bytes that may hold zeros: `ECSValue_SetBuffer` copies them, and `ECSValue_GetBuffer` reads them, or a string's bytes. From Lua, a string with a zero byte, a `string.buffer` and a cdata array become a buffer, as a buffer argument's bytes do (10.7); to Lua, a buffer is a string.
-- A handle names an object of a handle type (10.6) by its type and its object: `ECSValue_SetHandle(value, "ecs.panel", panel)` and `ECSValue_GetHandle(value, "ecs.panel")`. The value does not own the object. When the object is freed while the value waits in an emitted event, the value gives no object: `nullptr` in C, nil in Lua. To Lua it is the object's handle, and a handle from Lua stays one, so an event can name a panel by its handle. A value made from a Lua handle keeps that handle, so the object lives as long as the value.
+- A handle names an object of a handle type (10.6) by its type and its object: `ECSValue_SetHandle(value, "ecs.panel", panel)` and `ECSValue_GetHandle(value, "ecs.panel")`. The value does not own the object. When the object is freed while the value waits in an emitted event, is dragged or waits to be dropped, the value gives no object: `nullptr` in C, nil in Lua. To Lua it is the object's handle, and a handle from Lua stays one, so an event can name a panel by its handle. A value made from a Lua handle keeps that handle, so the object lives as long as the value.
 - Files hold only data (13.4): a buffer is written as a string, and a handle is left out.
 - Functions on a table's list have `List` in their names (`ECSValue_GetListCount`, `ECSValue_GetListItem`, `ECSValue_AddListItem`), and functions on its named fields have `Table` (`ECSValue_GetTableField`, `ECSValue_SetTableField`, and `ECSValue_GetTableFieldCount` with `ECSValue_GetTableFieldAt`, which go through every field).
 
 ### 10.4 Calls
 
 - **Lua calls C:** the core makes one Lua function for each registered C function: a wrapper, Lua code written from the signature, that checks the arguments, calls the C function through LuaJIT's FFI and converts the results back. The JIT compiles the wrapper with the Lua code that calls it, so the call runs as a C call, without leaving compiled code. The wrapper also does what the core does around a call: it raises a misuse that the C function noted at the caller's line (1.4), turns `out string error` into `nil` and the message (10.8), and gives the call's time to the function's plugin (3.5). Values and structs are converted by the core's C code, which the wrapper calls through the C API.
-- Lua cannot run inside a compiled call, so a C function that Lua calls through the FFI calls no Lua. These are called through the C API, as libffi calls: a function with a callback parameter; every function of a plugin whose C code may call Lua outside them, as it keeps callbacks (`keep fn`) or looked up a Lua function or such a plugin's function; and the core's own functions, which may run a plugin's Lua code, such as a panel's `create`. Such a call keeps its storage on the C stack, checks a handle by the type its signature points to, and gives a callback that is not kept the closure that the last call of its parameter left, so only its values allocate. A C function called through the FFI that calls a Lua function anyway is a misuse: the Lua function does not run, and C gets zeros.
+- Lua cannot run inside a compiled call, so a C function that Lua calls through the FFI calls no Lua. These are called through the C API, as libffi calls: a function with a callback parameter; every function of a plugin whose C code may call Lua outside them, as it keeps callbacks (`keep fn`) or looked up a Lua function or such a plugin's function; and the core's own functions, which may run a plugin's Lua code, such as a panel's `create`. Such a call keeps its storage on the C stack, checks a handle by the type its signature points to, and gives a callback that is not kept the closure that the last call of its parameter left, so only its values allocate. A C function called through the FFI that calls a Lua function anyway, or a core function that runs Lua, such as opening a Lua panel, is a misuse: the Lua code does not run, and C gets zeros or a failure. A plugin's C code looks up the Lua functions it calls in its `Init`: Lua functions that Lua looked up before keep calling its functions through the FFI, and only later lookups get them through the C API.
 - **C calls C:** the caller gets the raw function pointer and calls it at full speed.
 - **C calls Lua:** the caller also gets a typed C function pointer: a libffi closure that converts the arguments, calls the Lua function in a protected call, and converts the result.
 - **Lua calls Lua:** a plain Lua call, because all plugins share one Lua state.
@@ -1033,7 +1035,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 ### 10.7 Buffers
 
 - A buffer argument is valid only during the call. A function that needs it longer copies it.
-- In Lua, a buffer argument to a C function is a string, a `string.buffer`, or a cdata array or struct. A string is copied, as Lua's strings never change. A `string.buffer` and a cdata give their own bytes, without a copy, and the function may write into them. Memory at a pointer goes as a `string.buffer` that `buffer:set(pointer, length)` makes. A Lua function gets the argument as its caller gave it.
+- In Lua, a buffer argument to a C function is a string, a `string.buffer`, or a cdata array or struct, but not a handle: a handle's fields are read-only, and its bytes are no data. A string is copied, as Lua's strings never change. A `string.buffer` and a cdata give their own bytes, without a copy, and the function may write into them. Memory at a pointer goes as a `string.buffer` that `buffer:set(pointer, length)` makes. A Lua function gets the argument as its caller gave it.
 - A returned buffer's lifetime is documented by its function. Lua callers always receive a copy.
 
 ### 10.8 Errors in services
@@ -1481,12 +1483,14 @@ OpenECS follows the XDG Base Directory specification:
   | `pixel(x, y)`                                                        | Draws a frame and gives the colour that the chosen OS window shows at a position in its layout units, as `"#RRGGBB"`, such as a GPU panel's (5.4).                                                                                                 |
   | `popup(number)`                                                      | An open popup, the oldest first: its rectangle `x`, `y`, `width` and `height` in its OS window, and `window`, the number of that window (4.6).                                                                                                     |
   | `dialog()`                                                           | The message dialog that waits for an answer (7.7), or nil: its `title`, `message` and `buttons`, the number of the `selected` button, and `rects`, each button's rectangle in its OS window. A test answers it with `key` or `click`.              |
+  | `errors()`                                                           | The errors that plugins reported (14.2) since the program started, each once and in order, as `"plugin: message"`.                                                                                                                               |
+  | `misuses()`                                                         | Takes the misuses (1.4) since the last call, so the test does not fail on them, and gives what each check says. A test that checks a misuse reads it so.                                                                                         |
   | `match(actual, expected, message)`                                   | Checks that `actual` has the same number of list items as `expected`, and each item and field it names.                                                                                                                                            |
 
 - Before `run` goes on, each OS window gets the size the system gives it, as a tiling compositor does, and the layout follows it.
 - A pointer event over a shown popup window goes to that popup, in its own positions, as the system gives it. While a button is held, the events go to the window that got the press.
 - `match` leaves out fields that `expected` does not name, so a test checks only what it is about. A difference raises an error that names its path, such as `workspaces[1].windows[1].panels`.
-- A Lua error fails the test and logs it with its stack trace. So does a misuse (1.4) by any plugin, while the test goes on to its end. When `run` returns, the program quits without asking about unsaved work.
+- A Lua error fails the test and logs it with its stack trace. So does a misuse (1.4) by any plugin that `misuses` did not take, while the test goes on to its end. When `run` returns, the program quits without asking about unsaved work.
 - While a message dialog waits (7.7), the test goes on, so it can read and answer the dialog. A dialog that the test's own step opens, as `call` can, cannot wait for the test, so it is answered with its last button, and so is one that waits when the test ends.
 - The exit status is 0 when the test passes, and not 0 when it fails or cannot start.
 - OpenECS's build runs the tests with `-t`, `--test`: it builds with the examples, in Debug unless `-b` names another type, then runs every test in `bin/examples/`, or only the tests of the examples named after it, such as `-t c12_sketch`. It prints `pass` or `FAIL` for each test, and fails when one fails. A test fails when the program fails, or when its output has a sanitizer's report: `Sanitizer` or `runtime error:`.
