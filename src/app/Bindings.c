@@ -90,8 +90,6 @@ static struct
 {
     ECSILuaPanelType **types;    // stb_ds array
     ECSILuaListener **listeners; // stb_ds array
-    const char *lastColorText;   // the last colour text that a surface's method parsed, which the registry of the Lua state that gave it keeps
-    ECSColor lastColor;
 } BINDINGS = {0};
 
 /// @brief Names of the event types in Lua, in the order of ECSPanelEventType.
@@ -1389,12 +1387,6 @@ static const luaL_Reg OPENECS_BINDINGS_SERVICE[] = {
 
 #pragma region Panels
 
-/// @brief Reads a surface handle; one that its Draw gave is gone once Draw returns.
-static ECSSurface *ECSIBindings_CheckSurface(int index)
-{
-    return ECSIServices_CheckHandle(index, OPENECS_LUA_SURFACE);
-}
-
 /// @brief Reports the error on top of the stack, pops it, and makes the panel faulted.
 static void ECSIBindings_PanelFailed(lua_State *state, const ECSILuaPanel *luaPanel)
 {
@@ -1693,63 +1685,10 @@ static int ECSIBindings_PanelRegisterType(lua_State *state)
     return 0;
 }
 
-static int ECSIBindings_PanelRedraw(lua_State *state)
+/// @brief A panel's fields other than its title and unsaved mark cannot be set.
+static int ECSIBindings_PanelCannot(lua_State *state)
 {
-    (void)state;
-    ECSPanel_Redraw(ECSIBindings_CheckPanel(1));
-    return 0;
-}
-
-/// @brief Reads a field of a panel: its title, id, type and unsaved mark, or one of its methods, which are the upvalue.
-static int ECSIBindings_PanelIndex(lua_State *state)
-{
-    ECSPanel panel = ECSIBindings_CheckPanel(1);
-    const char *key = ECSILua_CheckString(state, 2);
-
-    if (SDL_strcmp(key, "title") == 0)
-    {
-        lua_pushstring(state, ECSPanel_GetTitle(panel));
-    }
-    else if (SDL_strcmp(key, "id") == 0)
-    {
-        lua_pushinteger(state, ECSPanel_GetID(panel));
-    }
-    else if (SDL_strcmp(key, "type") == 0)
-    {
-        lua_pushstring(state, ECSPanel_GetType(panel));
-    }
-    else if (SDL_strcmp(key, "unsaved") == 0)
-    {
-        lua_pushboolean(state, ECSPanel_GetUnsaved(panel));
-    }
-    else
-    {
-        lua_getfield(state, lua_upvalueindex(1), key);
-    }
-
-    return 1;
-}
-
-/// @brief Sets a field of a panel: its title or its unsaved mark; the others cannot be set.
-static int ECSIBindings_PanelNewIndex(lua_State *state)
-{
-    ECSPanel panel = ECSIBindings_CheckPanel(1);
-    const char *key = ECSILua_CheckString(state, 2);
-
-    if (SDL_strcmp(key, "title") == 0)
-    {
-        ECSPanel_SetTitle(panel, ECSILua_CheckString(state, 3));
-    }
-    else if (SDL_strcmp(key, "unsaved") == 0)
-    {
-        ECSPanel_SetUnsaved(panel, lua_toboolean(state, 3));
-    }
-    else
-    {
-        ECSILua_Misuse(state, "a panel's field '%s' cannot be set; only title and unsaved can", key);
-    }
-
-    return 0;
+    ECSILua_Misuse(state, "a panel's field '%s' cannot be set; only title and unsaved can", lua_tostring(state, 2));
 }
 
 static int ECSIBindings_PanelAcceptDrops(lua_State *state)
@@ -2004,7 +1943,6 @@ static const luaL_Reg OPENECS_BINDINGS_PANEL_METHODS[] = {
     {"setTextInput", ECSIBindings_PanelSetTextInput},
     {"acceptDrops", ECSIBindings_PanelAcceptDrops},
     {"startDrag", ECSIBindings_PanelStartDrag},
-    {"redraw", ECSIBindings_PanelRedraw},
     {nullptr, nullptr},
 };
 
@@ -2039,8 +1977,11 @@ static const luaL_Reg OPENECS_BINDINGS_PANEL[] = {
 
 #pragma region Surfaces
 
+// The methods and fields of the core's handles are C functions that Lua calls through the FFI, as it calls plugins' (DESIGN 10.6). They run
+// no Lua, so the JIT compiles them with their caller, and check their arguments with ECS_Check; the handle is valid, as its wrapper checks it.
+
 /// @brief Gets a pixel's address, or nullptr if the position is outside the surface.
-static u32 *ECSIBindings_GetPixelAddress(ECSSurface *surface, lua_Integer x, lua_Integer y)
+static u32 *ECSIBindings_GetPixelAddress(ECSSurface *surface, i32 x, i32 y)
 {
     if (x < 0 || y < 0 || x >= surface->width || y >= surface->height)
     {
@@ -2050,183 +1991,273 @@ static u32 *ECSIBindings_GetPixelAddress(ECSSurface *surface, lua_Integer x, lua
     return (u32 *)((u8 *)surface->pixels.data + (usz)y * (usz)surface->pitch) + x;
 }
 
-/// @brief Gets the surface at an index for a method that reads or writes its pixels, and raises a Lua error for a GPU surface, which has none.
-static ECSSurface *ECSIBindings_CheckPixelSurface(lua_State *state, int index)
+/// @brief Checks that a surface has pixels; a GPU surface has none.
+static bool ECSIBindings_HasPixels(const ECSSurface *surface)
 {
-    ECSSurface *surface = ECSIBindings_CheckSurface(index);
-
-    if (surface->type != ECSSurfaceType_Pixels)
-    {
-        ECSILua_Misuse(state, "a GPU surface has no pixels; the gpu plugin draws into it");
-    }
-
-    return surface;
+    return ECS_Check(nullptr, surface->type == ECSSurfaceType_Pixels, "a GPU surface has no pixels; the gpu plugin draws into it");
 }
 
-/// @brief Reads a colour text argument of a surface's method. A draw sets many pixels in few colours, so the last text's colour is kept: the
-/// text is kept in the state's registry, so while it is there no other string has its address. Theme colours are parsed each time, as the theme changes.
-static ECSColor ECSIBindings_CheckColor(lua_State *state, int index)
+static void ECSIBindings_SurfaceSetPixel(void *surfaceHandle, i32 x, i32 y, ECSColor color)
 {
-    const char *text = ECSILua_CheckString(state, index);
-    lua_rawgetp(state, LUA_REGISTRYINDEX, &BINDINGS.lastColor);
-    bool kept = lua_tostring(state, -1) == text && text == BINDINGS.lastColorText;
-    lua_pop(state, 1);
-
-    if (kept)
-    {
-        return BINDINGS.lastColor;
-    }
-
-    ECSColor color = 0;
-    ECSILua_ArgCheck(state, ECSColor_Parse(text, &color), index, "is not a colour: \"#RRGGBB\", \"#RRGGBBAA\" or a colour of the theme");
-
-    if (text[0] == '#')
-    {
-        lua_pushvalue(state, index);
-        lua_rawsetp(state, LUA_REGISTRYINDEX, &BINDINGS.lastColor);
-        BINDINGS.lastColorText = text;
-        BINDINGS.lastColor = color;
-    }
-
-    return color;
-}
-
-static int ECSIBindings_SurfaceSetPixel(lua_State *state)
-{
-    ECSSurface *surface = ECSIBindings_CheckPixelSurface(state, 1);
-    u32 *pixel = ECSIBindings_GetPixelAddress(surface, ECSILua_CheckInteger(state, 2), ECSILua_CheckInteger(state, 3));
-
-    ECSColor color = ECSIBindings_CheckColor(state, 4);
+    ECSSurface *surface = surfaceHandle;
+    u32 *pixel = ECSIBindings_HasPixels(surface) ? ECSIBindings_GetPixelAddress(surface, x, y) : nullptr;
 
     // pixels outside the surface are clipped; surfaces hold premultiplied colours
     if (pixel != nullptr)
     {
         *pixel = ECSIColor_Premultiply(color);
     }
-
-    return 0;
 }
 
-static int ECSIBindings_SurfaceGetPixel(lua_State *state)
+static const char *ECSIBindings_SurfaceGetPixel(void *surfaceHandle, i32 x, i32 y)
 {
-    ECSSurface *surface = ECSIBindings_CheckPixelSurface(state, 1);
-    u32 *pixel = ECSIBindings_GetPixelAddress(surface, ECSILua_CheckInteger(state, 2), ECSILua_CheckInteger(state, 3));
+    // the text lives until the next call, and Lua copies it at once
+    static char text[OPENECS_COLOR_TEXT_SIZE];
+    ECSSurface *surface = surfaceHandle;
+
+    if (!ECSIBindings_HasPixels(surface))
+    {
+        return nullptr;
+    }
+
+    u32 *pixel = ECSIBindings_GetPixelAddress(surface, x, y);
 
     if (pixel == nullptr)
     {
-        ECSILua_ArgError(state, 2, "the position is outside the surface");
+        (void)ECS_Check(nullptr, false, "the position %d, %d is outside the surface", x, y);
+        return nullptr;
     }
 
-    char text[OPENECS_COLOR_TEXT_SIZE];
     ECSIColor_Format(ECSIColor_Unpremultiply(*pixel), text);
-    lua_pushstring(state, text);
-    return 1;
+    return text;
 }
 
-static int ECSIBindings_SurfaceSetRow(lua_State *state)
+static void ECSIBindings_SurfaceSetRow(void *surfaceHandle, i32 y, SHUSliceView bytes, i32 x)
 {
-    ECSSurface *surface = ECSIBindings_CheckPixelSurface(state, 1);
-    lua_Integer y = ECSILua_CheckInteger(state, 2);
-    usz length = 0;
-    const char *bytes = ECSILua_CheckBytes(state, 3, &length, nullptr);
-    lua_Integer x = ECSILua_OptInteger(state, 4, 0);
+    ECSSurface *surface = surfaceHandle;
 
     // the row is clipped to the surface
-    if (y < 0 || y >= surface->height || x >= surface->width)
+    if (!ECSIBindings_HasPixels(surface) || y < 0 || y >= surface->height || x >= surface->width)
     {
-        return 0;
+        return;
     }
 
-    lua_Integer skip = x < 0 ? -x : 0;
-    lua_Integer count = SDL_min((lua_Integer)(length / 4) - skip, (lua_Integer)surface->width - (x + skip));
-
-    u32 *first = ECSIBindings_GetPixelAddress(surface, x + skip, y);
+    i64 skip = x < 0 ? -(i64)x : 0;
+    i64 count = SDL_min((i64)(bytes.size / 4) - skip, (i64)surface->width - ((i64)x + skip));
+    u32 *first = ECSIBindings_GetPixelAddress(surface, (i32)(x + skip), y);
 
     if (count > 0 && first != nullptr)
     {
-        SDL_memcpy(first, bytes + skip * 4, (usz)count * 4);
+        SDL_memcpy(first, (const u8 *)bytes.data + skip * 4, (usz)count * 4);
     }
-
-    return 0;
 }
 
-static int ECSIBindings_SurfaceFill(lua_State *state)
+static void ECSIBindings_SurfaceFill(void *surfaceHandle, i32 x, i32 y, i32 width, i32 height, ECSColor color)
 {
-    ECSSurface *surface = ECSIBindings_CheckPixelSurface(state, 1);
-    lua_Integer values[4];
-
-    // the rectangle is clipped to the surface, so larger numbers are clamped first
-    for (int i = 0; i < 4; i++)
+    if (ECSIBindings_HasPixels(surfaceHandle))
     {
-        values[i] = SDL_clamp(ECSILua_CheckInteger(state, i + 2), -(lua_Integer)SDL_MAX_SINT32, (lua_Integer)SDL_MAX_SINT32);
+        ECSSurface_Fill(surfaceHandle, x, y, width, height, color);
     }
-
-    ECSColor color = ECSIBindings_CheckColor(state, 6);
-    ECSSurface_Fill(surface, (i32)values[0], (i32)values[1], (i32)values[2], (i32)values[3], color);
-    return 0;
 }
 
-static int ECSIBindings_SurfaceChanged(lua_State *state)
+static void ECSIBindings_SurfaceChanged(void *surfaceHandle, i32 x, i32 y, i32 width, i32 height)
 {
-    ECSSurface *surface = ECSIBindings_CheckPixelSurface(state, 1);
-    lua_Integer values[4];
-
-    for (int i = 0; i < 4; i++)
+    if (ECSIBindings_HasPixels(surfaceHandle))
     {
-        values[i] = SDL_clamp(ECSILua_CheckInteger(state, i + 2), -(lua_Integer)SDL_MAX_SINT32, (lua_Integer)SDL_MAX_SINT32);
+        ECSSurface_Changed(surfaceHandle, x, y, width, height);
     }
-
-    ECSSurface_Changed(surface, (i32)values[0], (i32)values[1], (i32)values[2], (i32)values[3]);
-    return 0;
 }
 
-static int ECSIBindings_SurfaceIndex(lua_State *state)
+static i32 ECSIBindings_SurfaceWidth(void *surfaceHandle)
 {
-    // the methods are the upvalue; they come first, as a panel's draw calls them for many pixels, and check the surface themselves
-    if (lua_getfield(state, lua_upvalueindex(1), ECSILua_CheckString(state, 2)) != LUA_TNIL)
-    {
-        return 1;
-    }
-
-    ECSSurface *surface = ECSIBindings_CheckSurface(1);
-    const char *key = lua_tostring(state, 2);
-
-    if (SDL_strcmp(key, "width") == 0)
-    {
-        lua_pushinteger(state, surface->width);
-    }
-    else if (SDL_strcmp(key, "height") == 0)
-    {
-        lua_pushinteger(state, surface->height);
-    }
-    else if (SDL_strcmp(key, "scale") == 0)
-    {
-        lua_pushnumber(state, (lua_Number)surface->scale);
-    }
-    else if (SDL_strcmp(key, "type") == 0)
-    {
-        lua_pushstring(state, surface->type == ECSSurfaceType_Gpu ? "gpu" : "pixels");
-    }
-    else if (SDL_strcmp(key, "kept") == 0)
-    {
-        lua_pushboolean(state, surface->kept);
-    }
-    else
-    {
-        lua_pushnil(state);
-    }
-
-    return 1;
+    return ((ECSSurface *)surfaceHandle)->width;
 }
 
-static const luaL_Reg OPENECS_BINDINGS_SURFACE_METHODS[] = {
-    {"setPixel", ECSIBindings_SurfaceSetPixel},
-    {"getPixel", ECSIBindings_SurfaceGetPixel},
-    {"setRow", ECSIBindings_SurfaceSetRow},
-    {"fill", ECSIBindings_SurfaceFill},
-    {"changed", ECSIBindings_SurfaceChanged},
-    {nullptr, nullptr},
+static i32 ECSIBindings_SurfaceHeight(void *surfaceHandle)
+{
+    return ((ECSSurface *)surfaceHandle)->height;
+}
+
+static f32 ECSIBindings_SurfaceScale(void *surfaceHandle)
+{
+    return ((ECSSurface *)surfaceHandle)->scale;
+}
+
+static const char *ECSIBindings_SurfaceType(void *surfaceHandle)
+{
+    return ((ECSSurface *)surfaceHandle)->type == ECSSurfaceType_Gpu ? "gpu" : "pixels";
+}
+
+static bool ECSIBindings_SurfaceKept(void *surfaceHandle)
+{
+    return ((ECSSurface *)surfaceHandle)->kept;
+}
+
+static i32 ECSIBindings_PanelID(void *panel)
+{
+    return (i32)ECSPanel_GetID(panel);
+}
+
+static const char *ECSIBindings_PanelTitle(void *panel)
+{
+    return ECSPanel_GetTitle(panel);
+}
+
+static const char *ECSIBindings_PanelType(void *panel)
+{
+    return ECSPanel_GetType(panel);
+}
+
+static bool ECSIBindings_PanelUnsaved(void *panel)
+{
+    return ECSPanel_GetUnsaved(panel);
+}
+
+static void ECSIBindings_PanelSetTitle(void *panel, const char *title)
+{
+    ECSPanel_SetTitle(panel, title);
+}
+
+static void ECSIBindings_PanelSetUnsaved(void *panel, bool unsaved)
+{
+    ECSPanel_SetUnsaved(panel, unsaved);
+}
+
+static void ECSIBindings_PanelRedrawDirect(void *panel)
+{
+    ECSPanel_Redraw(panel);
+}
+
+/// @brief One of the core's functions that is a method or a field of its handles.
+typedef struct ECSIBindingsMember
+{
+    const char *key;       // the method's or field's name in Lua
+    const char *name;      // the function's full name, which errors name
+    ECSFunction Function;  // the C function
+    const char *signature; // its signature
+} ECSIBindingsMember;
+
+#define OPENECS_BINDINGS_MEMBER(key, name, function, signature) {key, name, (ECSFunction)(function), signature}
+
+static const ECSIBindingsMember OPENECS_BINDINGS_SURFACE_METHODS[] = {
+    OPENECS_BINDINGS_MEMBER("setPixel", "ecs.surface.setPixel", ECSIBindings_SurfaceSetPixel, "void(handle<ecs.surface> surface, int x, int y, color color)"),
+    OPENECS_BINDINGS_MEMBER("getPixel", "ecs.surface.getPixel", ECSIBindings_SurfaceGetPixel, "string(handle<ecs.surface> surface, int x, int y)"),
+    OPENECS_BINDINGS_MEMBER("setRow", "ecs.surface.setRow", ECSIBindings_SurfaceSetRow, "void(handle<ecs.surface> surface, int y, buffer bytes, int x)"),
+    OPENECS_BINDINGS_MEMBER("fill", "ecs.surface.fill", ECSIBindings_SurfaceFill, "void(handle<ecs.surface> surface, int x, int y, int width, int height, color color)"),
+    OPENECS_BINDINGS_MEMBER("changed", "ecs.surface.changed", ECSIBindings_SurfaceChanged, "void(handle<ecs.surface> surface, int x, int y, int width, int height)"),
+    {nullptr, nullptr, nullptr, nullptr},
 };
+
+static const ECSIBindingsMember OPENECS_BINDINGS_SURFACE_FIELDS[] = {
+    OPENECS_BINDINGS_MEMBER("width", "ecs.surface.width", ECSIBindings_SurfaceWidth, "int(handle<ecs.surface> surface)"),
+    OPENECS_BINDINGS_MEMBER("height", "ecs.surface.height", ECSIBindings_SurfaceHeight, "int(handle<ecs.surface> surface)"),
+    OPENECS_BINDINGS_MEMBER("scale", "ecs.surface.scale", ECSIBindings_SurfaceScale, "float(handle<ecs.surface> surface)"),
+    OPENECS_BINDINGS_MEMBER("type", "ecs.surface.type", ECSIBindings_SurfaceType, "string(handle<ecs.surface> surface)"),
+    OPENECS_BINDINGS_MEMBER("kept", "ecs.surface.kept", ECSIBindings_SurfaceKept, "bool(handle<ecs.surface> surface)"),
+    {nullptr, nullptr, nullptr, nullptr},
+};
+
+static const ECSIBindingsMember OPENECS_BINDINGS_PANEL_DIRECT[] = {
+    OPENECS_BINDINGS_MEMBER("redraw", "ecs.panel.redraw", ECSIBindings_PanelRedrawDirect, "void(handle<ecs.panel> panel)"),
+    {nullptr, nullptr, nullptr, nullptr},
+};
+
+static const ECSIBindingsMember OPENECS_BINDINGS_PANEL_FIELDS[] = {
+    OPENECS_BINDINGS_MEMBER("id", "ecs.panel.id", ECSIBindings_PanelID, "int(handle<ecs.panel> panel)"),
+    OPENECS_BINDINGS_MEMBER("title", "ecs.panel.title", ECSIBindings_PanelTitle, "string(handle<ecs.panel> panel)"),
+    OPENECS_BINDINGS_MEMBER("type", "ecs.panel.type", ECSIBindings_PanelType, "string(handle<ecs.panel> panel)"),
+    OPENECS_BINDINGS_MEMBER("unsaved", "ecs.panel.unsaved", ECSIBindings_PanelUnsaved, "bool(handle<ecs.panel> panel)"),
+    {nullptr, nullptr, nullptr, nullptr},
+};
+
+static const ECSIBindingsMember OPENECS_BINDINGS_PANEL_SETTERS[] = {
+    OPENECS_BINDINGS_MEMBER("title", "ecs.panel.setTitle", ECSIBindings_PanelSetTitle, "void(handle<ecs.panel> panel, string title)"),
+    OPENECS_BINDINGS_MEMBER("unsaved", "ecs.panel.setUnsaved", ECSIBindings_PanelSetUnsaved, "void(handle<ecs.panel> panel, bool unsaved)"),
+    {nullptr, nullptr, nullptr, nullptr},
+};
+
+/// @brief The metamethods of the core's handles, which the JIT compiles: a method comes from its table, a field from its function, and a field is set
+/// by its function; any other key's value is nil, and setting it calls cannot, which raises the misuse. A surface's setRow takes x as 0 when it is
+/// missing; its tail call leaves no frame, so an error names the caller's line.
+static const char OPENECS_BINDINGS_MEMBERS[] = "local methods, fields, setters, cannot = ...\n"
+                                               "local setRow = methods.setRow\n"
+                                               "if setRow ~= nil then\n"
+                                               "  methods.setRow = function(surface, y, bytes, x) return setRow(surface, y, bytes, x or 0) end\n"
+                                               "end\n"
+                                               "local function index(object, key)\n"
+                                               "  local method = methods[key]\n"
+                                               "  if method ~= nil then return method end\n"
+                                               "  local field = fields[key]\n"
+                                               "  if field ~= nil then return field(object) end\n"
+                                               "end\n"
+                                               "local function newindex(object, key, value)\n"
+                                               "  local setter = setters[key]\n"
+                                               "  if setter == nil then return cannot(object, key) end\n"
+                                               "  setter(object, value)\n"
+                                               "end\n"
+                                               "return index, newindex\n";
+
+/// @brief Adds the wrappers of a list of members to the table on top of the stack, by their keys.
+static SHUResult ECSIBindings_AddMembers(lua_State *state, const ECSIBindingsMember *members)
+{
+    for (usz i = 0; members[i].key != nullptr; i++)
+    {
+        SHU_ReturnResult(ECSIServices_PushCoreMethod(members[i].name, members[i].Function, members[i].signature));
+        lua_setfield(state, -2, members[i].key);
+    }
+
+    return SHUResult_Ok;
+}
+
+/// @brief Sets the metamethods of one of the core's handle types: its methods, which are the given C functions and the wrapped ones, its fields and its
+/// fields that can be set. A missing table of members gives nothing.
+static SHUResult ECSIBindings_SetMembers(const char *type, const luaL_Reg *methods, const ECSIBindingsMember *direct, const ECSIBindingsMember *fields,
+                                         const ECSIBindingsMember *setters, lua_CFunction Cannot)
+{
+    lua_State *state = ECSILua_GetState();
+    int top = lua_gettop(state);
+    SHUResult result = SHUResult_Ok;
+
+    if (luaL_loadbuffer(state, OPENECS_BINDINGS_MEMBERS, sizeof(OPENECS_BINDINGS_MEMBERS) - 1, "=ecs.members") != LUA_OK)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The handles' members do not load: %s", lua_tostring(state, -1));
+        lua_settop(state, top);
+        return SHUResult_Err;
+    }
+
+    lua_newtable(state);
+
+    if (methods != nullptr)
+    {
+        luaL_setfuncs(state, methods, 0);
+    }
+
+    result = direct != nullptr ? ECSIBindings_AddMembers(state, direct) : result;
+    lua_newtable(state);
+    result = !result && fields != nullptr ? ECSIBindings_AddMembers(state, fields) : result;
+    lua_newtable(state);
+    result = !result && setters != nullptr ? ECSIBindings_AddMembers(state, setters) : result;
+    lua_pushcfunction(state, Cannot);
+
+    if (result || ECSILua_Call(state, 4, 2))
+    {
+        lua_settop(state, top);
+        return result ? result : SHUResult_Err;
+    }
+
+    ECSIServices_PushHandleMetatable(type);
+    lua_insert(state, -3);
+    lua_setfield(state, -3, "__newindex");
+    lua_setfield(state, -2, "__index");
+    lua_settop(state, top);
+    return SHUResult_Ok;
+}
+
+/// @brief A surface's fields cannot be set.
+static int ECSIBindings_SurfaceCannot(lua_State *state)
+{
+    ECSILua_Misuse(state, "a surface's field '%s' cannot be set", lua_tostring(state, 2));
+}
 
 #pragma endregion Surfaces
 
@@ -2439,25 +2470,16 @@ void ECSIBindings_Initialize(void)
     lua_setfield(state, -2, "__index");
     lua_pop(state, 1);
 
-    // a panel's data are fields, and what it does are methods
-    ECSIServices_PushHandleMetatable(OPENECS_LUA_PANEL);
-    luaL_newlib(state, OPENECS_BINDINGS_PANEL_METHODS);
-    lua_pushcclosure(state, ECSIBindings_PanelIndex, 1);
-    lua_setfield(state, -2, "__index");
-    lua_pushcfunction(state, ECSIBindings_PanelNewIndex);
-    lua_setfield(state, -2, "__newindex");
-    lua_pop(state, 1);
-
     ECSIServices_PushHandleMetatable(OPENECS_LUA_POPUP);
     luaL_newlib(state, OPENECS_BINDINGS_POPUP);
     lua_setfield(state, -2, "__index");
     lua_pop(state, 1);
 
-    ECSIServices_PushHandleMetatable(OPENECS_LUA_SURFACE);
-    luaL_newlib(state, OPENECS_BINDINGS_SURFACE_METHODS);
-    lua_pushcclosure(state, ECSIBindings_SurfaceIndex, 1);
-    lua_setfield(state, -2, "__index");
-    lua_pop(state, 1);
+    // a panel's and a surface's data are fields, and what they do are methods
+    SHUResult result = ECSIBindings_SetMembers(OPENECS_LUA_PANEL, OPENECS_BINDINGS_PANEL_METHODS, OPENECS_BINDINGS_PANEL_DIRECT, OPENECS_BINDINGS_PANEL_FIELDS,
+                                               OPENECS_BINDINGS_PANEL_SETTERS, ECSIBindings_PanelCannot);
+    result = result ? result : ECSIBindings_SetMembers(OPENECS_LUA_SURFACE, nullptr, OPENECS_BINDINGS_SURFACE_METHODS, OPENECS_BINDINGS_SURFACE_FIELDS, nullptr, ECSIBindings_SurfaceCannot);
+    SDL_assert(!result);
 }
 
 void ECSIBindings_Terminate(void)
