@@ -658,14 +658,19 @@ void ECSILua_ArgErrorAt(lua_State *state, int level, int argument, const char *m
         ECSILua_MisuseAt(state, level + 1, "bad argument #%d (%s)", argument, message);
     }
 
-    lua_getinfo(state, "n", &info);
+    lua_getinfo(state, "nS", &info);
+
+    // a function called without a name, such as through pcall, is named by its chunk when the core named the chunk after it, as a wrapper's is
+    const char *name = info.name != nullptr                                                                 ? info.name
+                       : SDL_strcmp(info.what, "C") != 0 && info.source != nullptr && info.source[0] == '=' ? info.source + 1
+                                                                                                            : "?";
 
     if (info.namewhat != nullptr && SDL_strcmp(info.namewhat, "method") == 0 && --argument == 0)
     {
-        ECSILua_MisuseAt(state, level + 1, "calling '%s' on bad self (%s)", info.name != nullptr ? info.name : "?", message);
+        ECSILua_MisuseAt(state, level + 1, "calling '%s' on bad self (%s)", name, message);
     }
 
-    ECSILua_MisuseAt(state, level + 1, "bad argument #%d to '%s' (%s)", argument, info.name != nullptr ? info.name : "?", message);
+    ECSILua_MisuseAt(state, level + 1, "bad argument #%d to '%s' (%s)", argument, name, message);
 }
 
 void ECSILua_TypeError(lua_State *state, int argument, const char *typeName)
