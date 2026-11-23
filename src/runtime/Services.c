@@ -251,6 +251,16 @@ static struct
         ECSPlugin key;
         bool value;
     } *luaCallers; // stb_ds hash map of the plugins whose C code looked up a function that calls Lua, so Lua calls theirs through the C API
+    struct
+    {
+        ECSIHandle *key;
+        bool value;
+    } *liveHandles; // stb_ds hash map of every handle's cdata that Lua has not collected, so C tells a handle from other cdata without Lua
+    struct
+    {
+        const char *name;
+        ECSIHandleType *type;
+    } coreTypes[3]; // the core's handle types that ECSIServices_CheckHandle met, by the address of their names, as they live until exit
 } SERVICES = {0};
 
 /// @brief File-level state of each thread.
@@ -1792,16 +1802,9 @@ static ECSIHandle *ECSIServices_ToHandle(lua_State *state, int index)
         return nullptr;
     }
 
-    index = lua_absindex(state, index);
-    lua_rawgeti(state, LUA_REGISTRYINDEX, SERVICES.handleHelpers);
-    lua_getfield(state, -1, "typeOf");
-    lua_pushvalue(state, index);
-    lua_call(state, 1, 1);
-    bool handle = lua_touserdata(state, -1) != nullptr;
-    lua_pop(state, 2);
-
-    // a handle's bytes are where lua_topointer points
-    return handle ? (ECSIHandle *)lua_topointer(state, index) : nullptr;
+    // a handle's bytes are where lua_topointer points, and each handle that Lua holds is in the map
+    ECSIHandle *handle = (ECSIHandle *)lua_topointer(state, index);
+    return hmgeti(SERVICES.liveHandles, handle) >= 0 ? handle : nullptr;
 }
 
 /// @brief Makes every handle of an object invalid and forgets the object; the handles' userdata stay until they are collected.
@@ -1851,6 +1854,7 @@ static void ECSIServices_DestroyObject(ECSIHandleType *type, void *object)
 static int ECSIServices_HandleCollect(lua_State *state)
 {
     ECSIHandle *handle = (ECSIHandle *)lua_topointer(state, 1);
+    (void)hmdel(SERVICES.liveHandles, handle);
     void *object = handle->object;
     ECSIHandleObject *record = object == nullptr || SERVICES.objects == nullptr ? nullptr : hmget(SERVICES.objects, object);
     handle->object = nullptr;
@@ -4302,6 +4306,7 @@ static void ECSIServices_PushHandleOf(lua_State *state, ECSIHandleType *handleTy
     lua_call(state, 0, 1);
     ECSIHandle *handle = (ECSIHandle *)lua_topointer(state, -1);
     *handle = (ECSIHandle){0};
+    hmput(SERVICES.liveHandles, handle, true);
 
     // an object at the address of a gone object of another type is another object
     ECSIHandleObject *record = SERVICES.objects == nullptr ? nullptr : hmget(SERVICES.objects, object);
@@ -4339,7 +4344,28 @@ void *ECSIServices_CheckHandle(int index, const char *type)
     SDL_assert(type != nullptr);
 
     lua_State *state = ECSILua_GetState();
-    ECSIHandleType *handleType = ECSIServices_FindHandleType(type);
+    ECSIHandleType *handleType = nullptr;
+
+    for (usz i = 0; i < SDL_arraysize(SERVICES.coreTypes) && handleType == nullptr; i++)
+    {
+        handleType = SERVICES.coreTypes[i].name == type ? SERVICES.coreTypes[i].type : nullptr;
+    }
+
+    if (handleType == nullptr)
+    {
+        handleType = ECSIServices_FindHandleType(type);
+
+        // the core's types live until exit, so they are kept by the address of their names
+        for (usz i = 0; i < SDL_arraysize(SERVICES.coreTypes) && handleType != nullptr && handleType->plugin == nullptr; i++)
+        {
+            if (SERVICES.coreTypes[i].name == nullptr)
+            {
+                SERVICES.coreTypes[i].name = type;
+                SERVICES.coreTypes[i].type = handleType;
+                break;
+            }
+        }
+    }
 
     if (handleType == nullptr)
     {
@@ -4466,6 +4492,7 @@ void ECSIServices_Terminate(void)
 
     shfree(SERVICES.handleTypes);
     hmfree(SERVICES.objects);
+    hmfree(SERVICES.liveHandles);
 
     for (usz i = 0; i < shlenu(SERVICES.structTypes); i++)
     {

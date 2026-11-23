@@ -37,7 +37,7 @@ void ECSIServices_PushHandle(const char *type, void *object);
 
 /// @brief Reads a Lua handle of a type. Raises a Lua error if the value is not a handle of that type, or its object or type is gone.
 /// @param index Index of the handle on the Lua stack.
-/// @param type Name of the handle type.
+/// @param type Name of the handle type. For the core's types it lives until exit, as a literal does, so its address finds the type again.
 /// @return The object.
 void *ECSIServices_CheckHandle(int index, const char *type);
 
