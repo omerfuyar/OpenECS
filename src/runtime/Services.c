@@ -2380,6 +2380,27 @@ static void ECSIServices_CallLuaFor(ffi_cif *cif, void *result, void **arguments
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 static bool ECSIFfi_CallsLua(ECSPlugin plugin);
 
+/// @brief Forgets the Lua functions made for a plugin's C functions, so a later lookup gets them through the C API, now that the plugin calls Lua.
+static void ECSIFfi_ForgetWrappers(ECSPlugin plugin)
+{
+    lua_State *state = ECSILua_GetState();
+
+    for (usz i = 0; i < shlenu(SERVICES.functions); i++)
+    {
+        ECSIFunction *function = SERVICES.functions[i].value;
+
+        for (usz j = 0; function->plugin == plugin && j < hmlenu(function->callers); j++)
+        {
+            luaL_unref(state, LUA_REGISTRYINDEX, function->callers[j].value);
+        }
+
+        if (function->plugin == plugin)
+        {
+            hmfree(function->callers);
+        }
+    }
+}
+
 static SHUResult ECSIFunction_GetPointerFor(ECSIFunction *function, ECSPlugin plugin, ECSFunction *retPointer)
 {
     bool keeps = false;
@@ -2413,9 +2434,10 @@ static SHUResult ECSIFunction_GetPointerFor(ECSIFunction *function, ECSPlugin pl
     }
 
     // a plugin that can call Lua is not called through the FFI, as Lua cannot run inside compiled code (DESIGN 10.4)
-    if (plugin != nullptr && (function->lua != LUA_NOREF || ECSIFfi_CallsLua(function->plugin)))
+    if (plugin != nullptr && (function->lua != LUA_NOREF || ECSIFfi_CallsLua(function->plugin)) && !hmget(SERVICES.luaCallers, plugin))
     {
         hmput(SERVICES.luaCallers, plugin, true);
+        ECSIFfi_ForgetWrappers(plugin);
     }
 
     *retPointer = keeps ? hmget(function->stubs, plugin)->pointer : function->pointer;

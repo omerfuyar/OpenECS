@@ -928,6 +928,21 @@ SHUResult ECSILua_Call(lua_State *state, int argumentCount, int resultCount)
 
     int base = lua_gettop(state) - argumentCount;
 
+    // a C function that Lua called through the FFI may be compiled code, which Lua cannot run inside, even when the core runs it (DESIGN 10.4)
+    if (ECSILua_InFfiCall())
+    {
+        static const char message[] = "A C function that Lua calls ran Lua through the core, such as a Lua panel's create; a C function that Lua calls calls Lua only through its callbacks";
+        lua_settop(state, base - 1);
+        lua_pushstring(state, message);
+
+        if (LUA.Misuse != nullptr)
+        {
+            LUA.Misuse(message);
+        }
+
+        return SHUResult_Err;
+    }
+
     lua_pushcfunction(state, ECSILua_Traceback);
     lua_insert(state, base);
     int status = lua_pcall(state, argumentCount, resultCount, base);
