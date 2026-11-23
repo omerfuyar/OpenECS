@@ -682,10 +682,10 @@ void ECSILua_TypeErrorAt(lua_State *state, int level, int argument, int index, c
 }
 
 /// @brief The function that ECSILua_PushBytesOf pushes. A cdata gives its bytes if it is an array or a struct, which its type's name tells once for each
-/// type; a pointer's or a number's bytes are not its data.
+/// type; a pointer's or a number's bytes are not its data, and neither are a handle's, a struct whose first field is ecsObject (DESIGN 10.7).
 static const char OPENECS_LUA_BYTES_OF[] =
     "local ffi, buffer = require('ffi'), require('string.buffer')\n"
-    "local typeof, sizeof, cast, find = ffi.typeof, ffi.sizeof, ffi.cast, string.find\n"
+    "local typeof, sizeof, cast, find, offsetof = ffi.typeof, ffi.sizeof, ffi.cast, string.find, ffi.offsetof\n"
     "local bytes, bufferMetatable, whole = ffi.typeof('uint8_t *'), getmetatable(buffer.new()), {}\n"
     "return function(value)\n"
     "  local kind = type(value)\n"
@@ -695,7 +695,9 @@ static const char OPENECS_LUA_BYTES_OF[] =
     "    local isWhole = whole[id]\n"
     "    if isWhole == nil then\n"
     "      local name = tostring(ctype)\n"
-    "      isWhole = find(name, '%]>$') ~= nil or (find(name, '^ctype<struct ') ~= nil or find(name, '^ctype<union ') ~= nil) and find(name, '[*&]>$') == nil\n"
+    "      local struct = find(name, '^ctype<struct ') ~= nil and find(name, '[*&]>$') == nil\n"
+    "      isWhole = find(name, '%]>$') ~= nil or (struct or find(name, '^ctype<union ') ~= nil and find(name, '[*&]>$') == nil)\n"
+    "      if struct and offsetof(ctype, 'ecsObject') == 0 then isWhole = false end\n"
     "      whole[id] = isWhole\n"
     "    end\n"
     "    if isWhole then return cast(bytes, value), sizeof(value) end\n"

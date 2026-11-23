@@ -1705,7 +1705,7 @@ static const char OPENECS_HANDLE_HELPERS[] =
     "local ffi = require('ffi')\n"
     "local types = {}\n"
     "local function new(metatable, handleType)\n"
-    "  local ctype = ffi.metatype(ffi.typeof('struct { void *ecsObject; void *ecsType; }'), metatable)\n"
+    "  local ctype = ffi.metatype(ffi.typeof('struct { void *const ecsObject; void *const ecsType; }'), metatable)\n"
     "  types[tonumber(ctype)] = handleType\n"
     "  return ctype\n"
     "end\n"

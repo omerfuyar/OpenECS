@@ -1035,7 +1035,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 ### 10.7 Buffers
 
 - A buffer argument is valid only during the call. A function that needs it longer copies it.
-- In Lua, a buffer argument to a C function is a string, a `string.buffer`, or a cdata array or struct. A string is copied, as Lua's strings never change. A `string.buffer` and a cdata give their own bytes, without a copy, and the function may write into them. Memory at a pointer goes as a `string.buffer` that `buffer:set(pointer, length)` makes. A Lua function gets the argument as its caller gave it.
+- In Lua, a buffer argument to a C function is a string, a `string.buffer`, or a cdata array or struct, but not a handle: a handle's fields are read-only, and its bytes are no data. A string is copied, as Lua's strings never change. A `string.buffer` and a cdata give their own bytes, without a copy, and the function may write into them. Memory at a pointer goes as a `string.buffer` that `buffer:set(pointer, length)` makes. A Lua function gets the argument as its caller gave it.
 - A returned buffer's lifetime is documented by its function. Lua callers always receive a copy.
 
 ### 10.8 Errors in services
