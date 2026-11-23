@@ -922,6 +922,9 @@ lua_State *ECSILua_GetCaller(void)
     return LUA_THREAD.caller;
 }
 
+/// @brief The key of each state's message handler in its registry.
+static const char OPENECS_LUA_TRACEBACK_KEY = 0;
+
 SHUResult ECSILua_Call(lua_State *state, int argumentCount, int resultCount)
 {
     SDL_assert(state != nullptr);
@@ -943,7 +946,17 @@ SHUResult ECSILua_Call(lua_State *state, int argumentCount, int resultCount)
         return SHUResult_Err;
     }
 
-    lua_pushcfunction(state, ECSILua_Traceback);
+    // LuaJIT has no light C functions, so the handler is made once for each state and kept in its registry
+    lua_rawgetp(state, LUA_REGISTRYINDEX, &OPENECS_LUA_TRACEBACK_KEY);
+
+    if (lua_isnil(state, -1))
+    {
+        lua_pop(state, 1);
+        lua_pushcfunction(state, ECSILua_Traceback);
+        lua_pushvalue(state, -1);
+        lua_rawsetp(state, LUA_REGISTRYINDEX, &OPENECS_LUA_TRACEBACK_KEY);
+    }
+
     lua_insert(state, base);
     int status = lua_pcall(state, argumentCount, resultCount, base);
     lua_remove(state, base);

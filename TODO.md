@@ -51,7 +51,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 **Core: communication**
 
 - **P3 · The FFI wrapper calls the core three times around each call.** `src/runtime/Services.c:3103` It calls `misuses()` twice and `profiling()` once through the FFI. Reading the misuse counter and the profile flag through pointers would cost less. Not measured apart. Size: S.
-- **P3 · Each callback call makes tables.** `src/runtime/Services.c:2290-2293` `RunLua` makes its `anchors` and `callbacks` tables on each call, a spare callback makes a new anchors table (`:1500`), and `RenewResult` (`:2243`) makes the result value again. This hits `draw.clip` on each ui show. Note in the signature whether it has callbacks or byte and handle outputs, and make the tables only then. Size: S.
 - **P3 · Event delivery frees its queue on each pass, and its order differs by kind.** `src/runtime/Events.c:415-419` The queue is freed and grown again each pass that had events; keep two arrays and swap them. A panel event posted during delivery joins the pass (`:401`), while a named event waits for the next (`:221-228`), so their order is not defined. Size: S.
 - **P3 · Values allocate more than they need.** `src/base/Values.c:595` Each handle value copies its type's name, though handle types live until exit. Each table gets a string map with copied keys, even for one field (`:644-658`). `ECSILua_ToValue` (`src/base/Lua.c:197-229`) allocates a list of names for each nested table, then reads each field again. Size: M.
 - **P3 · Lookups cost more as plugins grow.** `src/runtime/Services.c:2843-2864` `ECSIFfi_CallsLua` reads every function of every plugin for each wrapper, and `ECSIText_Add` (`:274-288`) copies the whole text on each add, which is quadratic for ui's definitions. Keep a flag per plugin, and grow the text with a capacity. Size: S.
@@ -59,7 +58,6 @@ Recommendations from a review of the code, by area, the most important first. P1
 
 **Core: plugins and threads**
 
-- **P3 · Each protected call allocates a function.** `src/base/Lua.c:944` LuaJIT has no light C functions, so `lua_pushcfunction(state, ECSILua_Traceback)` makes a new function at each `ECSILua_Call`: each callback, draw and event. So do `Workers.c:338` and `:506`. Make it once per state and keep it in the registry. Size: S.
 - **P3 · A worker's message is copied twice.** `src/app/Workers.c:103-127` Encoding makes a Lua string that is copied into the message, and receiving copies it into another string before decoding (`:154-156`). One reused `string.buffer` per state copies once and decodes in place. The inbox also shifts with `arrdel(inbox, 0)` (`:326`). Size: S.
 - **P3 · Each plugin's start walks its whole folder, even with reloading off.** `src/runtime/Plugins.c:704` `ECSIPlugin_NewestChange` reads every file's time (`:389-420`). Take it only when `ecs.reloadPlugins` is on. Size: S.
 - **P3 · The profile makes its maps again each second.** `src/base/Profile.c:469` With the profile on, the plugins', panels' and functions' maps and their copied names are freed each second. Keep them and zero their counts. Size: S.
