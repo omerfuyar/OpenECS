@@ -508,12 +508,9 @@ static void ECSIApp_Misused(const ECSICallback *callback)
     {
         ECSIApp_RequestMisusedPlugin(request);
     }
-    else if (!SDL_RunOnMainThread(ECSIApp_RequestMisusedPlugin, request, false))
+    else
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' misused a function, and cannot be disabled: %s", name, SDL_GetError());
-        SDL_free(request);
-        SDL_free(name);
-        SDL_free(misuse);
+        ECSITasks_RunOnMainThread(ECSIApp_RequestMisusedPlugin, request);
     }
 }
 
@@ -1104,6 +1101,7 @@ int ECSIApp_Run(void)
         i32 wait = ECSIApp_ShorterWait(ECSIEvents_GetWait(), ECSIWindow_GetFrameWait());
         wait = ECSIApp_ShorterWait(wait, ECSITest_GetWait());
         wait = ECSIApp_ShorterWait(wait, ECSIApp_GetWatchWait());
+        wait = ECSIApp_ShorterWait(wait, ECSITasks_GetWait());
         (void)ECSIProfile_SetStep(ECSIProfileStep_Wait);
         bool woken = SDL_WaitEventTimeout(&event, wait);
         (void)ECSIProfile_SetStep(ECSIProfileStep_Input);
@@ -1121,6 +1119,9 @@ int ECSIApp_Run(void)
             break;
         }
 
+        // functions that other threads sent run here, then the code of the plugins disabled before them is unloaded
+        ECSITasks_RunMain();
+        ECSIPlugins_UnloadDisabled();
         (void)ECSIProfile_SetStep(ECSIProfileStep_Timers);
         ECSITimers_Run();
         (void)ECSIProfile_SetStep(ECSIProfileStep_Events);

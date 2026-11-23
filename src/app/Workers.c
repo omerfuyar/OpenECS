@@ -66,9 +66,9 @@ static void SDLCALL ECSIWorkers_Pump(void *data);
 /// @brief Queues a pump on the main thread, unless one is queued already. Any thread.
 static void ECSIWorkers_Post(void)
 {
-    if (SDL_CompareAndSwapAtomicInt(&WORKERS.posted, 0, 1) && ECS_RunOnMainThread(ECSIWorkers_Pump, nullptr))
+    if (SDL_CompareAndSwapAtomicInt(&WORKERS.posted, 0, 1))
     {
-        SDL_SetAtomicInt(&WORKERS.posted, 0);
+        ECSITasks_RunOnMainThread(ECSIWorkers_Pump, nullptr);
     }
 }
 
