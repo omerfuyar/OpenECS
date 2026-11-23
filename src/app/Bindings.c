@@ -2137,42 +2137,40 @@ typedef struct ECSIBindingsMember
     const char *signature; // its signature
 } ECSIBindingsMember;
 
-#define OPENECS_BINDINGS_MEMBER(key, name, function, signature) {key, name, (ECSFunction)(function), signature}
-
 static const ECSIBindingsMember OPENECS_BINDINGS_SURFACE_METHODS[] = {
-    OPENECS_BINDINGS_MEMBER("setPixel", "ecs.surface.setPixel", ECSIBindings_SurfaceSetPixel, "void(handle<ecs.surface> surface, int x, int y, color color)"),
-    OPENECS_BINDINGS_MEMBER("getPixel", "ecs.surface.getPixel", ECSIBindings_SurfaceGetPixel, "string(handle<ecs.surface> surface, int x, int y)"),
-    OPENECS_BINDINGS_MEMBER("setRow", "ecs.surface.setRow", ECSIBindings_SurfaceSetRow, "void(handle<ecs.surface> surface, int y, buffer bytes, int x)"),
-    OPENECS_BINDINGS_MEMBER("fill", "ecs.surface.fill", ECSIBindings_SurfaceFill, "void(handle<ecs.surface> surface, int x, int y, int width, int height, color color)"),
-    OPENECS_BINDINGS_MEMBER("changed", "ecs.surface.changed", ECSIBindings_SurfaceChanged, "void(handle<ecs.surface> surface, int x, int y, int width, int height)"),
+    {"setPixel", "ecs.surface.setPixel", (ECSFunction)ECSIBindings_SurfaceSetPixel, "void(handle<ecs.surface> surface, int x, int y, color color)"},
+    {"getPixel", "ecs.surface.getPixel", (ECSFunction)ECSIBindings_SurfaceGetPixel, "string(handle<ecs.surface> surface, int x, int y)"},
+    {"setRow", "ecs.surface.setRow", (ECSFunction)ECSIBindings_SurfaceSetRow, "void(handle<ecs.surface> surface, int y, buffer bytes, int x)"},
+    {"fill", "ecs.surface.fill", (ECSFunction)ECSIBindings_SurfaceFill, "void(handle<ecs.surface> surface, int x, int y, int width, int height, color color)"},
+    {"changed", "ecs.surface.changed", (ECSFunction)ECSIBindings_SurfaceChanged, "void(handle<ecs.surface> surface, int x, int y, int width, int height)"},
     {nullptr, nullptr, nullptr, nullptr},
 };
 
 static const ECSIBindingsMember OPENECS_BINDINGS_SURFACE_FIELDS[] = {
-    OPENECS_BINDINGS_MEMBER("width", "ecs.surface.width", ECSIBindings_SurfaceWidth, "int(handle<ecs.surface> surface)"),
-    OPENECS_BINDINGS_MEMBER("height", "ecs.surface.height", ECSIBindings_SurfaceHeight, "int(handle<ecs.surface> surface)"),
-    OPENECS_BINDINGS_MEMBER("scale", "ecs.surface.scale", ECSIBindings_SurfaceScale, "float(handle<ecs.surface> surface)"),
-    OPENECS_BINDINGS_MEMBER("type", "ecs.surface.type", ECSIBindings_SurfaceType, "string(handle<ecs.surface> surface)"),
-    OPENECS_BINDINGS_MEMBER("kept", "ecs.surface.kept", ECSIBindings_SurfaceKept, "bool(handle<ecs.surface> surface)"),
+    {"width", "ecs.surface.width", (ECSFunction)ECSIBindings_SurfaceWidth, "int(handle<ecs.surface> surface)"},
+    {"height", "ecs.surface.height", (ECSFunction)ECSIBindings_SurfaceHeight, "int(handle<ecs.surface> surface)"},
+    {"scale", "ecs.surface.scale", (ECSFunction)ECSIBindings_SurfaceScale, "float(handle<ecs.surface> surface)"},
+    {"type", "ecs.surface.type", (ECSFunction)ECSIBindings_SurfaceType, "string(handle<ecs.surface> surface)"},
+    {"kept", "ecs.surface.kept", (ECSFunction)ECSIBindings_SurfaceKept, "bool(handle<ecs.surface> surface)"},
     {nullptr, nullptr, nullptr, nullptr},
 };
 
 static const ECSIBindingsMember OPENECS_BINDINGS_PANEL_DIRECT[] = {
-    OPENECS_BINDINGS_MEMBER("redraw", "ecs.panel.redraw", ECSIBindings_PanelRedrawDirect, "void(handle<ecs.panel> panel)"),
+    {"redraw", "ecs.panel.redraw", (ECSFunction)ECSIBindings_PanelRedrawDirect, "void(handle<ecs.panel> panel)"},
     {nullptr, nullptr, nullptr, nullptr},
 };
 
 static const ECSIBindingsMember OPENECS_BINDINGS_PANEL_FIELDS[] = {
-    OPENECS_BINDINGS_MEMBER("id", "ecs.panel.id", ECSIBindings_PanelID, "int(handle<ecs.panel> panel)"),
-    OPENECS_BINDINGS_MEMBER("title", "ecs.panel.title", ECSIBindings_PanelTitle, "string(handle<ecs.panel> panel)"),
-    OPENECS_BINDINGS_MEMBER("type", "ecs.panel.type", ECSIBindings_PanelType, "string(handle<ecs.panel> panel)"),
-    OPENECS_BINDINGS_MEMBER("unsaved", "ecs.panel.unsaved", ECSIBindings_PanelUnsaved, "bool(handle<ecs.panel> panel)"),
+    {"id", "ecs.panel.id", (ECSFunction)ECSIBindings_PanelID, "int(handle<ecs.panel> panel)"},
+    {"title", "ecs.panel.title", (ECSFunction)ECSIBindings_PanelTitle, "string(handle<ecs.panel> panel)"},
+    {"type", "ecs.panel.type", (ECSFunction)ECSIBindings_PanelType, "string(handle<ecs.panel> panel)"},
+    {"unsaved", "ecs.panel.unsaved", (ECSFunction)ECSIBindings_PanelUnsaved, "bool(handle<ecs.panel> panel)"},
     {nullptr, nullptr, nullptr, nullptr},
 };
 
 static const ECSIBindingsMember OPENECS_BINDINGS_PANEL_SETTERS[] = {
-    OPENECS_BINDINGS_MEMBER("title", "ecs.panel.setTitle", ECSIBindings_PanelSetTitle, "void(handle<ecs.panel> panel, string title)"),
-    OPENECS_BINDINGS_MEMBER("unsaved", "ecs.panel.setUnsaved", ECSIBindings_PanelSetUnsaved, "void(handle<ecs.panel> panel, bool unsaved)"),
+    {"title", "ecs.panel.setTitle", (ECSFunction)ECSIBindings_PanelSetTitle, "void(handle<ecs.panel> panel, string title)"},
+    {"unsaved", "ecs.panel.setUnsaved", (ECSFunction)ECSIBindings_PanelSetUnsaved, "void(handle<ecs.panel> panel, bool unsaved)"},
     {nullptr, nullptr, nullptr, nullptr},
 };
 
