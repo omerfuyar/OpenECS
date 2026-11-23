@@ -1737,6 +1737,12 @@ void ECSIPlugin_NoteMisuse(ECSPlugin checker, const char *message)
     ECSIPlugin_ReportMisuse(checker, message, ECSILua_GetCaller());
 }
 
+void ECSIPlugins_EndThread(void)
+{
+    SDL_free(PLUGINS_THREAD.misuse);
+    PLUGINS_THREAD.misuse = nullptr;
+}
+
 void ECSIPlugin_ReportDeferredMisuse(lua_State *state)
 {
     SDL_assert(state != nullptr);

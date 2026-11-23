@@ -24,6 +24,9 @@ SHUWUR SHUResult ECSIServices_DeclareSettings(void);
 /// @brief Destroys the objects of every handle Lua still holds, before the plugins shut down (DESIGN 2.4).
 void ECSIServices_DestroyHandles(void);
 
+/// @brief Frees the calling thread's last failure, which ECS_Fail kept. A worker or pool thread calls it as it ends.
+void ECSIServices_EndThread(void);
+
 /// @brief Frees every registered function, handle type and kept callback, once the plugins have shut down, since their Destroy may still call functions.
 void ECSIServices_Terminate(void);
 

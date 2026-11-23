@@ -781,7 +781,7 @@ A plugin can declare its own events, such as `canvas.selectionChanged`, and emit
 
 ### 8.3 Named events
 
-- A plugin declares the named events it emits: `ECSEvent_Declare(plugin, "canvas.selectionChanged", description)`. The name starts with the plugin's name. Only the declaring plugin emits it: `ECSEvent_Emit(plugin, name, value)`. The value may be `NULL`; the core copies it.
+- A plugin declares the named events it emits by their local names: `ECSEvent_Declare(plugin, "selectionChanged", description)` declares `canvas.selectionChanged`, whose name starts with the plugin's name. Only the declaring plugin emits it: `ECSEvent_Emit(plugin, name, value)`. The value may be `NULL`; the core copies it.
 - `ECSEvent_Subscribe(plugin, &subscription, name, fn, data)` calls `fn(data, name, value)` for each emission; `ECSEvent_Unsubscribe` ends it. A subscriber hears the core's events, its own, and those of plugins its manifest depends on. The event must be declared first, so a plugin subscribes after its dependencies have loaded.
 - Emissions are queued like every other event (8.2).
 - When a plugin fails, its events, its subscriptions and the subscriptions to its events are removed.

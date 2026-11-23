@@ -4462,6 +4462,12 @@ void ECSIServices_PushHandleMetatable(const char *type)
     luaL_getmetatable(ECSILua_GetState(), handleType->metatable);
 }
 
+void ECSIServices_EndThread(void)
+{
+    SDL_free(SERVICES_THREAD.error);
+    SERVICES_THREAD.error = nullptr;
+}
+
 void ECSIServices_DestroyHandles(void)
 {
     // handles that wait for their finalizer are no longer in the weak table, so a full collection runs those finalizers now, while the types and their plugins' code exist

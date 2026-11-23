@@ -786,7 +786,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSetting_List(ECSValue *retList);
 /// @lua ecs.setting.explain
 OPENECS_EXPORT SHUWUR SHUResult ECSSetting_Explain(const char *name, ECSValue *retExplanation);
 
-/// @brief Registers a type of handles, for services that pass objects as handle<name>. In Lua, a handle is a userdata that names its type; the same object always gets the same Lua handle. Main thread only.
+/// @brief Registers a type of handles, for services that pass objects as handle<name>. In Lua, a handle is a cdata that names its type; the same object always gets the same Lua handle. Main thread only.
 /// @param plugin The plugin that provides the objects.
 /// @param name The type's local name, such as "sound"; the core adds the plugin's name and a dot, so signatures name it "handle<mixer.sound>".
 /// @param Destroy Called with the object when Lua no longer uses its handle, or nullptr. A provider that keeps using the object counts references.
@@ -811,7 +811,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSHandle_AddMethod(ECSPlugin plugin, const char
 /// @lua ecs.struct.register
 OPENECS_EXPORT SHUWUR SHUResult ECSStruct_Register(ECSPlugin plugin, const char *name, const char *fields);
 
-/// @brief Makes a function of the plugin a method of one of its struct types, so Lua calls it on a struct: a:dot(b) calls the function with the struct first. A method named add, sub, mul, div, unm, eq, lt, le, len or tostring is also Lua's operator: a + b calls add. C calls the function itself. Main thread only.
+/// @brief Makes a function of the plugin a method of one of its struct types, so Lua calls it on a struct: a:dot(b) calls the function with the struct first. A method named add, sub, mul, div, mod, pow, unm, concat, eq, lt, le, len or tostring is also Lua's operator: a + b calls add. C calls the function itself. Main thread only.
 /// @param plugin The plugin that provides the struct type and the function.
 /// @param type The struct type's local name, such as "vec3".
 /// @param method The method's name in Lua, such as "dot".

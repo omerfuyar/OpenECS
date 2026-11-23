@@ -127,6 +127,13 @@ static char *ECSIApp_FindXdgFolder(const char *variable, const char *fallback)
 #endif
 }
 
+/// @brief Frees what a worker or pool thread kept, as it ends.
+static void ECSIApp_EndThread(void)
+{
+    ECSIServices_EndThread();
+    ECSIPlugins_EndThread();
+}
+
 /// @brief Stops a plugin's code that runs apart from the main loop: its workers, and its background work, whose done functions run now.
 static void ECSIApp_StopPluginCode(ECSPlugin plugin)
 {
@@ -549,7 +556,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     // read the preset first, because SDL needs the tool's identity before it starts
     ECSIApp_ExitOnFailure(ECSILua_Initialize(), "starting Lua", nullptr);
     ECSIApp_ExitOnFailure(ECSIEvents_Initialize(), "declaring the core's events", nullptr);
-    ECSIApp_ExitOnFailure(ECSITasks_Initialize(), "preparing worker threads", nullptr);
+    ECSIApp_ExitOnFailure(ECSITasks_Initialize(ECSIApp_EndThread), "preparing worker threads", nullptr);
     ECSIApp_ExitOnFailure(ECSIServices_Initialize(), "preparing services", nullptr);
     ECSIApp_ExitOnFailure(ECSIServices_RegisterCore("ecs.app.quit", (ECSFunction)ECSApp_Quit, "void()", "Quit"), "registering the core's functions", nullptr);
 

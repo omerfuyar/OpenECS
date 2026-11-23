@@ -34,6 +34,7 @@ typedef struct ECSIMainTask
 /// @brief The worker threads and their queue, which other threads use.
 static struct
 {
+    ECSITasksEndThreadFunction EndThread;
     SDL_Mutex *lock;
     SDL_Condition *ready;
     ECSIWork *queue;       // stb_ds array, guarded by lock
@@ -168,6 +169,7 @@ static int SDLCALL ECSITasks_Worker(void *unused)
         if (TASKS.stopping)
         {
             SDL_UnlockMutex(TASKS.lock);
+            TASKS.EndThread();
             return 0;
         }
 
@@ -227,8 +229,11 @@ static SHUResult ECSITasks_StartWorkers(void)
 
 #pragma endregion Source Only
 
-SHUResult ECSITasks_Initialize(void)
+SHUResult ECSITasks_Initialize(ECSITasksEndThreadFunction EndThread)
 {
+    SDL_assert(EndThread != nullptr);
+
+    TASKS.EndThread = EndThread;
     TASKS.lock = SDL_CreateMutex();
     TASKS.ready = SDL_CreateCondition();
     TASKS.idle = SDL_CreateCondition();

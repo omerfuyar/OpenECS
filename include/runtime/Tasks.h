@@ -6,9 +6,13 @@
 
 #pragma region Declarations
 
+/// @brief Function that frees what a thread kept, as a pool thread ends.
+typedef void (*ECSITasksEndThreadFunction)(void);
+
 /// @brief Prepares the lock and condition of the worker threads, which start when background work first comes.
+/// @param EndThread Frees what each pool thread kept, as it ends; it frees what later modules keep, such as Services.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
-SHUWUR SHUResult ECSITasks_Initialize(void);
+SHUWUR SHUResult ECSITasks_Initialize(ECSITasksEndThreadFunction EndThread);
 
 /// @brief Waits for running background work and drops waiting work, before the plugins are destroyed, then runs the functions that wait for the main thread. Tasks that reach the main thread after this are dropped; those the main thread queued for itself are freed with the event queue. Background work that is asked for after it fails.
 void ECSITasks_Stop(void);

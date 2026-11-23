@@ -429,6 +429,8 @@ static int SDLCALL ECSIWorkers_Run(void *data)
         lua_close(state);
     }
 
+    ECSIServices_EndThread();
+    ECSIPlugins_EndThread();
     SDL_LockMutex(worker->lock);
     worker->finished = true;
     SDL_UnlockMutex(worker->lock);

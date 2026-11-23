@@ -76,6 +76,9 @@ void ECSIPlugins_ReportRepeatedErrors(void);
 /// @brief Unloads the libraries of the plugins disabled since the last call. Call it after the main thread's queue ran, which may hold their functions.
 void ECSIPlugins_UnloadDisabled(void);
 
+/// @brief Frees what the calling thread kept of its misuses. A worker or pool thread calls it as it ends.
+void ECSIPlugins_EndThread(void);
+
 /// @brief Frees every plugin and closes their libraries. Call it after ECSIPlugins_Destroy, when no worker thread runs their code.
 void ECSIPlugins_Unload(void);
 

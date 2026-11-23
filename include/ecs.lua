@@ -668,7 +668,7 @@ ecs.event = {}
 
 ---Declares an event that the plugin emits.
 ---@param name string The local name, such as "changed"; the event is "canvas.changed".
----@param description? string What the event says, for the user and for other plugins.
+---@param description string What the event says, for the user and for other plugins.
 function ecs.event.declare(name, description) end
 
 ---Emits a declared event of the plugin.
