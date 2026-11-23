@@ -328,7 +328,7 @@ static void ECSIEvents_ForgetObjectIn(ECSIQueuedEvent *queue, const void *object
 {
     for (usz i = 0; i < arrlenu(queue); i++)
     {
-        if (queue[i].Deliver == ECSIEvents_DeliverEmission)
+        if (queue[i].Deliver == ECSIEvents_DeliverEmission && queue[i].target != nullptr)
         {
             ECSIValue_ForgetObject(((ECSIEmission *)queue[i].target)->value, object);
         }
@@ -412,6 +412,9 @@ void ECSIEvents_Deliver(void)
         // a copy, because delivering may queue more events and move the queue
         ECSIQueuedEvent queued = EVENTS.queue[i];
         queued.Deliver(queued.target, &queued.event);
+
+        // the delivery freed the target, so a handle freed by a later event's handler does not look into it
+        EVENTS.queue[i].target = nullptr;
     }
 
     arrfree(EVENTS.queue);
