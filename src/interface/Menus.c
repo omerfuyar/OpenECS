@@ -34,6 +34,7 @@ typedef struct ECSIMenuEntry
     char *keys;                    // text of the keys that run it, or nullptr
     char *function;                // the function it runs on the focused panel, or nullptr
     ECSPanel tab;                  // the panel whose tab it shows, or nullptr
+    u32 tabID;                     // its id, as a new panel may get the address of one that closed while the menu is open
     struct ECSIMenuEntry *submenu; // stb_ds array of the entries of the submenu it opens, or nullptr
 } ECSIMenuEntry;
 
@@ -224,7 +225,9 @@ static ECSIMenuEntry *ECSIMenus_BuildGroupMenu(ECSPanel shownPanel)
 
     for (usz i = 0; i < count; i++)
     {
-        ECSIMenus_Add(&tabs, panels[i]->title, i == shown ? SDL_strdup(OPENECS_SHOWN_MARK) : nullptr, nullptr)->tab = panels[i];
+        ECSIMenuEntry *entry = ECSIMenus_Add(&tabs, panels[i]->title, i == shown ? SDL_strdup(OPENECS_SHOWN_MARK) : nullptr, nullptr);
+        entry->tab = panels[i];
+        entry->tabID = panels[i]->id;
     }
 
     ECSIMenus_AddSubmenu(&entries, "Tabs", tabs);
@@ -268,7 +271,7 @@ static void ECSIMenus_Run(usz level, usz index)
     }
 
     // closing the menus frees the entry, so what it does is copied first
-    ECSPanel tab = entry->tab;
+    ECSPanel tab = entry->tab != nullptr && ECSILayout_HasPanel(entry->tab) && entry->tab->id == entry->tabID ? entry->tab : nullptr;
     char *function = entry->function == nullptr ? nullptr : SDL_strdup(entry->function);
     ECSIMenus_CloseFrom(0);
 

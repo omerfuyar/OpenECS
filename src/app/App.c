@@ -127,9 +127,20 @@ static char *ECSIApp_FindXdgFolder(const char *variable, const char *fallback)
 #endif
 }
 
-/// @brief Removes everything a failed plugin registered: its panel types, functions, settings, timers, events and keys.
+/// @brief Stops a plugin's code that runs apart from the main loop: its workers, and its background work, whose done functions run now.
+static void ECSIApp_StopPluginCode(ECSPlugin plugin)
+{
+    ECSIWorkers_StopPlugin(plugin);
+    ECSIPlugin_StopWork(plugin);
+    ECSITasks_ForgetPlugin(plugin);
+}
+
+/// @brief Stops a failed or disabled plugin's code, then removes everything it registered: its panel types, functions, settings, timers, events and
+/// keys.
 static void ECSIApp_RemoveRegistrations(ECSPlugin plugin)
 {
+    // a plugin whose start fails may have started workers and background work before it failed
+    ECSIApp_StopPluginCode(plugin);
     ECSIPanels_RemovePlugin(plugin);
     ECSIServices_RemovePlugin(plugin);
     ECSISettings_RemovePlugin(plugin);
@@ -775,9 +786,7 @@ static void ECSIApp_UnloadPlugins(ECSPlugin *plugins, ECSPanel *affected, const 
             }
         }
 
-        ECSIWorkers_StopPlugin(plugins[i]);
-        ECSIPlugin_StopWork(plugins[i]);
-        ECSITasks_ForgetPlugin(plugins[i]);
+        ECSIApp_StopPluginCode(plugins[i]);
         ECSIServices_DestroyHandlesOfPlugin(plugins[i]);
 
         if (noted)

@@ -51,10 +51,13 @@ static struct
     bool prefixActive;
     const char **prefixLines; // stb_ds array of the lines shown after the prefix: key text, description, and so on; a nullptr key text makes a heading
     char **prefixTexts;       // stb_ds array of the key texts made for the lines, such as "1...0"
-    ECSPanel pointerPanel;    // panel that got the press; it gets pointer events until the last held button is released
-    u32 pointerButtons;       // SDL's mask of the buttons whose press the panel got and that are still held
-    ECSPopup pointerPopup;    // popup that got the press; it gets pointer events until the release
-    f32 pointerX;             // the pointer's last position in the OS window, in layout units
+    // a panel or popup is kept with its id, as a new one may get a freed one's address
+    ECSPanel pointerPanel; // panel that got the press; it gets pointer events until the last held button is released
+    u32 pointerPanelID;
+    u32 pointerButtons;    // SDL's mask of the buttons whose press the panel got and that are still held
+    ECSPopup pointerPopup; // popup that got the press; it gets pointer events until the release
+    u32 pointerPopupID;
+    f32 pointerX; // the pointer's last position in the OS window, in layout units
     f32 pointerY;
     char *dragType;      // type of the data a panel drags, or nullptr
     ECSValue *dragValue; // the dragged data
@@ -63,6 +66,7 @@ static struct
     bool swallowText;    // the last key press ran a binding or the core's keys, so the text it types is dropped
     bool textOn;         // text input is on, for the panel below
     ECSPanel textPanel;
+    u32 textPanelID;
     SDL_Window *textWindow; // the OS window text input is on in
     SDL_Rect textArea;      // where the input method shows its window, in the OS window
     // an input method, such as fcitx5, may repeat a held key itself: it sends a release and a press with the first press's time, again and again
@@ -177,7 +181,7 @@ static bool ECSIInput_IsModifierKey(SDL_Keycode key)
 /// @brief Gets the panel that got the pointer press, unless code closed it since.
 static ECSPanel ECSIInput_PointerPanel(void)
 {
-    if (INPUT.pointerPanel != nullptr && !ECSILayout_HasPanel(INPUT.pointerPanel))
+    if (INPUT.pointerPanel != nullptr && (!ECSILayout_HasPanel(INPUT.pointerPanel) || INPUT.pointerPanel->id != INPUT.pointerPanelID))
     {
         INPUT.pointerPanel = nullptr;
     }
@@ -185,7 +189,7 @@ static ECSPanel ECSIInput_PointerPanel(void)
     return INPUT.pointerPanel;
 }
 
-/// @brief Gets the popup that got the pointer press, unless it has closed since. It compares pointers only, so the popup may already be freed.
+/// @brief Gets the popup that got the pointer press, unless it has closed since. A popup in the open list lives, so its id can be read.
 static ECSPopup ECSIInput_PointerPopup(void)
 {
     usz count = 0;
@@ -194,7 +198,7 @@ static ECSPopup ECSIInput_PointerPopup(void)
 
     for (usz i = 0; i < count; i++)
     {
-        open = open || popups[i] == INPUT.pointerPopup;
+        open = open || (popups[i] == INPUT.pointerPopup && popups[i]->id == INPUT.pointerPopupID);
     }
 
     INPUT.pointerPopup = open ? INPUT.pointerPopup : nullptr;
@@ -234,6 +238,7 @@ static bool ECSIInput_PressPopups(const SDL_MouseButtonEvent *button)
     if (popup != nullptr)
     {
         INPUT.pointerPopup = popup;
+        INPUT.pointerPopupID = popup->id;
         ECSIInput_SendPopupPointer(popup, ECSPanelEventType_PointerDown, x, y, button->button);
     }
     else if (count > 0)
@@ -809,6 +814,7 @@ static void ECSIInput_PressPointer(const SDL_MouseButtonEvent *button)
     {
         ECSILayout_SetFocus(panel);
         INPUT.pointerPanel = panel;
+        INPUT.pointerPanelID = panel->id;
         INPUT.pointerButtons = SDL_BUTTON_MASK(button->button);
 
         ECSIInput_SendPointer(panel, ECSPanelEventType_PointerDown, x, y, button->button);
@@ -1193,7 +1199,7 @@ void ECSIInput_UpdateTextInput(void)
         area = (SDL_Rect){(int)SDL_roundf(focus->x + focus->textArea.x), (int)SDL_roundf(focus->y + focus->textArea.y), (int)SDL_roundf(focus->textArea.w), (int)SDL_roundf(focus->textArea.h)};
     }
 
-    if (enable == INPUT.textOn && (!enable || (focus == INPUT.textPanel && SDL_RectsEqual(&area, &INPUT.textArea))))
+    if (enable == INPUT.textOn && (!enable || (focus == INPUT.textPanel && focus->id == INPUT.textPanelID && SDL_RectsEqual(&area, &INPUT.textArea))))
     {
         return;
     }
@@ -1215,6 +1221,7 @@ void ECSIInput_UpdateTextInput(void)
     INPUT.textOn = enable;
     INPUT.textWindow = window;
     INPUT.textPanel = enable ? focus : nullptr;
+    INPUT.textPanelID = enable ? focus->id : 0;
     INPUT.textArea = area;
 }
 

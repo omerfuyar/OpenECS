@@ -10,6 +10,7 @@
 struct ECSIPopup
 {
     ECSPanel panel;
+    u32 id; // no other popup since the start had it, so a pointer kept to a freed popup does not match a new one at its address
     ECSPopupDesc desc;
     SDL_Surface *pixels; // what it drew last, or nullptr before it is first drawn
     bool needsDraw;

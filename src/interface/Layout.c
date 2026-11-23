@@ -1509,7 +1509,7 @@ void ECSILayout_RequestFrame(void)
 
 bool ECSILayout_WantsFrame(void)
 {
-    bool wants = LAYOUT.frameNeeded;
+    bool wants = ECSILayout_IsFrameRequested();
     usz count = 0;
     ECSIRoot *const *roots = ECSILayout_GetRoots(&count);
 
@@ -1523,7 +1523,7 @@ bool ECSILayout_WantsFrame(void)
 
 bool ECSILayout_IsFrameRequested(void)
 {
-    return LAYOUT.frameNeeded;
+    return LAYOUT.frameNeeded || ECSIPanels_TabsChanged();
 }
 
 bool ECSILayout_RootWantsFrame(ECSIRoot *root)
@@ -1542,6 +1542,7 @@ void ECSILayout_Update(void)
 {
     // requests made while the frame is drawn, such as a tab row that scrolls, get the next frame
     LAYOUT.frameNeeded = false;
+    ECSIPanels_ClearTabsChanged();
     ECSIWorkspace *workspace = ECSILayout_GetCurrent();
 
     if (workspace == nullptr)

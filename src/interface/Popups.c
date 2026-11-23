@@ -34,6 +34,7 @@ static struct
     ECSPopup *open;   // stb_ds array, the oldest first
     ECSPopup *closed; // stb_ds array of the popups waiting to be freed
     ECSIPopupReleaseFunction Release;
+    u32 lastID;
 } POPUPS = {0};
 
 /// @brief Frees a popup and what the window shows it with.
@@ -275,6 +276,7 @@ SHUResult ECSPopup_Open(ECSPanel panel, ECSPopup *retPopup, const ECSPopupDesc *
     }
 
     popup->panel = panel;
+    popup->id = ++POPUPS.lastID;
     popup->desc = *desc;
     popup->needsDraw = true;
     arrput(POPUPS.open, popup);
