@@ -110,6 +110,10 @@ const char *ECSIPlugin_GetDescription(ECSPlugin plugin);
 /// @return The version its manifest gives.
 const char *ECSIPlugin_GetVersion(ECSPlugin plugin);
 
+/// @brief Gives an error that plugins reported, in the order they came, as "plugin: message", each once.
+/// @return The error, or nullptr past the last one.
+const char *ECSIPlugins_GetError(usz index);
+
 /// @brief Reports an error of a plugin's callback. Repeats of the same error are counted, not reported again; ECSIPlugins_ReportRepeatedErrors reports the counts.
 /// @param plugin The plugin.
 /// @param message The error.

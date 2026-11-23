@@ -2334,7 +2334,9 @@ static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *
     int index = callbacks + 1;
 
     // a Lua function that failed gives nil for its results, and why last: C gets zeros for them
-    bool failedCall = signature->fails && lua_type(state, callbacks + resultCount) == LUA_TSTRING;
+    // one that worked gives nil for why, its last output, which C gets as nullptr (DESIGN 10.8)
+    int last = callbacks + resultCount;
+    bool failedCall = signature->fails && lua_type(state, last) == LUA_TSTRING;
 
     if (signature->result.type != ECSIParameterType_Void && !ECSIServices_WriteOutput(state, function, index++, anchors, signature->result, result, true) &&
         !(failedCall && lua_isnil(state, index - 1)))
@@ -2345,7 +2347,7 @@ static void ECSIServices_RunLua(ECSIFunction *function, ECSPlugin caller, void *
     for (usz i = 0; i < count; i++)
     {
         if (signature->parameters[i].out && !ECSIServices_WriteOutput(state, function, index++, anchors, signature->parameters[i], *(void **)arguments[i], false) &&
-            !(failedCall && lua_isnil(state, index - 1)))
+            !((failedCall || (signature->fails && index - 1 == last)) && lua_isnil(state, index - 1)))
         {
             ECSIServices_ReportType(state, function, index - 1);
         }

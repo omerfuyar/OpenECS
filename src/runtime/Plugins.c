@@ -1111,6 +1111,11 @@ void ECSIPlugin_ReportError(ECSPlugin plugin, const char *message)
     }
 }
 
+const char *ECSIPlugins_GetError(usz index)
+{
+    return index < shlenu(PLUGINS.errors) ? PLUGINS.errors[index].key : nullptr;
+}
+
 bool ECSIPlugin_DependsOn(ECSPlugin plugin, ECSPlugin other)
 {
     SDL_assert(plugin != nullptr);

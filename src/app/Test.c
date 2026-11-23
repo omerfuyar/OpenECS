@@ -6,6 +6,7 @@
 #include "interface/Layout.h"
 #include "interface/Panels.h"
 #include "interface/Window.h"
+#include "runtime/Plugins.h"
 #include "runtime/Services.h"
 #include "runtime/Settings.h"
 
@@ -846,6 +847,20 @@ static int ECSITest_Pixel(lua_State *state)
     return 1;
 }
 
+/// @brief test.errors(): the errors that plugins reported (14.2) since the program started, each once, as "plugin: message".
+static int ECSITest_Errors(lua_State *state)
+{
+    lua_newtable(state);
+
+    for (usz i = 0; ECSIPlugins_GetError(i) != nullptr; i++)
+    {
+        lua_pushstring(state, ECSIPlugins_GetError(i));
+        lua_rawseti(state, -2, (int)i + 1);
+    }
+
+    return 1;
+}
+
 static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"key", ECSITest_Key},
     {"keyEvent", ECSITest_KeyEvent},
@@ -871,6 +886,7 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"close", ECSITest_Close},
     {"screenshot", ECSITest_Screenshot},
     {"pixel", ECSITest_Pixel},
+    {"errors", ECSITest_Errors},
     {nullptr, nullptr},
 };
 
