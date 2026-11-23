@@ -55,9 +55,9 @@ typedef struct ECSIPlugin
     SDL_Time changed;          // the newest change of its files when its code last started
     SDL_Time seen;             // the newest change of its files when they were last checked
     bool waits;                // a reload failed to start it, so a change of its files enables it again
-    bool failed;               // its code failed to start; plugins that depend on it are skipped
-    bool disabled;             // the user disabled it, or a plugin it depends on; its code is not loaded
-    bool stopping;             // it is being disabled, so it takes no new background work; guarded by nothing, as only the main thread writes it
+    SDL_AtomicInt failed;      // its code failed to start; plugins that depend on it are skipped; other threads read it
+    SDL_AtomicInt disabled;    // the user disabled it, or a plugin it depends on; its code is not loaded; other threads read it
+    SDL_AtomicInt stopping;    // it is being disabled, so it takes no new background work; only the main thread writes it, and other threads read it
     SDL_AtomicInt generation;  // grows each time its code is loaded, and when it starts and ends being unloaded, so work of an earlier load is dropped; other threads read it
     ECSValue *keptState;       // the state it saved when it was disabled, or that a session gave it while disabled; nullptr if none
     u32 keptStateVersion;
@@ -123,9 +123,9 @@ static thread_local struct
 } PLUGINS_THREAD = {0};
 
 /// @brief Tells whether a plugin's code runs: it loaded, did not fail and is not disabled.
-static bool ECSIPlugin_Runs(const ECSIPlugin *plugin)
+static bool ECSIPlugin_Runs(ECSIPlugin *plugin)
 {
-    return !plugin->failed && !plugin->disabled;
+    return !SDL_GetAtomicInt(&plugin->failed) && !SDL_GetAtomicInt(&plugin->disabled);
 }
 
 static ECSIPlugin *ECSIPlugin_Find(const char *name)
@@ -555,7 +555,7 @@ static SHUResult ECSIPlugin_LoadLibrary(const char *name, const char *folder, SD
 /// @return The result it failed with.
 static SHUResult ECSIPlugin_Fail(ECSIPlugin *plugin, const char *what, SHUResult result)
 {
-    plugin->failed = true;
+    SDL_SetAtomicInt(&plugin->failed, 1);
     PLUGINS.hooks.RemoveRegistrations(plugin);
     ECSIPlugin_Forget(plugin);
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' %s (%s).", plugin->name, what, SHUResult_String(result));
@@ -564,8 +564,8 @@ static SHUResult ECSIPlugin_Fail(ECSIPlugin *plugin, const char *what, SHUResult
     if (PLUGINS.enabling)
     {
         ECSIPlugin_UnloadLater(plugin);
-        plugin->failed = false;
-        plugin->disabled = true;
+        SDL_SetAtomicInt(&plugin->failed, 0);
+        SDL_SetAtomicInt(&plugin->disabled, 1);
         (void)SDL_AddAtomicInt(&plugin->generation, 1);
     }
 
@@ -691,7 +691,7 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
     {
         ECSIPlugin *plugin = ECSIPlugin_Record(name, manifest);
         SHU_ReturnResult(plugin == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok);
-        plugin->disabled = true;
+        SDL_SetAtomicInt(&plugin->disabled, 1);
         SDL_Log("Plugin '%s' is disabled.", name);
         return OPENECS_PLUGIN_DISABLED;
     }
@@ -725,11 +725,11 @@ static SHUResult ECSIPlugin_Start(const char *name, const ECSIManifest *manifest
     plugin->changed = ECSIPlugin_NewestChange(manifest->folder);
     plugin->seen = plugin->changed;
     plugin->waits = false;
-    plugin->disabled = false;
+    SDL_SetAtomicInt(&plugin->disabled, 0);
     SDL_free(plugin->misuse);
     plugin->misuse = nullptr;
-    plugin->failed = false;
-    plugin->stopping = false;
+    SDL_SetAtomicInt(&plugin->failed, 0);
+    SDL_SetAtomicInt(&plugin->stopping, 0);
     (void)SDL_AddAtomicInt(&plugin->generation, 1);
 
     // a misuse while the plugin starts fails its start
@@ -778,14 +778,14 @@ static SHUResult ECSIPlugin_Load(const char *name, const char *minimum)
     ECSIPlugin *plugin = ECSIPlugin_Find(name);
 
     // a disabled plugin stays disabled, unless the user enables it or a plugin that depends on it
-    if (plugin != nullptr && !(plugin->disabled && PLUGINS.enabling))
+    if (plugin != nullptr && !(SDL_GetAtomicInt(&plugin->disabled) && PLUGINS.enabling))
     {
-        if (plugin->disabled)
+        if (SDL_GetAtomicInt(&plugin->disabled))
         {
             return OPENECS_PLUGIN_DISABLED;
         }
 
-        return ECSIPlugin_CheckVersion(name, plugin->version, minimum) && !plugin->failed ? SHUResult_Ok : SHUResult_ErrBadData;
+        return ECSIPlugin_CheckVersion(name, plugin->version, minimum) && !SDL_GetAtomicInt(&plugin->failed) ? SHUResult_Ok : SHUResult_ErrBadData;
     }
 
     for (usz i = 0; i < arrlenu(PLUGINS.loading); i++)
@@ -1022,7 +1022,7 @@ void ECSIPlugins_RestoreStates(const ECSValue *states)
         i64 version = ECSValue_GetInteger(ECSValue_GetTableField(entry, "stateVersion"), 0);
 
         // a disabled plugin keeps its state until it is enabled
-        if (plugin->disabled && entry != nullptr)
+        if (SDL_GetAtomicInt(&plugin->disabled) && entry != nullptr)
         {
             ECSValue_Destroy(&plugin->keptState);
 
@@ -1286,13 +1286,13 @@ bool ECSIPlugin_IsEnabled(ECSPlugin plugin)
 void ECSIPlugin_StopWork(ECSPlugin plugin)
 {
     SDL_assert(plugin != nullptr);
-    plugin->stopping = true;
+    SDL_SetAtomicInt(&plugin->stopping, 1);
 }
 
 bool ECSIPlugin_TakesWork(ECSPlugin plugin)
 {
     SDL_assert(plugin != nullptr);
-    return ECSIPlugin_Runs(plugin) && !plugin->stopping;
+    return ECSIPlugin_Runs(plugin) && !SDL_GetAtomicInt(&plugin->stopping);
 }
 
 u32 ECSIPlugin_GetGeneration(ECSPlugin plugin)
@@ -1440,7 +1440,7 @@ void ECSIPlugins_Disable(ECSPlugin plugin, const char *misuse)
     ECSIPlugin_UnloadLater(plugin);
 
     // work that Destroy itself started is dropped too
-    plugin->disabled = true;
+    SDL_SetAtomicInt(&plugin->disabled, 1);
     (void)SDL_AddAtomicInt(&plugin->generation, 1);
     SDL_Log("Plugin '%s' is disabled.", plugin->name);
 }
@@ -1526,7 +1526,7 @@ static SHUResult ECSIPlugins_ListOne(ECSValue *list, const char *name)
     result = result ? result : ECSIPlugins_SetText(entry, "version", source->version);
     result = result ? result : ECSIPlugins_SetText(entry, "description", source->description);
     result = result ? result : ECSIPlugins_SetBool(entry, "enabled", plugin != nullptr && ECSIPlugin_Runs(plugin));
-    result = result ? result : ECSIPlugins_SetBool(entry, "failed", plugin != nullptr && plugin->failed);
+    result = result ? result : ECSIPlugins_SetBool(entry, "failed", plugin != nullptr && SDL_GetAtomicInt(&plugin->failed));
     result = result ? result : ECSIPlugins_SetNames(entry, "depends", source->dependencies);
     ECSIPlugin_FreeManifestFields(&unloaded);
     return result;
@@ -1589,7 +1589,7 @@ SHUResult ECSIPlugins_GetDisabled(ECSValue *retList)
 
     for (usz i = 0; i < shlenu(PLUGINS.plugins); i++)
     {
-        if (PLUGINS.plugins[i].value->disabled)
+        if (SDL_GetAtomicInt(&PLUGINS.plugins[i].value->disabled))
         {
             ECSValue *item = nullptr;
             SHU_ReturnResult(ECSValue_AddListItem(retList, &item));
@@ -1615,7 +1615,7 @@ bool ECSIPlugins_IsDisabled(const char *name)
     SDL_assert(name != nullptr);
 
     ECSIPlugin *plugin = ECSIPlugin_FindOwner(name);
-    return plugin != nullptr && plugin->disabled;
+    return plugin != nullptr && SDL_GetAtomicInt(&plugin->disabled);
 }
 
 const char *ECSIPlugins_GetMisuse(const char *name)
@@ -1623,7 +1623,7 @@ const char *ECSIPlugins_GetMisuse(const char *name)
     SDL_assert(name != nullptr);
 
     ECSIPlugin *plugin = ECSIPlugin_FindOwner(name);
-    return plugin != nullptr && plugin->disabled ? plugin->misuse : nullptr;
+    return plugin != nullptr && SDL_GetAtomicInt(&plugin->disabled) ? plugin->misuse : nullptr;
 }
 
 ECSPlugin ECSIPlugin_GetCalling(void)

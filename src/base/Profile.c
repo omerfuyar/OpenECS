@@ -361,7 +361,7 @@ void ECSIProfile_Enter(ECSIProfileScope *scope, ECSPlugin plugin, const char *na
     SDL_assert(scope != nullptr);
 
     // the time of other threads runs beside the main thread's, so it is no part of a frame
-    scope->active = PROFILE.on && SDL_IsMainThread();
+    scope->active = SDL_IsMainThread() && PROFILE.on; // the main thread alone reads and writes PROFILE.on
 
     if (!scope->active)
     {
