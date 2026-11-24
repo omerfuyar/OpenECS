@@ -142,8 +142,8 @@ static void ECSIApp_StopPluginCode(ECSPlugin plugin)
     ECSITasks_ForgetPlugin(plugin);
 }
 
-/// @brief Stops a failed or disabled plugin's code, then removes everything it registered: its panel types, functions, settings, timers, events and
-/// keys.
+/// @brief Stops a failed or disabled plugin's code, then removes everything it registered: its panel types, functions, settings, timers, events,
+/// keys and entries of the tool's menu.
 static void ECSIApp_RemoveRegistrations(ECSPlugin plugin)
 {
     // a plugin whose start fails may have started workers and background work before it failed
@@ -154,6 +154,7 @@ static void ECSIApp_RemoveRegistrations(ECSPlugin plugin)
     ECSIEvents_StopTimersOfPlugin(plugin);
     ECSIEvents_RemovePlugin(plugin);
     ECSIKeys_RemovePlugin(plugin);
+    ECSIMenus_RemovePlugin(plugin);
 }
 
 /// @brief Quits SDL. On Linux, SDL closes the D-Bus connection with its last tray, and its notifications then remove a filter from a new connection,
@@ -568,6 +569,9 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     if (APP.test)
     {
         ECSIApp_ExitOnFailure(ECSITest_Load(arguments->test, &testPreset), "reading the test", arguments->test);
+
+        // a test's screenshots of one state match, so the hint holds still
+        ECSIWindow_HoldHint();
     }
 
     ECSIApp_FindUserFolders();

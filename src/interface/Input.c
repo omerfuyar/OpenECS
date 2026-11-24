@@ -7,6 +7,7 @@
 #include "interface/Panels.h"
 #include "interface/Popups.h"
 #include "interface/Window.h"
+#include "runtime/Events.h"
 #include "runtime/Services.h"
 #include "runtime/Settings.h"
 
@@ -15,42 +16,12 @@
 
 #pragma region Source Only
 
-/// @brief Starts of the names of the functions that switch workspaces and that move the focused panel to one; the workspace's number follows.
-#define OPENECS_SWITCH_FUNCTION "ecs.workspace.switch"
-#define OPENECS_MOVE_FUNCTION "ecs.layout.moveToWorkspace"
-
 /// @brief Choices of the setting ecs.focus; its value comes from the core's settings file.
 static const char *const OPENECS_FOCUS_CHOICES[] = {"click", "hover", nullptr};
-
-/// @brief A section of the list of prefix keys, in the order the list shows them.
-typedef enum ECSIPrefixSection
-{
-    ECSIPrefixSection_Navigation = 0,
-    ECSIPrefixSection_Panel,
-    ECSIPrefixSection_Layout,
-    ECSIPrefixSection_Session,
-    ECSIPrefixSection_More,
-    ECSIPrefixSection_Count,
-} ECSIPrefixSection;
-
-/// @brief Headings of the sections of the list of prefix keys, in the order of ECSIPrefixSection.
-static const char *const OPENECS_PREFIX_SECTIONS[ECSIPrefixSection_Count] = {"Navigation", "Panel", "Layout", "Session", "More"};
-
-/// @brief Functions that the list of prefix keys shows on one line when they run on the four arrows: left, right, up and down.
-static const struct
-{
-    const char *functions[4];
-    const char *description;
-} OPENECS_ARROW_FAMILIES[] = {
-    {{"ecs.layout.focusLeft", "ecs.layout.focusRight", "ecs.layout.focusUp", "ecs.layout.focusDown"}, "Focus to panel"},
-    {{"ecs.layout.moveLeft", "ecs.layout.moveRight", "ecs.layout.moveUp", "ecs.layout.moveDown"}, "Move panel to"},
-};
 
 static struct
 {
     bool prefixActive;
-    const char **prefixLines; // stb_ds array of the lines shown after the prefix: key text, description, and so on; a nullptr key text makes a heading
-    char **prefixTexts;       // stb_ds array of the key texts made for the lines, such as "1...0"
     // a panel or popup is kept with its id, as a new one may get a freed one's address
     ECSPanel pointerPanel; // panel that got the press; it gets pointer events until the last held button is released
     u32 pointerPanelID;
@@ -432,151 +403,6 @@ static void ECSIInput_CompleteDrop(f32 x, f32 y)
     ECSIInput_ForgetDropped();
 }
 
-/// @brief Finds the section of the list of prefix keys that a function is listed in.
-static ECSIPrefixSection ECSIInput_SectionOf(const char *function)
-{
-    // by the start of their names: Navigation, Layout and Session; the core's other functions act on the panel, and the plugins' are More
-    static const struct
-    {
-        const char *start;
-        ECSIPrefixSection section;
-    } SECTIONS[] = {
-        {"ecs.layout.focus", ECSIPrefixSection_Navigation},
-        {"ecs.layout.move", ECSIPrefixSection_Navigation},
-        {"ecs.layout.nextTab", ECSIPrefixSection_Navigation},
-        {"ecs.workspace.", ECSIPrefixSection_Navigation},
-        {"ecs.layout.closeGroup", ECSIPrefixSection_Layout},
-        {"ecs.layout.lock", ECSIPrefixSection_Layout},
-        {"ecs.layout.reset", ECSIPrefixSection_Layout},
-        {"ecs.session.", ECSIPrefixSection_Session},
-        {"ecs.app.", ECSIPrefixSection_Session},
-    };
-
-    for (usz i = 0; i < SDL_arraysize(SECTIONS); i++)
-    {
-        if (SDL_strncmp(function, SECTIONS[i].start, SDL_strlen(SECTIONS[i].start)) == 0)
-        {
-            return SECTIONS[i].section;
-        }
-    }
-
-    return SDL_strncmp(function, "ecs.", 4) == 0 ? ECSIPrefixSection_Panel : ECSIPrefixSection_More;
-}
-
-/// @brief Finds the prefix key that runs a function with a key and modifiers, and is not listed yet.
-/// @return Its position, or -1.
-static i64 ECSIInput_FindPrefixKey(const char *function, u32 key, u32 modifiers, const bool *listedKeys)
-{
-    const ECSIKeyBinding *keys = ECSIKeys_GetPrefixKeys();
-
-    for (usz i = 0; i < arrlenu(keys); i++)
-    {
-        const ECSIKeyBinding *binding = &keys[i];
-
-        if (!listedKeys[i] && binding->key == key && binding->modifiers == modifiers && SDL_strcmp(binding->function, function) == 0)
-        {
-            return (i64)i;
-        }
-    }
-
-    return -1;
-}
-
-/// @brief Folds a prefix key into one line with its family, when the family's four functions run on the four arrows with the same modifiers.
-/// @return The line's key text, such as "Shift+Arrows", made for the list; or nullptr if the key does not fold.
-static char *ECSIInput_FoldArrows(usz index, bool *listedKeys, const char **retDescription)
-{
-    const ECSIKeyBinding *binding = &ECSIKeys_GetPrefixKeys()[index];
-    const SDL_Keycode arrows[] = {SDLK_LEFT, SDLK_RIGHT, SDLK_UP, SDLK_DOWN};
-
-    for (usz family = 0; family < SDL_arraysize(OPENECS_ARROW_FAMILIES); family++)
-    {
-        i64 members[4] = {0};
-        bool complete = true;
-
-        for (usz i = 0; i < 4; i++)
-        {
-            members[i] = ECSIInput_FindPrefixKey(OPENECS_ARROW_FAMILIES[family].functions[i], arrows[i], binding->modifiers, listedKeys);
-            complete = complete && members[i] >= 0;
-        }
-
-        if (!complete || (members[0] != (i64)index && members[1] != (i64)index && members[2] != (i64)index && members[3] != (i64)index))
-        {
-            continue;
-        }
-
-        // the modifiers keep the user's spelling: the text before the key's name
-        const char *plus = SDL_strrchr(binding->text, '+');
-        int modifiersLength = plus == nullptr ? 0 : (int)(plus - binding->text + 1);
-        char *text = nullptr;
-
-        if (SDL_asprintf(&text, "%.*sArrows", modifiersLength, binding->text) < 0)
-        {
-            return nullptr;
-        }
-
-        for (usz i = 0; i < 4; i++)
-        {
-            listedKeys[members[i]] = true;
-        }
-
-        *retDescription = OPENECS_ARROW_FAMILIES[family].description;
-        return text;
-    }
-
-    return nullptr;
-}
-
-/// @brief Folds the keys of one workspace function family into one line, from the first workspace's key to the last one's, such as "1...0" or "Shift+1...0".
-/// @param start Start of the family's names; the workspace's number follows.
-/// @return The line's key text, made for the list.
-static char *ECSIInput_FoldWorkspaces(const char *start, bool *listedKeys)
-{
-    const char *firstKey = nullptr;
-    const char *lastKey = nullptr;
-    i64 first = 0;
-    i64 last = 0;
-
-    const ECSIKeyBinding *keys = ECSIKeys_GetPrefixKeys();
-
-    for (usz i = 0; i < arrlenu(keys); i++)
-    {
-        const char *function = keys[i].function;
-
-        if (SDL_strncmp(function, start, SDL_strlen(start)) != 0)
-        {
-            continue;
-        }
-
-        i64 number = SDL_strtoll(function + SDL_strlen(start), nullptr, 10);
-        listedKeys[i] = true;
-
-        if (firstKey == nullptr || number < first)
-        {
-            firstKey = keys[i].text;
-            first = number;
-        }
-
-        if (lastKey == nullptr || number > last)
-        {
-            lastKey = keys[i].text;
-            last = number;
-        }
-    }
-
-    if (first == last)
-    {
-        return SDL_strdup(firstKey);
-    }
-
-    // the last key leaves out the modifiers it shares with the first: "Shift+1...0"
-    const char *plus = SDL_strrchr(lastKey, '+');
-    usz modifiersLength = plus == nullptr ? 0 : (usz)(plus - lastKey + 1);
-    const char *lastName = SDL_strncmp(firstKey, lastKey, modifiersLength) == 0 ? lastKey + modifiersLength : lastKey;
-    char *text = nullptr;
-    return SDL_asprintf(&text, "%s...%s", firstKey, lastName) < 0 ? nullptr : text;
-}
-
 /// @brief Orders two keys after the prefix by the order of their functions among the core's, then by their key texts. userData is the keys.
 static int SDLCALL ECSIInput_CompareKeys(void *userData, const void *first, const void *second)
 {
@@ -588,40 +414,11 @@ static int SDLCALL ECSIInput_CompareKeys(void *userData, const void *first, cons
     return orderA != orderB ? (orderA < orderB ? -1 : 1) : SDL_strcmp(firstBinding->text, secondBinding->text);
 }
 
-/// @brief Frees the lines of the list of prefix keys.
-static void ECSIInput_FreePrefixLines(void)
+/// @brief Sets a list to the keys after the prefix with what they do now, in the order of the core's functions, whatever order the settings files
+/// give them in, without what cannot be done now.
+static SHUResult ECSIInput_ListPrefixKeys(ECSValue *list, ECSPanel focus)
 {
-    arrfree(INPUT.prefixLines);
-
-    for (usz i = 0; i < arrlenu(INPUT.prefixTexts); i++)
-    {
-        SDL_free(INPUT.prefixTexts[i]);
-    }
-
-    arrfree(INPUT.prefixTexts);
-}
-
-/// @brief Ends waiting for the key after the prefix, and hides the list of keys.
-static void ECSIInput_EndPrefix(void)
-{
-    INPUT.prefixActive = false;
-    ECSIInput_FreePrefixLines();
-    ECSIWindow_ShowPrefixKeys(nullptr, 0);
-}
-
-/// @brief Starts waiting for the key after the prefix, and shows the keys with what they do now, in sections.
-static void ECSIInput_StartPrefix(void)
-{
-    INPUT.prefixActive = true;
-    ECSIInput_FreePrefixLines();
-
     const ECSIKeyBinding *keys = ECSIKeys_GetPrefixKeys();
-    ECSPanel focus = ECSILayout_GetFocus();
-    bool *listedKeys = nullptr;
-    arrsetlen(listedKeys, arrlenu(keys));
-    SDL_memset(listedKeys, 0, arrlenu(listedKeys) * sizeof(bool));
-
-    // the keys are listed in the order of the core's functions, whatever order the settings files give them in
     usz *order = nullptr;
     arrsetlen(order, arrlenu(keys));
 
@@ -631,63 +428,86 @@ static void ECSIInput_StartPrefix(void)
     }
 
     SDL_qsort_r(order, arrlenu(order), sizeof(usz), ECSIInput_CompareKeys, (void *)keys);
+    ECSValue_SetTable(list);
+    SHUResult result = SHUResult_Ok;
 
-    for (ECSIPrefixSection section = 0; section < ECSIPrefixSection_Count; section++)
+    for (usz position = 0; !result && position < arrlenu(order); position++)
     {
-        // a section without keys has no heading
-        usz start = arrlenu(INPUT.prefixLines);
-        arrput(INPUT.prefixLines, nullptr);
-        arrput(INPUT.prefixLines, OPENECS_PREFIX_SECTIONS[section]);
+        const ECSIKeyBinding *binding = &keys[order[position]];
+        ECSValue *item = nullptr;
+        ECSValue *field = nullptr;
 
-        for (usz position = 0; position < arrlenu(order); position++)
+        if (!ECSIMenus_Offers(binding->function, focus))
         {
-            usz i = order[position];
-            const char *function = keys[i].function;
-
-            if (listedKeys[i] || ECSIInput_SectionOf(function) != section || !ECSIMenus_Offers(function, focus))
-            {
-                continue;
-            }
-
-            const char *description = nullptr;
-            char *text = nullptr;
-
-            if (SDL_strncmp(function, OPENECS_SWITCH_FUNCTION, SDL_strlen(OPENECS_SWITCH_FUNCTION)) == 0)
-            {
-                text = ECSIInput_FoldWorkspaces(OPENECS_SWITCH_FUNCTION, listedKeys);
-                description = "Switch to workspace";
-            }
-            else if (SDL_strncmp(function, OPENECS_MOVE_FUNCTION, SDL_strlen(OPENECS_MOVE_FUNCTION)) == 0)
-            {
-                text = ECSIInput_FoldWorkspaces(OPENECS_MOVE_FUNCTION, listedKeys);
-                description = "Move panel to workspace";
-            }
-            else
-            {
-                text = ECSIInput_FoldArrows(i, listedKeys, &description);
-            }
-
-            if (text != nullptr)
-            {
-                arrput(INPUT.prefixTexts, text);
-            }
-
-            arrput(INPUT.prefixLines, text != nullptr ? text : keys[i].text);
-            arrput(INPUT.prefixLines, description != nullptr ? description : ECSIMenus_LabelOf(function, focus));
+            continue;
         }
 
-        if (arrlenu(INPUT.prefixLines) == start + 2)
-        {
-            arrsetlen(INPUT.prefixLines, start);
-        }
+        result = ECSValue_AddListItem(list, &item);
+        result = result ? result : ECSValue_SetTableField(item, "key", &field);
+        result = result ? result : ECSValue_SetString(field, binding->text);
+        result = result ? result : ECSValue_SetTableField(item, "function", &field);
+        result = result ? result : ECSValue_SetString(field, binding->function);
+        result = result ? result : ECSValue_SetTableField(item, "text", &field);
+        result = result ? result : ECSValue_SetString(field, ECSIMenus_LabelOf(binding->function, focus));
     }
 
-    arrfree(listedKeys);
     arrfree(order);
-    arrput(INPUT.prefixLines, "Escape");
-    arrput(INPUT.prefixLines, "Cancel");
+    return result;
+}
 
-    ECSIWindow_ShowPrefixKeys(INPUT.prefixLines, arrlenu(INPUT.prefixLines) / 2);
+/// @brief Emits ecs.prefix: while the core waits for the key after the prefix, the focused panel and the keys with what they do now, for a plugin
+/// to list them; then that it waits no more.
+static void ECSIInput_EmitPrefix(bool waiting)
+{
+    ECSValue *value = nullptr;
+    ECSValue *field = nullptr;
+
+    if (ECSValue_Create(&value) != SHUResult_Ok)
+    {
+        return;
+    }
+
+    ECSValue_SetTable(value);
+    ECSPanel focus = ECSILayout_GetFocus();
+    SHUResult result = ECSValue_SetTableField(value, "waiting", &field);
+
+    if (!result)
+    {
+        ECSValue_SetBool(field, waiting);
+    }
+
+    if (!result && waiting && focus != nullptr)
+    {
+        result = ECSValue_SetTableField(value, "panel", &field);
+        ECSValue_SetInteger(field, ECSPanel_GetID(focus));
+    }
+
+    if (!result && waiting)
+    {
+        result = ECSValue_SetTableField(value, "keys", &field);
+        result = result ? result : ECSIInput_ListPrefixKeys(field, focus);
+    }
+
+    if (!result)
+    {
+        ECSIEvents_EmitCore("ecs.prefix", value);
+    }
+
+    ECSValue_Destroy(&value);
+}
+
+/// @brief Ends waiting for the key after the prefix.
+static void ECSIInput_EndPrefix(void)
+{
+    INPUT.prefixActive = false;
+    ECSIInput_EmitPrefix(false);
+}
+
+/// @brief Starts waiting for the key after the prefix.
+static void ECSIInput_StartPrefix(void)
+{
+    INPUT.prefixActive = true;
+    ECSIInput_EmitPrefix(true);
 }
 
 /// @brief Runs the function of the key pressed after the core prefix. Escape cancels.
@@ -1049,7 +869,6 @@ SHUResult ECSIInput_Initialize(void)
 
 void ECSIInput_Terminate(void)
 {
-    ECSIInput_FreePrefixLines();
     ECSIInput_EndDataDrag();
     ECSIInput_ForgetDropped();
 

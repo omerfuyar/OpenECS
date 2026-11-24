@@ -21,6 +21,9 @@ void ECSIMenus_Terminate(void);
 /// @return true if it can.
 bool ECSIMenus_Offers(const char *function, ECSPanel panel);
 
+/// @brief Removes the functions a plugin added to the tool's menu.
+void ECSIMenus_RemovePlugin(ECSPlugin plugin);
+
 /// @brief Gets the label of a function: what it does to a panel now, or its description.
 /// @param function Name of the function.
 /// @param panel The focused panel, or nullptr.

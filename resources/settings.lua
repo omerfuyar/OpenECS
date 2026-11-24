@@ -9,8 +9,8 @@ return {
   -- the key combination before a core action
   ["ecs.prefix"] = "Alt+W",
 
-  -- the core's keys: prefix holds the keys after the prefix and the functions they run (DESIGN 7.8)
-  -- presets and the user's settings add to them, and false removes a key
+  -- the core's keys: prefix holds the keys after the prefix and the functions they run (DESIGN 7.8);
+  -- plugins give their own functions keys after the prefix too, below these, and presets and the user's settings add to them, and false removes a key
   keys = {
     prefix = {
       ["Left"] = "ecs.layout.focusLeft",
@@ -34,12 +34,6 @@ return {
       ["Q"] = "ecs.app.quit",
       ["S"] = "ecs.session.save",
       ["O"] = "ecs.session.open",
-      ["/"] = "launcher.open",
-      [","] = "settings.open",
-      ["K"] = "keys.open",
-      ["."] = "panels.open",
-      [";"] = "plugins.open",
-      ["F"] = "profiler.open",
       ["1"] = "ecs.workspace.switch1",
       ["2"] = "ecs.workspace.switch2",
       ["3"] = "ecs.workspace.switch3",
@@ -65,24 +59,16 @@ return {
     },
   },
 
-  -- the functions that the tool's menu shows first, which the tool's name in the title bar and a right click on it open; then come the workspaces, reset the layout and quit
-  ["ecs.toolMenu"] = { "settings.open", "keys.open", "panels.open", "plugins.open", "launcher.open", "ecs.session.save", "ecs.session.open" },
+  -- the functions that the tool's menu shows first, which the tool's name in the title bar and a right click on it open;
+  -- then come the plugins' entries in Tools, the workspaces, reset the layout and quit
+  ["ecs.toolMenu"] = { "ecs.session.save", "ecs.session.open" },
 
-  -- the menus of the title bar that OpenECS draws, after the tool's name; an entry is a function's name, or { "name", label = "Label", setting = "a bool setting" },
-  -- which shows the entry on while the setting is true; functions that no plugin of the tool registered are left out
+  -- the menus of the title bar that OpenECS draws, after the tool's name, before the plugins' menu Tools; an entry is a function's name,
+  -- or { "name", label = "Label", setting = "a bool setting" }, which shows the entry on while the setting is true;
+  -- functions that no plugin of the tool registered are left out
   ["ecs.titleMenus"] = {
-    { label = "File", "launcher.open", "ecs.session.open", "ecs.session.save", "ecs.app.quit" },
-    { label = "Edit", "settings.open", "keys.open", "plugins.open" },
-    {
-      label = "Window",
-      "panels.open",
-      "ecs.layout.reopen",
-      "ecs.layout.maximize",
-      "ecs.layout.popOut",
-      "ecs.layout.lock",
-      "ecs.layout.reset",
-      "profiler.open",
-    },
+    { label = "File", "ecs.session.open", "ecs.session.save", "ecs.app.quit" },
+    { label = "Window", "ecs.layout.reopen", "ecs.layout.maximize", "ecs.layout.popOut", "ecs.layout.lock", "ecs.layout.reset" },
   },
 
   -- the tool's own buttons, after the menus, in the same form; a preset gives them

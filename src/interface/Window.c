@@ -37,6 +37,18 @@
 /// @brief How long the pointer stays on a part of the title bar before its tooltip shows.
 #define OPENECS_TOOLTIP_DELAY SDL_MS_TO_NS(500)
 
+/// @brief How fast a hint that does not fit slides, in layout units a second.
+#define OPENECS_HINT_SPEED 30.0f
+
+/// @brief How long a sliding hint rests at each end.
+#define OPENECS_HINT_REST SDL_MS_TO_NS(1500)
+
+/// @brief Radius of the corners of each group, in layout units.
+#define OPENECS_GROUP_RADIUS 6.0f
+
+/// @brief How many straight steps draw the arc of a group's rounded corner.
+#define OPENECS_CORNER_STEPS 8
+
 /// @brief How many texts an OS window keeps before it destroys those its last frame did not draw.
 #define OPENECS_KEPT_TEXTS 256
 
@@ -138,6 +150,9 @@ typedef struct ECSIMenuView
 
 /// @brief An OS window: the main window, or a pop-out window, with what the core draws in it.
 /// @brief A text that an OS window drew, kept for the next frames, as making one takes long.
+/// @brief The corners of a group, which the core's renderer rounds: Clay gives each one's place in a custom element whose data points to one of these.
+static const u8 OPENECS_CORNERS[4] = {0, 1, 2, 3}; // top left, top right, bottom right, bottom left
+
 typedef struct ECSIKeptText
 {
     TTF_Text *text;
@@ -156,7 +171,9 @@ typedef struct ECSIOSWindow
     f32 height;
     ECSIDrawnTab *tabs;             // stb_ds array of the tabs drawn in its last frame
     ECSIDrawnTitleItem *titleItems; // stb_ds array of the parts of the title bar drawn in its last frame
-    f32 titleEnd;                   // where those parts end; the title bar after them moves the window
+    f32 titleEnd;                   // where the parts at the left end; the title bar after them moves the window
+    f32 titleRight;                 // where the parts at the right start: the workspaces' menu, or the window buttons
+    bool hintSlides;                // its hint slid in its last frame, so frames follow
 
     // stb_ds string map of the texts drawn, by size and content, made with its renderer's text engine
     struct
@@ -206,8 +223,8 @@ static struct
     i64 framePercent;     // frame rate as a percentage of the refresh rate, from ecs.vsync; 0 for no vsync and no limit
     u64 frameNanoseconds; // shortest time between frames, from the display's refresh rate; 0 for no limit
     u64 lastFrameTicks;
-    const char *const *prefixLines; // keys after the prefix and what they do, in pairs, or nullptr when the prefix is not pressed
-    usz prefixLineCount;
+    u64 hintSince; // when the hint of the focused OS window began to slide, or 0 while no hint slides
+    bool hintHeld; // the hint never slides, as in a test
 
     ECSINode *gripGroup; // lone group whose grip is shown, or nullptr
     ECSINode *dragSplit; // split whose divider is dragged, or nullptr
@@ -301,9 +318,6 @@ static u16 ECSIWindow_Spacing(f32 units)
 {
     return (u16)ECSIWindow_Px(units);
 }
-
-/// @brief Width of the key column in the list of prefix keys.
-#define OPENECS_PREFIX_KEY_COLUMN 104.0f
 
 static Clay_String ECSIWindow_ClayText(const char *text)
 {
@@ -482,7 +496,7 @@ static SDL_HitTestResult SDLCALL ECSIWindow_HitTest(SDL_Window *window, const SD
     }
 
     // the title bar's own parts and buttons are clicked, and the rest of it moves the window
-    return y < WINDOW.titleBarHeight && x >= osWindow->titleEnd && x < (f32)width - 3.0f * ECSIWindow_GetTitleButtonWidth() ? SDL_HITTEST_DRAGGABLE : SDL_HITTEST_NORMAL;
+    return y < WINDOW.titleBarHeight && x >= osWindow->titleEnd && x < osWindow->titleRight ? SDL_HITTEST_DRAGGABLE : SDL_HITTEST_NORMAL;
 }
 
 /// @brief Lets OpenECS draw an OS window's title bar, or leaves it to the system.
@@ -987,32 +1001,72 @@ static bool ECSIWindow_PlaceTitleItem(ECSIOSWindow *osWindow, ECSIDrawnTitleItem
     return true;
 }
 
-/// @brief Places the parts of an OS window's title bar: the tool's name, the menus, the buttons, then the workspaces' tabs when there are two or more.
-/// Those that do not fit before the window buttons are left out, from the last.
+/// @brief Places the parts of an OS window's title bar: the tool's name, the menus and the buttons from the left, and the workspaces' menu at the
+/// right, before the window buttons. Those at the left that do not fit are left out, from the last; the workspaces' menu goes when the name leaves it no room.
 static void ECSIWindow_PlaceTitleItems(ECSIOSWindow *osWindow)
 {
     arrsetlen(osWindow->titleItems, 0);
-    f32 x = ECSIWindow_Px(OPENECS_TITLE_ITEM_INSET);
-    f32 limit = osWindow->width - 3.0f * ECSIWindow_GetTitleButtonWidth() - ECSIWindow_Px(OPENECS_TITLE_DRAG_ROOM);
-    ECSIWindow_PlaceTitleItem(osWindow, (ECSIDrawnTitleItem){.kind = ECSITitleKind_Name, .label = WINDOW.title, .enabled = true}, &x, limit);
+    f32 inset = ECSIWindow_Px(OPENECS_TITLE_ITEM_INSET);
+    f32 x = inset;
+    f32 room = ECSIWindow_Px(OPENECS_TITLE_DRAG_ROOM);
+    osWindow->titleRight = osWindow->width - 3.0f * ECSIWindow_GetTitleButtonWidth();
+    ECSIWindow_PlaceTitleItem(osWindow, (ECSIDrawnTitleItem){.kind = ECSITitleKind_Name, .label = WINDOW.title, .enabled = true}, &x, osWindow->titleRight);
+    i64 workspace = -1;
+
+    for (usz i = 0; i < arrlenu(WINDOW.titleItems); i++)
+    {
+        f32 width = ECSIWindow_TextWidth(WINDOW.titleItems[i].label) + 2.0f * ECSIWindow_Px(OPENECS_TITLE_ITEM_PADDING);
+
+        if (WINDOW.titleItems[i].kind == ECSITitleKind_Workspace && osWindow->titleRight - width - inset >= x + room)
+        {
+            workspace = (i64)i;
+            osWindow->titleRight -= width + inset;
+        }
+    }
+
     bool fits = true;
 
     for (usz i = 0; fits && i < arrlenu(WINDOW.titleItems); i++)
     {
         const ECSITitleItem *item = &WINDOW.titleItems[i];
-        fits = ECSIWindow_PlaceTitleItem(osWindow, (ECSIDrawnTitleItem){item->kind, i, item->label, item->on, item->enabled, {0, 0, 0, 0}}, &x, limit);
-    }
 
-    usz workspaces = ECSWorkspace_GetCount();
-
-    for (usz number = 1; fits && workspaces >= 2 && number <= workspaces; number++)
-    {
-        const char *name = ECSWorkspace_GetName(number);
-        ECSIDrawnTitleItem item = {ECSITitleKind_Workspace, number, name != nullptr && name[0] != '\0' ? name : "?", number == ECSWorkspace_GetCurrent(), true, {0, 0, 0, 0}};
-        fits = ECSIWindow_PlaceTitleItem(osWindow, item, &x, limit);
+        if (item->kind != ECSITitleKind_Workspace)
+        {
+            fits = ECSIWindow_PlaceTitleItem(osWindow, (ECSIDrawnTitleItem){item->kind, i, item->label, item->on, item->enabled, {0, 0, 0, 0}}, &x, osWindow->titleRight - room);
+        }
     }
 
     osWindow->titleEnd = x;
+
+    if (workspace >= 0)
+    {
+        const ECSITitleItem *item = &WINDOW.titleItems[workspace];
+        x = osWindow->titleRight;
+        ECSIWindow_PlaceTitleItem(osWindow, (ECSIDrawnTitleItem){item->kind, (usz)workspace, item->label, item->on, item->enabled, {0, 0, 0, 0}}, &x, osWindow->width);
+    }
+}
+
+/// @brief Finds how far the hint slides now: a hint that does not fit in its room rests, slides to its end, rests and slides back, while its OS
+/// window has the system's focus; otherwise it shows its start.
+/// @param overflow How much longer than its room the hint is.
+static f32 ECSIWindow_HintOffset(ECSIOSWindow *osWindow, f32 overflow)
+{
+    if (overflow <= 0.0f || WINDOW.hintHeld || (SDL_GetWindowFlags(osWindow->window) & SDL_WINDOW_INPUT_FOCUS) == 0)
+    {
+        return 0.0f;
+    }
+
+    osWindow->hintSlides = true;
+
+    u64 now = SDL_GetTicksNS();
+    WINDOW.hintSince = WINDOW.hintSince == 0 ? now : WINDOW.hintSince;
+    f64 slide = (f64)overflow / (f64)ECSIWindow_Px(OPENECS_HINT_SPEED) * 1e9;
+    f64 rest = (f64)OPENECS_HINT_REST;
+    f64 time = SDL_fmod((f64)(now - WINDOW.hintSince), 2.0 * (rest + slide));
+    f64 part = time < rest ? 0.0 : time < rest + slide     ? (time - rest) / slide
+                               : time < 2.0 * rest + slide ? 1.0
+                                                           : 1.0 - (time - 2.0 * rest - slide) / slide;
+    return (f32)part * overflow;
 }
 
 /// @brief Declares the tooltip of the part of the title bar under the pointer, below the part and inside the window.
@@ -1040,7 +1094,27 @@ static void ECSIWindow_DeclareTooltip(const ECSIOSWindow *osWindow)
     }
 }
 
-/// @brief Declares the title bar of an OS window for Clay: the tool's name, the menus, the buttons and the workspaces' tabs, the preset's hint,
+/// @brief Declares the preset's hint between two places of the title bar; one that does not fit slides (ECSIWindow_HintOffset).
+static void ECSIWindow_DeclareHint(ECSIOSWindow *osWindow, f32 start, f32 end)
+{
+    f32 before = ECSIWindow_Px(16.0f);
+    f32 after = ECSIWindow_Px(8.0f);
+    f32 overflow = WINDOW.hint != nullptr ? ECSIWindow_TextWidth(WINDOW.hint) - (end - start - before - after) : 0.0f;
+    f32 offset = ECSIWindow_HintOffset(osWindow, overflow);
+
+    CLAY_AUTO_ID({
+        .layout = {.sizing = {CLAY_SIZING_FIXED(end - start), CLAY_SIZING_FIT(0)}, .padding = {(u16)before, (u16)after, 0, 0}},
+        .clip = {.horizontal = true, .childOffset = {-offset, 0.0f}},
+    })
+    {
+        if (WINDOW.hint != nullptr)
+        {
+            CLAY_TEXT(ECSIWindow_ClayText(WINDOW.hint), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+        }
+    }
+}
+
+/// @brief Declares the title bar of an OS window for Clay: the tool's name, the menus and the buttons, the preset's hint, the workspaces' menu,
 /// and buttons that minimize, maximize or restore, and close the window (DESIGN 6.11).
 static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *osWindow)
 {
@@ -1049,6 +1123,7 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *osWindow)
     bool hovered = WINDOW.hover.window == osWindow;
     Clay_Color dim = WINDOW.colors[ECSIColor_TextDim];
     ECSIWindow_PlaceTitleItems(osWindow);
+    osWindow->hintSlides = false;
 
     CLAY(CLAY_ID("TitleBar"), {
                                   .layout = {
@@ -1065,6 +1140,13 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *osWindow)
         {
             const ECSIDrawnTitleItem *item = &osWindow->titleItems[i];
 
+            // the preset's hint fills the room between the parts at the left and those at the right
+            if (item->kind == ECSITitleKind_Workspace)
+            {
+                ECSIWindow_DeclareHint(osWindow, x, item->rect.x);
+                x = item->rect.x;
+            }
+
             // the room before a part
             CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(item->rect.x - x), CLAY_SIZING_FIXED(0)}}})
             {
@@ -1073,7 +1155,7 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *osWindow)
             bool under = hovered && WINDOW.hover.item == (i64)i && item->enabled;
             Clay_Color back = item->on ? WINDOW.colors[ECSIColor_Selected] : under ? WINDOW.colors[ECSIColor_Hover]
                                                                                    : (Clay_Color){0};
-            Clay_Color text = !item->enabled || (item->kind == ECSITitleKind_Workspace && !item->on) ? dim : WINDOW.colors[ECSIColor_Text];
+            Clay_Color text = item->enabled ? WINDOW.colors[ECSIColor_Text] : dim;
 
             CLAY_AUTO_ID({
                 .layout = {.sizing = {CLAY_SIZING_FIXED(item->rect.w), CLAY_SIZING_FIXED(item->rect.h)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
@@ -1087,13 +1169,13 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *osWindow)
             x = item->rect.x + item->rect.w;
         }
 
-        // the preset's hint follows, cut at the buttons when the window is narrow
-        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIT(0)}, .padding = {ECSIWindow_Spacing(16), ECSIWindow_Spacing(8), 0, 0}}, .clip = {.horizontal = true}})
+        if (x < osWindow->titleRight)
         {
-            if (WINDOW.hint != nullptr)
-            {
-                CLAY_TEXT(ECSIWindow_ClayText(WINDOW.hint), CLAY_TEXT_CONFIG({.textColor = dim, .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
-            }
+            ECSIWindow_DeclareHint(osWindow, x, osWindow->titleRight);
+        }
+
+        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(osWindow->width - 3.0f * buttonWidth - osWindow->titleRight), CLAY_SIZING_FIXED(0)}}})
+        {
         }
 
         const ECSIIcon icons[] = {ECSIIcon_Minimize, maximized ? ECSIIcon_Restore : ECSIIcon_Maximized};
@@ -1225,9 +1307,27 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
 
     // a frame around the group, its tab row too, so groups stand apart from each other and from the colour between them;
     // Clay's SDL renderer draws a border a pixel outside its rectangle, so the rectangle is a pixel inside the group
+    // the group's corners are rounded: the core's renderer fills the room outside each arc in the colour between the groups
+    f32 radius = ECSIWindow_Px(OPENECS_GROUP_RADIUS);
+
+    for (usz i = 0; i < SDL_arraysize(OPENECS_CORNERS); i++)
+    {
+        f32 x = group->x + (i == 1 || i == 2 ? group->width - radius : 0.0f);
+        f32 y = group->y + (i >= 2 ? group->height - radius : 0.0f);
+
+        CLAY_AUTO_ID({
+            .layout = {.sizing = {CLAY_SIZING_FIXED(radius), CLAY_SIZING_FIXED(radius)}},
+            .custom = {.customData = (void *)&OPENECS_CORNERS[i]},
+            .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {x, y}, .zIndex = 1, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
+        })
+        {
+        }
+    }
+
     CLAY_AUTO_ID({
         .layout = {.sizing = {CLAY_SIZING_FIXED(SDL_max(group->width - 2.0f, 0.0f)), CLAY_SIZING_FIXED(SDL_max(group->height - 2.0f, 0.0f))}},
         .border = {.color = WINDOW.colors[ECSIColor_Frame], .width = {1, 1, 1, 1, 0}},
+        .cornerRadius = CLAY_CORNER_RADIUS(radius - 1.0f),
         .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + 1.0f, group->y + 1.0f}, .zIndex = 1, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
     })
     {
@@ -1395,6 +1495,7 @@ static void ECSIWindow_DeclareFocusBorder(ECSPanel focus)
     CLAY_AUTO_ID({
         .layout = {.sizing = {CLAY_SIZING_FIXED(focus->width), CLAY_SIZING_FIXED(focus->height)}},
         .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {1, 1, 1, 1, 0}},
+        .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Px(OPENECS_GROUP_RADIUS) - 1.0f),
         .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {focus->x, focus->y}, .zIndex = 1, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
     })
     {
@@ -1465,9 +1566,26 @@ static void ECSIWindow_DeclareMenus(void)
                                                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = (i16)(5 + level)},
                                            })
         {
-            // each entry has the height that ECSIWindow_MenuItemAt counts with
+            // each entry has the height that ECSIWindow_MenuItemAt counts with; a heading has a line above it and dim text
             for (usz i = 0; i < menu->count; i++)
             {
+                if (menu->lines[2 * i] == nullptr)
+                {
+                    CLAY_AUTO_ID({
+                        .layout = {
+                            .sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(menu->itemHeight)},
+                            .padding = {ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING), ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING), 0, 0},
+                            .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                        },
+                        .border = {.color = WINDOW.colors[ECSIColor_Frame], .width = {.top = 1}},
+                    })
+                    {
+                        CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                    }
+
+                    continue;
+                }
+
                 CLAY_AUTO_ID({
                     .layout = {
                         .sizing = {CLAY_SIZING_GROW(0), CLAY_SIZING_FIXED(menu->itemHeight)},
@@ -1485,43 +1603,6 @@ static void ECSIWindow_DeclareMenus(void)
                     }
                     CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
                 }
-            }
-        }
-    }
-}
-
-/// @brief Declares the list of keys after the prefix: each key with what it does, under the headings of its sections.
-static void ECSIWindow_DeclarePrefixKeys(void)
-{
-    CLAY_AUTO_ID({
-        .layout = {.padding = CLAY_PADDING_ALL(ECSIWindow_Spacing(14)), .childGap = ECSIWindow_Spacing(4), .layoutDirection = CLAY_TOP_TO_BOTTOM},
-        .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
-        .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(4)),
-        .border = {.color = WINDOW.colors[ECSIColor_Frame], .width = {1, 1, 1, 1, 0}},
-        .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {24.0f, 24.0f}, .zIndex = 3},
-    })
-    {
-        for (usz i = 0; i < WINDOW.prefixLineCount; i++)
-        {
-            // a line without a key is a heading
-            if (WINDOW.prefixLines[2 * i] == nullptr)
-            {
-                CLAY_AUTO_ID({.layout = {.padding = {0, 0, i == 0 ? 0 : ECSIWindow_Spacing(6), 0}}})
-                {
-                    CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize}));
-                }
-
-                continue;
-            }
-
-            CLAY_AUTO_ID({.layout = {.layoutDirection = CLAY_LEFT_TO_RIGHT}})
-            {
-                CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(ECSIWindow_Px(OPENECS_PREFIX_KEY_COLUMN)), CLAY_SIZING_FIT(0)}}})
-                {
-                    CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Accent], .fontSize = (u16)WINDOW.fontSize}));
-                }
-
-                CLAY_TEXT(ECSIWindow_ClayText(WINDOW.prefixLines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize}));
             }
         }
     }
@@ -1576,11 +1657,6 @@ static Clay_RenderCommandArray ECSIWindow_DeclareInterface(ECSIOSWindow *osWindo
         if (WINDOW.dialog != nullptr && WINDOW.dialogWindow == osWindow)
         {
             ECSIWindow_DeclareDialog(osWindow);
-        }
-
-        if (WINDOW.prefixLines != nullptr && focusWindow)
-        {
-            ECSIWindow_DeclarePrefixKeys();
         }
     }
 
@@ -2354,6 +2430,41 @@ static void ECSIWindow_ForgetOldTexts(ECSIOSWindow *osWindow)
     }
 }
 
+/// @brief Fills the room outside the arc of a group's rounded corner, which a custom command of Clay places, in the colour between the groups:
+/// a fan of triangles from the corner's point to the arc.
+static void ECSIWindow_DrawCorner(SDL_Renderer *renderer, const Clay_RenderCommand *command)
+{
+    u8 corner = *(const u8 *)command->renderData.custom.customData;
+    Clay_BoundingBox box = command->boundingBox;
+    f32 radius = box.width;
+    bool right = corner == 1 || corner == 2;
+    bool bottom = corner >= 2;
+    f32 centerX = right ? box.x : box.x + radius;
+    f32 centerY = bottom ? box.y : box.y + radius;
+    f32 start = (f32)(corner + 2) * SDL_PI_F / 2.0f;
+    Clay_Color color = WINDOW.colors[ECSIColor_Background];
+    SDL_FColor fill = {color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, 1.0f};
+
+    SDL_Vertex vertices[OPENECS_CORNER_STEPS + 2];
+    int indices[OPENECS_CORNER_STEPS * 3];
+    vertices[0] = (SDL_Vertex){{right ? box.x + radius : box.x, bottom ? box.y + radius : box.y}, fill, {0.0f, 0.0f}};
+
+    for (int i = 0; i <= OPENECS_CORNER_STEPS; i++)
+    {
+        f32 angle = start + (f32)i * SDL_PI_F / 2.0f / (f32)OPENECS_CORNER_STEPS;
+        vertices[i + 1] = (SDL_Vertex){{centerX + SDL_cosf(angle) * radius, centerY + SDL_sinf(angle) * radius}, fill, {0.0f, 0.0f}};
+    }
+
+    for (usz i = 0; i < OPENECS_CORNER_STEPS; i++)
+    {
+        indices[i * 3] = 0;
+        indices[i * 3 + 1] = (int)i + 1;
+        indices[i * 3 + 2] = (int)i + 2;
+    }
+
+    SDL_RenderGeometry(renderer, nullptr, vertices, OPENECS_CORNER_STEPS + 2, indices, OPENECS_CORNER_STEPS * 3);
+}
+
 /// @brief Draws Clay's commands: texts with the texts kept from earlier frames, and the rest with Clay's SDL renderer, which makes each text again every frame.
 static void ECSIWindow_RenderCommands(ECSIOSWindow *osWindow, Clay_RenderCommandArray commands)
 {
@@ -2364,7 +2475,7 @@ static void ECSIWindow_RenderCommands(ECSIOSWindow *osWindow, Clay_RenderCommand
     {
         Clay_RenderCommand *command = i < commands.length ? Clay_RenderCommandArray_Get(&commands, i) : nullptr;
 
-        if (command != nullptr && command->commandType != CLAY_RENDER_COMMAND_TYPE_TEXT)
+        if (command != nullptr && command->commandType != CLAY_RENDER_COMMAND_TYPE_TEXT && command->commandType != CLAY_RENDER_COMMAND_TYPE_CUSTOM)
         {
             continue;
         }
@@ -2376,7 +2487,11 @@ static void ECSIWindow_RenderCommands(ECSIOSWindow *osWindow, Clay_RenderCommand
             SDL_Clay_RenderClayCommands(&osWindow->clayRenderer, &part);
         }
 
-        if (command != nullptr)
+        if (command != nullptr && command->commandType == CLAY_RENDER_COMMAND_TYPE_CUSTOM)
+        {
+            ECSIWindow_DrawCorner(osWindow->renderer, command);
+        }
+        else if (command != nullptr)
         {
             ECSIWindow_DrawText(osWindow, command);
         }
@@ -2493,6 +2608,11 @@ static void ECSIWindow_Present(void)
 
 #pragma endregion Source Only
 
+void ECSIWindow_HoldHint(void)
+{
+    WINDOW.hintHeld = true;
+}
+
 void ECSIWindow_SetHint(const char *hint)
 {
     SDL_free(WINDOW.hint);
@@ -2586,8 +2706,10 @@ void ECSIWindow_Terminate(void)
 
     // the GPU device outlives the OS windows, as the plugins may still hold its objects
     ECSIGpu gpu = WINDOW.gpu;
+    bool hintHeld = WINDOW.hintHeld;
     SDL_zero(WINDOW);
     WINDOW.gpu = gpu;
+    WINDOW.hintHeld = hintHeld;
 }
 
 void *ECSGpu_GetDevice(void)
@@ -2819,12 +2941,21 @@ i32 ECSIWindow_GetFrameWait(void)
         }
     }
 
-    // windows that cannot be seen are not drawn; showing one again asks for a frame
+    // windows that cannot be seen are not drawn; showing one again asks for a frame. A sliding hint asks for the next frame
     bool visible = false;
+    bool sliding = false;
 
     for (usz i = 0; i < arrlenu(WINDOW.windows); i++)
     {
         visible = visible || (SDL_GetWindowFlags(WINDOW.windows[i]->window) & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED)) == 0;
+        sliding = sliding || WINDOW.windows[i]->hintSlides;
+    }
+
+    WINDOW.hintSince = sliding ? WINDOW.hintSince : 0;
+
+    if (sliding)
+    {
+        ECSILayout_RequestFrame();
     }
 
     if (!visible || (!ECSILayout_WantsFrame() && !ECSIPopups_WantsFrame()))
@@ -3027,9 +3158,9 @@ bool ECSIWindow_TitleBarAt(f32 x, f32 y)
     return WINDOW.titleBar && osWindow != nullptr && y < WINDOW.titleBarHeight && x < osWindow->width - 3.0f * ECSIWindow_GetTitleButtonWidth();
 }
 
-/// @brief Handles a press of the main button on the title bar: a workspace's tab switches to it, and the buttons from the right close,
-/// maximize or restore, and minimize the window; the rest of the bar moves the window, which the system does.
-/// @return false on the tool's name, a menu or a button, which Menus handles.
+/// @brief Handles a press of the main button on the title bar: the buttons from the right close, maximize or restore, and minimize the window;
+/// the rest of the bar moves the window, which the system does.
+/// @return false on the tool's name, a menu, a button or the workspaces' menu, which Menus handles.
 static bool ECSIWindow_PressTitle(ECSIOSWindow *osWindow, f32 x, f32 y)
 {
     f32 button = (osWindow->width - x) / ECSIWindow_GetTitleButtonWidth();
@@ -3037,15 +3168,10 @@ static bool ECSIWindow_PressTitle(ECSIOSWindow *osWindow, f32 x, f32 y)
     WINDOW.hover.hidden = true;
     ECSILayout_RequestFrame();
 
-    // a workspace's tab switches to it; Menus handles the tool's name, the menus and the buttons
+    // Menus handles the parts of the title bar
     if (ECSIWindow_TitleItemAt(x, y, &item))
     {
-        if (item.kind == ECSITitleKind_Workspace)
-        {
-            ECSWorkspace_Switch(item.index);
-        }
-
-        return item.kind == ECSITitleKind_Workspace;
+        return false;
     }
 
     if (button < 1.0f)
@@ -3379,7 +3505,7 @@ void ECSIWindow_ShowMenu(usz level, ECSPanel panel, SDL_FRect anchor, const char
         int labelWidth = 0;
         int keyWidth = 0;
         TTF_GetStringSize(font, lines[2 * i + 1], 0, &labelWidth, nullptr);
-        TTF_GetStringSize(font, lines[2 * i], 0, &keyWidth, nullptr);
+        TTF_GetStringSize(font, lines[2 * i] != nullptr ? lines[2 * i] : "", 0, &keyWidth, nullptr);
         width = SDL_max(width, (f32)(labelWidth + keyWidth) + 3.0f * ECSIWindow_Px(OPENECS_MENU_ITEM_PADDING));
     }
 
@@ -3478,13 +3604,6 @@ void ECSIWindow_ShowDataDrag(const char *type, f32 x, f32 y)
 {
     WINDOW.dataType = type;
     WINDOW.dataWindow = type == nullptr ? nullptr : ECSIWindow_FindAt(x, y, &WINDOW.dataX, &WINDOW.dataY);
-    ECSILayout_RequestFrame();
-}
-
-void ECSIWindow_ShowPrefixKeys(const char *const *lines, usz count)
-{
-    WINDOW.prefixLines = count == 0 ? nullptr : lines;
-    WINDOW.prefixLineCount = count;
     ECSILayout_RequestFrame();
 }
 

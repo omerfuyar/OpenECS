@@ -1256,10 +1256,10 @@ static const luaL_Reg OPENECS_BINDINGS_DIALOG[] = {
 
 static int ECSIBindings_KeyBind(lua_State *state)
 {
-    const char *panelType = ECSILua_CheckString(state, 1);
+    const char *scope = ECSILua_CheckString(state, 1);
     const char *key = ECSILua_CheckString(state, 2);
     const char *function = ECSILua_CheckString(state, 3);
-    SHUResult result = ECSKey_Bind(ECSIBindings_GetPlugin(state), panelType, key, function);
+    SHUResult result = ECSKey_Bind(ECSIBindings_GetPlugin(state), scope, key, function);
 
     if (result)
     {
@@ -1961,6 +1961,24 @@ static int ECSIBindings_PanelAddMenuEntry(lua_State *state)
     return 0;
 }
 
+static int ECSIBindings_AppAddMenuEntry(lua_State *state)
+{
+    const char *function = ECSILua_CheckString(state, 1);
+    SHUResult result = ECSApp_AddMenuEntry(ECSIBindings_GetPlugin(state), function);
+
+    if (result)
+    {
+        ECSIServices_Raise(state, result, "'%s' is not added to the tool's menu", function);
+    }
+
+    return 0;
+}
+
+static const luaL_Reg OPENECS_BINDINGS_APP[] = {
+    {"addMenuEntry", ECSIBindings_AppAddMenuEntry},
+    {nullptr, nullptr},
+};
+
 static int ECSIBindings_PanelListTypes(lua_State *state)
 {
     return ECSIBindings_PushFilled(state, ECSPanelType_List);
@@ -2358,6 +2376,7 @@ static void ECSIBindings_PushEcs(lua_State *state, ECSPlugin plugin)
     ECSIBindings_AddTable(state, plugin, "event", OPENECS_BINDINGS_EVENT);
     ECSIBindings_AddTable(state, plugin, "handle", OPENECS_BINDINGS_HANDLE);
     ECSIBindings_AddTable(state, plugin, "struct", OPENECS_BINDINGS_STRUCT);
+    ECSIBindings_AddTable(state, plugin, "app", OPENECS_BINDINGS_APP);
     ECSIWorkers_PushTable(state, plugin);
     lua_setfield(state, -2, "worker");
 

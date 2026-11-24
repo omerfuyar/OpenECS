@@ -157,16 +157,14 @@ bool ECSIWindow_CancelDrag(void);
 /// @param y Vertical position of the pointer in layout units.
 void ECSIWindow_ShowDataDrag(const char *type, f32 x, f32 y);
 
-/// @brief Shows or hides the list of keys that follow the core prefix, in the focused panel's OS window.
-/// @param lines Each key's text and description, one after the other; a nullptr key text makes the description a heading. They must stay valid while they are shown.
-/// @param count Number of lines; 0 hides the list.
-void ECSIWindow_ShowPrefixKeys(const char *const *lines, usz count);
+/// @brief Keeps the preset's hint at its start, even when it does not fit, as a test needs; it does not slide from now on.
+void ECSIWindow_HoldHint(void);
 
 /// @brief Shows, changes or hides a menu: the panel menu at level 0, and its submenus at the next levels. The menus at deeper levels close. It is kept inside the OS window.
 /// @param level The menu's level, below 4.
 /// @param panel At level 0: the panel whose OS window shows the menu, for a menu that a function opens, or nullptr for the OS window of the event that opens it.
 /// @param anchor In layout units: the point the panel menu opens at, or the entry a submenu opens beside.
-/// @param lines Each entry's key text and label, one after the other. They must stay valid while they are shown.
+/// @param lines Each entry's key text and label, one after the other; a nullptr key text makes the label a heading, with a line above it. They must stay valid while they are shown.
 /// @param count Number of entries; 0 hides the menu. The first entry is highlighted.
 void ECSIWindow_ShowMenu(usz level, ECSPanel panel, SDL_FRect anchor, const char *const *lines, usz count);
 
@@ -199,14 +197,14 @@ typedef enum ECSITitleKind
     ECSITitleKind_Name,      // the tool's name, which opens the tool's menu
     ECSITitleKind_Menu,      // a menu of ecs.titleMenus
     ECSITitleKind_Button,    // a button of ecs.titleButtons
-    ECSITitleKind_Workspace, // a workspace's tab
+    ECSITitleKind_Workspace, // the workspaces' menu, at the right
 } ECSITitleKind;
 
 /// @brief A menu or a button of the title bar, as Menus gives it.
 typedef struct ECSITitleItem
 {
     const char *label;
-    ECSITitleKind kind; // ECSITitleKind_Menu or ECSITitleKind_Button
+    ECSITitleKind kind; // ECSITitleKind_Menu, ECSITitleKind_Button or ECSITitleKind_Workspace
     bool on;            // a button whose setting is true, or the menu that is open
     bool enabled;       // false for a button whose function cannot be used now
 } ECSITitleItem;

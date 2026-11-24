@@ -261,7 +261,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Dialogs    | The system's file dialogs, and the message dialogs that the core draws (7.7).                                                                                  |
 |           | Keys       | Key combinations, the core prefix and the keys after it, and every key binding (7.3 to 7.5, 7.8).                                                              |
 |           | Menus      | The core's bindable functions, and the panel and group menus that offer them (6.8).                                                                            |
-|           | Input      | SDL's input events, focus, pointer routing, key dispatch, the list of prefix keys, text input.                                                                 |
+|           | Input      | SDL's input events, focus, pointer routing, key dispatch, the event of the prefix, text input.                                                                 |
 | app       | Session    | Reading presets and sessions, applying them, writing them.                                                                                                     |
 |           | Desktop    | The tools' entries in the system's application launcher (13.9).                                                                                                |
 |           | Workers    | Lua scripts on threads of their own, and the messages between them and the main thread (3.4).                                                                  |
@@ -440,7 +440,7 @@ typedef struct ECSPanelTypeDesc
 
 ### 4.6 Popups, pointer and text input
 
-- **Popups.** A panel opens a popup anchored to a rectangle in its own area: `ECSPopup_Open(panel, &popup, &desc)`, and in Lua `panel:openPopup(desc)`, which gives the popup. The description holds:
+- **Popups.** A panel opens a popup anchored to a rectangle in its own area: `ECSPopup_Open(panel, &popup, &desc)`, and in Lua `panel:openPopup(desc)`, which gives the popup. A plugin may open one over any shown panel, as the standard plugin keys shows the keys after the prefix over the focused panel (7.5). The description holds:
   - `type`: a menu, which takes the keys, or a tooltip, which does not (`ECSPopupType_Menu`, `ECSPopupType_Tooltip`; in Lua `"menu"` and `"tooltip"`).
   - The anchor, a rectangle in the panel's surface pixels: `anchorX`, `anchorY`, `anchorWidth` and `anchorHeight`; in Lua `anchor = { x = 0, y = 0, width = 0, height = 0 }`.
   - The popup's `width` and `height`, in layout units.
@@ -604,10 +604,11 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - Entries are core functions that act on the focused panel. Each shows the keys that run its function after the prefix (7.5).
 - Entries are short, so menus stay narrow. Menus show only what can be done now, and say what it does now: "Lock" or "Unlock", "Maximize" or "Restore". Close and move are left out for a locked group, pop out for a locked group and for a panel alone in its OS window, restart for a panel that has not failed (14.2), reopen when nothing was closed, and split when the panel's type is missing.
 - Entries of one kind go into a submenu. An entry with a submenu shows `›`, and pointing at it opens the submenu beside it.
-- The panel's menu: close, restart, maximize, pop out, lock, reopen the last closed panel; the submenus Move (left, right, up, down) and To workspace (each other workspace, by number and name); the entries of the panel's type; then reset the layout and quit, which every menu ends with.
+- The panel's menu: close, restart, maximize, pop out, lock, reopen the last closed panel; the submenus Move (left, right, up, down) and To workspace (each other workspace, by number and name); the entries of the panel's type, under a heading with its plugin's name, which a line sets apart; then reset the layout and quit, which every menu ends with.
 - The entries of a type: `ECSPanelType_AddMenuEntry(plugin, type, function)`, or `ecs.panel.addMenuEntry(type, function)` in Lua, adds a service function whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and the key the plugin bound to the same function for the type.
 - The group's menu: the submenu Tabs, which shows any of its panels and marks the shown one with `•`; the submenu Workspaces; maximize, lock, close the group's panels, and reopen; then reset the layout and quit.
-- The tool's menu: the functions that the core's setting `ecs.toolMenu` names, a list of function names, without those no plugin of the tool registered; the submenu Workspaces; then reset the layout and quit. A right click on the title bar that OpenECS draws (6.11), or a click on the tool's name in it, opens it, and `ecs.app.menu` shows it near the focused panel's top left corner, also when the system draws the title bar. The core's settings file names the settings window, the panel list, the plugin list, the launcher, and saving and opening sessions.
+- The tool's menu: the functions that the core's setting `ecs.toolMenu` names, a list of function names, without those no plugin of the tool registered; the submenu Tools; the submenu Workspaces; then reset the layout and quit. A right click on the title bar that OpenECS draws (6.11), or a click on the tool's name in it, opens it, and `ecs.app.menu` shows it near the focused panel's top left corner, also when the system draws the title bar. The core's settings file names saving and opening sessions.
+- The submenu Tools holds the functions that plugins add for the whole tool, by their labels, whatever order the plugins load in: `ECSApp_AddMenuEntry(plugin, function)`, or `ecs.app.addMenuEntry(function)` in Lua, adds one of the plugin's own functions, whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and its keys after the prefix. The standard plugins add the settings window, the key list, the panel list, the plugin list, the launcher and the profiler.
 - The menu of workspaces lists each workspace by number and name, marks the current one with `•`, and switches to the one chosen. `ecs.workspace.menu` shows it near the focused panel's top left corner; it is also a submenu of the group's menu.
 - Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. Escape in the first menu, or a press outside the menus, closes them. While a menu is open, pointer and key events go to the menus only.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
@@ -617,8 +618,9 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 6.9 Clay
 
 - The core computes the rectangles of the layout tree itself.
-- Clay lays out the core's own interface on top of them: tab rows, grips, panel menus and the list of prefix keys. There is one Clay context per OS window (`Clay_SetCurrentContext`).
+- Clay lays out the core's own interface on top of them: the title bar, tab rows, grips and menus. There is one Clay context per OS window (`Clay_SetCurrentContext`).
 - Clay's SDL renderer draws what Clay lays out, apart from texts: it would make and lay out each text again every frame. The core keeps each OS window's texts between frames, by size and content, and destroys those that are no longer drawn once there are many; the font has one copy for each size, as a text is laid out again when its font's size changes. The width of each title bar text is kept too, until the settings change.
+- Groups, and the focused panel's border, have rounded corners of 6 layout units; menus, tooltips and the dialog have 4, and the title bar's parts 3. Clay's renderer rounds borders and backgrounds, but not the panels' pictures below them, so the core places a custom element of Clay at each corner of a group and fills the room outside the corner's arc in the colour `background` itself.
 
 ### 6.10 Maximize, pop-out and workspaces
 
@@ -635,21 +637,22 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 6.11 Window frame
 
 - OpenECS draws the OS windows' frames itself, so they look and work the same on every system and desktop: the setting `ecs.titleBar`, on by default, makes each OS window borderless, with a title bar `ecs.titleBarHeight` layout units tall above the layout.
-- The title bar shows, from the left: the tool's name; the title bar's menus; the tool's buttons; the workspaces' tabs, when the tool has two or more workspaces; the preset's hint; then the buttons minimize, maximize or restore, and close. Dragging the rest of it moves the window, and a right click on it opens the tool's menu (6.8). A click on the tool's name opens the tool's menu below it.
-- The title bar's menus come from the core's setting `ecs.titleMenus`, a list of menus such as `{ label = "File", "ecs.session.open", "ecs.session.save" }`: a click on one opens its menu below it, and while it is open, pointing at another of them opens that one instead. The core's settings file gives File (the launcher, opening and saving sessions, quit), Edit (the settings window, the list of keys, the plugin list) and Window (the panel list, reopen, maximize, pop out, lock, reset the layout, the profiler).
+- The title bar shows, from the left: the tool's name; the title bar's menus, then the menu Tools; the tool's buttons; the preset's hint; and at the right, the workspaces' menu, when the tool has two or more workspaces, then the buttons minimize, maximize or restore, and close. Dragging the rest of it moves the window, and a right click on it opens the tool's menu (6.8). A click on the tool's name opens the tool's menu below it.
+- The title bar's menus come from the core's setting `ecs.titleMenus`, a list of menus such as `{ label = "File", "ecs.session.open", "ecs.session.save" }`: a click on one opens its menu below it, and while it is open, pointing at another of them opens that one instead. The core's settings file gives File (opening and saving sessions, quit) and Window (reopen, maximize, pop out, lock, reset the layout). After them, the menu Tools holds the plugins' entries for the tool, as the tool's menu does (6.8), when there are any.
 - The tool's buttons come from the core's setting `ecs.titleButtons`, a list that is empty in the core's settings file, so a preset adds buttons without repeating the menus. A button runs a function, as a menu entry does.
 - An entry of a menu or a button is a function's name, such as `"gallery.next"`, labelled with the function's description; or a table such as `{ "gallery.next", label = "Next" }`, with its own label, which may be a symbol such as `"▶"`. An entry's `setting` names a `bool` setting: while it is true, the entry is on, as a play button is while a game plays.
 - Functions that no plugin of the tool registered are left out, and so is a menu that is left empty. A menu also leaves out what cannot be done now, as other menus do (6.8); a button stays, dimmed, and does nothing, so the buttons do not move.
-- A button that is on, and the menu that is open, have the colour `selected`; a menu, a button, a workspace's tab or a window button under the pointer has the colour `hover`. An entry that is on shows `•` in a menu.
+- A button that is on, and the menu that is open, have the colour `selected`; a menu, a button, the workspaces' menu or a window button under the pointer has the colour `hover`. An entry that is on shows `•` in a menu.
 - Pointing at a button, a menu or the tool's name for half a second shows a tooltip below it: what it does, and the keys that run it, after the prefix or bound for the focused panel's type (7.8).
-- A workspace's tab shows its name; the current one has the colour `selected`, and a click switches to the workspace.
-- When the window is narrow, the hint is cut first, then the workspaces' tabs and the tool's buttons, then the menus, from the last. The tool's menu and the keys still reach every function.
+- The workspaces' menu shows the current workspace's name and `▾`; a click opens the menu of workspaces below it (6.8).
+- A hint that does not fit in its room slides while its OS window has the system's focus: it rests at its start, slides to its end, rests, and slides back. The core draws frames only while it slides.
+- When the window is narrow, the hint's room shrinks first, then the tool's buttons and the menus are left out, from the last; the workspaces' menu goes when the tool's name leaves it no room. The tool's menu and the keys still reach every function.
 - The window's edges and corners resize it. The core tells SDL which part of the window is under the pointer (`SDL_SetWindowHitTest`), so the system moves and resizes the window, also on Wayland.
 - While the system moves or resizes a window, it may run its own loop until the user lets go, as Windows does, and the main loop waits. The core draws a frame each time SDL asks for one from that loop, so the window's content follows its size.
 - With `ecs.titleBar` off, the system draws the frame, and the title bar's menus and buttons do not show: the tool's menu (`ecs.app.menu`) and the keys reach their functions.
 - `ecs.app.quit` quits as the main window's close button does, asking about unsaved work (4.5). In C: `ECSApp_Quit()`.
 - The keys that move focus or panels (7.5) act within the focused panel's OS window. Focusing a panel in another OS window raises that window (7.1). When an OS window gets the system's focus, the panel that had the focus last in it gets it.
-- The core's menus and the list of prefix keys show in the OS window of the focused panel.
+- The core's menus show in the OS window of the focused panel.
 - Switching workspaces hides the pop-out windows of the old workspace and shows those of the new one.
 - A session's `windows` list holds the main window's tree first, then one tree for each pop-out window (13.2). A pop-out window's tree also has `width` and `height`, its size in layout units. When the main window has no panels but pop-out windows do, its tree is an empty table. Positions are not saved, because Wayland does not let them be chosen.
 
@@ -690,8 +693,8 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - The prefix is the setting `ecs.prefix`. It is one key combination, never a whole modifier.
 - The keys after the prefix are the `prefix` tables of the keys tables (7.8). Each layer adds to the keys of the layers below, and `false` removes a key. So presets and the user can add keys that run service functions.
-- While the core waits for the key after the prefix, it lists the keys with what they do now, in sections: Navigation (focus, move, tabs and workspaces), Panel (the core's functions on the focused panel), Layout (closing a group, locking it and resetting the layout), Session (saving and opening sessions, and quitting) and More (service functions, such as the settings, the panel list, the plugin list and the launcher). Within a section, the keys follow the order of the core's functions below. Like the menus (6.8), the list leaves out what cannot be done now.
-- Keys of one kind share a line. The keys that switch workspaces show the first workspace's key to the last one's: `1...0`, and the keys that move the focused panel to a workspace the same way: `Shift+1...0`. Focus and move show `Arrows` and `Shift+Arrows` when their four functions are on the four arrows with the same modifiers.
+- Plugins give their own functions keys after the prefix (7.8), below the core's settings file, so the core's keys win.
+- While the core waits for the key after the prefix, it emits `ecs.prefix` (8.4) with the focused panel and the keys with what they do now, in the order of the core's functions below, then the others by key. Like the menus (6.8), it leaves out what cannot be done now. A plugin lists them: the standard plugin keys shows them in a popup over the focused panel, in sections ([OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), the key list). When the key comes, or the prefix is cancelled, the core emits `ecs.prefix` again, that it waits no more.
 - The prefix and the key after it are the only key sequence the core handles.
 - The core's functions after the prefix, in the order the list shows them. Their keys are in the `prefix` table of the core's settings file (12.1).
 
@@ -746,12 +749,12 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
   | Layer    | Keys tables                                                                                               |
   | -------- | --------------------------------------------------------------------------------------------------------- |
-  | Defaults | The core's settings file (12.1), and the keys that plugins bind for their panel types                     |
+  | Defaults | The core's settings file (12.1), and the keys that plugins bind for their panel types and after the prefix |
   | Preset   | The preset's `keys`, and each workspace's `keys` (13.2)                                                   |
   | User     | The user's settings file: its `keys` for every tool, and its `keys` for the tool, whose fields win (12.3) |
 
 - A key press runs the binding of the highest layer that binds it. Within a layer, a panel type's keys win over a workspace's, and a workspace's over the whole tool's. A key that the winning binding removes goes to the focused panel.
-- `ECSKey_Bind(plugin, panelType, key, function)`, and in Lua `ecs.key.bind(panelType, key, function)`, give a default key to a function for one of the plugin's own panel types. Plugins have no function for other keys.
+- `ECSKey_Bind(plugin, scope, key, function)`, and in Lua `ecs.key.bind(scope, key, function)`, give a default key to a function for one of the plugin's own panel types; with the scope `prefix`, a key after the prefix to one of the plugin's own functions, such as the settings window's `,`. The core's keys after the prefix win over a plugin's, and of two plugins that give the same key, the one loaded last wins. Plugins have no function for other keys.
 - `ECSKey_List(list)`, in Lua `ecs.key.list()`, lists every binding of the keys tables in effect, the plugins' keys for their panel types among the defaults: its key, its function or false, its scope (the whole tool, `prefix` or a panel type), its layer, whether it comes from the current workspace, and whether it is the binding of its key that runs in its scope.
 - `ECSKey_Set(scope, key, function)`, in Lua `ecs.key.set(scope, key, function)`, changes a key in the user's settings file, as `ECSSetting_Set` changes a setting (12.2): a function's name binds it, false removes it from the layers below, and nil takes the user's binding away. It changes the tool's own part of the file if that part binds the key in the scope already, and the part for every tool otherwise, and writes the file.
 - `ECSKey_ListFunctions(list)`, in Lua `ecs.key.functions()`, lists the functions a key can run, with their descriptions and owners. So a plugin, such as the standard plugin keys, shows and changes every binding.
@@ -802,15 +805,16 @@ A plugin can declare its own events, such as `canvas.selectionChanged`, and emit
 
 Panels are named by their id (`ECSPanel_GetID`, `panel:getId()`); `ECSLayout_FindPanel(id)` and `ecs.layout.findPanel(id)` find them.
 
-| Event                   | Value                              | When                                                    |
-| ----------------------- | ---------------------------------- | ------------------------------------------------------- |
-| `ecs.panelOpened`       | `{ panel = id, type = name }`      | A panel enters the layout, also when a session is built |
-| `ecs.panelClosed`       | `{ panel = id, type = name }`      | A panel leaves the layout                               |
-| `ecs.focusChanged`      | `{ panel = id }`, or `{}` for none | Another panel gets the focus                            |
-| `ecs.workspaceSwitched` | `{ workspace = number }`           | Another workspace is shown                              |
-| `ecs.layoutChanged`     | nil                                | Panels are moved, grouped, closed, maximized or locked  |
-| `ecs.settingChanged`    | `{ name = full name }`             | A setting's value in effect changes                     |
-| `ecs.pluginsChanged`    | `{}`                               | Plugins were enabled or disabled (9.10)                 |
+| Event                   | Value                                                                                                                                     | When                                                                      |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `ecs.panelOpened`       | `{ panel = id, type = name }`                                                                                                             | A panel enters the layout, also when a session is built                   |
+| `ecs.panelClosed`       | `{ panel = id, type = name }`                                                                                                             | A panel leaves the layout                                                 |
+| `ecs.focusChanged`      | `{ panel = id }`, or `{}` for none                                                                                                        | Another panel gets the focus                                              |
+| `ecs.workspaceSwitched` | `{ workspace = number }`                                                                                                                  | Another workspace is shown                                                |
+| `ecs.layoutChanged`     | nil                                                                                                                                       | Panels are moved, grouped, closed, maximized or locked                    |
+| `ecs.settingChanged`    | `{ name = full name }`                                                                                                                    | A setting's value in effect changes                                       |
+| `ecs.pluginsChanged`    | `{}`                                                                                                                                      | Plugins were enabled or disabled (9.10)                                   |
+| `ecs.prefix`            | `{ waiting = true, panel = id, keys = { { key = "M", ["function"] = name, text = what it does now }, ... } }`, then `{ waiting = false }` | The core waits for the key after the prefix, and then waits no more (7.5) |
 
 ## 9. Plugins
 
@@ -1183,7 +1187,7 @@ return {
 }
 ```
 
-- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.5), `panels`, the list of panel types (12.6), `plugins`, the list of plugins (12.7), and `launcher`, the list of presets and sessions (13.8), so every tool can go to another one.
+- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.5), `keys`, the key list, which also lists the keys after the prefix (7.5), `panels`, the list of panel types (12.6), `plugins`, the list of plugins (12.7), `launcher`, the list of presets and sessions (13.8), so every tool can go to another one, and `profiler`. Each gives its own function a key after the prefix and an entry in the tool's menu (6.8, 7.8); the file names no plugin's function.
 
 ### 12.4 Themes
 
@@ -1272,7 +1276,7 @@ return {
 - `app.icon` is a path relative to the preset's folder. `app.categories` and `app.mimeTypes` are lists of texts for the tool's desktop entry (13.9).
 - OpenECS reads formats 1 to 3, and writes format 3. Format 2 adds `app.categories` and `app.mimeTypes`, and format 3 adds `enabled` and `disabled`.
 - A preset with `listed = false` is left out of the list of presets (13.7), as the launcher's own preset is.
-- A preset's `hint` tells a new user what to try first, such as the keys to press. The title bar that OpenECS draws (6.10) shows it after the tool's name, in dim text, cut at the buttons when the window is narrow. With the system's title bar, it does not show. A session keeps it, as it keeps the preset's other fields.
+- A preset's `hint` tells a new user what to try first, such as the keys to press. The title bar that OpenECS draws (6.11) shows it after the tool's menus and buttons, in dim text; one that does not fit slides. With the system's title bar, it does not show. A session keeps it, as it keeps the preset's other fields.
 
 ### 13.3 Applying a session
 
@@ -1514,7 +1518,7 @@ OpenECS follows the XDG Base Directory specification:
   | `screenshot(path)`                                                   | Draws a frame and saves the chosen OS window's picture as a PNG file.                                                                                                                                                                              |
   | `pixel(x, y)`                                                        | Draws a frame and gives the colour that the chosen OS window shows at a position in its layout units, as `"#RRGGBB"`, such as a GPU panel's (5.4).                                                                                                 |
   | `popup(number)`                                                      | An open popup, the oldest first: its rectangle `x`, `y`, `width` and `height` in its OS window, and `window`, the number of that window (4.6).                                                                                                     |
-  | `titleBar()`                                                         | Draws a frame and gives what the chosen OS window's title bar shows (6.11), in order: each item's `kind` (`"name"`, `"menu"`, `"button"` or `"workspace"`), `label` and rectangle `rect`, and whether it is `on` and `enabled`. Items cut for a narrow window are left out.                                  |
+  | `titleBar()`                                                         | Draws a frame and gives what the chosen OS window's title bar shows (6.11), in order: each item's `kind` (`"name"`, `"menu"`, `"button"` or `"workspace"`, the workspaces' menu), `label` and rectangle `rect`, and whether it is `on` and `enabled`. Items cut for a narrow window are left out.                                  |
   | `dialog()`                                                           | The message dialog that waits for an answer (7.7), or nil: its `title`, `message` and `buttons`, the number of the `selected` button, and `rects`, each button's rectangle in its OS window. A test answers it with `key` or `click`.              |
   | `errors()`                                                           | The errors that plugins reported (14.2) since the program started, each once and in order, as `"plugin: message"`.                                                                                                                               |
   | `misuses()`                                                         | Takes the misuses (1.4) since the last call, so the test does not fail on them, and gives what each check says. A test that checks a misuse reads it so.                                                                                         |
@@ -1644,7 +1648,7 @@ Some plugins are made and shipped together with OpenECS, as the product needs th
 ### 20.1 Rules
 
 - A standard plugin is a first-party plugin whose services other plugins build on. It is built and loaded like a third-party plugin: from its folder in OpenECS-std (17.7), against the plugin interface only (2.2), with a manifest and a version of its own.
-- The core never refers to a standard plugin, and a user's plugin of the same name replaces it (9.3, 9.9).
+- The core's code never refers to a standard plugin, and a user's plugin of the same name replaces it (9.3, 9.9). The core's settings file names the plugins that every tool loads (12.3), and they bind their own keys and menu entries.
 - Plugins that use a standard plugin name it in their manifest's `depends`, and look up its functions with the signatures it documents (10.5).
 - Each standard plugin has one job, and no two share one. A plugin that runs something, such as draw, which draws, or mixer, which plays sound, is an executor: it knows its primitives. A plugin that reads a file format is a loader: it turns the file into the objects of an executor, as image gives draw's images and audio gives mixer's sounds. A loader may also write those objects back to the format, as image writes draw's images. So a format is handled in one place, and what it gives works wherever the executor does.
 - Standard plugins are generic building blocks. Views of one domain, such as a scene's hierarchy or an inspector, belong to the plugins of tools, which build them from the blocks.

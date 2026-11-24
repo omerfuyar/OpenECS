@@ -54,6 +54,7 @@ static const char *const OPENECS_CORE_EVENTS[][2] = {
     {"ecs.layoutChanged", "Panels were moved, grouped, closed, maximized or locked: {}"},
     {"ecs.settingChanged", "A setting's value in effect changed: { name = full name }"},
     {"ecs.pluginsChanged", "Plugins were enabled or disabled: {}"},
+    {"ecs.prefix", "The core waits for the key after the prefix: { waiting = true, panel = id of the focused panel, keys = { { key = \"M\", function = name, text = what it does now }, ... } }; then { waiting = false }"},
 };
 
 static struct

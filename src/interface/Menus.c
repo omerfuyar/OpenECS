@@ -1,9 +1,11 @@
 #include "interface/Menus.h"
 
+#include "base/Log.h"
 #include "interface/Keys.h"
 #include "interface/Layout.h"
 #include "interface/Panels.h"
 #include "interface/Window.h"
+#include "runtime/Plugins.h"
 #include "runtime/Services.h"
 #include "runtime/Settings.h"
 
@@ -30,6 +32,16 @@
 /// @brief The setting that names the title bar's buttons and their functions.
 #define OPENECS_TITLE_BUTTONS "ecs.titleButtons"
 
+/// @brief The menu of the plugins' entries for the whole tool, in the tool's menu and in the title bar.
+#define OPENECS_TOOLS_LABEL "Tools"
+
+/// @brief What marks the workspaces' menu in the title bar, after the current workspace's name.
+#define OPENECS_DROPDOWN_MARK " \u25BE"
+
+/// @brief Where the title bar's menu of the plugins' entries, and its workspaces' menu, are among the sources of its items, which are places in settings.
+#define OPENECS_TOOLS_SOURCE SIZE_MAX
+#define OPENECS_WORKSPACES_SOURCE (SIZE_MAX - 1)
+
 /// @brief Most workspaces that have their own functions: keys 1 to 9 and 0.
 #define OPENECS_WORKSPACE_FUNCTION_COUNT 10
 
@@ -37,6 +49,7 @@
 typedef struct ECSIMenuEntry
 {
     char *label;
+    bool heading;                  // it only names the entries below it, which a line sets apart
     char *keys;                    // text of the keys that run it, or nullptr
     char *function;                // the function it runs on the focused panel, or nullptr
     ECSPanel tab;                  // the panel whose tab it shows, or nullptr
@@ -59,13 +72,22 @@ typedef struct ECSIMenuSource
     bool on;              // its setting is true
 } ECSIMenuSource;
 
+/// @brief A function that a plugin adds to the tool's menu.
+typedef struct ECSIToolEntry
+{
+    ECSPlugin plugin;
+    char *function;
+} ECSIToolEntry;
+
 static struct
 {
-    ECSIMenuEntry *entries; // stb_ds array of the panel menu's entries
-    ECSIMenuLevel *levels;  // stb_ds array of the open menus, the panel menu first; while any is open, it gets the pointer and the keys
+    ECSIMenuEntry *entries;     // stb_ds array of the panel menu's entries
+    ECSIToolEntry *toolEntries; // stb_ds array of the functions plugins add to the tool's menu
+    char *workspaceLabel;       // the workspaces' menu's label in the title bar
+    ECSIMenuLevel *levels;      // stb_ds array of the open menus, the panel menu first; while any is open, it gets the pointer and the keys
 
     ECSITitleItem *titleItems;  // stb_ds array of the title bar's menus and buttons, made again before each frame
-    usz *titleSources;          // stb_ds array of where each item is in its setting: a menu in ecs.titleMenus, a button in ecs.titleButtons
+    usz *titleSources;          // stb_ds array of where each item is in its setting: a menu in ecs.titleMenus, a button in ecs.titleButtons; or the menu Tools or the workspaces' menu
     i64 titleMenu;              // the item whose menu is open, or -1
     ECSIDrawnTitleItem tooltip; // the part of the title bar whose tooltip was made last
     bool tooltipMade;
@@ -143,11 +165,12 @@ static void ECSIMenus_OpenLevel(ECSIMenuEntry *entries, ECSPanel panel, SDL_FRec
 {
     ECSIMenuLevel level = {.entries = entries};
 
-    // an entry that opens a submenu shows an arrow instead of keys
+    // an entry that opens a submenu shows an arrow instead of keys, and a heading shows no keys
     for (usz i = 0; i < arrlenu(entries); i++)
     {
-        arrput(level.lines, entries[i].submenu != nullptr ? OPENECS_SUBMENU_MARK : entries[i].keys != nullptr ? entries[i].keys
-                                                                                                              : "");
+        const char *keys = entries[i].submenu != nullptr ? OPENECS_SUBMENU_MARK : entries[i].keys != nullptr ? entries[i].keys
+                                                                                                             : "";
+        arrput(level.lines, entries[i].heading ? nullptr : keys);
         arrput(level.lines, entries[i].label != nullptr ? entries[i].label : "");
     }
 
@@ -155,11 +178,16 @@ static void ECSIMenus_OpenLevel(ECSIMenuEntry *entries, ECSPanel panel, SDL_FRec
     ECSIWindow_ShowMenu(arrlenu(MENUS.levels) - 1, panel, anchor, level.lines, arrlenu(entries));
 }
 
-/// @brief Adds the entries of a panel's type, with the keys its plugin bound to the same functions for the type.
+/// @brief Adds the entries of a panel's type, with the keys its plugin bound to the same functions for the type, under a heading with the plugin's name.
 static void ECSIMenus_AddTypeEntries(ECSIMenuEntry **entries, ECSPanel panel)
 {
     usz count = 0;
     const char *const *functions = ECSIPanel_GetMenuEntries(panel, &count);
+
+    if (count > 0)
+    {
+        ECSIMenus_Add(entries, ECSIPlugin_GetName(panel->type->plugin), nullptr, nullptr)->heading = true;
+    }
 
     for (usz i = 0; i < count; i++)
     {
@@ -285,6 +313,11 @@ static void ECSIMenus_Run(usz level, usz index)
 {
     const ECSIMenuEntry *entry = &MENUS.levels[level].entries[index];
 
+    if (entry->heading)
+    {
+        return;
+    }
+
     if (entry->submenu != nullptr)
     {
         ECSIMenus_SelectAndOpen(level, index);
@@ -349,12 +382,20 @@ static ECSIMenuEntry *ECSIMenus_BuildTitleMenu(const ECSValue *menu, ECSPanel fo
     return entries;
 }
 
-/// @brief Opens a menu of the title bar below its part.
+static ECSIMenuEntry *ECSIMenus_BuildToolsMenu(ECSPanel focus);
+
+/// @brief Opens a menu of the title bar below its part: a menu of ecs.titleMenus, the plugins' entries for the tool, or the workspaces.
 /// @param item The item's place among the title bar's items.
 static void ECSIMenus_OpenTitleMenu(usz item, SDL_FRect rect)
 {
-    const ECSValue *menu = ECSValue_GetListItem(ECSSetting_Get(OPENECS_TITLE_MENUS), MENUS.titleSources[item]);
-    ECSIMenus_Show(ECSIMenus_BuildTitleMenu(menu, ECSILayout_GetFocus()), nullptr, rect.x, rect.y + rect.h);
+    usz source = MENUS.titleSources[item];
+    ECSPanel focus = ECSILayout_GetFocus();
+    ECSIMenuEntry *entries = source == OPENECS_TOOLS_SOURCE        ? ECSIMenus_BuildToolsMenu(focus)
+                             : source == OPENECS_WORKSPACES_SOURCE ? ECSIMenus_BuildWorkspaceMenu()
+                                                                   : ECSIMenus_BuildTitleMenu(ECSValue_GetListItem(ECSSetting_Get(OPENECS_TITLE_MENUS), source), focus);
+
+    // the window keeps the menu inside it, so the workspaces' menu at the right opens to the left
+    ECSIMenus_Show(entries, nullptr, rect.x, rect.y + rect.h);
     MENUS.titleMenu = (i64)item;
 }
 
@@ -378,7 +419,6 @@ static void ECSIMenus_MakeTooltip(void)
     MENUS.tooltip = item;
     MENUS.tooltipMade = true;
     ECSIMenuSource source = {0};
-    char workspace[32];
     const char *function = nullptr;
 
     if (item.kind == ECSITitleKind_Name)
@@ -387,8 +427,7 @@ static void ECSIMenus_MakeTooltip(void)
     }
     else if (item.kind == ECSITitleKind_Workspace)
     {
-        SDL_snprintf(workspace, sizeof(workspace), "ecs.workspace.switch%zu", item.index);
-        function = workspace;
+        function = "ecs.workspace.menu";
     }
     else if (item.kind == ECSITitleKind_Button && ECSIMenus_ReadSource(ECSValue_GetListItem(ECSSetting_Get(OPENECS_TITLE_BUTTONS), MENUS.titleSources[item.index]), &source))
     {
@@ -537,7 +576,32 @@ static void ECSIMenus_ReloadPlugin(void)
     SDL_free(name);
 }
 
-/// @brief Builds the tool's menu: the functions that ecs.toolMenu names and that are registered, the submenu Workspaces, then reset the layout and quit.
+/// @brief Orders two entries by their labels.
+static int SDLCALL ECSIMenus_CompareLabels(const void *first, const void *second)
+{
+    return SDL_strcmp(((const ECSIMenuEntry *)first)->label, ((const ECSIMenuEntry *)second)->label);
+}
+
+/// @brief Builds the menu of the functions that plugins add to the tool's menu, those that can be used now, by their labels, whatever order the
+/// plugins load in.
+/// @return stb_ds array of the entries.
+static ECSIMenuEntry *ECSIMenus_BuildToolsMenu(ECSPanel focus)
+{
+    ECSIMenuEntry *entries = nullptr;
+
+    for (usz i = 0; i < arrlenu(MENUS.toolEntries); i++)
+    {
+        if (ECSIServices_GetDescription(MENUS.toolEntries[i].function) != nullptr)
+        {
+            ECSIMenus_AddFunction(&entries, MENUS.toolEntries[i].function, nullptr, focus);
+        }
+    }
+
+    SDL_qsort(entries, arrlenu(entries), sizeof(ECSIMenuEntry), ECSIMenus_CompareLabels);
+    return entries;
+}
+
+/// @brief Builds the tool's menu: the functions that ecs.toolMenu names and that are registered, the submenus Tools and Workspaces, then reset the layout and quit.
 static ECSIMenuEntry *ECSIMenus_BuildToolMenu(void)
 {
     ECSIMenuEntry *entries = nullptr;
@@ -555,6 +619,7 @@ static ECSIMenuEntry *ECSIMenus_BuildToolMenu(void)
         }
     }
 
+    ECSIMenus_AddSubmenu(&entries, OPENECS_TOOLS_LABEL, ECSIMenus_BuildToolsMenu(focus));
     ECSIMenus_AddSubmenu(&entries, "Workspaces", ECSIMenus_BuildWorkspaceMenu());
     ECSIMenus_AddToolEntries(&entries, focus);
     return entries;
@@ -678,8 +743,26 @@ void ECSIMenus_Terminate(void)
     ECSIMenus_CloseFrom(0);
     arrfree(MENUS.titleItems);
     arrfree(MENUS.titleSources);
+    SDL_free(MENUS.workspaceLabel);
+
+    for (usz i = 0; i < arrlenu(MENUS.toolEntries); i++)
+    {
+        SDL_free(MENUS.toolEntries[i].function);
+    }
+
+    arrfree(MENUS.toolEntries);
     SDL_zero(MENUS);
     MENUS.titleMenu = -1;
+}
+
+/// @brief Adds a menu of the title bar, which is on while it is open.
+/// @param source Its place in its setting, or OPENECS_TOOLS_SOURCE or OPENECS_WORKSPACES_SOURCE.
+static void ECSIMenus_PutTitleItem(const char *label, ECSITitleKind kind, usz source)
+{
+    // arrput grows the list before it reads the item, so the item's place is read first
+    ECSITitleItem item = {label, kind, MENUS.titleMenu == (i64)arrlenu(MENUS.titleItems), true};
+    arrput(MENUS.titleItems, item);
+    arrput(MENUS.titleSources, source);
 }
 
 void ECSIMenus_UpdateTitleBar(void)
@@ -703,14 +786,21 @@ void ECSIMenus_UpdateTitleBar(void)
             offered = ECSIMenus_ReadSource(ECSValue_GetListItem(menu, j), &source) && ECSIMenus_Offers(source.function, focus);
         }
 
-        // arrput grows the list before it reads the item, so the item's place is read first
         if (offered)
         {
-            ECSITitleItem item = {label, ECSITitleKind_Menu, MENUS.titleMenu == (i64)arrlenu(MENUS.titleItems), true};
-            arrput(MENUS.titleItems, item);
-            arrput(MENUS.titleSources, i);
+            ECSIMenus_PutTitleItem(label, ECSITitleKind_Menu, i);
         }
     }
+
+    // the plugins' entries for the tool follow, in a menu of their own
+    ECSIMenuEntry *tools = ECSIMenus_BuildToolsMenu(focus);
+
+    if (arrlenu(tools) > 0)
+    {
+        ECSIMenus_PutTitleItem(OPENECS_TOOLS_LABEL, ECSITitleKind_Menu, OPENECS_TOOLS_SOURCE);
+    }
+
+    ECSIMenus_FreeEntries(&tools);
 
     // a button stays where it is while its function cannot be used, dimmed
     for (usz i = 0; i < ECSValue_GetListCount(buttons); i++)
@@ -723,6 +813,20 @@ void ECSIMenus_UpdateTitleBar(void)
             arrput(MENUS.titleItems, ((ECSITitleItem){label, ECSITitleKind_Button, source.on, ECSIMenus_Offers(source.function, focus)}));
             arrput(MENUS.titleSources, i);
         }
+    }
+
+    // the workspaces' menu shows the current one's name, when there are two or more
+    if (ECSWorkspace_GetCount() >= 2)
+    {
+        const char *name = ECSWorkspace_GetName(ECSWorkspace_GetCurrent());
+        SDL_free(MENUS.workspaceLabel);
+
+        if (SDL_asprintf(&MENUS.workspaceLabel, "%s" OPENECS_DROPDOWN_MARK, name != nullptr && name[0] != '\0' ? name : "?") < 0)
+        {
+            MENUS.workspaceLabel = nullptr;
+        }
+
+        ECSIMenus_PutTitleItem(MENUS.workspaceLabel != nullptr ? MENUS.workspaceLabel : "?", ECSITitleKind_Workspace, OPENECS_WORKSPACES_SOURCE);
     }
 
     ECSIWindow_SetTitleItems(MENUS.titleItems, arrlenu(MENUS.titleItems));
@@ -752,6 +856,7 @@ bool ECSIMenus_PressTitle(f32 x, f32 y)
         ECSIMenus_Show(ECSIMenus_BuildToolMenu(), nullptr, item.rect.x, item.rect.y + item.rect.h);
         break;
     case ECSITitleKind_Menu:
+    case ECSITitleKind_Workspace:
         ECSIMenus_OpenTitleMenu(item.index, item.rect);
         break;
     case ECSITitleKind_Button:
@@ -760,11 +865,43 @@ bool ECSIMenus_PressTitle(f32 x, f32 y)
             ECSIServices_CallBound(source.function, ECSILayout_GetFocus());
         }
         break;
-    case ECSITitleKind_Workspace:
-        return false;
     }
 
     return true;
+}
+
+void ECSIMenus_RemovePlugin(ECSPlugin plugin)
+{
+    for (usz i = arrlenu(MENUS.toolEntries); i > 0; i--)
+    {
+        if (MENUS.toolEntries[i - 1].plugin == plugin)
+        {
+            SDL_free(MENUS.toolEntries[i - 1].function);
+            arrdel(MENUS.toolEntries, i - 1);
+        }
+    }
+}
+
+SHUResult ECSApp_AddMenuEntry(ECSPlugin plugin, const char *function)
+{
+    ECSILog_Check(plugin != nullptr && function != nullptr, SHUResult_ErrAssertion);
+
+    // a plugin adds only its own functions
+    if (!ECSIPlugin_OwnsName(plugin, function))
+    {
+        (void)ECS_Check(nullptr, false, "Plugin '%s' adds '%s' to the tool's menu, which is not one of its functions.", ECSIPlugin_GetName(plugin), function);
+        return SHUResult_ErrAssertion;
+    }
+
+    ECSIToolEntry entry = {plugin, SDL_strdup(function)};
+
+    if (entry.function == nullptr)
+    {
+        return SHUResult_ErrAllocation;
+    }
+
+    arrput(MENUS.toolEntries, entry);
+    return SHUResult_Ok;
 }
 
 bool ECSIMenus_Offers(const char *function, ECSPanel panel)
@@ -852,7 +989,8 @@ static void ECSIMenus_Point(f32 x, f32 y)
 {
     ECSIDrawnTitleItem item = {0};
 
-    if (MENUS.titleMenu >= 0 && ECSIWindow_TitleItemAt(x, y, &item) && item.kind == ECSITitleKind_Menu && (i64)item.index != MENUS.titleMenu && item.index < arrlenu(MENUS.titleItems))
+    if (MENUS.titleMenu >= 0 && ECSIWindow_TitleItemAt(x, y, &item) && (item.kind == ECSITitleKind_Menu || item.kind == ECSITitleKind_Workspace) &&
+        (i64)item.index != MENUS.titleMenu && item.index < arrlenu(MENUS.titleItems))
     {
         ECSIMenus_OpenTitleMenu(item.index, item.rect);
         return;
@@ -861,7 +999,7 @@ static void ECSIMenus_Point(f32 x, f32 y)
     usz level = 0;
     usz index = 0;
 
-    if (ECSIWindow_MenuItemAt(x, y, &level, &index))
+    if (ECSIWindow_MenuItemAt(x, y, &level, &index) && !MENUS.levels[level].entries[index].heading)
     {
         bool hasSubmenu = MENUS.levels[level].entries[index].submenu != nullptr;
 
@@ -870,6 +1008,21 @@ static void ECSIMenus_Point(f32 x, f32 y)
             ECSIMenus_SelectAndOpen(level, index);
         }
     }
+}
+
+/// @brief Finds the entry a step away from another, passing over headings.
+/// @param step 1 for the next entry, or the count less 1 for the one before.
+static usz ECSIMenus_Step(usz level, usz from, usz step)
+{
+    usz count = arrlenu(MENUS.levels[level].entries);
+    usz index = (from + step) % count;
+
+    while (MENUS.levels[level].entries[index].heading && index != from)
+    {
+        index = (index + step) % count;
+    }
+
+    return index;
 }
 
 bool ECSIMenus_Handle(const SDL_Event *event)
@@ -911,10 +1064,10 @@ bool ECSIMenus_Handle(const SDL_Event *event)
         switch (event->key.key)
         {
         case SDLK_UP:
-            ECSIMenus_Select(deepest, (selected + count - 1) % count);
+            ECSIMenus_Select(deepest, ECSIMenus_Step(deepest, selected, count - 1));
             break;
         case SDLK_DOWN:
-            ECSIMenus_Select(deepest, (selected + 1) % count);
+            ECSIMenus_Select(deepest, ECSIMenus_Step(deepest, selected, 1));
             break;
         case SDLK_RIGHT:
             if (MENUS.levels[deepest].entries[selected].submenu != nullptr)

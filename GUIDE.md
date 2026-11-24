@@ -29,7 +29,7 @@ A tool starts as its preset arranges it. With the setting `ecs.keepSession` on, 
 - The window is divided into **panels**, such as a canvas, a palette or a list. Panels in the same place share a **tab row**; a panel alone shows none, and a small **grip** appears when the pointer comes near its top edge.
 - Drag a tab or a grip to move a panel: onto the centre of another panel to share its place, near an edge to split it, or out of the window into a window of its own. The place where it will land is highlighted.
 - Right-click a tab or a grip, or click the `⋮` at the end of a tab row, for the panel's menu: close, maximize, pop out, move to another workspace, and what the panel adds.
-- The window's title bar holds the menus File, Edit and Window, and the tool's own buttons. Click the tool's name, or right-click the title bar, for the tool's menu. Rest the pointer on a button to see the keys that do the same.
+- The window's title bar holds the menus File, Window and Tools, and the tool's own buttons; at its right, the current workspace's name opens a list of the workspaces. Click the tool's name, or right-click the title bar, for the tool's menu. Rest the pointer on a button to see the keys that do the same.
 - A **workspace** is an arrangement of panels for one job, such as drawing or organizing. Switching between them is instant.
 - Before a panel with unsaved work closes, OpenECS asks whether to save it, discard it or cancel.
 
