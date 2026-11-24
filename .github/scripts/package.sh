@@ -36,9 +36,9 @@ cp dependencies/lua-compat-5.3/LICENSE "$folder/licenses/lua-compat-5.3.txt"
 cp dependencies/libffi/LICENSE "$folder/licenses/libffi.txt"
 cp dependencies/clay/LICENSE.md "$folder/licenses/Clay.txt"
 cp dependencies/stb/LICENSE "$folder/licenses/stb.txt"
-cp resources/Roboto-LICENSE.txt "$folder/licenses/Roboto.txt"
+cp resources/JetBrainsMono-LICENSE.txt "$folder/licenses/JetBrainsMono.txt"
 
-# the libraries that the standard plugins include or link, and the font draw ships
+# the libraries that the standard plugins include or link
 std_notices=$(.github/scripts/licenses-std.sh "$folder/licenses")
 
 cat > "$folder/licenses/README.txt" << NOTICE
@@ -52,7 +52,7 @@ Lua: MIT license
 libffi: MIT license
 Clay: zlib license
 stb (stb_image, stb_vorbis): MIT license or public domain
-Roboto font: Apache License 2.0
+JetBrains Mono font: SIL Open Font License 1.1
 $std_notices
 NOTICE
 

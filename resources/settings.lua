@@ -91,7 +91,7 @@ return {
   -- the OS window when it opens, in layout units, and the core's font; a relative font path starts at the executable's folder
   ["ecs.windowWidth"] = 1280,
   ["ecs.windowHeight"] = 800,
-  ["ecs.font"] = "resources/Roboto-Regular.ttf",
+  ["ecs.font"] = "resources/JetBrainsMono-Regular.ttf",
   ["ecs.fontSize"] = 14,
 
   -- how large panels draw what they hold: 1.25 makes their text and elements a quarter larger

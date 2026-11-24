@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copies the licenses of the works that the standard plugins include or link, and the font draw ships, into a folder,
+# Copies the licenses of the works that the standard plugins include or link into a folder,
 # and prints a line for each, for the folder's README.txt. OpenECS's release and OpenECS-std's ship them.
 set -eu
 
@@ -29,7 +29,6 @@ cp $std/tree-sitter-lua/LICENSE.md "$folder/tree-sitter-lua.txt"
 cp $std/tree-sitter-json/LICENSE "$folder/tree-sitter-json.txt"
 # pl_mpeg is one header, whose first lines name its license and its author
 sed -n '2,5p' $std/pl_mpeg/pl_mpeg.h > "$folder/pl_mpeg.txt"
-cp std/plugins/draw/fonts/OFL.txt "$folder/RobotoMono.txt"
 
 cat << NOTICE
 SDL_net: zlib license
@@ -52,5 +51,4 @@ PCRE2: BSD 3-Clause license, with its exception for binary copies
 md4c: MIT license
 tree-sitter, with its grammars of C, Lua and JSON: MIT license
 pl_mpeg: MIT license
-Roboto Mono font: SIL Open Font License 1.1
 NOTICE
