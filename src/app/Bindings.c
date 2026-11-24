@@ -1991,7 +1991,7 @@ static int ECSIBindings_AppAddMenuEntry(lua_State *state)
 
     if (result)
     {
-        ECSIServices_Raise(state, result, "'%s' is not added to the tool's menu", function);
+        ECSIServices_Raise(state, result, "'%s' is not added to the menu Tools", function);
     }
 
     return 0;

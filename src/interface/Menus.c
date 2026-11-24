@@ -66,7 +66,7 @@ typedef struct ECSIMenuSource
     bool on;              // its setting is true
 } ECSIMenuSource;
 
-/// @brief A function that a plugin adds to the tool's menu.
+/// @brief A function that a plugin adds to the title bar's menu Tools.
 typedef struct ECSIToolEntry
 {
     ECSPlugin plugin;
@@ -76,7 +76,7 @@ typedef struct ECSIToolEntry
 static struct
 {
     ECSIMenuEntry *entries;     // stb_ds array of the panel menu's entries
-    ECSIToolEntry *toolEntries; // stb_ds array of the functions plugins add to the tool's menu
+    ECSIToolEntry *toolEntries; // stb_ds array of the functions plugins add to the menu Tools
     char *workspaceLabel;       // the workspaces' menu's label in the title bar
     ECSIMenuLevel *levels;      // stb_ds array of the open menus, the panel menu first; while any is open, it gets the pointer and the keys
 
@@ -569,7 +569,7 @@ static int SDLCALL ECSIMenus_CompareLabels(const void *first, const void *second
     return SDL_strcmp(((const ECSIMenuEntry *)first)->label, ((const ECSIMenuEntry *)second)->label);
 }
 
-/// @brief Builds the menu of the functions that plugins add to the tool's menu, those that can be used now, by their labels, whatever order the
+/// @brief Builds the menu of the functions that plugins add to the menu Tools, those that can be used now, by their labels, whatever order the
 /// plugins load in.
 /// @return stb_ds array of the entries.
 static ECSIMenuEntry *ECSIMenus_BuildToolsMenu(ECSPanel focus)
