@@ -108,7 +108,8 @@ return {
   -- frame rate in percent of the display's refresh rate: 100 waits for every refresh, 50 for every second one, 0 turns vsync off
   ["ecs.vsync"] = 100,
 
-  -- the OS window when it opens, in layout units, and the core's font; a relative font path starts at the executable's folder
+  -- the OS window when it opens, in layout units, and the core's font; a relative font path starts at the executable's folder;
+  -- "resources/Roboto-Regular.ttf" ships too, for a proportional font
   ["ecs.windowWidth"] = 1280,
   ["ecs.windowHeight"] = 800,
   ["ecs.font"] = "resources/JetBrainsMono-Regular.ttf",
