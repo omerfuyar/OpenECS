@@ -794,7 +794,23 @@ static void ECSIInput_PressPointer(const SDL_MouseButtonEvent *button)
         return;
     }
 
+    // the button at the end of a tab row opens the shown panel's menu below it
+    SDL_FRect rect = {0};
+    ECSPanel menuPanel = button->button == SDL_BUTTON_LEFT ? ECSIWindow_TabMenuAt(button->x, button->y, &rect) : nullptr;
+
+    if (menuPanel != nullptr)
+    {
+        ECSIMenus_OpenPanelMenu(menuPanel, rect.x, rect.y + rect.h);
+        return;
+    }
+
     if (ECSIInput_PressTab(button) || (button->button == SDL_BUTTON_LEFT && ECSIWindow_PointerDown(button->x, button->y)))
+    {
+        return;
+    }
+
+    // the tool's name, the menus and the buttons of the title bar
+    if (button->button == SDL_BUTTON_LEFT && ECSIMenus_PressTitle(button->x, button->y))
     {
         return;
     }
@@ -1127,6 +1143,10 @@ bool ECSIInput_Handle(const SDL_Event *event)
 
     case SDL_EVENT_MOUSE_MOTION:
         ECSIInput_MovePointer(&event->motion);
+        break;
+
+    case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+        ECSIWindow_PointerLeave();
         break;
 
     case SDL_EVENT_MOUSE_BUTTON_UP:

@@ -24,6 +24,12 @@
 /// @brief The setting that names the functions of the tool's menu.
 #define OPENECS_TOOL_MENU "ecs.toolMenu"
 
+/// @brief The setting that names the title bar's menus and their functions.
+#define OPENECS_TITLE_MENUS "ecs.titleMenus"
+
+/// @brief The setting that names the title bar's buttons and their functions.
+#define OPENECS_TITLE_BUTTONS "ecs.titleButtons"
+
 /// @brief Most workspaces that have their own functions: keys 1 to 9 and 0.
 #define OPENECS_WORKSPACE_FUNCTION_COUNT 10
 
@@ -45,11 +51,25 @@ typedef struct ECSIMenuLevel
     const char **lines;     // stb_ds array of each entry's key text and label, which the window shows
 } ECSIMenuLevel;
 
+/// @brief An entry of ecs.titleMenus or ecs.titleButtons, as read from the setting.
+typedef struct ECSIMenuSource
+{
+    const char *function; // the function it runs, registered by a plugin of the tool
+    const char *label;    // its own label, or nullptr for the function's
+    bool on;              // its setting is true
+} ECSIMenuSource;
+
 static struct
 {
     ECSIMenuEntry *entries; // stb_ds array of the panel menu's entries
     ECSIMenuLevel *levels;  // stb_ds array of the open menus, the panel menu first; while any is open, it gets the pointer and the keys
-} MENUS = {0};
+
+    ECSITitleItem *titleItems;  // stb_ds array of the title bar's menus and buttons, made again before each frame
+    usz *titleSources;          // stb_ds array of where each item is in its setting: a menu in ecs.titleMenus, a button in ecs.titleButtons
+    i64 titleMenu;              // the item whose menu is open, or -1
+    ECSIDrawnTitleItem tooltip; // the part of the title bar whose tooltip was made last
+    bool tooltipMade;
+} MENUS = {.titleMenu = -1};
 
 static void ECSIMenus_FreeEntries(ECSIMenuEntry **entries)
 {
@@ -82,6 +102,7 @@ static void ECSIMenus_CloseFrom(usz level)
     {
         arrfree(MENUS.levels);
         ECSIMenus_FreeEntries(&MENUS.entries);
+        MENUS.titleMenu = -1;
     }
 }
 
@@ -294,6 +315,98 @@ static void ECSIMenus_Show(ECSIMenuEntry *entries, ECSPanel panel, f32 x, f32 y)
     ECSIMenus_CloseFrom(0);
     MENUS.entries = entries;
     ECSIMenus_OpenLevel(entries, panel, (SDL_FRect){x, y, 0.0f, 0.0f});
+}
+
+/// @brief Reads an entry of ecs.titleMenus or ecs.titleButtons: a function's name, or a table with the function's name first, and its label and setting.
+/// @return false if the entry names no function that a plugin of the tool registered.
+static bool ECSIMenus_ReadSource(const ECSValue *entry, ECSIMenuSource *retSource)
+{
+    const char *setting = ECSValue_GetString(ECSValue_GetTableField(entry, "setting"), nullptr);
+    retSource->function = ECSValue_GetString(entry, nullptr);
+    retSource->function = retSource->function != nullptr ? retSource->function : ECSValue_GetString(ECSValue_GetListItem(entry, 0), nullptr);
+    retSource->label = ECSValue_GetString(ECSValue_GetTableField(entry, "label"), nullptr);
+    retSource->on = setting != nullptr && ECSValue_GetBool(ECSSetting_Get(setting), false);
+    return retSource->function != nullptr && ECSIServices_GetDescription(retSource->function) != nullptr;
+}
+
+/// @brief Builds the entries of a menu of ecs.titleMenus: the functions it names that can be used now, an entry that is on marked.
+/// @return stb_ds array of the entries.
+static ECSIMenuEntry *ECSIMenus_BuildTitleMenu(const ECSValue *menu, ECSPanel focus)
+{
+    ECSIMenuEntry *entries = nullptr;
+
+    for (usz i = 0; i < ECSValue_GetListCount(menu); i++)
+    {
+        ECSIMenuSource source = {0};
+
+        if (ECSIMenus_ReadSource(ECSValue_GetListItem(menu, i), &source) && ECSIMenus_Offers(source.function, focus))
+        {
+            const char *label = source.label != nullptr ? source.label : ECSIMenus_LabelOf(source.function, focus);
+            ECSIMenus_Add(&entries, label, source.on ? SDL_strdup(OPENECS_SHOWN_MARK) : ECSIKeys_PrefixTextOf(source.function), source.function);
+        }
+    }
+
+    return entries;
+}
+
+/// @brief Opens a menu of the title bar below its part.
+/// @param item The item's place among the title bar's items.
+static void ECSIMenus_OpenTitleMenu(usz item, SDL_FRect rect)
+{
+    const ECSValue *menu = ECSValue_GetListItem(ECSSetting_Get(OPENECS_TITLE_MENUS), MENUS.titleSources[item]);
+    ECSIMenus_Show(ECSIMenus_BuildTitleMenu(menu, ECSILayout_GetFocus()), nullptr, rect.x, rect.y + rect.h);
+    MENUS.titleMenu = (i64)item;
+}
+
+/// @brief Makes the tooltip of the part of the title bar whose tooltip is due: what its function does, and the keys that run it.
+static void ECSIMenus_MakeTooltip(void)
+{
+    ECSIDrawnTitleItem item = {0};
+
+    // no tooltip covers an open menu
+    if (arrlenu(MENUS.levels) > 0 || !ECSIWindow_GetDueTooltip(&item))
+    {
+        MENUS.tooltipMade = false;
+        return;
+    }
+
+    if (MENUS.tooltipMade && item.kind == MENUS.tooltip.kind && item.index == MENUS.tooltip.index)
+    {
+        return;
+    }
+
+    MENUS.tooltip = item;
+    MENUS.tooltipMade = true;
+    ECSIMenuSource source = {0};
+    char workspace[32];
+    const char *function = nullptr;
+
+    if (item.kind == ECSITitleKind_Name)
+    {
+        function = "ecs.app.menu";
+    }
+    else if (item.kind == ECSITitleKind_Workspace)
+    {
+        SDL_snprintf(workspace, sizeof(workspace), "ecs.workspace.switch%zu", item.index);
+        function = workspace;
+    }
+    else if (item.kind == ECSITitleKind_Button && ECSIMenus_ReadSource(ECSValue_GetListItem(ECSSetting_Get(OPENECS_TITLE_BUTTONS), MENUS.titleSources[item.index]), &source))
+    {
+        function = source.function;
+    }
+
+    if (function == nullptr || ECSIServices_GetDescription(function) == nullptr)
+    {
+        ECSIWindow_SetTooltip(nullptr, nullptr);
+        return;
+    }
+
+    // the keys after the prefix, or the key bound for the focused panel's type
+    ECSPanel focus = ECSILayout_GetFocus();
+    char *keys = ECSIKeys_PrefixTextOf(function);
+    keys = keys == nullptr && focus != nullptr ? ECSIKeys_BoundTextOf(focus->typeName, function) : keys;
+    ECSIWindow_SetTooltip(ECSIMenus_LabelOf(function, focus), keys);
+    SDL_free(keys);
 }
 
 #pragma region Core Functions
@@ -541,8 +654,16 @@ static const struct
 
 SHUResult ECSIMenus_Initialize(void)
 {
-    const ECSSettingDesc toolMenu = {.name = OPENECS_TOOL_MENU, .type = ECSSettingType_List, .description = "The functions that the tool's menu shows first, by name, such as \"settings.open\"; the title bar opens the menu with a right click"};
-    SHU_ReturnResult(ECSISettings_DeclareCore(&toolMenu));
+    const ECSSettingDesc settings[] = {
+        {.name = OPENECS_TOOL_MENU, .type = ECSSettingType_List, .description = "The functions that the tool's menu shows first, by name, such as \"settings.open\"; the tool's name in the title bar opens the menu, and so does a right click on the title bar"},
+        {.name = OPENECS_TITLE_MENUS, .type = ECSSettingType_List, .description = "The menus of the title bar, such as { label = \"File\", \"ecs.session.open\" }: each entry is a function's name, or { \"name\", label = \"Label\", setting = \"bool setting that marks it on\" }"},
+        {.name = OPENECS_TITLE_BUTTONS, .type = ECSSettingType_List, .description = "The tool's buttons in the title bar, after the menus: each is a function's name, or { \"name\", label = \"Label\", setting = \"bool setting that shows it on\" }"},
+    };
+
+    for (usz i = 0; i < SDL_arraysize(settings); i++)
+    {
+        SHU_ReturnResult(ECSISettings_DeclareCore(&settings[i]));
+    }
 
     for (usz i = 0; i < SDL_arraysize(OPENECS_CORE_FUNCTIONS); i++)
     {
@@ -555,7 +676,95 @@ SHUResult ECSIMenus_Initialize(void)
 void ECSIMenus_Terminate(void)
 {
     ECSIMenus_CloseFrom(0);
+    arrfree(MENUS.titleItems);
+    arrfree(MENUS.titleSources);
     SDL_zero(MENUS);
+    MENUS.titleMenu = -1;
+}
+
+void ECSIMenus_UpdateTitleBar(void)
+{
+    arrsetlen(MENUS.titleItems, 0);
+    arrsetlen(MENUS.titleSources, 0);
+    ECSPanel focus = ECSILayout_GetFocus();
+    const ECSValue *menus = ECSSetting_Get(OPENECS_TITLE_MENUS);
+    const ECSValue *buttons = ECSSetting_Get(OPENECS_TITLE_BUTTONS);
+
+    // a menu shows when it has an entry that can be used now
+    for (usz i = 0; i < ECSValue_GetListCount(menus); i++)
+    {
+        const ECSValue *menu = ECSValue_GetListItem(menus, i);
+        const char *label = ECSValue_GetString(ECSValue_GetTableField(menu, "label"), nullptr);
+        bool offered = false;
+
+        for (usz j = 0; label != nullptr && !offered && j < ECSValue_GetListCount(menu); j++)
+        {
+            ECSIMenuSource source = {0};
+            offered = ECSIMenus_ReadSource(ECSValue_GetListItem(menu, j), &source) && ECSIMenus_Offers(source.function, focus);
+        }
+
+        // arrput grows the list before it reads the item, so the item's place is read first
+        if (offered)
+        {
+            ECSITitleItem item = {label, ECSITitleKind_Menu, MENUS.titleMenu == (i64)arrlenu(MENUS.titleItems), true};
+            arrput(MENUS.titleItems, item);
+            arrput(MENUS.titleSources, i);
+        }
+    }
+
+    // a button stays where it is while its function cannot be used, dimmed
+    for (usz i = 0; i < ECSValue_GetListCount(buttons); i++)
+    {
+        ECSIMenuSource source = {0};
+
+        if (ECSIMenus_ReadSource(ECSValue_GetListItem(buttons, i), &source))
+        {
+            const char *label = source.label != nullptr ? source.label : ECSIMenus_LabelOf(source.function, focus);
+            arrput(MENUS.titleItems, ((ECSITitleItem){label, ECSITitleKind_Button, source.on, ECSIMenus_Offers(source.function, focus)}));
+            arrput(MENUS.titleSources, i);
+        }
+    }
+
+    ECSIWindow_SetTitleItems(MENUS.titleItems, arrlenu(MENUS.titleItems));
+    ECSIMenus_MakeTooltip();
+}
+
+bool ECSIMenus_PressTitle(f32 x, f32 y)
+{
+    ECSIDrawnTitleItem item = {0};
+
+    if (!ECSIWindow_TitleItemAt(x, y, &item))
+    {
+        return false;
+    }
+
+    // the items are made again before each frame, so a part drawn in the last frame may be gone
+    if (item.kind != ECSITitleKind_Name && item.index >= arrlenu(MENUS.titleItems))
+    {
+        return true;
+    }
+
+    ECSIMenuSource source = {0};
+
+    switch (item.kind)
+    {
+    case ECSITitleKind_Name:
+        ECSIMenus_Show(ECSIMenus_BuildToolMenu(), nullptr, item.rect.x, item.rect.y + item.rect.h);
+        break;
+    case ECSITitleKind_Menu:
+        ECSIMenus_OpenTitleMenu(item.index, item.rect);
+        break;
+    case ECSITitleKind_Button:
+        if (ECSIMenus_ReadSource(ECSValue_GetListItem(ECSSetting_Get(OPENECS_TITLE_BUTTONS), MENUS.titleSources[item.index]), &source) && ECSIMenus_Offers(source.function, ECSILayout_GetFocus()))
+        {
+            ECSIServices_CallBound(source.function, ECSILayout_GetFocus());
+        }
+        break;
+    case ECSITitleKind_Workspace:
+        return false;
+    }
+
+    return true;
 }
 
 bool ECSIMenus_Offers(const char *function, ECSPanel panel)
@@ -638,6 +847,31 @@ void ECSIMenus_OpenToolMenu(f32 x, f32 y)
     ECSIMenus_Show(ECSIMenus_BuildToolMenu(), nullptr, x, y);
 }
 
+/// @brief Handles a move of the pointer while a menu is open: pointing at another menu of the title bar opens it, and pointing at an entry highlights it and opens its submenu.
+static void ECSIMenus_Point(f32 x, f32 y)
+{
+    ECSIDrawnTitleItem item = {0};
+
+    if (MENUS.titleMenu >= 0 && ECSIWindow_TitleItemAt(x, y, &item) && item.kind == ECSITitleKind_Menu && (i64)item.index != MENUS.titleMenu && item.index < arrlenu(MENUS.titleItems))
+    {
+        ECSIMenus_OpenTitleMenu(item.index, item.rect);
+        return;
+    }
+
+    usz level = 0;
+    usz index = 0;
+
+    if (ECSIWindow_MenuItemAt(x, y, &level, &index))
+    {
+        bool hasSubmenu = MENUS.levels[level].entries[index].submenu != nullptr;
+
+        if (ECSIWindow_GetSelectedMenuItem(level) != index || arrlenu(MENUS.levels) != level + (hasSubmenu ? 2 : 1))
+        {
+            ECSIMenus_SelectAndOpen(level, index);
+        }
+    }
+}
+
 bool ECSIMenus_Handle(const SDL_Event *event)
 {
     if (arrlenu(MENUS.levels) == 0)
@@ -654,17 +888,7 @@ bool ECSIMenus_Handle(const SDL_Event *event)
     switch (event->type)
     {
     case SDL_EVENT_MOUSE_MOTION:
-        // pointing at an entry highlights it and opens its submenu
-        if (ECSIWindow_MenuItemAt(event->motion.x, event->motion.y, &level, &index))
-        {
-            bool hasSubmenu = MENUS.levels[level].entries[index].submenu != nullptr;
-
-            if (ECSIWindow_GetSelectedMenuItem(level) != index || arrlenu(MENUS.levels) != level + (hasSubmenu ? 2 : 1))
-            {
-                ECSIMenus_SelectAndOpen(level, index);
-            }
-        }
-
+        ECSIMenus_Point(event->motion.x, event->motion.y);
         return true;
 
     case SDL_EVENT_MOUSE_BUTTON_DOWN:

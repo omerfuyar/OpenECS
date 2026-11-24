@@ -65,8 +65,28 @@ return {
     },
   },
 
-  -- the functions that the tool's menu shows first, which a right click on the title bar opens; then come the workspaces, reset the layout and quit
+  -- the functions that the tool's menu shows first, which the tool's name in the title bar and a right click on it open; then come the workspaces, reset the layout and quit
   ["ecs.toolMenu"] = { "settings.open", "keys.open", "panels.open", "plugins.open", "launcher.open", "ecs.session.save", "ecs.session.open" },
+
+  -- the menus of the title bar that OpenECS draws, after the tool's name; an entry is a function's name, or { "name", label = "Label", setting = "a bool setting" },
+  -- which shows the entry on while the setting is true; functions that no plugin of the tool registered are left out
+  ["ecs.titleMenus"] = {
+    { label = "File", "launcher.open", "ecs.session.open", "ecs.session.save", "ecs.app.quit" },
+    { label = "Edit", "settings.open", "keys.open", "plugins.open" },
+    {
+      label = "Window",
+      "panels.open",
+      "ecs.layout.reopen",
+      "ecs.layout.maximize",
+      "ecs.layout.popOut",
+      "ecs.layout.lock",
+      "ecs.layout.reset",
+      "profiler.open",
+    },
+  },
+
+  -- the tool's own buttons, after the menus, in the same form; a preset gives them
+  ["ecs.titleButtons"] = {},
 
   -- save the tool's session when it quits, and start from it the next time; --fresh still starts from the preset
   ["ecs.keepSession"] = false,

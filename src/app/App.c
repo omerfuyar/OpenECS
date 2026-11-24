@@ -1168,6 +1168,9 @@ int ECSIApp_Run(void)
 
         ECSIInput_UpdateTextInput();
 
+        // the title bar's menus and buttons follow the settings, the plugins and the focused panel
+        ECSIMenus_UpdateTitleBar();
+
         // while a test runs, frames are not paced, so each step of the test sees a drawn window
         i32 frameWait = ECSIWindow_GetFrameWait();
 

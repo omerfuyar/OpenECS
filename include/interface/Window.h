@@ -193,6 +193,68 @@ bool ECSIWindow_TitleBarAt(f32 x, f32 y);
 /// @brief Checks whether a point of the event window is on any shown menu.
 bool ECSIWindow_MenuContains(f32 x, f32 y);
 
+/// @brief What a part of the title bar that OpenECS draws is (DESIGN 6.11).
+typedef enum ECSITitleKind
+{
+    ECSITitleKind_Name,      // the tool's name, which opens the tool's menu
+    ECSITitleKind_Menu,      // a menu of ecs.titleMenus
+    ECSITitleKind_Button,    // a button of ecs.titleButtons
+    ECSITitleKind_Workspace, // a workspace's tab
+} ECSITitleKind;
+
+/// @brief A menu or a button of the title bar, as Menus gives it.
+typedef struct ECSITitleItem
+{
+    const char *label;
+    ECSITitleKind kind; // ECSITitleKind_Menu or ECSITitleKind_Button
+    bool on;            // a button whose setting is true, or the menu that is open
+    bool enabled;       // false for a button whose function cannot be used now
+} ECSITitleItem;
+
+/// @brief A part of the title bar as an OS window drew it in its last frame.
+typedef struct ECSIDrawnTitleItem
+{
+    ECSITitleKind kind;
+    usz index;         // for a menu or a button, its place in the items of ECSIWindow_SetTitleItems; for a workspace, its number; 0 for the name
+    const char *label; // valid until the items change or the workspace is renamed
+    bool on;
+    bool enabled;
+    SDL_FRect rect; // in layout units
+} ECSIDrawnTitleItem;
+
+/// @brief Sets the menus and buttons that the title bar shows after the tool's name. The texts are copied; the window draws again only when they changed.
+/// @param items The menus, then the buttons.
+void ECSIWindow_SetTitleItems(const ECSITitleItem *items, usz count);
+
+/// @brief Finds the part of the title bar at a point of the event window: the name, a menu, a button or a workspace's tab.
+/// @param retItem Gets the part, as its OS window drew it.
+/// @return true if a part is at the point.
+bool ECSIWindow_TitleItemAt(f32 x, f32 y, ECSIDrawnTitleItem *retItem);
+
+/// @brief Gets the part of the title bar whose tooltip is due: the pointer has been on it for half a second.
+/// @param retItem Gets the part.
+/// @return true if a tooltip is due.
+bool ECSIWindow_GetDueTooltip(ECSIDrawnTitleItem *retItem);
+
+/// @brief Sets the text of the due tooltip, which shows below its part of the title bar. The texts are copied.
+/// @param text What the part does, or nullptr for no tooltip.
+/// @param keys The keys that run it, or nullptr.
+void ECSIWindow_SetTooltip(const char *text, const char *keys);
+
+/// @brief Draws a frame and gets the parts of an OS window's title bar, as it drew them, for tests.
+/// @param number The window's number, as ECSIWindow_Get counts them.
+/// @param retCount Gets how many there are.
+/// @return The parts, valid until the next frame, or nullptr if there is no such window or it shows no title bar.
+const ECSIDrawnTitleItem *ECSIWindow_GetTitleBar(usz number, usz *retCount);
+
+/// @brief Finds the button at the end of a tab row, which opens the shown panel's menu, at a point of the event window.
+/// @param retRect Gets the button's rectangle, in layout units.
+/// @return The group's shown panel, or nullptr.
+ECSPanel ECSIWindow_TabMenuAt(f32 x, f32 y, SDL_FRect *retRect);
+
+/// @brief Notes that the pointer left the event window, so nothing in it stays under the pointer.
+void ECSIWindow_PointerLeave(void);
+
 /// @brief A message dialog that the core draws over an OS window while Input waits for its answer (DESIGN 4.5, 7.7).
 typedef struct ECSIDialogView
 {

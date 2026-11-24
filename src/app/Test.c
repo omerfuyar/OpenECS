@@ -818,6 +818,33 @@ static int ECSITest_Window(lua_State *state)
     return 2;
 }
 
+/// @brief test.titleBar(): what the chosen OS window's title bar shows, in order: each part's kind, label and rectangle, and whether it is on and enabled.
+static int ECSITest_TitleBar(lua_State *state)
+{
+    static const char *const kinds[] = {"name", "menu", "button", "workspace"};
+    usz count = 0;
+    const ECSIDrawnTitleItem *items = ECSIWindow_GetTitleBar(TEST.window > 0 ? TEST.window : 1, &count);
+    lua_createtable(state, (int)count, 0);
+
+    for (usz i = 0; i < count; i++)
+    {
+        lua_createtable(state, 0, 5);
+        lua_pushstring(state, kinds[items[i].kind]);
+        lua_setfield(state, -2, "kind");
+        lua_pushstring(state, items[i].label);
+        lua_setfield(state, -2, "label");
+        lua_pushboolean(state, items[i].on);
+        lua_setfield(state, -2, "on");
+        lua_pushboolean(state, items[i].enabled);
+        lua_setfield(state, -2, "enabled");
+        ECSITest_PushRect(state, items[i].rect);
+        lua_setfield(state, -2, "rect");
+        lua_rawseti(state, -2, (int)i + 1);
+    }
+
+    return 1;
+}
+
 /// @brief test.screenshot(path): draws a frame and saves the picture of the OS window that test.window chose as a PNG file.
 static int ECSITest_Screenshot(lua_State *state)
 {
@@ -906,6 +933,7 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"popup", ECSITest_Popup},
     {"dialog", ECSITest_Dialog},
     {"window", ECSITest_Window},
+    {"titleBar", ECSITest_TitleBar},
     {"close", ECSITest_Close},
     {"screenshot", ECSITest_Screenshot},
     {"pixel", ECSITest_Pixel},
