@@ -37,6 +37,9 @@
 /// @brief How long the pointer stays on a part of the title bar before its tooltip shows.
 #define OPENECS_TOOLTIP_DELAY SDL_MS_TO_NS(500)
 
+/// @brief How many texts an OS window keeps before it destroys those its last frame did not draw.
+#define OPENECS_KEPT_TEXTS 256
+
 /// @brief Width of the button at the end of a tab row that opens the shown panel's menu, in layout units.
 #define OPENECS_TAB_MENU_WIDTH 18.0f
 /// @brief How far from an OS window's edge the pointer resizes it, when OpenECS draws the title bar, in layout units.
@@ -134,6 +137,13 @@ typedef struct ECSIMenuView
 } ECSIMenuView;
 
 /// @brief An OS window: the main window, or a pop-out window, with what the core draws in it.
+/// @brief A text that an OS window drew, kept for the next frames, as making one takes long.
+typedef struct ECSIKeptText
+{
+    TTF_Text *text;
+    u64 frame; // the last frame that drew it
+} ECSIKeptText;
+
 typedef struct ECSIOSWindow
 {
     u32 rootID; // the pop-out root it shows; 0 for the main window, which shows the current workspace's main root
@@ -147,8 +157,16 @@ typedef struct ECSIOSWindow
     ECSIDrawnTab *tabs;             // stb_ds array of the tabs drawn in its last frame
     ECSIDrawnTitleItem *titleItems; // stb_ds array of the parts of the title bar drawn in its last frame
     f32 titleEnd;                   // where those parts end; the title bar after them moves the window
-    u64 raised;                     // when it last opened or got the focus, counted across the OS windows; the highest is in front
-    bool changed;                   // what it shows changed, so it is drawn and presented in the next frame
+
+    // stb_ds string map of the texts drawn, by size and content, made with its renderer's text engine
+    struct
+    {
+        char *key;
+        ECSIKeptText value;
+    } *texts;
+    u64 frame;    // the frames drawn, counted
+    u64 raised;   // when it last opened or got the focus, counted across the OS windows; the highest is in front
+    bool changed; // what it shows changed, so it is drawn and presented in the next frame
 } ECSIOSWindow;
 
 /// @brief How a popup is shown: in an SDL popup window, or inside its panel's OS window when the video driver has no popup windows.
@@ -243,6 +261,20 @@ static struct
     f32 titleBarHeight;
 
     ECSITitleItem *titleItems; // stb_ds array of the title bar's menus and buttons, with labels it owns
+
+    // copies of the font, one for each size the interface draws texts in, as a kept text is laid out again when its font's size changes
+    struct
+    {
+        u16 size;
+        TTF_Font *font;
+    } *sizedFonts;
+
+    // stb_ds string map of the widths of the title bar's texts, as measuring a text takes long; emptied when the settings change
+    struct
+    {
+        char *key;
+        f32 value;
+    } *textWidths;
 
     // what of the title bar is under the pointer, and its tooltip
     struct
@@ -910,13 +942,26 @@ static void ECSIWindow_FreeTitleItems(void)
     arrsetlen(WINDOW.titleItems, 0);
 }
 
-/// @brief Gets the width of a text in the core's font, in layout units.
+/// @brief Gets the width of a text in the core's font, in layout units. Measuring takes long, so each text's width is kept.
 static f32 ECSIWindow_TextWidth(const char *text)
 {
+    if (WINDOW.textWidths == nullptr)
+    {
+        sh_new_strdup(WINDOW.textWidths);
+    }
+
+    ptrdiff_t kept = shgeti(WINDOW.textWidths, text);
+
+    if (kept >= 0)
+    {
+        return WINDOW.textWidths[kept].value;
+    }
+
     int width = 0;
     int height = 0;
     TTF_SetFontSize(WINDOW.font, (f32)(u16)WINDOW.fontSize);
     TTF_GetStringSize(WINDOW.font, text, 0, &width, &height);
+    shput(WINDOW.textWidths, text, (f32)width);
     return (f32)width;
 }
 
@@ -1163,9 +1208,17 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
         {
             ECSIWindow_DeclareMarks(group, root);
 
-            CLAY(CLAY_IDI("TabMenu", (u32)firstTab), {.layout = {.sizing = {CLAY_SIZING_FIXED(ECSIWindow_Px(OPENECS_TAB_MENU_WIDTH)), CLAY_SIZING_GROW(0)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}})
+            // three dots, drawn as squares, as a text costs more to draw each frame
+            f32 dot = SDL_max(2.0f, SDL_roundf(ECSIWindow_Px(2.0f)));
+
+            CLAY(CLAY_IDI("TabMenu", (u32)firstTab), {.layout = {.sizing = {CLAY_SIZING_FIXED(ECSIWindow_Px(OPENECS_TAB_MENU_WIDTH)), CLAY_SIZING_GROW(0)}, .childGap = (u16)dot, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .layoutDirection = CLAY_TOP_TO_BOTTOM}})
             {
-                CLAY_TEXT(CLAY_STRING("\u22EE"), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_TextDim], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                for (usz i = 0; i < 3; i++)
+                {
+                    CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(dot), CLAY_SIZING_FIXED(dot)}}, .backgroundColor = WINDOW.colors[ECSIColor_TextDim]})
+                    {
+                    }
+                }
             }
         }
     }
@@ -1629,6 +1682,14 @@ static void ECSIWindow_CloseOS(ECSIOSWindow *osWindow)
             ECSIWindow_ReleasePopup(popups[i]);
         }
     }
+
+    // the kept texts belong to the text engine
+    for (usz i = 0; i < shlenu(osWindow->texts); i++)
+    {
+        TTF_DestroyText(osWindow->texts[i].value.text);
+    }
+
+    shfree(osWindow->texts);
 
     if (osWindow->clayRenderer.textEngine != nullptr)
     {
@@ -2126,6 +2187,9 @@ static f32 ECSIWindow_ReadNumber(const char *name)
 /// @brief Reads the window's settings, except ecs.vsync and the ones read when the window opens.
 static void ECSIWindow_ReadSettings(void)
 {
+    // the font or its size may change
+    shfree(WINDOW.textWidths);
+
     for (usz i = 0; i < ECSIColor_Count; i++)
     {
         ECSIWindow_ReadColor(OPENECS_WINDOW_SETTINGS[i].name, &WINDOW.colors[i]);
@@ -2191,6 +2255,138 @@ static void ECSIWindow_ReadVsync(void *data)
     }
 }
 
+/// @brief Gets the copy of the core's font at a size, made when first asked for.
+/// @return The font, or nullptr if it cannot be made.
+static TTF_Font *ECSIWindow_FontOfSize(u16 size)
+{
+    for (usz i = 0; i < arrlenu(WINDOW.sizedFonts); i++)
+    {
+        if (WINDOW.sizedFonts[i].size == size)
+        {
+            return WINDOW.sizedFonts[i].font;
+        }
+    }
+
+    TTF_Font *font = TTF_CopyFont(WINDOW.font);
+
+    if (font == nullptr || !TTF_SetFontSize(font, (f32)size))
+    {
+        TTF_CloseFont(font);
+        return nullptr;
+    }
+
+    arrput(WINDOW.sizedFonts, ((typeof(*WINDOW.sizedFonts)){size, font}));
+    return font;
+}
+
+/// @brief Draws a text command of Clay with the text an earlier frame made for the same size and content, or makes one.
+/// A text too long for the key is made and destroyed each time.
+static void ECSIWindow_DrawText(ECSIOSWindow *osWindow, const Clay_RenderCommand *command)
+{
+    const Clay_TextRenderData *data = &command->renderData.text;
+    TTF_Font *font = ECSIWindow_FontOfSize(data->fontSize);
+
+    if (font == nullptr)
+    {
+        return;
+    }
+
+    // the map keeps copies of its keys
+    if (osWindow->texts == nullptr)
+    {
+        sh_new_strdup(osWindow->texts);
+    }
+
+    char key[256];
+    int keyLength = SDL_snprintf(key, sizeof(key), "%u|%.*s", (unsigned)data->fontSize, (int)data->stringContents.length, data->stringContents.chars);
+    bool keep = keyLength > 0 && (usz)keyLength < sizeof(key);
+    ptrdiff_t place = keep ? shgeti(osWindow->texts, key) : -1;
+    TTF_Text *text = place >= 0 ? osWindow->texts[place].value.text : nullptr;
+
+    if (place >= 0)
+    {
+        osWindow->texts[place].value.frame = osWindow->frame;
+    }
+    else
+    {
+        text = TTF_CreateText(osWindow->clayRenderer.textEngine, font, data->stringContents.chars, (size_t)data->stringContents.length);
+
+        if (text == nullptr)
+        {
+            return;
+        }
+
+        if (keep)
+        {
+            shput(osWindow->texts, key, ((ECSIKeptText){text, osWindow->frame}));
+        }
+    }
+
+    // Clay's renderer draws at whole pixels
+    Clay_Color color = data->textColor;
+    TTF_SetTextColor(text, (u8)color.r, (u8)color.g, (u8)color.b, (u8)color.a);
+    TTF_DrawRendererText(text, (f32)(int)command->boundingBox.x, (f32)(int)command->boundingBox.y);
+
+    if (!keep)
+    {
+        TTF_DestroyText(text);
+    }
+}
+
+/// @brief Destroys the kept texts that the last frame did not draw, once there are many, so a window keeps about as many as it shows.
+static void ECSIWindow_ForgetOldTexts(ECSIOSWindow *osWindow)
+{
+    if (shlenu(osWindow->texts) < OPENECS_KEPT_TEXTS)
+    {
+        return;
+    }
+
+    // removing an entry moves the last one into its place, which this walk saw already
+    for (ptrdiff_t i = shlen(osWindow->texts) - 1; i >= 0; i--)
+    {
+        if (osWindow->texts[i].value.frame != osWindow->frame)
+        {
+            TTF_DestroyText(osWindow->texts[i].value.text);
+            char key[256];
+            SDL_strlcpy(key, osWindow->texts[i].key, sizeof(key));
+            (void)shdel(osWindow->texts, key);
+        }
+    }
+}
+
+/// @brief Draws Clay's commands: texts with the texts kept from earlier frames, and the rest with Clay's SDL renderer, which makes each text again every frame.
+static void ECSIWindow_RenderCommands(ECSIOSWindow *osWindow, Clay_RenderCommandArray commands)
+{
+    osWindow->frame++;
+    i32 start = 0;
+
+    for (i32 i = 0; i <= commands.length; i++)
+    {
+        Clay_RenderCommand *command = i < commands.length ? Clay_RenderCommandArray_Get(&commands, i) : nullptr;
+
+        if (command != nullptr && command->commandType != CLAY_RENDER_COMMAND_TYPE_TEXT)
+        {
+            continue;
+        }
+
+        // the commands before the text, in one call
+        if (i > start)
+        {
+            Clay_RenderCommandArray part = {.capacity = i - start, .length = i - start, .internalArray = commands.internalArray + start};
+            SDL_Clay_RenderClayCommands(&osWindow->clayRenderer, &part);
+        }
+
+        if (command != nullptr)
+        {
+            ECSIWindow_DrawText(osWindow, command);
+        }
+
+        start = i + 1;
+    }
+
+    ECSIWindow_ForgetOldTexts(osWindow);
+}
+
 /// @brief Puts an OS window's picture together from what is drawn already, without presenting it: the background, the panels' pixels, the core's interface, then the popups drawn inside the window.
 static void ECSIWindow_Compose(ECSIOSWindow *osWindow, const ECSIRoot *root, Clay_RenderCommandArray commands)
 {
@@ -2198,7 +2394,7 @@ static void ECSIWindow_Compose(ECSIOSWindow *osWindow, const ECSIRoot *root, Cla
     SDL_SetRenderDrawColor(osWindow->renderer, (u8)background.r, (u8)background.g, (u8)background.b, (u8)background.a);
     SDL_RenderClear(osWindow->renderer);
     ECSILayout_ForEachGroup(root, ECSIWindow_ShowGroup, osWindow->renderer);
-    SDL_Clay_RenderClayCommands(&osWindow->clayRenderer, &commands);
+    ECSIWindow_RenderCommands(osWindow, commands);
     ECSIWindow_ShowPopupsIn(osWindow);
 }
 
@@ -2366,6 +2562,12 @@ void ECSIWindow_Terminate(void)
 
     if (WINDOW.font != nullptr)
     {
+        for (usz i = 0; i < arrlenu(WINDOW.sizedFonts); i++)
+        {
+            TTF_CloseFont(WINDOW.sizedFonts[i].font);
+        }
+
+        arrfree(WINDOW.sizedFonts);
         TTF_CloseFont(WINDOW.font);
     }
 
@@ -2378,6 +2580,7 @@ void ECSIWindow_Terminate(void)
     SDL_free(WINDOW.hint);
     ECSIWindow_FreeTitleItems();
     arrfree(WINDOW.titleItems);
+    shfree(WINDOW.textWidths);
     SDL_free(WINDOW.hover.text);
     SDL_free(WINDOW.hover.keys);
 

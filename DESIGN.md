@@ -618,6 +618,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - The core computes the rectangles of the layout tree itself.
 - Clay lays out the core's own interface on top of them: tab rows, grips, panel menus and the list of prefix keys. There is one Clay context per OS window (`Clay_SetCurrentContext`).
+- Clay's SDL renderer draws what Clay lays out, apart from texts: it would make and lay out each text again every frame. The core keeps each OS window's texts between frames, by size and content, and destroys those that are no longer drawn once there are many; the font has one copy for each size, as a text is laid out again when its font's size changes. The width of each title bar text is kept too, until the settings change.
 
 ### 6.10 Maximize, pop-out and workspaces
 
