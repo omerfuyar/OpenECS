@@ -18,7 +18,7 @@
 typedef struct ECSIPanelBinding
 {
     ECSPlugin plugin;
-    char *panelType;
+    char *panelType; // the panel type it works for, or "prefix" for a key after the prefix
     char *key;
     char *function;
 } ECSIPanelBinding;
@@ -79,7 +79,7 @@ static struct
     ECSIParsedBinding *bindings;     // stb_ds array of the bindings of the keys tables in effect and of the plugins, parsed from their texts
     bool tablesDirty;                // the keys tables or the plugins' bindings changed, so the keys after the prefix and the bindings are read again
     usz tablesWorkspace;             // the workspace whose keys they include
-    ECSIPanelBinding *panelBindings; // stb_ds array of plugins' default keys for their panel types
+    ECSIPanelBinding *panelBindings; // stb_ds array of plugins' default keys for their panel types, and after the prefix with the scope "prefix"
     ECSValue *presetKeys;            // the preset's keys table, or nullptr
     ECSValue **workspaceKeys;        // stb_ds array of each workspace's keys table; nullptr for none
 } KEYS = {0};
@@ -209,6 +209,15 @@ static void ECSIKeys_ReadTables(void)
     ECSIKeysTable tables[OPENECS_KEYS_TABLE_COUNT];
     ECSIKeys_GetTables(tables);
 
+    // the plugins' keys after the prefix are defaults below the core's settings file, so the core's keys win
+    for (usz i = 0; i < arrlenu(KEYS.panelBindings); i++)
+    {
+        if (SDL_strcmp(KEYS.panelBindings[i].panelType, OPENECS_KEYS_PREFIX) == 0)
+        {
+            ECSIKeys_PutBinding(&KEYS.prefixKeys, KEYS.panelBindings[i].key, KEYS.panelBindings[i].function);
+        }
+    }
+
     for (usz i = 0; i < OPENECS_KEYS_TABLE_COUNT; i++)
     {
         ECSIValue_TableForEachField(ECSValue_GetTableField(tables[i].keys, OPENECS_KEYS_PREFIX), ECSIKeys_AddPrefixKey, nullptr);
@@ -223,7 +232,7 @@ static void ECSIKeys_ReadTables(void)
         const ECSIPanelBinding *panelBinding = &KEYS.panelBindings[i];
         ECSIParsedBinding binding = {.layer = ECSIKeysLayer_Default, .scope = ECSIBindingScope_PanelType, .panelType = panelBinding->panelType, .function = panelBinding->function};
 
-        if (!ECSISettings_ParseKey(panelBinding->key, &binding.key, &binding.modifiers))
+        if (SDL_strcmp(panelBinding->panelType, OPENECS_KEYS_PREFIX) != 0 && !ECSISettings_ParseKey(panelBinding->key, &binding.key, &binding.modifiers))
         {
             arrput(KEYS.bindings, binding);
         }
@@ -656,18 +665,25 @@ char *ECSIKeys_BoundTextOf(const char *panelType, const char *function)
     return nullptr;
 }
 
-SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *key, const char *function)
+SHUResult ECSKey_Bind(ECSPlugin plugin, const char *scope, const char *key, const char *function)
 {
     ECSILog_Check(plugin != nullptr, SHUResult_ErrAssertion);
-    ECSILog_Check(panelType != nullptr && key != nullptr && function != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(scope != nullptr && key != nullptr && function != nullptr, SHUResult_ErrAssertion);
 
     u32 code = 0;
     u32 modifiers = 0;
+    bool prefix = SDL_strcmp(scope, OPENECS_KEYS_PREFIX) == 0;
 
-    // a plugin binds keys only for its own panel types
-    if (!ECSIPlugin_OwnsName(plugin, panelType))
+    // a plugin binds keys only for its own panel types, and keys after the prefix only for its own functions
+    if (!prefix && !ECSIPlugin_OwnsName(plugin, scope))
     {
-        (void)ECS_Check(nullptr, false, "Plugin '%s' binds a key for '%s', which is not one of its panel types.", ECSIPlugin_GetName(plugin), panelType);
+        (void)ECS_Check(nullptr, false, "Plugin '%s' binds a key for '%s', which is not one of its panel types.", ECSIPlugin_GetName(plugin), scope);
+        return SHUResult_ErrAssertion;
+    }
+
+    if (prefix && !ECSIPlugin_OwnsName(plugin, function))
+    {
+        (void)ECS_Check(nullptr, false, "Plugin '%s' binds a key after the prefix to '%s', which is not one of its functions.", ECSIPlugin_GetName(plugin), function);
         return SHUResult_ErrAssertion;
     }
 
@@ -679,12 +695,12 @@ SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *key, 
 
     ECSIKeys_ReadPrefix();
 
-    if (code == KEYS.prefixKey && modifiers == KEYS.prefixModifiers)
+    if (!prefix && code == KEYS.prefixKey && modifiers == KEYS.prefixModifiers)
     {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' binds '%s', the core prefix; the binding is never triggered.", ECSIPlugin_GetName(plugin), key);
     }
 
-    ECSIPanelBinding binding = {.plugin = plugin, .panelType = SDL_strdup(panelType), .key = SDL_strdup(key), .function = SDL_strdup(function)};
+    ECSIPanelBinding binding = {.plugin = plugin, .panelType = SDL_strdup(scope), .key = SDL_strdup(key), .function = SDL_strdup(function)};
 
     if (binding.panelType == nullptr || binding.key == nullptr || binding.function == nullptr)
     {
@@ -706,7 +722,7 @@ SHUResult ECSKey_List(ECSValue *retList)
     ECSIKeys_GetTables(tables);
     ECSIBindingList list = {0};
 
-    // the tables from the lowest layer to the highest, and the plugins' keys for their panel types after the core's file, in the defaults' layer
+    // the tables from the lowest layer to the highest, and the plugins' keys after the core's file, in the defaults' layer, so the core's keys win
     for (usz i = 0; i < OPENECS_KEYS_TABLE_COUNT; i++)
     {
         list.table = &tables[i];

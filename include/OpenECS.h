@@ -832,14 +832,15 @@ OPENECS_EXPORT void ECSHandle_Forget(void *object);
 /// @lua none: Lua frees an object with its provider's free function, or lets go of its handle
 OPENECS_EXPORT void ECSHandle_Free(ECSPlugin plugin, const char *type, void *object);
 
-/// @brief Gives a function a default key for one of the plugin's panel types: the key works while a panel of that type has focus. Presets and the user's settings can change it. Main thread only.
-/// @param plugin The plugin. It owns the panel type.
-/// @param panelType Name of the panel type, such as "canvas.view".
+/// @brief Gives a function a default key: for one of the plugin's panel types, which works while a panel of that type has focus; or, with the scope "prefix", after the core prefix, for one of the plugin's own functions.
+/// The core's keys after the prefix win over a plugin's. Presets and the user's settings can change it. Main thread only.
+/// @param plugin The plugin. It owns the panel type, or the function for "prefix".
+/// @param scope Name of the panel type, such as "canvas.view", or "prefix".
 /// @param key The key combination, such as "Ctrl+E".
 /// @param function Name of the function the key runs. It takes no arguments, or the focused panel: void() or void(handle<ecs.panel>).
-/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the panel type is not the plugin's or the key is not a key combination, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the panel type or the function after the prefix is not the plugin's or the key is not a key combination, or SHUResult_ErrAllocation.
 /// @lua ecs.key.bind
-OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *panelType, const char *key, const char *function);
+OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *scope, const char *key, const char *function);
 
 /// @brief Lists every key binding of the keys tables in effect (DESIGN 7.8): the core's settings file, the plugins' keys for their panel types, the
 /// preset, the current workspace and the user's settings. Each is a table of its key, as written; its function, or false for a key that the binding
@@ -962,6 +963,13 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSession_ListPresets(ECSValue *retList);
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 /// @lua ecs.session.listSessions
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_ListSessions(ECSValue *retList);
+
+/// @brief Adds one of the plugin's functions to the tool's menu, in its submenu Tools, and to the title bar's menu Tools (DESIGN 6.8). The entry shows the function's description and its keys after the prefix. Main thread only.
+/// @param plugin The plugin. It owns the function.
+/// @param function Name of a service function whose signature is void(handle<ecs.panel>) or void(); it runs on the focused panel.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the function is not the plugin's, or SHUResult_ErrAllocation.
+/// @lua ecs.app.addMenuEntry
+OPENECS_EXPORT SHUWUR SHUResult ECSApp_AddMenuEntry(ECSPlugin plugin, const char *function);
 
 /// @brief Quits OpenECS, as the main window's close button does: the user is asked about unsaved work first and may cancel. It happens after the current callback returns. Main thread only.
 /// @lua ecs.app.quit

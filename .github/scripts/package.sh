@@ -37,6 +37,7 @@ cp dependencies/libffi/LICENSE "$folder/licenses/libffi.txt"
 cp dependencies/clay/LICENSE.md "$folder/licenses/Clay.txt"
 cp dependencies/stb/LICENSE "$folder/licenses/stb.txt"
 cp resources/JetBrainsMono-LICENSE.txt "$folder/licenses/JetBrainsMono.txt"
+cp resources/Roboto-LICENSE.txt "$folder/licenses/Roboto.txt"
 
 # the libraries that the standard plugins include or link
 std_notices=$(.github/scripts/licenses-std.sh "$folder/licenses")
@@ -53,6 +54,7 @@ libffi: MIT license
 Clay: zlib license
 stb (stb_image, stb_vorbis): MIT license or public domain
 JetBrains Mono font: SIL Open Font License 1.1
+Roboto font: Apache License 2.0
 $std_notices
 NOTICE
 

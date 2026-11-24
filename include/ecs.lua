@@ -490,8 +490,13 @@ function ecs.workspace.switch(number) end
 -- App
 
 ---@class ecs.app
----@field menu fun() Shows the tool's menu: the functions that the setting ecs.toolMenu names, the workspaces, then reset the layout and quit. A right click on the title bar opens it too. Keys can run it.
+---@field menu fun() Shows the tool's menu: the functions that the setting ecs.toolMenu names, the plugins' entries in Tools, the workspaces, then reset the layout and quit. The tool's name in the title bar and a right click on the title bar open it too. Keys can run it.
 ecs.app = {}
+
+---Adds one of the plugin's functions to the tool's menu, in its submenu Tools, and to the title bar's menu Tools. Its signature is "void(handle<ecs.panel>)" or "void()".
+---@param functionName string The plugin's service function the entry runs, such as "settings.open".
+---A function that is not the plugin's is a misuse (ecs.check).
+function ecs.app.addMenuEntry(functionName) end
 
 ---Quits, as the main window's close button does: the user is asked about unsaved work first and may cancel. Keys can run it.
 function ecs.app.quit() end
@@ -618,12 +623,13 @@ function ecs.session.listSessions() end
 ---@class ecs.key
 ecs.key = {}
 
----Gives a function a default key for one of the plugin's panel types. Presets and the user's settings can change it.
----@param panelType string One of the plugin's panel types, by its full name, such as "canvas.view".
+---Gives a function a default key: for one of the plugin's panel types, or, with the scope "prefix", after the core prefix for one of the plugin's own functions.
+---The core's keys after the prefix win over a plugin's. Presets and the user's settings can change it.
+---@param scope string One of the plugin's panel types, by its full name, such as "canvas.view", or "prefix".
 ---@param key string A key combination, such as "Ctrl+E".
 ---@param functionName string A service function, such as "canvas.clear".
----A panel type that is not the plugin's, or a text that is not a key combination, is a misuse (ecs.check).
-function ecs.key.bind(panelType, key, functionName) end
+---A panel type, or a function after the prefix, that is not the plugin's, or a text that is not a key combination, is a misuse (ecs.check).
+function ecs.key.bind(scope, key, functionName) end
 
 ---A key binding of the keys tables in effect, as ecs.key.list gives it.
 ---@class ecs.KeyBinding
