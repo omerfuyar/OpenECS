@@ -1418,6 +1418,7 @@ OpenECS follows the XDG Base Directory specification:
 | libffi                      | core: calls by signature                              |
 | shu                         | core: basic types and results                         |
 | stb (`stb_ds.h`)            | core: dynamic arrays and hash maps                    |
+| JetBrains Mono              | core: the font of the interface, `resources/JetBrainsMono-Regular.ttf` from JetBrains' release 2.304, under the SIL Open Font License 1.1 in `resources/JetBrainsMono-LICENSE.txt`; draw's monospace font too (OpenECS-std DESIGN 2) |
 | SDL3_image                  | not used; the core loads PNG files with `SDL_LoadPNG` |
 | SDL3_mixer, SDL3_net, cgltf | not core; plugins may compile them in (20.1)          |
 
