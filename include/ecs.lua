@@ -10,18 +10,23 @@
 ---A colour: "#RRGGBB", "#RRGGBBAA" with opacity, or the name of a colour of the theme, such as "text" for the setting ecs.colorText.
 ---The names are the core's colour settings, ecs.color and the name with a capital first letter.
 ---@alias ecs.Color
----| "background" # ecs.colorBackground: between panels
----| "tabRow" # ecs.colorTabRow: tab rows
+---| "background" # ecs.colorBackground: the title bar, and between panels
+---| "tabRow" # ecs.colorTabRow: tab rows, and headers inside panels
 ---| "tab" # ecs.colorTab: tabs
 ---| "tabShown" # ecs.colorTabShown: the shown tab
 ---| "text" # ecs.colorText: text
 ---| "textDim" # ecs.colorTextDim: dim text
----| "accent" # ecs.colorAccent: the focus border, keys and highlights
+---| "accent" # ecs.colorAccent: the focus, links, keys, headings and what is on
 ---| "placeholder" # ecs.colorPlaceholder: a placeholder panel
----| "overlay" # ecs.colorOverlay: menus, grips and the list of prefix keys
+---| "overlay" # ecs.colorOverlay: menus, grips, tooltips and the list of prefix keys
 ---| "drop" # ecs.colorDrop: the place where a dragged panel lands
----| "selected" # ecs.colorSelected: the selected menu entry
----| "frame" # ecs.colorFrame: the frame around each group of panels
+---| "selected" # ecs.colorSelected: the chosen item, menu entry or text
+---| "frame" # ecs.colorFrame: the line around each group, menu and field
+---| "panel" # ecs.colorPanel: what a panel's view is drawn on
+---| "field" # ecs.colorField: fields, check boxes, and the tracks of sliders and scroll bars
+---| "button" # ecs.colorButton: buttons and the other controls that are clicked
+---| "buttonHover" # ecs.colorButtonHover: a button under the pointer
+---| "hover" # ecs.colorHover: a row or menu entry under the pointer
 ---| string
 
 ---@class ecs
