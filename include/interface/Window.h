@@ -140,12 +140,12 @@ ECSPanel ECSIWindow_TabAt(f32 x, f32 y);
 /// @return The group's shown panel, or nullptr.
 ECSPanel ECSIWindow_TabRowAt(f32 x, f32 y);
 
-/// @brief Scrolls the tab row at a point, if there is one.
+/// @brief Shows the next or the previous tab of the tab row at a point of the event window, for a turn of the wheel; the focus goes with the shown panel when the group has it.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
-/// @param steps Wheel steps; positive scrolls toward the last tab.
-/// @return true if a tab row was scrolled.
-bool ECSIWindow_ScrollTabs(f32 x, f32 y, f32 steps);
+/// @param steps Wheel steps; positive shows the next tab. Parts of a step add up.
+/// @return true if the point is on a tab row.
+bool ECSIWindow_WheelTabs(f32 x, f32 y, f32 steps);
 
 /// @brief Stops dragging a panel without moving it.
 /// @return true if a panel was being dragged.
@@ -194,10 +194,11 @@ bool ECSIWindow_MenuContains(f32 x, f32 y);
 /// @brief What a part of the title bar that OpenECS draws is (DESIGN 6.11).
 typedef enum ECSITitleKind
 {
-    ECSITitleKind_Name,      // the tool's name, which opens the tool's menu
+    ECSITitleKind_Name,      // the tool's name, a label
     ECSITitleKind_Menu,      // a menu of ecs.titleMenus
     ECSITitleKind_Button,    // a button of ecs.titleButtons
     ECSITitleKind_Workspace, // the workspaces' menu, at the right
+    ECSITitleKind_Window,    // a window button at the right end: minimize, maximize or restore, and close
 } ECSITitleKind;
 
 /// @brief A menu or a button of the title bar, as Menus gives it.
@@ -213,7 +214,7 @@ typedef struct ECSITitleItem
 typedef struct ECSIDrawnTitleItem
 {
     ECSITitleKind kind;
-    usz index;         // for a menu or a button, its place in the items of ECSIWindow_SetTitleItems; for a workspace, its number; 0 for the name
+    usz index;         // for a menu or a button, its place in the items of ECSIWindow_SetTitleItems; for a window button, 1 minimize, 2 maximize or restore, 3 close; 0 for the others
     const char *label; // valid until the items change or the workspace is renamed
     bool on;
     bool enabled;
@@ -224,7 +225,7 @@ typedef struct ECSIDrawnTitleItem
 /// @param items The menus, then the buttons.
 void ECSIWindow_SetTitleItems(const ECSITitleItem *items, usz count);
 
-/// @brief Finds the part of the title bar at a point of the event window: the name, a menu, a button or a workspace's tab.
+/// @brief Finds the part of the title bar at a point of the event window that Menus handles: a menu, a button or the workspaces' menu.
 /// @param retItem Gets the part, as its OS window drew it.
 /// @return true if a part is at the point.
 bool ECSIWindow_TitleItemAt(f32 x, f32 y, ECSIDrawnTitleItem *retItem);
@@ -244,6 +245,12 @@ void ECSIWindow_SetTooltip(const char *text, const char *keys);
 /// @param retCount Gets how many there are.
 /// @return The parts, valid until the next frame, or nullptr if there is no such window or it shows no title bar.
 const ECSIDrawnTitleItem *ECSIWindow_GetTitleBar(usz number, usz *retCount);
+
+/// @brief Gets the parts of the title bar of a panel's OS window as its last frame drew them.
+/// @param panel The panel, or nullptr for the main window.
+/// @param retCount Gets how many there are.
+/// @return The parts, valid until the next frame, or nullptr when the window shows no title bar.
+const ECSIDrawnTitleItem *ECSIWindow_GetDrawnTitle(ECSPanel panel, usz *retCount);
 
 /// @brief Finds the button at the end of a tab row, which opens the shown panel's menu, at a point of the event window.
 /// @param retRect Gets the button's rectangle, in layout units.

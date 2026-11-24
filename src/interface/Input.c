@@ -635,10 +635,9 @@ static void ECSIInput_PressPointer(const SDL_MouseButtonEvent *button)
         return;
     }
 
-    // a right click on the title bar opens the tool's menu
+    // a right click on the title bar does nothing: its menus are the tool's
     if (button->button == SDL_BUTTON_RIGHT && ECSIWindow_TitleBarAt(button->x, button->y))
     {
-        ECSIMenus_OpenToolMenu(button->x, button->y);
         return;
     }
 
@@ -725,10 +724,10 @@ static void ECSIInput_ReleasePointer(const SDL_MouseButtonEvent *button)
     }
 }
 
-/// @brief Handles a turn of the mouse wheel: over a tab row it scrolls the tabs, down and right toward the last tab; else it goes to the panel under the pointer.
+/// @brief Handles a turn of the mouse wheel: over a tab row it shows the next tab, down and right, or the one before; else it goes to the panel under the pointer.
 static void ECSIInput_TurnWheel(const SDL_MouseWheelEvent *wheel)
 {
-    if (ECSIWindow_ScrollTabs(wheel->mouse_x, wheel->mouse_y, (wheel->x - wheel->y) * ECSIInput_GetWheelDirection(wheel)))
+    if (ECSIWindow_WheelTabs(wheel->mouse_x, wheel->mouse_y, (wheel->x - wheel->y) * ECSIInput_GetWheelDirection(wheel)))
     {
         return;
     }

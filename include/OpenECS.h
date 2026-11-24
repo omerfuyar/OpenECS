@@ -272,6 +272,15 @@ typedef void (*ECSPopupEventFunction)(void *data, const ECSPanelEvent *event);
 /// @param data The data of the popup's description.
 typedef void (*ECSPopupClosedFunction)(void *data);
 
+/// @brief Where a panel is in its OS window, in the panel's surface pixels, which a popup's anchor uses. Given by ECSPanel_GetPlace.
+typedef struct ECSPanelPlace
+{
+    f32 x; // the panel's top left corner, from the OS window's
+    f32 y;
+    f32 windowWidth; // the OS window's size
+    f32 windowHeight;
+} ECSPanelPlace;
+
 /// @brief Describes a popup. Passed to ECSPopup_Open.
 typedef struct ECSPopupDesc
 {
@@ -964,7 +973,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSSession_ListPresets(ECSValue *retList);
 /// @lua ecs.session.listSessions
 OPENECS_EXPORT SHUWUR SHUResult ECSSession_ListSessions(ECSValue *retList);
 
-/// @brief Adds one of the plugin's functions to the tool's menu, in its submenu Tools, and to the title bar's menu Tools (DESIGN 6.8). The entry shows the function's description and its keys after the prefix. Main thread only.
+/// @brief Adds one of the plugin's functions to the title bar's menu Tools (DESIGN 6.8). The entry shows the function's description and its keys after the prefix. Main thread only.
 /// @param plugin The plugin. It owns the function.
 /// @param function Name of a service function whose signature is void(handle<ecs.panel>) or void(); it runs on the focused panel.
 /// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the function is not the plugin's, or SHUResult_ErrAllocation.
@@ -1150,6 +1159,12 @@ OPENECS_EXPORT u32 ECSPanel_GetID(ECSPanel panel);
 /// @return The name. Valid while the panel exists.
 /// @lua panel.type
 OPENECS_EXPORT const char *ECSPanel_GetType(ECSPanel panel);
+
+/// @brief Gets where a panel is in its OS window, and the window's size, in the panel's surface pixels, so a popup can be anchored anywhere in the window. Main thread only.
+/// @param panel The panel.
+/// @param retPlace Gets the place; zeros while the panel is not shown.
+/// @lua panel.place
+OPENECS_EXPORT void ECSPanel_GetPlace(ECSPanel panel, ECSPanelPlace *retPlace);
 
 /// @brief Says whether a panel accepts typed text, and where its text cursor is. While the panel has focus and accepts text, it gets Text events, and the system's input method shows its window beside the cursor. A key that runs a binding types no text. Main thread only.
 /// @param panel The panel.

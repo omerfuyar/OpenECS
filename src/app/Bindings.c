@@ -1938,6 +1938,29 @@ static const luaL_Reg OPENECS_BINDINGS_POPUP[] = {
 
 #pragma endregion Popups
 
+/// @brief panel.place: where the panel is in its OS window, and the window's size, in its surface pixels.
+static int ECSIBindings_PanelPlace(lua_State *state)
+{
+    ECSPanelPlace place = {0};
+    ECSPanel_GetPlace(ECSIBindings_CheckPanel(1), &place);
+    lua_createtable(state, 0, 4);
+    lua_pushnumber(state, place.x);
+    lua_setfield(state, -2, "x");
+    lua_pushnumber(state, place.y);
+    lua_setfield(state, -2, "y");
+    lua_pushnumber(state, place.windowWidth);
+    lua_setfield(state, -2, "windowWidth");
+    lua_pushnumber(state, place.windowHeight);
+    lua_setfield(state, -2, "windowHeight");
+    return 1;
+}
+
+/// @brief The panel's fields that Lua builds itself, as their values are tables.
+static const luaL_Reg OPENECS_BINDINGS_PANEL_TABLE_FIELDS[] = {
+    {"place", ECSIBindings_PanelPlace},
+    {nullptr, nullptr},
+};
+
 static const luaL_Reg OPENECS_BINDINGS_PANEL_METHODS[] = {
     {"openPopup", ECSIBindings_PanelOpenPopup},
     {"setTextInput", ECSIBindings_PanelSetTextInput},
@@ -2228,7 +2251,7 @@ static SHUResult ECSIBindings_AddMembers(lua_State *state, const ECSIBindingsMem
 /// @brief Sets the metamethods of one of the core's handle types: its methods, which are the given C functions and the wrapped ones, its fields and its
 /// fields that can be set. A missing table of members gives nothing.
 static SHUResult ECSIBindings_SetMembers(const char *type, const luaL_Reg *methods, const ECSIBindingsMember *direct, const ECSIBindingsMember *fields,
-                                         const ECSIBindingsMember *setters, lua_CFunction Cannot)
+                                         const luaL_Reg *tableFields, const ECSIBindingsMember *setters, lua_CFunction Cannot)
 {
     lua_State *state = ECSILua_GetState();
     int top = lua_gettop(state);
@@ -2251,6 +2274,12 @@ static SHUResult ECSIBindings_SetMembers(const char *type, const luaL_Reg *metho
     result = direct != nullptr ? ECSIBindings_AddMembers(state, direct) : result;
     lua_newtable(state);
     result = !result && fields != nullptr ? ECSIBindings_AddMembers(state, fields) : result;
+
+    if (tableFields != nullptr)
+    {
+        luaL_setfuncs(state, tableFields, 0);
+    }
+
     lua_newtable(state);
     result = !result && setters != nullptr ? ECSIBindings_AddMembers(state, setters) : result;
     lua_pushcfunction(state, Cannot);
@@ -2493,9 +2522,9 @@ void ECSIBindings_Initialize(void)
     lua_pop(state, 1);
 
     // a panel's and a surface's data are fields, and what they do are methods
-    SHUResult result = ECSIBindings_SetMembers(OPENECS_LUA_PANEL, OPENECS_BINDINGS_PANEL_METHODS, OPENECS_BINDINGS_PANEL_DIRECT, OPENECS_BINDINGS_PANEL_FIELDS,
+    SHUResult result = ECSIBindings_SetMembers(OPENECS_LUA_PANEL, OPENECS_BINDINGS_PANEL_METHODS, OPENECS_BINDINGS_PANEL_DIRECT, OPENECS_BINDINGS_PANEL_FIELDS, OPENECS_BINDINGS_PANEL_TABLE_FIELDS,
                                                OPENECS_BINDINGS_PANEL_SETTERS, ECSIBindings_PanelCannot);
-    result = result ? result : ECSIBindings_SetMembers(OPENECS_LUA_SURFACE, nullptr, OPENECS_BINDINGS_SURFACE_METHODS, OPENECS_BINDINGS_SURFACE_FIELDS, nullptr, ECSIBindings_SurfaceCannot);
+    result = result ? result : ECSIBindings_SetMembers(OPENECS_LUA_SURFACE, nullptr, OPENECS_BINDINGS_SURFACE_METHODS, OPENECS_BINDINGS_SURFACE_FIELDS, nullptr, nullptr, ECSIBindings_SurfaceCannot);
     SDL_assert(!result);
 }
 

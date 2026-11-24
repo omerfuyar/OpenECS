@@ -23,16 +23,13 @@
 /// @brief How far from the focused panel's corner a menu that keys open is, in layout units.
 #define OPENECS_MENU_OFFSET 24.0f
 
-/// @brief The setting that names the functions of the tool's menu.
-#define OPENECS_TOOL_MENU "ecs.toolMenu"
-
 /// @brief The setting that names the title bar's menus and their functions.
 #define OPENECS_TITLE_MENUS "ecs.titleMenus"
 
 /// @brief The setting that names the title bar's buttons and their functions.
 #define OPENECS_TITLE_BUTTONS "ecs.titleButtons"
 
-/// @brief The menu of the plugins' entries for the whole tool, in the tool's menu and in the title bar.
+/// @brief The title bar's menu of the plugins' entries for the whole tool.
 #define OPENECS_TOOLS_LABEL "Tools"
 
 /// @brief What marks the workspaces' menu in the title bar, after the current workspace's name.
@@ -41,9 +38,6 @@
 /// @brief Where the title bar's menu of the plugins' entries, and its workspaces' menu, are among the sources of its items, which are places in settings.
 #define OPENECS_TOOLS_SOURCE SIZE_MAX
 #define OPENECS_WORKSPACES_SOURCE (SIZE_MAX - 1)
-
-/// @brief Most workspaces that have their own functions: keys 1 to 9 and 0.
-#define OPENECS_WORKSPACE_FUNCTION_COUNT 10
 
 /// @brief An entry of a menu: it runs a function, shows a tab or opens a submenu.
 typedef struct ECSIMenuEntry
@@ -195,14 +189,7 @@ static void ECSIMenus_AddTypeEntries(ECSIMenuEntry **entries, ECSPanel panel)
     }
 }
 
-/// @brief Adds the entries that act on the whole tool: resetting the layout, and quitting.
-static void ECSIMenus_AddToolEntries(ECSIMenuEntry **entries, ECSPanel panel)
-{
-    ECSIMenus_AddFunction(entries, "ecs.layout.reset", nullptr, panel);
-    ECSIMenus_AddFunction(entries, "ecs.app.quit", nullptr, panel);
-}
-
-/// @brief Builds a panel's menu: what acts on the panel and its group, the submenus that move it, its type's entries, then what acts on the tool.
+/// @brief Builds a panel's menu: what acts on the panel and its group, the submenus that move it, then its type's entries.
 /// @return stb_ds array of the entries.
 static ECSIMenuEntry *ECSIMenus_BuildPanelMenu(ECSPanel panel)
 {
@@ -224,8 +211,8 @@ static ECSIMenuEntry *ECSIMenus_BuildPanelMenu(ECSPanel panel)
     ECSIMenus_AddFunction(&move, "ecs.layout.moveDown", "Down", panel);
     ECSIMenus_AddSubmenu(&entries, "Move", move);
 
-    // one entry for each other workspace, by number and name
-    for (usz number = 1; number <= ECSWorkspace_GetCount() && number <= OPENECS_WORKSPACE_FUNCTION_COUNT; number++)
+    // one entry for each other workspace, by number and name, then a new one
+    for (usz number = 1; number <= ECSWorkspace_GetCount() && number <= OPENECS_WORKSPACE_LIMIT; number++)
     {
         char function[32];
         char label[256];
@@ -238,9 +225,9 @@ static ECSIMenuEntry *ECSIMenus_BuildPanelMenu(ECSPanel panel)
         }
     }
 
+    ECSIMenus_AddFunction(&workspaces, "ecs.layout.moveToNewWorkspace", "New workspace", panel);
     ECSIMenus_AddSubmenu(&entries, "To workspace", workspaces);
     ECSIMenus_AddTypeEntries(&entries, panel);
-    ECSIMenus_AddToolEntries(&entries, panel);
     return entries;
 }
 
@@ -250,7 +237,7 @@ static ECSIMenuEntry *ECSIMenus_BuildWorkspaceMenu(void)
 {
     ECSIMenuEntry *entries = nullptr;
 
-    for (usz number = 1; number <= ECSWorkspace_GetCount() && number <= OPENECS_WORKSPACE_FUNCTION_COUNT; number++)
+    for (usz number = 1; number <= ECSWorkspace_GetCount() && number <= OPENECS_WORKSPACE_LIMIT; number++)
     {
         char function[32];
         char label[256];
@@ -262,7 +249,7 @@ static ECSIMenuEntry *ECSIMenus_BuildWorkspaceMenu(void)
     return entries;
 }
 
-/// @brief Builds a group's menu: its tabs, what acts on the whole group, then what acts on the tool.
+/// @brief Builds a group's menu: its tabs, then what acts on the whole group.
 /// @return stb_ds array of the entries.
 static ECSIMenuEntry *ECSIMenus_BuildGroupMenu(ECSPanel shownPanel)
 {
@@ -280,12 +267,10 @@ static ECSIMenuEntry *ECSIMenus_BuildGroupMenu(ECSPanel shownPanel)
     }
 
     ECSIMenus_AddSubmenu(&entries, "Tabs", tabs);
-    ECSIMenus_AddSubmenu(&entries, "Workspaces", ECSIMenus_BuildWorkspaceMenu());
     ECSIMenus_AddFunction(&entries, "ecs.layout.maximize", nullptr, shownPanel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.lock", nullptr, shownPanel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.closeGroup", nullptr, shownPanel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.reopen", nullptr, shownPanel);
-    ECSIMenus_AddToolEntries(&entries, shownPanel);
     return entries;
 }
 
@@ -388,6 +373,12 @@ static ECSIMenuEntry *ECSIMenus_BuildToolsMenu(ECSPanel focus);
 /// @param item The item's place among the title bar's items.
 static void ECSIMenus_OpenTitleMenu(usz item, SDL_FRect rect)
 {
+    // the item was drawn in the last frame, and may be gone now
+    if (item >= arrlenu(MENUS.titleItems))
+    {
+        return;
+    }
+
     usz source = MENUS.titleSources[item];
     ECSPanel focus = ECSILayout_GetFocus();
     ECSIMenuEntry *entries = source == OPENECS_TOOLS_SOURCE        ? ECSIMenus_BuildToolsMenu(focus)
@@ -421,11 +412,7 @@ static void ECSIMenus_MakeTooltip(void)
     ECSIMenuSource source = {0};
     const char *function = nullptr;
 
-    if (item.kind == ECSITitleKind_Name)
-    {
-        function = "ecs.app.menu";
-    }
-    else if (item.kind == ECSITitleKind_Workspace)
+    if (item.kind == ECSITitleKind_Workspace)
     {
         function = "ecs.workspace.menu";
     }
@@ -601,33 +588,77 @@ static ECSIMenuEntry *ECSIMenus_BuildToolsMenu(ECSPanel focus)
     return entries;
 }
 
-/// @brief Builds the tool's menu: the functions that ecs.toolMenu names and that are registered, the submenus Tools and Workspaces, then reset the layout and quit.
+/// @brief Builds the tool's menu as one menu: the title bar's menus, each as a submenu.
 static ECSIMenuEntry *ECSIMenus_BuildToolMenu(void)
 {
     ECSIMenuEntry *entries = nullptr;
     ECSPanel focus = ECSILayout_GetFocus();
-    const ECSValue *functions = ECSSetting_Get(OPENECS_TOOL_MENU);
 
-    for (usz i = 0; i < ECSValue_GetListCount(functions); i++)
+    for (usz i = 0; i < arrlenu(MENUS.titleItems); i++)
     {
-        const char *function = ECSValue_GetString(ECSValue_GetListItem(functions, i), nullptr);
-
-        // a function of a plugin that the tool does not load is left out
-        if (function != nullptr && ECSIServices_GetDescription(function) != nullptr)
+        if (MENUS.titleItems[i].kind == ECSITitleKind_Menu)
         {
-            ECSIMenus_AddFunction(&entries, function, nullptr, focus);
+            usz source = MENUS.titleSources[i];
+            ECSIMenuEntry *submenu = source == OPENECS_TOOLS_SOURCE ? ECSIMenus_BuildToolsMenu(focus) : ECSIMenus_BuildTitleMenu(ECSValue_GetListItem(ECSSetting_Get(OPENECS_TITLE_MENUS), source), focus);
+            ECSIMenus_AddSubmenu(&entries, MENUS.titleItems[i].label, submenu);
         }
     }
 
-    ECSIMenus_AddSubmenu(&entries, OPENECS_TOOLS_LABEL, ECSIMenus_BuildToolsMenu(focus));
-    ECSIMenus_AddSubmenu(&entries, "Workspaces", ECSIMenus_BuildWorkspaceMenu());
-    ECSIMenus_AddToolEntries(&entries, focus);
     return entries;
 }
 
-/// @brief Shows the tool's menu near the top left of the focused panel, or of the window without one.
+/// @brief Opens the title bar's menu beside the open one, or the first, when the focused panel's OS window shows all of the title bar's menus.
+/// @param step 1 for the next menu, -1 for the one before, 0 for the first.
+/// @return false if the title bar does not show them all.
+static bool ECSIMenus_OpenTitleMenuBeside(i64 step)
+{
+    usz count = 0;
+    const ECSIDrawnTitleItem *drawn = ECSIWindow_GetDrawnTitle(ECSILayout_GetFocus(), &count);
+    i64 *menus = nullptr;
+    usz wanted = 0;
+
+    for (usz i = 0; i < arrlenu(MENUS.titleItems); i++)
+    {
+        wanted += MENUS.titleItems[i].kind == ECSITitleKind_Menu ? 1 : 0;
+    }
+
+    for (usz i = 0; i < count; i++)
+    {
+        if (drawn[i].kind == ECSITitleKind_Menu)
+        {
+            arrput(menus, (i64)i);
+        }
+    }
+
+    bool shown = wanted > 0 && arrlenu(menus) == wanted;
+
+    if (shown)
+    {
+        i64 current = 0;
+
+        for (usz i = 0; i < arrlenu(menus); i++)
+        {
+            current = (i64)drawn[menus[i]].index == MENUS.titleMenu ? (i64)i : current;
+        }
+
+        i64 next = step == 0 ? 0 : (current + step + (i64)arrlenu(menus)) % (i64)arrlenu(menus);
+        const ECSIDrawnTitleItem *item = &drawn[menus[next]];
+        ECSIMenus_OpenTitleMenu(item->index, item->rect);
+    }
+
+    arrfree(menus);
+    return shown;
+}
+
+/// @brief Opens the tool's menu: the title bar's first menu, or, when the title bar does not show them all, one menu with them as submenus near the top
+/// left of the focused panel, or of the window without one.
 static void ECSIMenus_ShowTool(void)
 {
+    if (ECSIMenus_OpenTitleMenuBeside(0))
+    {
+        return;
+    }
+
     ECSPanel focus = ECSILayout_GetFocus();
     f32 x = (focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET * ECSIPanels_GetScale();
     f32 y = (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET * ECSIPanels_GetScale();
@@ -709,8 +740,9 @@ static const struct
     ECSIMenus_WorkspaceEntries(8),
     ECSIMenus_WorkspaceEntries(9),
     ECSIMenus_WorkspaceEntries(10),
+    {"ecs.layout.moveToNewWorkspace", ECSILayout_MoveToNewWorkspace, "To a new workspace"},
     {"ecs.workspace.menu", ECSIMenus_ShowWorkspaces, "Workspaces"},
-    {"ecs.app.menu", ECSIMenus_ShowTool, "Tool menu"},
+    {"ecs.app.menu", ECSIMenus_ShowTool, "Menus"},
 };
 
 #pragma endregion Core Functions
@@ -720,7 +752,6 @@ static const struct
 SHUResult ECSIMenus_Initialize(void)
 {
     const ECSSettingDesc settings[] = {
-        {.name = OPENECS_TOOL_MENU, .type = ECSSettingType_List, .description = "The functions that the tool's menu shows first, by name, such as \"settings.open\"; the tool's name in the title bar opens the menu, and so does a right click on the title bar"},
         {.name = OPENECS_TITLE_MENUS, .type = ECSSettingType_List, .description = "The menus of the title bar, such as { label = \"File\", \"ecs.session.open\" }: each entry is a function's name, or { \"name\", label = \"Label\", setting = \"bool setting that marks it on\" }"},
         {.name = OPENECS_TITLE_BUTTONS, .type = ECSSettingType_List, .description = "The tool's buttons in the title bar, after the menus: each is a function's name, or { \"name\", label = \"Label\", setting = \"bool setting that shows it on\" }"},
     };
@@ -843,7 +874,7 @@ bool ECSIMenus_PressTitle(f32 x, f32 y)
     }
 
     // the items are made again before each frame, so a part drawn in the last frame may be gone
-    if (item.kind != ECSITitleKind_Name && item.index >= arrlenu(MENUS.titleItems))
+    if (item.index >= arrlenu(MENUS.titleItems))
     {
         return true;
     }
@@ -852,9 +883,6 @@ bool ECSIMenus_PressTitle(f32 x, f32 y)
 
     switch (item.kind)
     {
-    case ECSITitleKind_Name:
-        ECSIMenus_Show(ECSIMenus_BuildToolMenu(), nullptr, item.rect.x, item.rect.y + item.rect.h);
-        break;
     case ECSITitleKind_Menu:
     case ECSITitleKind_Workspace:
         ECSIMenus_OpenTitleMenu(item.index, item.rect);
@@ -864,6 +892,8 @@ bool ECSIMenus_PressTitle(f32 x, f32 y)
         {
             ECSIServices_CallBound(source.function, ECSILayout_GetFocus());
         }
+        break;
+    default:
         break;
     }
 
@@ -889,7 +919,7 @@ SHUResult ECSApp_AddMenuEntry(ECSPlugin plugin, const char *function)
     // a plugin adds only its own functions
     if (!ECSIPlugin_OwnsName(plugin, function))
     {
-        (void)ECS_Check(nullptr, false, "Plugin '%s' adds '%s' to the tool's menu, which is not one of its functions.", ECSIPlugin_GetName(plugin), function);
+        (void)ECS_Check(nullptr, false, "Plugin '%s' adds '%s' to the menu Tools, which is not one of its functions.", ECSIPlugin_GetName(plugin), function);
         return SHUResult_ErrAssertion;
     }
 
@@ -926,6 +956,12 @@ bool ECSIMenus_Offers(const char *function, ECSPanel panel)
     if (SDL_strcmp(function, "ecs.layout.popOut") == 0)
     {
         return panel != nullptr && ECSILayout_CanPopOut(panel);
+    }
+
+    // a tool has as many workspaces as their functions
+    if (SDL_strcmp(function, "ecs.layout.moveToNewWorkspace") == 0 && ECSWorkspace_GetCount() >= OPENECS_WORKSPACE_LIMIT)
+    {
+        return false;
     }
 
     // the functions that move or close panels; the user cannot do that to a locked group
@@ -977,11 +1013,6 @@ void ECSIMenus_OpenGroupMenu(ECSPanel shownPanel, f32 x, f32 y)
 {
     ECSILayout_SetFocus(shownPanel);
     ECSIMenus_Show(ECSIMenus_BuildGroupMenu(shownPanel), nullptr, x, y);
-}
-
-void ECSIMenus_OpenToolMenu(f32 x, f32 y)
-{
-    ECSIMenus_Show(ECSIMenus_BuildToolMenu(), nullptr, x, y);
 }
 
 /// @brief Handles a move of the pointer while a menu is open: pointing at another menu of the title bar opens it, and pointing at an entry highlights it and opens its submenu.
@@ -1074,6 +1105,10 @@ bool ECSIMenus_Handle(const SDL_Event *event)
             {
                 ECSIMenus_Run(deepest, selected);
             }
+            else if (MENUS.titleMenu >= 0)
+            {
+                ECSIMenus_OpenTitleMenuBeside(1);
+            }
             break;
         case SDLK_RETURN:
         case SDLK_KP_ENTER:
@@ -1084,6 +1119,10 @@ bool ECSIMenus_Handle(const SDL_Event *event)
             if (deepest > 0)
             {
                 ECSIMenus_CloseFrom(deepest);
+            }
+            else if (MENUS.titleMenu >= 0)
+            {
+                ECSIMenus_OpenTitleMenuBeside(-1);
             }
             break;
         case SDLK_ESCAPE:

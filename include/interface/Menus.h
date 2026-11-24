@@ -47,16 +47,11 @@ void ECSIMenus_OpenPanelMenu(ECSPanel panel, f32 x, f32 y);
 /// @param y Vertical position in layout units.
 void ECSIMenus_OpenGroupMenu(ECSPanel shownPanel, f32 x, f32 y);
 
-/// @brief Opens the tool's menu at a point: the functions that the setting ecs.toolMenu names, the workspaces, then reset the layout and quit.
-/// @param x Horizontal position in layout units.
-/// @param y Vertical position in layout units.
-void ECSIMenus_OpenToolMenu(f32 x, f32 y);
-
 /// @brief Gives the title bar its menus and buttons from the settings ecs.titleMenus and ecs.titleButtons, as they are now, and the text of a tooltip that is due.
 /// Call it in each pass of the main loop, before a frame is drawn.
 void ECSIMenus_UpdateTitleBar(void);
 
-/// @brief Handles a press of the main button on the title bar: the tool's name opens the tool's menu, a menu opens below its part, and a button runs its function.
+/// @brief Handles a press of the main button on the title bar: a menu opens below its part, and a button runs its function.
 /// @param x Horizontal position in layout units, in the event window.
 /// @param y Vertical position in layout units.
 /// @return true if the press was on one of them.
