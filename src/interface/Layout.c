@@ -1263,7 +1263,7 @@ SHUResult ECSILayout_Initialize(void)
 {
     const ECSSettingDesc settings[] = {
         {.name = "ecs.tabRowHeight", .type = ECSSettingType_Number, .description = "Height of a tab row, in layout units", .Changed = ECSILayout_ReadSettings},
-        {.name = "ecs.dividerSize", .type = ECSSettingType_Number, .description = "Gap between the children of a split, which dragging resizes them, in layout units", .Changed = ECSILayout_ReadSettings},
+        {.name = "ecs.dividerSize", .type = ECSSettingType_Number, .description = "Gap between the children of a split, which dragging resizes them, and at the OS window's edges, in layout units", .Changed = ECSILayout_ReadSettings},
         {.name = "ecs.reopenLimit", .type = ECSSettingType_Integer, .description = "How many closed panels ecs.layout.reopen remembers", .Changed = ECSILayout_ReadSettings},
     };
 
@@ -1555,9 +1555,12 @@ void ECSILayout_Update(void)
         ECSIRoot *root = workspace->roots[i];
         ECSINode *top = root->maximized != nullptr ? root->maximized : root->tree;
 
+        // a margin as wide as the gap between groups keeps them off the window's edges
+        f32 margin = ECSILayout_GetDividerSize();
+
         if (top != nullptr)
         {
-            ECSILayout_Place(top, 0.0f, root->top, root->width, root->height);
+            ECSILayout_Place(top, margin, root->top + margin, SDL_max(0.0f, root->width - 2.0f * margin), SDL_max(0.0f, root->height - 2.0f * margin));
         }
     }
 
@@ -2068,6 +2071,34 @@ void ECSILayout_MoveToWorkspace(usz index)
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Out of memory while moving '%s'; it is closed.", panel->title);
         ECSIPanel_Close(&panel);
     }
+}
+
+void ECSILayout_MoveToNewWorkspace(void)
+{
+    ECSIWorkspace *workspace = ECSILayout_GetCurrent();
+    ECSPanel panel = workspace == nullptr ? nullptr : workspace->focus;
+    ECSINode *group = ECSILayout_FindGroupInWorkspace(workspace, panel, nullptr);
+
+    if (group == nullptr || arrlenu(LAYOUT.workspaces) >= OPENECS_WORKSPACE_LIMIT)
+    {
+        return;
+    }
+
+    if (group->locked)
+    {
+        SDL_Log("'%s' is locked; unlock it to move it.", panel->title);
+        return;
+    }
+
+    ECSIRootDesc root = {0};
+
+    if (ECSILayout_WorkspaceAdd(panel->title, &root, 1, nullptr))
+    {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Out of memory while making a workspace for '%s'; it stays.", panel->title);
+        return;
+    }
+
+    ECSILayout_MoveToWorkspace(arrlenu(LAYOUT.workspaces) - 1);
 }
 
 ECSPanel *ECSILayout_GetPanels(void)

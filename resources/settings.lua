@@ -54,21 +54,19 @@ return {
       ["Shift+8"] = "ecs.layout.moveToWorkspace8",
       ["Shift+9"] = "ecs.layout.moveToWorkspace9",
       ["Shift+0"] = "ecs.layout.moveToWorkspace10",
+      ["Shift+N"] = "ecs.layout.moveToNewWorkspace",
       ["W"] = "ecs.workspace.menu",
       ["A"] = "ecs.app.menu",
     },
   },
 
-  -- the functions that the tool's menu shows first, which the tool's name in the title bar and a right click on it open;
-  -- then come the plugins' entries in Tools, the workspaces, reset the layout and quit
-  ["ecs.toolMenu"] = { "ecs.session.save", "ecs.session.open" },
-
-  -- the menus of the title bar that OpenECS draws, after the tool's name, before the plugins' menu Tools; an entry is a function's name,
+  -- the menus of the title bar that OpenECS draws, after the tool's name, before the plugins' menu Tools; they are the tool's menu, which
+  -- ecs.app.menu opens with keys; an entry is a function's name,
   -- or { "name", label = "Label", setting = "a bool setting" }, which shows the entry on while the setting is true;
   -- functions that no plugin of the tool registered are left out
   ["ecs.titleMenus"] = {
     { label = "File", "ecs.session.open", "ecs.session.save", "ecs.app.quit" },
-    { label = "Window", "ecs.layout.reopen", "ecs.layout.maximize", "ecs.layout.popOut", "ecs.layout.lock", "ecs.layout.reset" },
+    { label = "Window", "ecs.layout.reopen", "ecs.layout.maximize", "ecs.layout.popOut", "ecs.layout.lock", "ecs.layout.moveToNewWorkspace", "ecs.layout.reset" },
   },
 
   -- the tool's own buttons, after the menus, in the same form; a preset gives them
@@ -155,19 +153,17 @@ return {
     },
   },
 
-  -- sizes, in layout units
+  -- sizes, in layout units; dividerSize is the gap between groups, and at the window's edges
   ["ecs.tabRowHeight"] = 24,
   ["ecs.dividerSize"] = 4,
   ["ecs.gripHeight"] = 20,
 
   -- distances, in layout units: a grip shows within gripZone of a panel's top edge; a press drags after moving dragThreshold;
-  -- a dragged panel docks within dockEdge of the OS window's edge, and splits a panel within splitDepth of its edge;
-  -- a wheel step scrolls a tab row by tabScrollStep
+  -- a dragged panel docks within dockEdge of the OS window's edge, and splits a panel within splitDepth of its edge
   ["ecs.gripZone"] = 24,
   ["ecs.dragThreshold"] = 6,
   ["ecs.dockEdge"] = 16,
   ["ecs.splitDepth"] = 80,
-  ["ecs.tabScrollStep"] = 40,
 
   -- how many closed panels ecs.layout.reopen remembers
   ["ecs.reopenLimit"] = 20,

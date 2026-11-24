@@ -185,12 +185,20 @@ function ecs.worker.send(value) end
 
 -- Panels
 
+---Where a panel is in its OS window, in its surface pixels: panel.place.
+---@class ecs.PanelPlace
+---@field x number The panel's left edge, from the window's.
+---@field y number The panel's top edge, from the window's.
+---@field windowWidth number The window's width.
+---@field windowHeight number The window's height.
+
 ---A panel: a handle of type ecs.panel. Its data are fields, and what it does are methods.
 ---@class ecs.Panel
 ---@field title string The title its tab shows; setting it changes the tab.
 ---@field id integer Read only: the panel's id, which stays the same across sessions, and which events and ecs.layout.findPanel use.
 ---@field type string Read only: the name of the panel's type, such as "canvas.view".
 ---@field unsaved boolean Whether the panel has unsaved work, which shows a mark on its tab; before it closes, the user is asked to save it.
+---@field place ecs.PanelPlace Read only: where the panel is in its OS window, and the window's size, in its surface pixels, so a popup's anchor can be anywhere in the window; zeros while it is not shown.
 local Panel = {}
 
 ---Asks for the panel to be drawn again.
@@ -373,6 +381,7 @@ function ecs.panel.restart() end
 ---@field moveToWorkspace8 fun() Moves the focused panel into workspace 8's focused group. Keys can run it.
 ---@field moveToWorkspace9 fun() Moves the focused panel into workspace 9's focused group. Keys can run it.
 ---@field moveToWorkspace10 fun() Moves the focused panel into workspace 10's focused group. Keys can run it.
+---@field moveToNewWorkspace fun() Moves the focused panel into a new workspace, after the last one and named after the panel's title; the current workspace stays shown. A tool has at most 10 workspaces. Keys can run it.
 ecs.layout = {}
 
 ---Finds a panel by its id.
@@ -490,10 +499,10 @@ function ecs.workspace.switch(number) end
 -- App
 
 ---@class ecs.app
----@field menu fun() Shows the tool's menu: the functions that the setting ecs.toolMenu names, the plugins' entries in Tools, the workspaces, then reset the layout and quit. The tool's name in the title bar and a right click on the title bar open it too. Keys can run it.
+---@field menu fun() Opens the title bar's menus, the tool's menu: their first one, where Left and Right go to the others; or, when the title bar does not show them all, one menu with them as submenus near the focused panel. Keys can run it.
 ecs.app = {}
 
----Adds one of the plugin's functions to the tool's menu, in its submenu Tools, and to the title bar's menu Tools. Its signature is "void(handle<ecs.panel>)" or "void()".
+---Adds one of the plugin's functions to the title bar's menu Tools. Its signature is "void(handle<ecs.panel>)" or "void()".
 ---@param functionName string The plugin's service function the entry runs, such as "settings.open".
 ---A function that is not the plugin's is a misuse (ecs.check).
 function ecs.app.addMenuEntry(functionName) end

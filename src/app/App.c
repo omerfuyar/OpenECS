@@ -143,7 +143,7 @@ static void ECSIApp_StopPluginCode(ECSPlugin plugin)
 }
 
 /// @brief Stops a failed or disabled plugin's code, then removes everything it registered: its panel types, functions, settings, timers, events,
-/// keys and entries of the tool's menu.
+/// keys and entries of the menu Tools.
 static void ECSIApp_RemoveRegistrations(ECSPlugin plugin)
 {
     // a plugin whose start fails may have started workers and background work before it failed

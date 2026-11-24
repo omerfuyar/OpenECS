@@ -821,7 +821,7 @@ static int ECSITest_Window(lua_State *state)
 /// @brief test.titleBar(): what the chosen OS window's title bar shows, in order: each part's kind, label and rectangle, and whether it is on and enabled.
 static int ECSITest_TitleBar(lua_State *state)
 {
-    static const char *const kinds[] = {"name", "menu", "button", "workspace"};
+    static const char *const kinds[] = {"name", "menu", "button", "workspace", "window"};
     usz count = 0;
     const ECSIDrawnTitleItem *items = ECSIWindow_GetTitleBar(TEST.window > 0 ? TEST.window : 1, &count);
     lua_createtable(state, (int)count, 0);

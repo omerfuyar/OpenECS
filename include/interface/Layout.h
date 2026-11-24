@@ -51,6 +51,9 @@ typedef struct ECSIRoot
     f32 height;
 } ECSIRoot;
 
+/// @brief Most workspaces a tool has: their functions are numbered, keys 1 to 9 and 0.
+#define OPENECS_WORKSPACE_LIMIT 10
+
 /// @brief Describes a root for ECSILayout_WorkspaceAdd.
 typedef struct ECSIRootDesc
 {
@@ -365,5 +368,9 @@ void ECSILayout_Reopen(void);
 /// @brief Moves the focused panel into another workspace's focused group. The current workspace stays shown. Locked panels stay.
 /// @param index Position of the other workspace, starting at 0.
 void ECSILayout_MoveToWorkspace(usz index);
+
+/// @brief Moves the focused panel into a new workspace, after the last one and named after the panel's title. The current workspace stays shown. Locked panels stay,
+/// and a tool that has OPENECS_WORKSPACE_LIMIT workspaces gets no more.
+void ECSILayout_MoveToNewWorkspace(void);
 
 #pragma endregion Declarations

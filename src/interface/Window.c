@@ -1,5 +1,6 @@
 #include "interface/Window.h"
 
+#include "base/Log.h"
 #include "base/Profile.h"
 #include "runtime/Settings.h"
 
@@ -117,7 +118,6 @@ static const ECSSettingDesc OPENECS_WINDOW_SETTINGS[] = {
     {.name = "ecs.dragThreshold", .type = ECSSettingType_Number, .description = "How far the pointer moves from a press on a tab or grip before the panel is dragged, in layout units"},
     {.name = "ecs.dockEdge", .type = ECSSettingType_Number, .description = "Distance from an edge of the OS window within which a dragged panel docks along that edge, in layout units"},
     {.name = "ecs.splitDepth", .type = ECSSettingType_Number, .description = "Deepest edge band of a panel in which a dragged panel splits it, in layout units"},
-    {.name = "ecs.tabScrollStep", .type = ECSSettingType_Number, .description = "How far one step of the wheel scrolls a tab row, in layout units"},
     {.name = "ecs.titleBar", .type = ECSSettingType_Bool, .description = "OpenECS draws the title bar of its OS windows, with buttons that minimize, maximize and close them, and edges that resize them; false leaves them to the system"},
     {.name = "ecs.titleBarHeight", .type = ECSSettingType_Number, .description = "Height of the title bar that OpenECS draws, in layout units"},
 };
@@ -171,7 +171,6 @@ typedef struct ECSIOSWindow
     f32 height;
     ECSIDrawnTab *tabs;             // stb_ds array of the tabs drawn in its last frame
     ECSIDrawnTitleItem *titleItems; // stb_ds array of the parts of the title bar drawn in its last frame
-    f32 titleEnd;                   // where the parts at the left end; the title bar after them moves the window
     f32 titleRight;                 // where the parts at the right start: the workspaces' menu, or the window buttons
     bool hintSlides;                // its hint slid in its last frame, so frames follow
 
@@ -239,6 +238,7 @@ static struct
     bool dragging;
     f32 dragStartX;
     f32 dragStartY;
+    f32 tabWheel;       // the wheel's turn over a tab row that has not shown another tab yet, in steps
     ECSIDrop drop;      // where the dragged panel lands now
     bool dropOutside;   // the pointer is outside every OS window whose place is known, as on Wayland outside the window it was dragged from
     SDL_FRect dropRect; // the highlight of the drop place
@@ -273,7 +273,6 @@ static struct
     f32 dragThreshold;
     f32 dockEdge;
     f32 splitDepth;
-    f32 tabScrollStep;
     bool titleBar;
     f32 titleBarHeight;
 
@@ -495,8 +494,23 @@ static SDL_HitTestResult SDLCALL ECSIWindow_HitTest(SDL_Window *window, const SD
         return edge;
     }
 
-    // the title bar's own parts and buttons are clicked, and the rest of it moves the window
-    return y < WINDOW.titleBarHeight && x >= osWindow->titleEnd && x < osWindow->titleRight ? SDL_HITTEST_DRAGGABLE : SDL_HITTEST_NORMAL;
+    // the title bar's own parts and buttons are clicked, and the rest of it moves the window, the tool's name too
+    if (y >= WINDOW.titleBarHeight)
+    {
+        return SDL_HITTEST_NORMAL;
+    }
+
+    for (usz i = 0; i < arrlenu(osWindow->titleItems); i++)
+    {
+        const ECSIDrawnTitleItem *item = &osWindow->titleItems[i];
+
+        if (item->kind != ECSITitleKind_Name && x >= item->rect.x && x < item->rect.x + item->rect.w)
+        {
+            return SDL_HITTEST_NORMAL;
+        }
+    }
+
+    return SDL_HITTEST_DRAGGABLE;
 }
 
 /// @brief Lets OpenECS draw an OS window's title bar, or leaves it to the system.
@@ -1036,13 +1050,23 @@ static void ECSIWindow_PlaceTitleItems(ECSIOSWindow *osWindow)
         }
     }
 
-    osWindow->titleEnd = x;
-
     if (workspace >= 0)
     {
         const ECSITitleItem *item = &WINDOW.titleItems[workspace];
-        x = osWindow->titleRight;
-        ECSIWindow_PlaceTitleItem(osWindow, (ECSIDrawnTitleItem){item->kind, (usz)workspace, item->label, item->on, item->enabled, {0, 0, 0, 0}}, &x, osWindow->width);
+        f32 width = ECSIWindow_TextWidth(item->label) + 2.0f * ECSIWindow_Px(OPENECS_TITLE_ITEM_PADDING);
+        SDL_FRect rect = {osWindow->titleRight, inset, width, WINDOW.titleBarHeight - 2.0f * inset};
+        arrput(osWindow->titleItems, ((ECSIDrawnTitleItem){item->kind, (usz)workspace, item->label, item->on, item->enabled, rect}));
+    }
+
+    // the window buttons take the bar's right end, where a press finds them; from the left: minimize, maximize or restore, and close
+    bool maximized = (SDL_GetWindowFlags(osWindow->window) & SDL_WINDOW_MAXIMIZED) != 0;
+    const char *const labels[] = {"minimize", maximized ? "restore" : "maximize", "close"};
+    f32 buttonWidth = ECSIWindow_GetTitleButtonWidth();
+
+    for (usz i = 0; i < SDL_arraysize(labels); i++)
+    {
+        SDL_FRect rect = {osWindow->width - (f32)(SDL_arraysize(labels) - i) * buttonWidth, 0.0f, buttonWidth, WINDOW.titleBarHeight};
+        arrput(osWindow->titleItems, ((ECSIDrawnTitleItem){ECSITitleKind_Window, i + 1, labels[i], false, true, rect}));
     }
 }
 
@@ -1114,14 +1138,32 @@ static void ECSIWindow_DeclareHint(ECSIOSWindow *osWindow, f32 start, f32 end)
     }
 }
 
+/// @brief Declares a window button of the title bar: minimize, maximize or restore, and close.
+static void ECSIWindow_DeclareWindowButton(const ECSIDrawnTitleItem *item, bool under)
+{
+    Clay_Color dim = WINDOW.colors[ECSIColor_TextDim];
+    Clay_Color back = under ? WINDOW.colors[ECSIColor_Hover] : (Clay_Color){0};
+
+    CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(item->rect.w), CLAY_SIZING_FIXED(item->rect.h)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}, .backgroundColor = back})
+    {
+        if (item->index == 3)
+        {
+            CLAY_TEXT(CLAY_STRING("\u00D7"), CLAY_TEXT_CONFIG({.textColor = dim, .fontSize = (u16)(WINDOW.fontSize * 1.4f), .wrapMode = CLAY_TEXT_WRAP_NONE}));
+        }
+        else
+        {
+            ECSIIcon icon = item->index == 1 ? ECSIIcon_Minimize : SDL_strcmp(item->label, "restore") == 0 ? ECSIIcon_Restore
+                                                                                                           : ECSIIcon_Maximized;
+            ECSIWindow_DeclareIcon(icon, dim, under ? back : WINDOW.colors[ECSIColor_Background]);
+        }
+    }
+}
+
 /// @brief Declares the title bar of an OS window for Clay: the tool's name, the menus and the buttons, the preset's hint, the workspaces' menu,
-/// and buttons that minimize, maximize or restore, and close the window (DESIGN 6.11).
+/// and buttons that minimize, maximize or restore, and close the window (DESIGN 6.11). Each part is drawn where ECSIWindow_PlaceTitleItems put it.
 static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *osWindow)
 {
-    f32 buttonWidth = ECSIWindow_GetTitleButtonWidth();
-    bool maximized = (SDL_GetWindowFlags(osWindow->window) & SDL_WINDOW_MAXIMIZED) != 0;
     bool hovered = WINDOW.hover.window == osWindow;
-    Clay_Color dim = WINDOW.colors[ECSIColor_TextDim];
     ECSIWindow_PlaceTitleItems(osWindow);
     osWindow->hintSlides = false;
 
@@ -1135,27 +1177,37 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *osWindow)
                               })
     {
         f32 x = 0.0f;
+        bool hinted = false;
 
         for (usz i = 0; i < arrlenu(osWindow->titleItems); i++)
         {
             const ECSIDrawnTitleItem *item = &osWindow->titleItems[i];
 
             // the preset's hint fills the room between the parts at the left and those at the right
-            if (item->kind == ECSITitleKind_Workspace)
+            if (!hinted && (item->kind == ECSITitleKind_Workspace || item->kind == ECSITitleKind_Window))
             {
                 ECSIWindow_DeclareHint(osWindow, x, item->rect.x);
                 x = item->rect.x;
+                hinted = true;
             }
 
             // the room before a part
-            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(item->rect.x - x), CLAY_SIZING_FIXED(0)}}})
+            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(SDL_max(0.0f, item->rect.x - x)), CLAY_SIZING_FIXED(0)}}})
             {
             }
 
-            bool under = hovered && WINDOW.hover.item == (i64)i && item->enabled;
+            x = item->rect.x + item->rect.w;
+
+            if (item->kind == ECSITitleKind_Window)
+            {
+                ECSIWindow_DeclareWindowButton(item, hovered && WINDOW.hover.button == (i32)item->index);
+                continue;
+            }
+
+            bool under = hovered && WINDOW.hover.item == (i64)i && item->enabled && item->kind != ECSITitleKind_Name;
             Clay_Color back = item->on ? WINDOW.colors[ECSIColor_Selected] : under ? WINDOW.colors[ECSIColor_Hover]
                                                                                    : (Clay_Color){0};
-            Clay_Color text = item->enabled ? WINDOW.colors[ECSIColor_Text] : dim;
+            Clay_Color text = item->enabled ? WINDOW.colors[ECSIColor_Text] : WINDOW.colors[ECSIColor_TextDim];
 
             CLAY_AUTO_ID({
                 .layout = {.sizing = {CLAY_SIZING_FIXED(item->rect.w), CLAY_SIZING_FIXED(item->rect.h)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}},
@@ -1164,37 +1216,6 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *osWindow)
             })
             {
                 CLAY_TEXT(ECSIWindow_ClayText(item->label), CLAY_TEXT_CONFIG({.textColor = text, .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
-            }
-
-            x = item->rect.x + item->rect.w;
-        }
-
-        if (x < osWindow->titleRight)
-        {
-            ECSIWindow_DeclareHint(osWindow, x, osWindow->titleRight);
-        }
-
-        CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(osWindow->width - 3.0f * buttonWidth - osWindow->titleRight), CLAY_SIZING_FIXED(0)}}})
-        {
-        }
-
-        const ECSIIcon icons[] = {ECSIIcon_Minimize, maximized ? ECSIIcon_Restore : ECSIIcon_Maximized};
-
-        for (usz i = 0; i < SDL_arraysize(icons) + 1; i++)
-        {
-            bool under = hovered && WINDOW.hover.button == (i32)i + 1;
-            Clay_Color back = under ? WINDOW.colors[ECSIColor_Hover] : (Clay_Color){0};
-
-            CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(buttonWidth), CLAY_SIZING_GROW(0)}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}, .backgroundColor = back})
-            {
-                if (i < SDL_arraysize(icons))
-                {
-                    ECSIWindow_DeclareIcon(icons[i], dim, under ? back : WINDOW.colors[ECSIColor_Background]);
-                }
-                else
-                {
-                    CLAY_TEXT(CLAY_STRING("\u00D7"), CLAY_TEXT_CONFIG({.textColor = dim, .fontSize = (u16)(WINDOW.fontSize * 1.4f), .wrapMode = CLAY_TEXT_WRAP_NONE}));
-                }
             }
         }
     }
@@ -2279,7 +2300,6 @@ static void ECSIWindow_ReadSettings(void)
     WINDOW.dragThreshold = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.dragThreshold"));
     WINDOW.dockEdge = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.dockEdge"));
     WINDOW.splitDepth = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.splitDepth"));
-    WINDOW.tabScrollStep = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.tabScrollStep"));
     WINDOW.titleBarHeight = ECSIWindow_Px(ECSIWindow_ReadNumber("ecs.titleBarHeight"));
     bool titleBar = ECSValue_GetBool(ECSSetting_Get("ecs.titleBar"), true);
 
@@ -3078,12 +3098,13 @@ bool ECSIWindow_TitleItemAt(f32 x, f32 y, ECSIDrawnTitleItem *retItem)
         return false;
     }
 
-    // a part takes the whole height of the bar, so a click above or below its highlight still hits it
+    // a part takes the whole height of the bar, so a click above or below its highlight still hits it; the name is a label, and the window buttons are the window's
     for (usz i = 0; i < arrlenu(osWindow->titleItems); i++)
     {
         const SDL_FRect *rect = &osWindow->titleItems[i].rect;
+        ECSITitleKind kind = osWindow->titleItems[i].kind;
 
-        if (x >= rect->x && x < rect->x + rect->w)
+        if (kind != ECSITitleKind_Name && kind != ECSITitleKind_Window && x >= rect->x && x < rect->x + rect->w)
         {
             *retItem = osWindow->titleItems[i];
             return true;
@@ -3129,6 +3150,29 @@ const ECSIDrawnTitleItem *ECSIWindow_GetTitleBar(usz number, usz *retCount)
     return *retCount > 0 ? osWindow->titleItems : nullptr;
 }
 
+void ECSPanel_GetPlace(ECSPanel panel, ECSPanelPlace *retPlace)
+{
+    ECSILog_Check(panel != nullptr && retPlace != nullptr);
+
+    *retPlace = (ECSPanelPlace){0};
+    ECSIOSWindow *osWindow = ECSIWindow_FindByRoot(ECSILayout_RootOf(panel));
+
+    if (osWindow != nullptr && panel->visible)
+    {
+        *retPlace = (ECSPanelPlace){panel->x, panel->y, osWindow->width, osWindow->height};
+    }
+}
+
+const ECSIDrawnTitleItem *ECSIWindow_GetDrawnTitle(ECSPanel panel, usz *retCount)
+{
+    SDL_assert(retCount != nullptr);
+
+    ECSIOSWindow *osWindow = panel != nullptr ? ECSIWindow_FindByRoot(ECSILayout_RootOf(panel)) : nullptr;
+    osWindow = osWindow != nullptr || arrlenu(WINDOW.windows) == 0 ? osWindow : WINDOW.windows[0];
+    *retCount = osWindow != nullptr && WINDOW.titleBar ? arrlenu(osWindow->titleItems) : 0;
+    return *retCount > 0 ? osWindow->titleItems : nullptr;
+}
+
 ECSPanel ECSIWindow_TabMenuAt(f32 x, f32 y, SDL_FRect *retRect)
 {
     SDL_assert(retRect != nullptr);
@@ -3158,12 +3202,28 @@ bool ECSIWindow_TitleBarAt(f32 x, f32 y)
     return WINDOW.titleBar && osWindow != nullptr && y < WINDOW.titleBarHeight && x < osWindow->width - 3.0f * ECSIWindow_GetTitleButtonWidth();
 }
 
+/// @brief Finds the window button at a place of an OS window's title bar, where its last frame drew it.
+/// @return 1 minimize, 2 maximize or restore, 3 close; 0 for none.
+static i32 ECSIWindow_WindowButtonAt(const ECSIOSWindow *osWindow, f32 x)
+{
+    for (usz i = 0; i < arrlenu(osWindow->titleItems); i++)
+    {
+        const ECSIDrawnTitleItem *item = &osWindow->titleItems[i];
+
+        if (item->kind == ECSITitleKind_Window && x >= item->rect.x && x < item->rect.x + item->rect.w)
+        {
+            return (i32)item->index;
+        }
+    }
+
+    return 0;
+}
+
 /// @brief Handles a press of the main button on the title bar: the buttons from the right close, maximize or restore, and minimize the window;
 /// the rest of the bar moves the window, which the system does.
 /// @return false on the tool's name, a menu, a button or the workspaces' menu, which Menus handles.
 static bool ECSIWindow_PressTitle(ECSIOSWindow *osWindow, f32 x, f32 y)
 {
-    f32 button = (osWindow->width - x) / ECSIWindow_GetTitleButtonWidth();
     ECSIDrawnTitleItem item = {0};
     WINDOW.hover.hidden = true;
     ECSILayout_RequestFrame();
@@ -3174,20 +3234,22 @@ static bool ECSIWindow_PressTitle(ECSIOSWindow *osWindow, f32 x, f32 y)
         return false;
     }
 
-    if (button < 1.0f)
+    i32 button = ECSIWindow_WindowButtonAt(osWindow, x);
+
+    if (button == 3)
     {
         SDL_Event close = {.window = {.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED, .windowID = SDL_GetWindowID(osWindow->window), .timestamp = SDL_GetTicksNS()}};
         SDL_PushEvent(&close);
     }
-    else if (button < 2.0f && (SDL_GetWindowFlags(osWindow->window) & SDL_WINDOW_MAXIMIZED) != 0)
+    else if (button == 2 && (SDL_GetWindowFlags(osWindow->window) & SDL_WINDOW_MAXIMIZED) != 0)
     {
         SDL_RestoreWindow(osWindow->window);
     }
-    else if (button < 2.0f)
+    else if (button == 2)
     {
         SDL_MaximizeWindow(osWindow->window);
     }
-    else if (button < 3.0f)
+    else if (button == 1)
     {
         SDL_MinimizeWindow(osWindow->window);
     }
@@ -3281,16 +3343,15 @@ static void ECSIWindow_HoverTitle(f32 x, f32 y)
 
     if (WINDOW.titleBar && osWindow != nullptr && y >= 0.0f && y < WINDOW.titleBarHeight && WINDOW.dragPanel == nullptr)
     {
+        // the name is a label, without a highlight or a tooltip
         for (usz i = 0; i < arrlenu(osWindow->titleItems); i++)
         {
-            const SDL_FRect *rect = &osWindow->titleItems[i].rect;
-            item = x >= rect->x && x < rect->x + rect->w ? (i64)i : item;
+            const ECSIDrawnTitleItem *part = &osWindow->titleItems[i];
+            bool over = part->kind != ECSITitleKind_Name && part->kind != ECSITitleKind_Window && x >= part->rect.x && x < part->rect.x + part->rect.w;
+            item = over ? (i64)i : item;
         }
 
-        f32 fromRight = (osWindow->width - x) / ECSIWindow_GetTitleButtonWidth();
-        button = fromRight < 1.0f ? 3 : fromRight < 2.0f ? 2
-                                    : fromRight < 3.0f   ? 1
-                                                         : 0;
+        button = ECSIWindow_WindowButtonAt(osWindow, x);
     }
 
     osWindow = item >= 0 || button > 0 ? osWindow : nullptr;
@@ -3449,18 +3510,45 @@ ECSPanel ECSIWindow_TabRowAt(f32 x, f32 y)
     return group == nullptr ? nullptr : group->panels[group->shown];
 }
 
-bool ECSIWindow_ScrollTabs(f32 x, f32 y, f32 steps)
+bool ECSIWindow_WheelTabs(f32 x, f32 y, f32 steps)
 {
     ECSINode *group = ECSIWindow_TabRowGroupAt(WINDOW.eventWindow, x, y);
 
     if (group == nullptr)
     {
+        WINDOW.tabWheel = 0.0f;
         return false;
     }
 
-    f32 room = group->width - ECSIWindow_GetTabEndWidth(group, ECSIWindow_RootOf(WINDOW.eventWindow));
-    group->tabScroll = SDL_clamp(group->tabScroll + steps * WINDOW.tabScrollStep, 0.0f, SDL_max(0.0f, group->tabsWidth - room));
-    ECSILayout_RequestFrame();
+    // a touchpad turns the wheel by parts of a step, which add up to one
+    WINDOW.tabWheel += steps;
+    i64 step = WINDOW.tabWheel >= 1.0f ? 1 : WINDOW.tabWheel <= -1.0f ? -1
+                                                                      : 0;
+
+    if (step == 0)
+    {
+        return true;
+    }
+
+    WINDOW.tabWheel = 0.0f;
+    i64 next = SDL_clamp((i64)group->shown + step, 0, (i64)arrlenu(group->panels) - 1);
+
+    if ((usz)next == group->shown)
+    {
+        return true;
+    }
+
+    // the focus goes with the shown panel when the group has it
+    if (ECSILayout_GetFocus() == group->panels[group->shown])
+    {
+        ECSLayout_Focus(group->panels[next]);
+    }
+    else
+    {
+        group->shown = (usz)next;
+        ECSILayout_RequestFrame();
+    }
+
     return true;
 }
 
