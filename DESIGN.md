@@ -491,7 +491,7 @@ typedef struct ECSSurface
 - 32 bits per pixel, `ARGB8888` in native byte order, with premultiplied alpha.
 - Panels are opaque, so alpha is ignored for panels. It matters only for popups.
 - A colour that a plugin gives is an `ECSColor`, `0xAARRGGBB`, not premultiplied; the core premultiplies it where it writes pixels. Lua, settings and presets write colours as texts: `"#RRGGBB"`, `"#RRGGBBAA"`, or the name of a colour of the theme, such as `"text"` for `ecs.colorText` (12.4). `ECSColor_Parse` reads such a text, and the signature type `color` (10.2) turns texts into `ECSColor` between Lua and C.
-- The names of the theme's colours are the core's colour settings, `ecs.colorBackground` to `ecs.colorFrame` (12.4), each without `ecs.color` and with a small first letter, such as `"tabRow"`. The type `ecs.Color` in `ecs.lua` lists them, so editors complete them wherever a colour goes, and it changes with the core's colour settings.
+- The names of the theme's colours are the core's colour settings, `ecs.colorBackground` to `ecs.colorHover` (12.4), each without `ecs.color` and with a small first letter, such as `"tabRow"` or `"button"`. The type `ecs.Color` in `ecs.lua` lists them, so editors complete them wherever a colour goes, and it changes with the core's colour settings.
 
 ### 5.3 The renderer
 
@@ -655,6 +655,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 7.1 Focus
 
 - The focus mode is the setting `ecs.focus`.
+- The focused panel has a thin border in the accent, and, when its group has a tab row, its tab a line in the accent along its top.
 - Keys move focus to the nearest panel in that direction that overlaps on the other axis. This does not need the tree.
 - In hover mode, the pointer over a divider or a tab row does not change focus.
 - On Wayland, the compositor decides whether an application may raise one of its own windows (SDL uses the xdg-activation protocol). Moving focus to another OS window is best effort there.
@@ -1180,6 +1181,24 @@ return {
 - The setting `ecs.theme` chooses one: `system`, the default, follows the system's light or dark mode (`SDL_GetSystemTheme`) and changes with it; `dark` and `light` choose one. A system that does not say gets the dark theme.
 - The chosen theme is a layer of its own, between the defaults and the preset: a preset or the user can still set a colour, and it wins over every theme.
 - Plugins name a colour of the theme by its name, such as `"accent"` (5.2), so they follow the theme too.
+- The theme's colours have these jobs, which the core and the standard plugins keep, so a tool's parts look alike:
+
+  | Colour                       | Is                                                                                                   |
+  | ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+  | `background`                 | The title bar, and the room between panels.                                                          |
+  | `frame`                      | The line around each group, menu and field, and between the parts of a view.                         |
+  | `tabRow`, `tab`, `tabShown`  | Tab rows and the headers inside panels; the tabs that are not shown; the shown tab.                  |
+  | `panel`                      | What a panel's view is drawn on.                                                                     |
+  | `field`                      | What the user types into or sets: fields, check boxes, and the tracks of sliders and scroll bars.    |
+  | `button`, `buttonHover`      | Buttons and the other controls that are clicked, and one under the pointer.                          |
+  | `hover`                      | A row or a menu entry under the pointer.                                                             |
+  | `selected`                   | The chosen item, menu entry or text.                                                                 |
+  | `accent`                     | The focus, links, keys, headings and what is on, such as a pressed button.                           |
+  | `text`, `textDim`            | Text, and text of less weight, such as notes and keys.                                               |
+  | `overlay`, `drop`, `placeholder` | Menus, grips and tooltips; the place where a dragged panel lands; a panel whose type is missing or that failed. |
+
+- The shipped themes keep one order of greys, so areas, headers and controls stand apart without lines: `background` is the darkest, then `tabRow`, then `panel` with `tabShown`, which is the same, so the shown tab opens into its panel. `field` is darker than `panel` in the dark theme and lighter in the light one, so what the user types stands out, and `button` is lighter than `panel` in both. The greys have no tint. `selected` is a muted blue, under text, and `accent` a brighter blue. `text` on `panel` has a contrast of at least 7 to 1, and `textDim` and `accent` at least 4.5 to 1.
+- The interface is dense, as an editor's is: the font is 13 layout units, a tab row 24 and the title bar 28, and a control is a line of text with 3 units above and below it, so a list shows many rows.
 
 ### 12.5 The settings window
 

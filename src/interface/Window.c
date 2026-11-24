@@ -50,23 +50,33 @@ typedef enum ECSIColor
     ECSIColor_Drop,
     ECSIColor_Selected,
     ECSIColor_Frame,
+    ECSIColor_Panel,
+    ECSIColor_Field,
+    ECSIColor_Button,
+    ECSIColor_ButtonHover,
+    ECSIColor_Hover,
     ECSIColor_Count,
 } ECSIColor;
 
 /// @brief The window's core settings; their values are in the core's settings file. The colours come first, in the order of ECSIColor.
 static const ECSSettingDesc OPENECS_WINDOW_SETTINGS[] = {
-    {.name = "ecs.colorBackground", .type = ECSSettingType_Color, .description = "Colour between panels, such as \"#18191C\" or \"#18191CFF\""},
-    {.name = "ecs.colorTabRow", .type = ECSSettingType_Color, .description = "Colour of tab rows"},
+    {.name = "ecs.colorBackground", .type = ECSSettingType_Color, .description = "Colour of the title bar and between panels, such as \"#1B1B1B\" or \"#1B1B1BFF\""},
+    {.name = "ecs.colorTabRow", .type = ECSSettingType_Color, .description = "Colour of tab rows, and of headers inside panels"},
     {.name = "ecs.colorTab", .type = ECSSettingType_Color, .description = "Colour of tabs"},
     {.name = "ecs.colorTabShown", .type = ECSSettingType_Color, .description = "Colour of the shown tab"},
     {.name = "ecs.colorText", .type = ECSSettingType_Color, .description = "Colour of text"},
     {.name = "ecs.colorTextDim", .type = ECSSettingType_Color, .description = "Colour of dim text"},
-    {.name = "ecs.colorAccent", .type = ECSSettingType_Color, .description = "Colour of the focus border, keys and highlights"},
+    {.name = "ecs.colorAccent", .type = ECSSettingType_Color, .description = "Colour of the focus, links, keys, headings and what is on"},
     {.name = "ecs.colorPlaceholder", .type = ECSSettingType_Color, .description = "Colour of a placeholder panel"},
-    {.name = "ecs.colorOverlay", .type = ECSSettingType_Color, .description = "Colour of menus, grips and the list of prefix keys"},
+    {.name = "ecs.colorOverlay", .type = ECSSettingType_Color, .description = "Colour of menus, grips, tooltips and the list of prefix keys"},
     {.name = "ecs.colorDrop", .type = ECSSettingType_Color, .description = "Colour of the place where a dragged panel lands"},
-    {.name = "ecs.colorSelected", .type = ECSSettingType_Color, .description = "Colour of the selected menu entry"},
-    {.name = "ecs.colorFrame", .type = ECSSettingType_Color, .description = "Colour of the frame around each group of panels"},
+    {.name = "ecs.colorSelected", .type = ECSSettingType_Color, .description = "Colour of the chosen item, menu entry or text"},
+    {.name = "ecs.colorFrame", .type = ECSSettingType_Color, .description = "Colour of the line around each group, menu and field"},
+    {.name = "ecs.colorPanel", .type = ECSSettingType_Color, .description = "Colour that a panel's view is drawn on"},
+    {.name = "ecs.colorField", .type = ECSSettingType_Color, .description = "Colour of fields, check boxes, and the tracks of sliders and scroll bars"},
+    {.name = "ecs.colorButton", .type = ECSSettingType_Color, .description = "Colour of buttons and the other controls that are clicked"},
+    {.name = "ecs.colorButtonHover", .type = ECSSettingType_Color, .description = "Colour of a button under the pointer"},
+    {.name = "ecs.colorHover", .type = ECSSettingType_Color, .description = "Colour of a row or menu entry under the pointer"},
     {.name = "ecs.windowWidth", .type = ECSSettingType_Integer, .description = "Width of the OS window when it opens, in layout units"},
     {.name = "ecs.windowHeight", .type = ECSSettingType_Integer, .description = "Height of the OS window when it opens, in layout units"},
     {.name = "ecs.font", .type = ECSSettingType_Path, .description = "TrueType font of the core's interface, read when the window opens; a relative path starts at the executable's folder"},
@@ -788,7 +798,7 @@ static void ECSIWindow_DeclareIcon(ECSIIcon icon, Clay_Color color)
 {
     f32 size = SDL_roundf(WINDOW.fontSize * OPENECS_ICON_SCALE);
     u16 line = (u16)SDL_max(1.0f, SDL_roundf(size / 8.0f));
-    Clay_Color behind = WINDOW.colors[ECSIColor_Overlay];
+    Clay_Color behind = WINDOW.colors[ECSIColor_Background];
 
     CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(size), CLAY_SIZING_FIXED(size)}, .layoutDirection = CLAY_TOP_TO_BOTTOM, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_BOTTOM}}})
     {
@@ -864,7 +874,7 @@ static void ECSIWindow_DeclareTitleBar(ECSIOSWindow *osWindow)
                                       .padding = {ECSIWindow_Spacing(12), 0, 0, 0},
                                       .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                                   },
-                                  .backgroundColor = WINDOW.colors[ECSIColor_TabRow],
+                                  .backgroundColor = WINDOW.colors[ECSIColor_Background],
                                   .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {0.0f, 0.0f}},
                               })
     {
@@ -908,6 +918,10 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
 
     if (arrlenu(group->panels) >= 2)
     {
+        // the focused panel's tab has a line of the accent along its top
+        bool focused = group->panels[group->shown] == ECSILayout_GetFocus();
+        u16 focusLine = (u16)SDL_max(1.0f, ECSIWindow_Px(2.0f));
+
         CLAY_AUTO_ID({
             .layout = {
                 .sizing = {CLAY_SIZING_FIXED(group->width), CLAY_SIZING_FIXED(ECSILayout_GetTabRowHeight())},
@@ -928,6 +942,7 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
                                                                             .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                                                                         },
                                                                         .backgroundColor = i == group->shown ? WINDOW.colors[ECSIColor_TabShown] : WINDOW.colors[ECSIColor_Tab],
+                                                                        .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {0, 0, focused && i == group->shown ? focusLine : 0, 0, 0}},
                                                                     })
                 {
                     CLAY_TEXT(ECSIWindow_ClayText(group->panels[i]->title),
@@ -1114,8 +1129,8 @@ static void ECSIWindow_DeclareDialog(const ECSIOSWindow *osWindow)
                                         .layoutDirection = CLAY_TOP_TO_BOTTOM,
                                     },
                                     .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
-                                    .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(6)),
-                                    .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {1, 1, 1, 1, 0}},
+                                    .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(4)),
+                                    .border = {.color = WINDOW.colors[ECSIColor_Frame], .width = {1, 1, 1, 1, 0}},
                                 })
         {
             CLAY_TEXT(ECSIWindow_ClayText(dialog->title), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Accent], .fontSize = (u16)WINDOW.fontSize}));
@@ -1130,9 +1145,9 @@ static void ECSIWindow_DeclareDialog(const ECSIOSWindow *osWindow)
 
                     CLAY(CLAY_IDI("DialogButton", (u32)i), {
                                                                .layout = {.padding = {ECSIWindow_Spacing(12), ECSIWindow_Spacing(12), ECSIWindow_Spacing(6), ECSIWindow_Spacing(6)}},
-                                                               .backgroundColor = (i32)i == dialog->hover ? WINDOW.colors[ECSIColor_Selected] : WINDOW.colors[ECSIColor_Tab],
-                                                               .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(4)),
-                                                               .border = {.color = WINDOW.colors[selected ? ECSIColor_Accent : ECSIColor_TextDim], .width = selected ? (Clay_BorderWidth){2, 2, 2, 2, 0} : (Clay_BorderWidth){1, 1, 1, 1, 0}},
+                                                               .backgroundColor = (i32)i == dialog->hover ? WINDOW.colors[ECSIColor_ButtonHover] : WINDOW.colors[ECSIColor_Button],
+                                                               .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(2)),
+                                                               .border = {.color = WINDOW.colors[selected ? ECSIColor_Accent : ECSIColor_Frame], .width = {1, 1, 1, 1, 0}},
                                                            })
                     {
                         CLAY_TEXT(ECSIWindow_ClayText(dialog->buttons[i]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
@@ -1148,7 +1163,7 @@ static void ECSIWindow_DeclareFocusBorder(ECSPanel focus)
 {
     CLAY_AUTO_ID({
         .layout = {.sizing = {CLAY_SIZING_FIXED(focus->width), CLAY_SIZING_FIXED(focus->height)}},
-        .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {2, 2, 2, 2, 0}},
+        .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {1, 1, 1, 1, 0}},
         .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {focus->x, focus->y}, .zIndex = 1, .pointerCaptureMode = CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH},
     })
     {
@@ -1172,8 +1187,8 @@ static void ECSIWindow_DeclareGrip(ECSINode *group, const ECSIRoot *root)
                                   .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                               },
                               .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
-                              .cornerRadius = {0, 0, ECSIWindow_Spacing(6), ECSIWindow_Spacing(6)},
-                              .border = {.color = WINDOW.colors[ECSIColor_TextDim], .width = {1, 1, 0, 1, 0}},
+                              .cornerRadius = {0, 0, ECSIWindow_Spacing(4), ECSIWindow_Spacing(4)},
+                              .border = {.color = WINDOW.colors[ECSIColor_Frame], .width = {1, 1, 0, 1, 0}},
                               .clip = {.horizontal = true},
                               .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + (group->width - width) / 2.0f, group->y}, .zIndex = 2},
                           })
@@ -1214,8 +1229,8 @@ static void ECSIWindow_DeclareMenus(void)
                                                    .layoutDirection = CLAY_TOP_TO_BOTTOM,
                                                },
                                                .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
-                                               .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(6)),
-                                               .border = {.color = WINDOW.colors[ECSIColor_TextDim], .width = {1, 1, 1, 1, 0}},
+                                               .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(4)),
+                                               .border = {.color = WINDOW.colors[ECSIColor_Frame], .width = {1, 1, 1, 1, 0}},
                                                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {rect.x, rect.y}, .zIndex = (i16)(5 + level)},
                                            })
         {
@@ -1230,7 +1245,7 @@ static void ECSIWindow_DeclareMenus(void)
                         .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                     },
                     .backgroundColor = i == menu->selected ? WINDOW.colors[ECSIColor_Selected] : (Clay_Color){0},
-                    .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(4)),
+                    .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(2)),
                 })
                 {
                     CLAY_TEXT(ECSIWindow_ClayText(menu->lines[2 * i + 1]), CLAY_TEXT_CONFIG({.textColor = WINDOW.colors[ECSIColor_Text], .fontSize = (u16)WINDOW.fontSize, .wrapMode = CLAY_TEXT_WRAP_NONE}));
@@ -1250,8 +1265,8 @@ static void ECSIWindow_DeclarePrefixKeys(void)
     CLAY_AUTO_ID({
         .layout = {.padding = CLAY_PADDING_ALL(ECSIWindow_Spacing(14)), .childGap = ECSIWindow_Spacing(4), .layoutDirection = CLAY_TOP_TO_BOTTOM},
         .backgroundColor = WINDOW.colors[ECSIColor_Overlay],
-        .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(6)),
-        .border = {.color = WINDOW.colors[ECSIColor_Accent], .width = {1, 1, 1, 1, 0}},
+        .cornerRadius = CLAY_CORNER_RADIUS(ECSIWindow_Spacing(4)),
+        .border = {.color = WINDOW.colors[ECSIColor_Frame], .width = {1, 1, 1, 1, 0}},
         .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {24.0f, 24.0f}, .zIndex = 3},
     })
     {
