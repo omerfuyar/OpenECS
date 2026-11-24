@@ -8,10 +8,19 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **Linux first.** Linux is the priority. Windows is supported; other platforms are not worked on for now, as each one needs upkeep (DESIGN 19.4).
 - **Bugs** that the owner reports from testing.
+- **Editors that are simpler to build.** What each panel of an editor writes again today, and what an editor needs and writes itself: the panel type's `redrawOn`, keys for all of a plugin's panels, and the pointer's moves while data is dragged (Tasks); `ui.panelType` and the plugin history (Standard plugins).
 
 ## Tasks
 
 - **SDL's tray closes the D-Bus connection of notifications.** On Linux, SDL's D-Bus tray calls `SDL_DBus_Quit` when its last tray goes, which closes the connection that SDL's notifications share: their clicks stop coming after notify's last tray goes. At exit, `SDL_CleanupNotifications` then removes a filter from a new connection, which libdbus aborts on; the core makes that a warning for its quit (`ECSIApp_QuitSDL`), so the workaround can go once SDL is fixed. It is SDL's bug, still in its `main`, for the owner to report: SDL takes no contributions written by AI.
+- **The workspaces' list chooses the first workspace.** The title bar's workspaces' menu and `ecs.workspace.menu` open with the first entry chosen. They should choose the current workspace, so Down goes to the next one; c12_sketch's `test-workspaces.lua` then presses Down once for each step.
+- **A menu's keys can reach its right edge.** In the panel menu of a clock in c12_sketch, "Alt+W, M" touches the menu's edge. The menu should be as wide as its widest label and keys, with its padding.
+- **A panel type redraws on events.** Plugins keep a table of their open panels only to redraw them all when one of their events comes, such as std's files, the template's notes and c5_services' tally. A field `redrawOn` of the panel type, in `ECSPanelTypeDesc` and `ecs.PanelTypeDesc`, names events; when one is emitted, every panel of the type is drawn again. The plugins that keep such tables then drop them, in the same piece of work.
+- **Keys for all of a plugin's panels.** `ecs.key.bind` takes one panel type, or `"prefix"`. A tool whose undo, redo and save work in each of its panels binds each key once for each type. A scope of the plugin's own name binds a key in every panel type of the plugin.
+- **While data is dragged, no panel gets the pointer's moves.** DESIGN 7.9 says only the panel that started the drag gets none, but `ECSIInput_MovePointer` (`src/interface/Input.c:665`) gives them to no panel. So a list or a tree that accepts the data cannot show the line where it will land before the release; ui's `onDrop` tells it only then. Give the moves to the panel under the pointer, as 7.9 says.
+- **A test reads the open menu.** Tests choose menu entries by counting Down and Up, so an entry that is added or hidden breaks them. `test.menu()` would give the open menu's entries: their labels, keys, whether they can be used, and which is chosen.
+- **A test changes a setting.** `test.setting` only reads one. A test of another scale needs a preset of its own, such as c3_ui's `preset_large.lua` and c12_sketch's `preset-large.lua`, and a change while the tool runs cannot be tested. `test.setSetting(name, value)` would change it as the user's settings file does.
+- **A test calls a function with values, and answers a file dialog.** `test.call` runs a function that takes nothing, and nothing answers the system's file dialogs in a test (DESIGN 7.7), so a tool's New and Open cannot be tested. `test.call(name, ...)` would pass the values, and `test.fileDialog()` would read the waiting dialog's description and answer it with paths.
 - **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now, and aarch64 waits for 1.0.0 (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
 
 ## Standard plugins
@@ -19,6 +28,11 @@ What the owner wants worked on, in no fixed order. Each one is described further
 The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md) describes them.
 
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
+- **fs: more of what a files panel needs.** Watching a folder with the folders inside it; moving a file to the system's trash, for the files panel's `delete`; and a file's permissions, such as whether it runs as a program.
+- **history: undo and redo for any tool.** A standard plugin, as every editor needs it. A plugin pushes records, each a label with an undo and a redo function. history gives undo and redo as functions, merges quick changes of one value into one record, and keeps a save point that sets the unsaved mark of the panels it names. A History panel lists the records, and a click on one undoes or redoes until it is the last one done. Open: one history for the tool, or one for each document a tool has open.
+- **ui.panelType.** Each panel type built with ui gives `event = ui.event`, calls `ui.forget` in `destroy` and `ui.show` in `draw`. `ui.panelType(desc)` would register a panel type whose `view(state)` gives the element tree, and do the rest. Std's panels, the examples and the template then use it, in the same piece of work.
+- **ui: a double click on an item.** `tree` and `list` give a click to `onActivate`, so the files panel (29) and the console (31) each time a second click themselves, within 0.4 seconds. They should give a double click to its own handler.
+- **net and process for a tool's own programs.** `net.listen` waits on every address of the computer; a tool that talks to a program it started wants `127.0.0.1` only, and port 0 with the port that was chosen. `process.start` cannot give the program environment variables, such as `SDL_VIDEODRIVER`.
 
 ## Shuild
 
