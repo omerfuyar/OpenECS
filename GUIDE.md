@@ -29,6 +29,7 @@ A tool starts as its preset arranges it. With the setting `ecs.keepSession` on, 
 - The window is divided into **panels**, such as a canvas, a palette or a list. Panels in the same place share a **tab row**; a panel alone shows none, and a small **grip** appears when the pointer comes near its top edge.
 - Drag a tab or a grip to move a panel: onto the centre of another panel to share its place, near an edge to split it, or out of the window into a window of its own. The place where it will land is highlighted.
 - Drag the gap between panels to change their sizes. Where gaps meet, the pointer shows four ways, and a drag changes the sizes both ways at once.
+- To keep a place for a panel you will open later, such as a split's other side, open a **Blank** panel from the list of panels (the prefix, then .) and drag it there. A panel that you open from the list while the blank panel has the focus opens in its place, beside it.
 - Scroll the wheel over a tab row to show the next or the previous tab.
 - Right-click a tab, a grip or the rest of a tab row, click a grip, or click the `⋮` at the end of a tab row, for the panel's menu. It is the same menu from each: close the panel or all the panels of its place, maximize, pop out, show another tab, move to another workspace or a new one, and what the panel adds.
 - Middle-click a tab, or click its close button, to close its panel.
