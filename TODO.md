@@ -32,7 +32,6 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 - **history: undo and redo for any tool.** A standard plugin, as every editor needs it. A plugin pushes records, each a label with an undo and a redo function. history gives undo and redo as functions, merges quick changes of one value into one record, and keeps a save point that sets the unsaved mark of the panels it names. A History panel lists the records, and a click on one undoes or redoes until it is the last one done. Open: one history for the tool, or one for each document a tool has open.
 - **ui.panelType.** Each panel type built with ui gives `event = ui.event`, calls `ui.forget` in `destroy` and `ui.show` in `draw`. `ui.panelType(desc)` would register a panel type whose `view(state)` gives the element tree, and do the rest. Std's panels, the examples and the template then use it, in the same piece of work.
 - **ui: a double click on an item.** `tree` and `list` give a click to `onActivate`, so the files panel (29) and the console (31) each time a second click themselves, within 0.4 seconds. They should give a double click to its own handler.
-- **net and process for a tool's own programs.** `net.listen` waits on every address of the computer; a tool that talks to a program it started wants `127.0.0.1` only, and port 0 with the port that was chosen. `process.start` cannot give the program environment variables, such as `SDL_VIDEODRIVER`.
 
 ## Shuild
 
