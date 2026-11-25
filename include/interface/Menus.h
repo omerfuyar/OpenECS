@@ -1,6 +1,6 @@
 #pragma once
 
-// Menus: the core's bindable functions, such as ecs.layout.close and ecs.layout.lock, and the panel and group menus that offer them.
+// Menus: the core's bindable functions, such as ecs.layout.close and ecs.layout.lock, and the panel menu that offers them.
 
 #include "interface/Panels.h"
 
@@ -40,12 +40,6 @@ usz ECSIMenus_GetOrder(const char *function);
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
 void ECSIMenus_OpenPanelMenu(ECSPanel panel, f32 x, f32 y);
-
-/// @brief Opens the menu of a group at a point. Its shown panel gets the focus.
-/// @param shownPanel The group's shown panel.
-/// @param x Horizontal position in layout units.
-/// @param y Vertical position in layout units.
-void ECSIMenus_OpenGroupMenu(ECSPanel shownPanel, f32 x, f32 y);
 
 /// @brief Gives the title bar its menus and buttons from the settings ecs.titleMenus and ecs.titleButtons, as they are now, and the text of a tooltip that is due.
 /// Call it in each pass of the main loop, before a frame is drawn.

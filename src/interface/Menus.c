@@ -17,7 +17,7 @@
 /// @brief What a menu entry that opens a submenu shows instead of keys.
 #define OPENECS_SUBMENU_MARK "\u203A"
 
-/// @brief What the entry of the shown tab shows in a group's menu.
+/// @brief What the entry of the shown tab, or of the current workspace, shows in a menu.
 #define OPENECS_SHOWN_MARK "\u2022"
 
 /// @brief How far from the focused panel's corner a menu that keys open is, in layout units.
@@ -189,21 +189,40 @@ static void ECSIMenus_AddTypeEntries(ECSIMenuEntry **entries, ECSPanel panel)
     }
 }
 
-/// @brief Builds a panel's menu: what acts on the panel and its group, the submenus that move it, then its type's entries.
+/// @brief Builds a panel's menu: what acts on the panel and its group, the submenus that show a tab and move the panel, then its type's entries.
+/// A group of one panel leaves out its tabs and closing the group, which closing the panel does.
 /// @return stb_ds array of the entries.
 static ECSIMenuEntry *ECSIMenus_BuildPanelMenu(ECSPanel panel)
 {
     ECSIMenuEntry *entries = nullptr;
+    ECSIMenuEntry *tabs = nullptr;
     ECSIMenuEntry *move = nullptr;
     ECSIMenuEntry *workspaces = nullptr;
+    usz count = 0;
+    usz shown = 0;
+    const ECSPanel *panels = ECSILayout_GetGroup(panel, &count, &shown);
 
     ECSIMenus_AddFunction(&entries, "ecs.layout.close", nullptr, panel);
+
+    if (count > 1)
+    {
+        ECSIMenus_AddFunction(&entries, "ecs.layout.closeGroup", nullptr, panel);
+
+        for (usz i = 0; i < count; i++)
+        {
+            ECSIMenuEntry *entry = ECSIMenus_Add(&tabs, panels[i]->title, i == shown ? SDL_strdup(OPENECS_SHOWN_MARK) : nullptr, nullptr);
+            entry->tab = panels[i];
+            entry->tabID = panels[i]->id;
+        }
+    }
+
     ECSIMenus_AddFunction(&entries, "ecs.panel.restart", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.panel.reloadPlugin", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.maximize", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.popOut", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.lock", nullptr, panel);
     ECSIMenus_AddFunction(&entries, "ecs.layout.reopen", nullptr, panel);
+    ECSIMenus_AddSubmenu(&entries, "Tabs", tabs);
 
     ECSIMenus_AddFunction(&move, "ecs.layout.moveLeft", "Left", panel);
     ECSIMenus_AddFunction(&move, "ecs.layout.moveRight", "Right", panel);
@@ -246,31 +265,6 @@ static ECSIMenuEntry *ECSIMenus_BuildWorkspaceMenu(void)
         ECSIMenus_Add(&entries, label, number == ECSWorkspace_GetCurrent() ? SDL_strdup(OPENECS_SHOWN_MARK) : ECSIKeys_PrefixTextOf(function), function);
     }
 
-    return entries;
-}
-
-/// @brief Builds a group's menu: its tabs, then what acts on the whole group.
-/// @return stb_ds array of the entries.
-static ECSIMenuEntry *ECSIMenus_BuildGroupMenu(ECSPanel shownPanel)
-{
-    ECSIMenuEntry *entries = nullptr;
-    ECSIMenuEntry *tabs = nullptr;
-    usz count = 0;
-    usz shown = 0;
-    const ECSPanel *panels = ECSILayout_GetGroup(shownPanel, &count, &shown);
-
-    for (usz i = 0; i < count; i++)
-    {
-        ECSIMenuEntry *entry = ECSIMenus_Add(&tabs, panels[i]->title, i == shown ? SDL_strdup(OPENECS_SHOWN_MARK) : nullptr, nullptr);
-        entry->tab = panels[i];
-        entry->tabID = panels[i]->id;
-    }
-
-    ECSIMenus_AddSubmenu(&entries, "Tabs", tabs);
-    ECSIMenus_AddFunction(&entries, "ecs.layout.maximize", nullptr, shownPanel);
-    ECSIMenus_AddFunction(&entries, "ecs.layout.lock", nullptr, shownPanel);
-    ECSIMenus_AddFunction(&entries, "ecs.layout.closeGroup", nullptr, shownPanel);
-    ECSIMenus_AddFunction(&entries, "ecs.layout.reopen", nullptr, shownPanel);
     return entries;
 }
 
@@ -1007,12 +1001,6 @@ void ECSIMenus_OpenPanelMenu(ECSPanel panel, f32 x, f32 y)
 {
     ECSILayout_SetFocus(panel);
     ECSIMenus_Show(ECSIMenus_BuildPanelMenu(panel), nullptr, x, y);
-}
-
-void ECSIMenus_OpenGroupMenu(ECSPanel shownPanel, f32 x, f32 y)
-{
-    ECSILayout_SetFocus(shownPanel);
-    ECSIMenus_Show(ECSIMenus_BuildGroupMenu(shownPanel), nullptr, x, y);
 }
 
 /// @brief Handles a move of the pointer while a menu is open: pointing at another menu of the title bar opens it, and pointing at an entry highlights it and opens its submenu.
