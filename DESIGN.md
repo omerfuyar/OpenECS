@@ -553,6 +553,7 @@ After every operation:
 - The layout tree fills its OS window below the title bar, less a margin of `ecs.dividerSize` layout units at each edge, as wide as the gap between groups, so no group meets the window's edge.
 - If an OS window is too small for all minimums, the last children are clipped.
 - Dragging a divider next to a fixed-size child changes that child's fixed size.
+- Where splits meet, as a divider ends on a divider of the other direction, a press within `ecs.dividerSize` layout units of that end drags both dividers at once.
 
 ### 6.4 Grips and locked groups
 
@@ -596,7 +597,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - A press on a tab or a grip starts a drag once the pointer moves `ecs.dragThreshold` layout units. A press on the empty part of a tab row drags the whole group the same way. Escape cancels the drag.
 - A drop that would change nothing is not highlighted and does nothing: a panel on its own group or next to its own tab, a whole group on itself, or a group that fills the OS window on an edge of it.
-- The pointer shows a resize arrow over a divider and while it is dragged, and a move arrow while a panel or group is dragged.
+- The pointer shows a resize arrow over a divider and while it is dragged, a four-way arrow where splits meet (6.3), and a move arrow while a panel or group is dragged.
 - The drop place is highlighted while the panel is dragged.
 - A panel that splits another takes half of the other's place. A panel docked along an edge of the OS window takes a quarter of it.
 
