@@ -230,4 +230,4 @@ Ask questions and show what you build in [Discussions](https://github.com/omerfu
 
 ## License
 
-OpenECS is under the zlib license; see [LICENSE.md](LICENSE.md). The release archives hold the licenses of the libraries and the font that OpenECS includes, in `licenses/`.
+OpenECS is under the 0BSD license; see [LICENSE.md](LICENSE.md). The release archives hold the licenses of the libraries and the font that OpenECS includes, in `licenses/`.
