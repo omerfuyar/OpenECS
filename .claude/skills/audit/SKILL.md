@@ -22,6 +22,8 @@ One of:
 3. **A document says X, and nothing does it**, or it exists under another name.
 4. **Documents disagree:** DESIGN, GUIDE, README, std's DESIGN, the comments of ecs.lua, OpenECS.h, `resources/settings.lua`, the manifests and the examples.
 
+Recommend the side that keeps one rule: when the code breaks a rule, the code changes; never recommend writing an exception into a document (CLAUDE.md, "Recommend no exceptions").
+
 Each needs evidence from both sides: the document's line (file:line, quoted in under 15 words) and the code's line, or a test run that shows the behaviour. Read the code path to the end, grep every spelling, and check the C and the Lua side. Drop what you cannot confirm, or list it as unconfirmed.
 
 ## 3. The areas
