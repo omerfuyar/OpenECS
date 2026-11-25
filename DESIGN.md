@@ -682,8 +682,9 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 7.3 Key combinations
 
-- A key combination is modifiers plus one key, written as text: `Ctrl+Shift+P`. The modifiers are Ctrl, Shift, Alt and Super. The text is case-insensitive, and key names are SDL's. The modifiers come first, each followed by `+`, and the rest is the key's name, which may hold a `+` itself: `Ctrl++` is Ctrl with the + key, and `Ctrl+Keypad +` Ctrl with the keypad's.
-- Bindings match SDL key codes, which follow the user's keyboard layout. SDL's default `latin_letters` option makes the letter keys of non-Latin layouts report English letters.
+- A key combination is modifiers plus one key, written as text: `Ctrl+Shift+P`. The modifiers are Ctrl, Shift, Alt and Super. The text is case-insensitive, and key names are SDL's names of physical keys, as a US keyboard labels them. The modifiers come first, each followed by `+`, and the rest is the key's name, which may hold a `+` itself: `Ctrl++` is Ctrl with the + key, and `Ctrl+Keypad +` Ctrl with the keypad's.
+- Bindings match physical keys, SDL's scancodes, which are the same on every keyboard layout: a key combination is the same key press wherever it is used. A panel's key events name the physical key too; what a key types comes as text (4.6).
+- Where a key is shown, such as in menus, the list of keys after the prefix, the key list and tooltips, it is shown by what it types on the user's layout.
 - AltGr (`SDL_KMOD_MODE`) is never part of a binding. A key pressed with AltGr held is text.
 
 ### 7.4 Dispatch
