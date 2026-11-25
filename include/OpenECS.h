@@ -255,7 +255,7 @@ typedef SHUResult (*ECSPanelSaveFunction)(void *state);
 typedef enum ECSPopupType
 {
     ECSPopupType_Menu = 0, // takes the key presses while it is open; Escape closes it
-    ECSPopupType_Tooltip,  // takes no key presses
+    ECSPopupType_Tooltip,  // takes no key presses and no pointer events: they go to what is under it
 } ECSPopupType;
 
 /// @brief Draws a popup into its surface.
@@ -263,7 +263,7 @@ typedef enum ECSPopupType
 /// @param surface The surface, valid only during the call.
 typedef void (*ECSPopupDrawFunction)(void *data, ECSSurface *surface);
 
-/// @brief Tells a popup about a pointer, wheel or key event. Positions are in the popup's surface pixels.
+/// @brief Tells a popup about a pointer, wheel or key event. Positions are in the popup's surface pixels. A tooltip gets none.
 /// @param data The data of the popup's description.
 /// @param event The event, valid only during the call.
 typedef void (*ECSPopupEventFunction)(void *data, const ECSPanelEvent *event);
@@ -1192,7 +1192,7 @@ OPENECS_EXPORT SHUWUR SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char 
 /// @lua panel:startDrag
 OPENECS_EXPORT SHUWUR SHUResult ECSPanel_StartDrag(ECSPanel panel, const char *type, const ECSValue *value);
 
-/// @brief Opens a popup next to a rectangle of a shown panel: below it, or above it if there is no room below. It closes when code closes it, on a press outside every popup, on Escape if it is a menu, and when its panel closes, fails or is hidden. Main thread only.
+/// @brief Opens a popup next to a rectangle of a shown panel: below it, or above it if there is no room below. It closes when code closes it, on a press outside every popup while a menu is open, on Escape if it is a menu, and when its panel closes, fails or is hidden. Main thread only.
 /// @param panel The panel the popup belongs to.
 /// @param retPopup The new popup.
 /// @param desc Description of the popup. The core copies it.

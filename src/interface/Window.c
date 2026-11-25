@@ -2845,7 +2845,7 @@ ECSPopup ECSIWindow_PopupAt(f32 x, f32 y, f32 *retX, f32 *retY)
         return WINDOW.eventPopup;
     }
 
-    // the newest popup drawn inside the event window that holds the point
+    // the newest popup drawn inside the event window that holds the point; a tooltip takes no events, as SDL's tooltip windows take none
     usz count = 0;
     ECSPopup *popups = ECSIPopups_GetOpen(&count);
 
@@ -2853,8 +2853,8 @@ ECSPopup ECSIWindow_PopupAt(f32 x, f32 y, f32 *retX, f32 *retY)
     {
         ECSIPopupView *view = popups[i - 1]->view;
 
-        if (view != nullptr && view->window == nullptr && WINDOW.eventWindow != nullptr && view->rootID == WINDOW.eventWindow->rootID &&
-            ECSILayout_Contains(view->rect, x, y))
+        if (view != nullptr && view->window == nullptr && popups[i - 1]->desc.type != ECSPopupType_Tooltip && WINDOW.eventWindow != nullptr &&
+            view->rootID == WINDOW.eventWindow->rootID && ECSILayout_Contains(view->rect, x, y))
         {
             *retX = x - view->rect.x;
             *retY = y - view->rect.y;
