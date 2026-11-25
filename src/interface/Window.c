@@ -2155,12 +2155,10 @@ static void ECSIWindow_UpdatePopup(ECSPopup popup)
         return;
     }
 
-    // drawn inside the OS window, it is also kept inside it
-    if (view->window == nullptr)
-    {
-        rect.x = SDL_max(0.0f, SDL_min(rect.x, osWindow->width - rect.w));
-        rect.y = SDL_max(0.0f, SDL_min(rect.y, osWindow->height - rect.h));
-    }
+    // it is kept inside the OS window, drawn there or as a popup window alike: a compositor that has to fit a popup window
+    // that sticks out may move it, or shrink it so its pixels are squeezed
+    rect.x = SDL_max(0.0f, SDL_min(rect.x, osWindow->width - rect.w));
+    rect.y = SDL_max(0.0f, SDL_min(rect.y, osWindow->height - rect.h));
 
     // its corner is on a whole pixel, so its pixels show one to one, as a panel's do
     rect.x = SDL_roundf(rect.x);
@@ -2247,7 +2245,9 @@ static void ECSIWindow_PresentPopups(void)
             view->changed = false;
             SDL_SetRenderDrawColor(view->renderer, 0, 0, 0, 0);
             SDL_RenderClear(view->renderer);
-            SDL_RenderTexture(view->renderer, view->texture, nullptr, nullptr);
+            // at its own size, so a window that the system sized otherwise cuts it rather than stretching it
+            SDL_FRect whole = {0.0f, 0.0f, (f32)view->texture->w, (f32)view->texture->h};
+            SDL_RenderTexture(view->renderer, view->texture, nullptr, &whole);
             SDL_RenderPresent(view->renderer);
         }
     }
