@@ -4,7 +4,19 @@
 
 #include "interface/Window.h"
 
+#include "SDL3/SDL_dialog.h"
+
 #pragma region Declarations
+
+/// @brief A file dialog that waits for a running test's answer, as its description gave it.
+typedef struct ECSIFileDialogView
+{
+    ECSDialogType type;
+    const SDL_DialogFileFilter *filters;
+    usz filterCount;
+    const char *location; // or nullptr
+    bool many;
+} ECSIFileDialogView;
 
 /// @brief Lets Panels ask about unsaved work with a message dialog.
 void ECSIDialogs_Initialize(void);
@@ -36,5 +48,14 @@ i32 ECSIDialogs_Ask(const char *title, const char *message, const char *const *b
 
 /// @brief Gives the message dialog that waits for an answer, or nullptr; for tests.
 const ECSIDialogView *ECSIDialogs_Get(void);
+
+/// @brief Gives the oldest file dialog that waits for a running test's answer, or nullptr. While a test runs, a file dialog waits for the test instead of showing.
+const ECSIFileDialogView *ECSIDialogs_GetFile(void);
+
+/// @brief Answers the oldest file dialog that waits for a test, as the user does. Its Done function gets the paths on the main thread, as from the system's dialog.
+/// @param paths The chosen paths; none cancels the dialog.
+/// @param count Number of paths.
+/// @return SHUResult_Ok, SHUResult_ErrNotFound if no dialog waits, or SHUResult_ErrAllocation.
+SHUWUR SHUResult ECSIDialogs_AnswerFile(const char *const *paths, usz count);
 
 #pragma endregion Declarations

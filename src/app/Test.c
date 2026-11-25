@@ -4,7 +4,9 @@
 #include "interface/Dialogs.h"
 #include "interface/Input.h"
 #include "interface/Layout.h"
+#include "interface/Menus.h"
 #include "interface/Panels.h"
+#include "interface/Popups.h"
 #include "interface/Window.h"
 #include "runtime/Plugins.h"
 #include "runtime/Services.h"
@@ -27,6 +29,7 @@ static struct
     lua_State *thread;          // the coroutine of the test's run function, or nullptr when no test runs
     int threadReference;        // registry reference that keeps the coroutine alive
     bool started;               // false until the run function is first resumed
+    int yielded;                // the values the test's step yielded, which its function gives back when the test goes on
     bool failed;                // true when the test failed
     bool resuming;              // the test's own code runs, so a dialog it opens cannot wait for it
     bool ended;                 // the test has ended, so the program stops, even when it ended while a dialog waited
@@ -542,17 +545,38 @@ static int ECSITest_DropText(lua_State *state)
     return lua_yield(state, 0);
 }
 
-/// @brief test.call(name): runs a bound function with the focused panel.
+/// @brief test.call(name, ...): runs a bound function with the focused panel; with values, runs a function with them and gives its results.
 static int ECSITest_Call(lua_State *state)
 {
     const char *name = luaL_checkstring(state, 1);
+    int count = lua_gettop(state) - 1;
 
-    if (ECSIServices_CallBound(name, ECSILayout_GetFocus()))
+    if (count == 0)
     {
-        return luaL_error(state, "'%s' cannot be called; see the log", name);
+        if (ECSIServices_CallBound(name, ECSILayout_GetFocus()))
+        {
+            return luaL_error(state, "'%s' cannot be called; see the log", name);
+        }
+
+        return lua_yield(state, 0);
     }
 
-    return lua_yield(state, 0);
+    int results = 0;
+    SHUResult result = ECSIServices_CallWithValues(state, name, count, &results);
+
+    if (result == SHUResult_ErrNotFound)
+    {
+        return luaL_error(state, "no function is named '%s'", name);
+    }
+
+    // the call's error is on top of the stack
+    if (result)
+    {
+        return lua_error(state);
+    }
+
+    // the results come back when the test goes on, after the call's events are delivered
+    return lua_yield(state, results);
 }
 
 /// @brief test.wait(seconds): lets the program run.
@@ -742,6 +766,26 @@ static int ECSITest_Setting(lua_State *state)
     return 1;
 }
 
+/// @brief test.setSetting(name, value): changes a setting as the user's settings file does; nil takes the user's value away.
+static int ECSITest_SetSetting(lua_State *state)
+{
+    const char *name = luaL_checkstring(state, 1);
+    luaL_checkany(state, 2);
+    ECSValue *value = nullptr;
+    SHUResult result = ECSValue_Create(&value);
+    result = result ? result : ECSILua_GetValue(state, 2, value);
+    result = result ? result : ECSSetting_Set(name, value);
+    ECSValue_Destroy(&value);
+
+    if (result)
+    {
+        return luaL_error(state, "the setting '%s' is not set (%s); see the log", name, SHUResult_String(result));
+    }
+
+    // the setting's owner hears of the change before the test goes on
+    return lua_yield(state, 0);
+}
+
 /// @brief test.popup(number): the rectangle of an open popup, the oldest first, in its OS window, and the number of that window.
 static int ECSITest_Popup(lua_State *state)
 {
@@ -796,6 +840,138 @@ static int ECSITest_Dialog(lua_State *state)
     lua_setfield(state, -3, "rects");
     lua_setfield(state, -2, "buttons");
     return 1;
+}
+
+/// @brief test.menu(): the entries of the open menu that takes the keys, or nil: each one's label, keys, and whether it is enabled and chosen.
+/// The core's menus come first; a menu that a plugin draws gives the entries it set with ECSPopup_SetItems.
+static int ECSITest_Menu(lua_State *state)
+{
+    ECSPopupItem *items = nullptr;
+    const ECSPopupItem *shown = items;
+    usz count = 0;
+
+    if (ECSIMenus_GetItems(&items))
+    {
+        shown = items;
+        count = arrlenu(items);
+    }
+    else
+    {
+        ECSPopup popup = ECSIPopups_GetMenu();
+
+        if (popup == nullptr)
+        {
+            lua_pushnil(state);
+            return 1;
+        }
+
+        shown = popup->items;
+        count = arrlenu(popup->items);
+    }
+
+    lua_createtable(state, (int)count, 0);
+
+    for (usz i = 0; i < count; i++)
+    {
+        lua_createtable(state, 0, 4);
+        lua_pushstring(state, shown[i].label);
+        lua_setfield(state, -2, "label");
+
+        if (shown[i].keys != nullptr)
+        {
+            lua_pushstring(state, shown[i].keys);
+            lua_setfield(state, -2, "keys");
+        }
+
+        lua_pushboolean(state, shown[i].enabled);
+        lua_setfield(state, -2, "enabled");
+        lua_pushboolean(state, shown[i].chosen);
+        lua_setfield(state, -2, "chosen");
+        lua_rawseti(state, -2, (int)i + 1);
+    }
+
+    arrfree(items);
+    return 1;
+}
+
+/// @brief Names of the file dialogs' types in Lua, in the order of ECSDialogType, as ecs.dialog.show takes them.
+static const char *const OPENECS_TEST_DIALOG_TYPES[] = {"openFile", "saveFile", "openFolder"};
+
+/// @brief test.fileDialog(paths): the oldest file dialog that waits for an answer, or nil: its type, filters, location and many, as ecs.dialog.show took them.
+/// With a list of paths, it answers the dialog with them, as the user does, and gives the dialog after its Done function has run; an empty list cancels it.
+static int ECSITest_FileDialog(lua_State *state)
+{
+    const ECSIFileDialogView *dialog = ECSIDialogs_GetFile();
+    bool answer = !lua_isnoneornil(state, 1);
+
+    if (answer)
+    {
+        luaL_checktype(state, 1, LUA_TTABLE);
+    }
+
+    if (dialog == nullptr && answer)
+    {
+        return luaL_error(state, "no file dialog waits for an answer");
+    }
+
+    if (dialog == nullptr)
+    {
+        lua_pushnil(state);
+        return 1;
+    }
+
+    lua_createtable(state, 0, 4);
+    lua_pushstring(state, OPENECS_TEST_DIALOG_TYPES[dialog->type]);
+    lua_setfield(state, -2, "type");
+    lua_pushstring(state, dialog->location);
+    lua_setfield(state, -2, "location");
+    lua_pushboolean(state, dialog->many);
+    lua_setfield(state, -2, "many");
+    lua_createtable(state, (int)dialog->filterCount, 0);
+
+    for (usz i = 0; i < dialog->filterCount; i++)
+    {
+        lua_createtable(state, 0, 2);
+        lua_pushstring(state, dialog->filters[i].name);
+        lua_setfield(state, -2, "name");
+        lua_pushstring(state, dialog->filters[i].pattern);
+        lua_setfield(state, -2, "pattern");
+        lua_rawseti(state, -2, (int)i + 1);
+    }
+
+    lua_setfield(state, -2, "filters");
+
+    if (!answer)
+    {
+        return 1;
+    }
+
+    // the paths stay alive in the test's table while the dialog copies them
+    const char **paths = nullptr;
+
+    for (int i = 1; lua_rawgeti(state, 1, i) != LUA_TNIL; i++)
+    {
+        if (lua_type(state, -1) != LUA_TSTRING)
+        {
+            arrfree(paths);
+            return luaL_argerror(state, 1, "the paths must be texts");
+        }
+
+        arrput(paths, lua_tostring(state, -1));
+        lua_pop(state, 1);
+    }
+
+    lua_pop(state, 1);
+    SHUResult result = ECSIDialogs_AnswerFile(paths, arrlenu(paths));
+    arrfree(paths);
+
+    if (result)
+    {
+        return luaL_error(state, "the file dialog is not answered (%s)", SHUResult_String(result));
+    }
+
+    // the plugin gets the paths in the next pass, and the dialog's description comes back after it
+    return lua_yield(state, 1);
 }
 
 /// @brief test.window(number): chooses the OS window that later input events go to, and that test.screenshot saves: 1 for the main window, then the pop-out windows. Gives the window's position on the screen.
@@ -930,6 +1106,9 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {"panel", ECSITest_Panel},
     {"panels", ECSITest_Panels},
     {"setting", ECSITest_Setting},
+    {"setSetting", ECSITest_SetSetting},
+    {"menu", ECSITest_Menu},
+    {"fileDialog", ECSITest_FileDialog},
     {"popup", ECSITest_Popup},
     {"dialog", ECSITest_Dialog},
     {"window", ECSITest_Window},
@@ -1107,6 +1286,7 @@ SHUResult ECSITest_Load(const char *path, char **retPreset)
     lua_settop(state, top);
 
     TEST.started = false;
+    TEST.yielded = 0;
     TEST.failed = false;
     TEST.ended = false;
     SDL_LockSpinlock(&TEST.misuseLock);
@@ -1207,14 +1387,14 @@ bool ECSITest_Step(void)
 
     lua_State *state = ECSILua_GetState();
     TEST.resuming = true;
-    int status = lua_resume(TEST.thread, state, TEST.started ? 0 : 1);
+    int status = lua_resume(TEST.thread, state, TEST.started ? TEST.yielded : 1);
     TEST.resuming = false;
     TEST.started = true;
 
     if (status == LUA_YIELD)
     {
-        // the thread's stack holds only what it yielded
-        lua_settop(TEST.thread, 0);
+        // the thread's stack holds only what it yielded, which goes back to the test when it goes on
+        TEST.yielded = lua_gettop(TEST.thread);
         return true;
     }
 

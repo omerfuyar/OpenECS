@@ -37,6 +37,18 @@ static struct
     u32 lastID;
 } POPUPS = {0};
 
+/// @brief Frees the entries a menu said it shows.
+static void ECSIPopup_FreeItems(ECSPopup popup)
+{
+    for (usz i = 0; i < arrlenu(popup->items); i++)
+    {
+        SDL_free((char *)popup->items[i].label);
+        SDL_free((char *)popup->items[i].keys);
+    }
+
+    arrfree(popup->items);
+}
+
 /// @brief Frees a popup and what the window shows it with.
 static void ECSIPopup_Free(ECSPopup popup)
 {
@@ -45,6 +57,7 @@ static void ECSIPopup_Free(ECSPopup popup)
         POPUPS.Release(popup);
     }
 
+    ECSIPopup_FreeItems(popup);
     SDL_DestroySurface(popup->pixels);
     SDL_free(popup);
 }
@@ -327,4 +340,28 @@ void ECSPopup_SetSize(ECSPopup popup, f32 width, f32 height)
     popup->desc.width = width > 0.0f ? width : popup->desc.width;
     popup->desc.height = height > 0.0f ? height : popup->desc.height;
     popup->needsDraw = true;
+}
+
+SHUResult ECSPopup_SetItems(ECSPopup popup, const ECSPopupItem *items, usz count)
+{
+    ECSILog_Check(popup != nullptr, SHUResult_ErrAssertion);
+    ECSILog_Check(items != nullptr || count == 0, SHUResult_ErrAssertion);
+
+    ECSIPopup_FreeItems(popup);
+
+    for (usz i = 0; i < count; i++)
+    {
+        ECSPopupItem item = items[i];
+        item.label = SDL_strdup(items[i].label != nullptr ? items[i].label : "");
+        item.keys = items[i].keys != nullptr ? SDL_strdup(items[i].keys) : nullptr;
+        arrput(popup->items, item);
+
+        if (item.label == nullptr || (items[i].keys != nullptr && item.keys == nullptr))
+        {
+            ECSIPopup_FreeItems(popup);
+            return SHUResult_ErrAllocation;
+        }
+    }
+
+    return SHUResult_Ok;
 }

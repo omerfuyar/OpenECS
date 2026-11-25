@@ -51,6 +51,11 @@ void ECSIMenus_UpdateTitleBar(void);
 /// @return true if the press was on one of them.
 bool ECSIMenus_PressTitle(f32 x, f32 y);
 
+/// @brief Gives the entries of the deepest open menu, which takes the keys, for tests. A heading cannot be chosen, and an entry that opens a submenu has no keys.
+/// @param retItems Gets an stb_ds array of the entries, which the caller frees with arrfree. Their texts are valid until a menu opens or closes.
+/// @return true if a menu is open.
+bool ECSIMenus_GetItems(ECSPopupItem **retItems);
+
 /// @brief Gives an event to the open menus. Pointer and key events go to the menus only; keys go to the deepest one.
 /// @param event The event.
 /// @return true if the menus used the event.

@@ -1932,10 +1932,50 @@ static int ECSIBindings_PopupSetSize(lua_State *state)
     return 0;
 }
 
+/// @brief popup:setItems(items): each item is { label, keys, enabled, chosen }; enabled is true when missing.
+static int ECSIBindings_PopupSetItems(lua_State *state)
+{
+    ECSPopup popup = ECSIBindings_CheckPopup(1);
+    ECSILua_CheckType(state, 2, LUA_TTABLE);
+    ECSPopupItem *items = nullptr;
+
+    // the texts stay alive in the items' table until the core copies them
+    for (int i = 1; lua_rawgeti(state, 2, i) == LUA_TTABLE; i++)
+    {
+        lua_getfield(state, -1, "label");
+        lua_getfield(state, -2, "keys");
+        lua_getfield(state, -3, "enabled");
+        lua_getfield(state, -4, "chosen");
+        bool valid = lua_type(state, -4) == LUA_TSTRING && (lua_isnil(state, -3) || lua_type(state, -3) == LUA_TSTRING);
+        ECSPopupItem item = {lua_tostring(state, -4), lua_tostring(state, -3), lua_isnil(state, -2) || lua_toboolean(state, -2), lua_toboolean(state, -1)};
+        lua_pop(state, 5);
+
+        if (!valid)
+        {
+            arrfree(items);
+            ECSILua_ArgError(state, 2, "each item needs a label, and its keys must be text");
+        }
+
+        arrput(items, item);
+    }
+
+    lua_pop(state, 1);
+    SHUResult result = ECSPopup_SetItems(popup, items, arrlenu(items));
+    arrfree(items);
+
+    if (result)
+    {
+        ECSIServices_Raise(state, result, "the popup's items are not set");
+    }
+
+    return 0;
+}
+
 static const luaL_Reg OPENECS_BINDINGS_POPUP[] = {
     {"close", ECSIBindings_PopupClose},
     {"redraw", ECSIBindings_PopupRedraw},
     {"setSize", ECSIBindings_PopupSetSize},
+    {"setItems", ECSIBindings_PopupSetItems},
     {nullptr, nullptr},
 };
 

@@ -14,9 +14,10 @@ struct ECSIPopup
     ECSPopupDesc desc;
     SDL_Surface *pixels; // what it drew last, or nullptr before it is first drawn
     bool needsDraw;
-    bool closed;   // out of the list of open popups, waiting for its Closed function and ECSIPopups_DestroyClosed; it gets no more events
-    bool released; // its Closed function has run, so ECSIPopups_DestroyClosed frees it
-    void *view;    // how the window shows it, or nullptr
+    bool closed;         // out of the list of open popups, waiting for its Closed function and ECSIPopups_DestroyClosed; it gets no more events
+    bool released;       // its Closed function has run, so ECSIPopups_DestroyClosed frees it
+    void *view;          // how the window shows it, or nullptr
+    ECSPopupItem *items; // stb_ds array of the entries a menu says it shows, with texts it owns, for tests
 };
 
 /// @brief Function that frees what the window shows a popup with, before the popup is freed.

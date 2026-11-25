@@ -302,6 +302,15 @@ typedef struct ECSPopupDesc
     void *data; // passed to the functions
 } ECSPopupDesc;
 
+/// @brief An entry that a menu popup shows. Passed to ECSPopup_SetItems.
+typedef struct ECSPopupItem
+{
+    const char *label;
+    const char *keys; // text of the keys that run it, or nullptr
+    bool enabled;     // the user can choose it
+    bool chosen;      // it is the entry that Return runs
+} ECSPopupItem;
+
 /// @brief Describes a panel type. Passed to ECSPanelType_Register.
 typedef struct ECSPanelTypeDesc
 {
@@ -1216,6 +1225,14 @@ OPENECS_EXPORT void ECSPopup_Redraw(ECSPopup popup);
 /// @param height Height in layout units, more than 0.
 /// @lua popup:setSize
 OPENECS_EXPORT void ECSPopup_SetSize(ECSPopup popup, f32 width, f32 height);
+
+/// @brief Says which entries a menu popup shows, in order, and which is chosen, so a test can read them. Call it again when they change. Main thread only.
+/// @param popup The popup.
+/// @param items The entries, or nullptr if count is 0. The core copies them.
+/// @param count Number of entries.
+/// @return SHUResult_Ok, or SHUResult_ErrAllocation.
+/// @lua popup:setItems
+OPENECS_EXPORT SHUWUR SHUResult ECSPopup_SetItems(ECSPopup popup, const ECSPopupItem *items, usz count);
 
 /// @brief Gets the type of dropped data.
 /// @param data The data of a Drop event.

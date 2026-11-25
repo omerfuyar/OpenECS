@@ -107,6 +107,14 @@ SHUWUR SHUResult ECSIServices_PushCoreMethod(const char *name, ECSFunction funct
 /// @return SHUResult_Ok, SHUResult_ErrNotFound if no function has the name, or SHUResult_ErrBadData if its signature is neither void() nor void(handle<ecs.panel>). Errors are reported.
 SHUResult ECSIServices_CallBound(const char *name, ECSPanel focus);
 
+/// @brief Calls a function with Lua values, for a test. They are checked and passed as a Lua plugin's call passes them, and a callback among them belongs to no plugin.
+/// @param state The state whose stack holds the values on top.
+/// @param name Name of the function.
+/// @param count Number of values on top of the stack, which the call takes.
+/// @param retResults Gets the number of the function's results, which replace the values on the stack.
+/// @return SHUResult_Ok; SHUResult_ErrNotFound if no function has the name, with nothing changed on the stack; or SHUResult_ErrBadData if the call raised an error, whose message replaces the values.
+SHUResult ECSIServices_CallWithValues(lua_State *state, const char *name, int count, int *retResults);
+
 /// @brief Calls the function that a preset names in open, with the path of a file. It reports a function that is missing or has another signature.
 /// @param name Name of the function. Its signature must be void(string).
 /// @param path The file's path.

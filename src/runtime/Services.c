@@ -4853,6 +4853,30 @@ SHUResult ECSIServices_CallBound(const char *name, ECSPanel focus)
     return SHUResult_ErrBadData;
 }
 
+SHUResult ECSIServices_CallWithValues(lua_State *state, const char *name, int count, int *retResults)
+{
+    SDL_assert(state != nullptr && name != nullptr && retResults != nullptr);
+    SDL_assert(count >= 0 && lua_gettop(state) >= count);
+
+    ECSIFunction *function = ECSIServices_FindFunction(name);
+    *retResults = 0;
+
+    if (function == nullptr)
+    {
+        return SHUResult_ErrNotFound;
+    }
+
+    // the function is called as Lua code calls it, without a plugin that called it
+    int base = lua_gettop(state) - count;
+    lua_pushlightuserdata(state, function);
+    lua_pushlightuserdata(state, nullptr);
+    lua_pushcclosure(state, ECSIServices_CallC, 2);
+    lua_insert(state, base + 1);
+    int status = lua_pcall(state, count, LUA_MULTRET, 0);
+    *retResults = lua_gettop(state) - base;
+    return status == LUA_OK ? SHUResult_Ok : SHUResult_ErrBadData;
+}
+
 SHUResult ECSIServices_CallOpen(const char *name, const char *path)
 {
     SDL_assert(name != nullptr);
