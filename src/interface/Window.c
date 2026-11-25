@@ -2155,12 +2155,10 @@ static void ECSIWindow_UpdatePopup(ECSPopup popup)
         return;
     }
 
-    // drawn inside the OS window, it is also kept inside it
-    if (view->window == nullptr)
-    {
-        rect.x = SDL_max(0.0f, SDL_min(rect.x, osWindow->width - rect.w));
-        rect.y = SDL_max(0.0f, SDL_min(rect.y, osWindow->height - rect.h));
-    }
+    // it is kept inside the OS window, drawn there or as a popup window alike: a compositor that has to fit a popup window
+    // that sticks out may move it, or shrink it so its pixels are squeezed
+    rect.x = SDL_max(0.0f, SDL_min(rect.x, osWindow->width - rect.w));
+    rect.y = SDL_max(0.0f, SDL_min(rect.y, osWindow->height - rect.h));
 
     // its corner is on a whole pixel, so its pixels show one to one, as a panel's do
     rect.x = SDL_roundf(rect.x);
@@ -2247,7 +2245,9 @@ static void ECSIWindow_PresentPopups(void)
             view->changed = false;
             SDL_SetRenderDrawColor(view->renderer, 0, 0, 0, 0);
             SDL_RenderClear(view->renderer);
-            SDL_RenderTexture(view->renderer, view->texture, nullptr, nullptr);
+            // at its own size, so a window that the system sized otherwise cuts it rather than stretching it
+            SDL_FRect whole = {0.0f, 0.0f, (f32)view->texture->w, (f32)view->texture->h};
+            SDL_RenderTexture(view->renderer, view->texture, nullptr, &whole);
             SDL_RenderPresent(view->renderer);
         }
     }
@@ -2845,7 +2845,7 @@ ECSPopup ECSIWindow_PopupAt(f32 x, f32 y, f32 *retX, f32 *retY)
         return WINDOW.eventPopup;
     }
 
-    // the newest popup drawn inside the event window that holds the point
+    // the newest popup drawn inside the event window that holds the point; a tooltip takes no events, as SDL's tooltip windows take none
     usz count = 0;
     ECSPopup *popups = ECSIPopups_GetOpen(&count);
 
@@ -2853,8 +2853,8 @@ ECSPopup ECSIWindow_PopupAt(f32 x, f32 y, f32 *retX, f32 *retY)
     {
         ECSIPopupView *view = popups[i - 1]->view;
 
-        if (view != nullptr && view->window == nullptr && WINDOW.eventWindow != nullptr && view->rootID == WINDOW.eventWindow->rootID &&
-            ECSILayout_Contains(view->rect, x, y))
+        if (view != nullptr && view->window == nullptr && popups[i - 1]->desc.type != ECSPopupType_Tooltip && WINDOW.eventWindow != nullptr &&
+            view->rootID == WINDOW.eventWindow->rootID && ECSILayout_Contains(view->rect, x, y))
         {
             *retX = x - view->rect.x;
             *retY = y - view->rect.y;
