@@ -565,7 +565,7 @@ static void ECSIInput_FocusWindow(SDL_WindowID windowID)
     }
 }
 
-/// @brief Handles a press on a tab or a tab row: on a tab or grip, the middle button closes the panel and the right button opens its menu; on the rest of a tab row, the right button opens the group's menu.
+/// @brief Handles a press on a tab or a tab row: on a tab or grip, the middle button closes the panel and the right button opens its menu; on the rest of a tab row, the right button opens the shown panel's menu.
 /// @return true if the press was on a tab or a tab row.
 static bool ECSIInput_PressTab(const SDL_MouseButtonEvent *button)
 {
@@ -574,7 +574,7 @@ static bool ECSIInput_PressTab(const SDL_MouseButtonEvent *button)
 
     if (row != nullptr)
     {
-        ECSIMenus_OpenGroupMenu(row, button->x, button->y);
+        ECSIMenus_OpenPanelMenu(row, button->x, button->y);
         return true;
     }
 
