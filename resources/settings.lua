@@ -131,6 +131,8 @@ return {
       ["ecs.colorOverlay"] = "#1F1F1FF8",
       ["ecs.colorDrop"] = "#689EEA46",
       ["ecs.colorPlaceholder"] = "#3B2628",
+      ["ecs.colorError"] = "#F07178",
+      ["ecs.colorWarning"] = "#E5C07B",
     },
     light = {
       ["ecs.colorBackground"] = "#A3A3A3",
@@ -150,6 +152,8 @@ return {
       ["ecs.colorOverlay"] = "#ECECECF8",
       ["ecs.colorDrop"] = "#1F55B046",
       ["ecs.colorPlaceholder"] = "#EBCFD2",
+      ["ecs.colorError"] = "#A1231B",
+      ["ecs.colorWarning"] = "#7A5200",
     },
   },
 

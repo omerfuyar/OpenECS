@@ -1216,8 +1216,9 @@ return {
   | `accent`                     | The focus, links, keys, headings and what is on, such as a pressed button.                           |
   | `text`, `textDim`            | Text, and text of less weight, such as notes and keys.                                               |
   | `overlay`, `drop`, `placeholder` | Menus, grips and tooltips; the place where a dragged panel lands; a panel whose type is missing or that failed. |
+  | `error`, `warning`           | Errors, such as a line of the log or a value that is not valid, and warnings, as text on any of the colours above. |
 
-- The shipped themes keep one order of greys, so areas, headers and controls stand apart without lines: `background` is the darkest, then `tabRow`, then `panel` with `tabShown`, which is the same, so the shown tab opens into its panel. `field` is darker than `panel` in the dark theme and lighter in the light one, so what the user types stands out, and `button` is lighter than `panel` in both. The greys have no tint. `selected` is a muted blue, under text, and `accent` a brighter blue. `text` on `panel` has a contrast of at least 7 to 1, and `textDim` and `accent` at least 4.5 to 1.
+- The shipped themes keep one order of greys, so areas, headers and controls stand apart without lines: `background` is the darkest, then `tabRow`, then `panel` with `tabShown`, which is the same, so the shown tab opens into its panel. `field` is darker than `panel` in the dark theme and lighter in the light one, so what the user types stands out, and `button` is lighter than `panel` in both. The greys have no tint. `selected` is a muted blue, under text, and `accent` a brighter blue. `text` on `panel` has a contrast of at least 7 to 1, and `textDim`, `accent`, `error` and `warning` at least 4.5 to 1.
 - The interface is dense, as an editor's is: the font is 13 layout units, a tab row 24 and the title bar 28, and a control is a line of text with 3 units above and below it, so a list shows many rows.
 
 ### 12.5 The settings window

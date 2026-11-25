@@ -27,6 +27,8 @@
 ---| "button" # ecs.colorButton: buttons and the other controls that are clicked
 ---| "buttonHover" # ecs.colorButtonHover: a button under the pointer
 ---| "hover" # ecs.colorHover: a row or menu entry under the pointer
+---| "error" # ecs.colorError: errors, such as a line of the log or a value that is not valid
+---| "warning" # ecs.colorWarning: warnings
 ---| string
 
 ---@class ecs
