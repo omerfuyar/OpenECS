@@ -1046,30 +1046,38 @@ typedef struct ECSIDividerHit
 {
     f32 x;
     f32 y;
-    ECSINode *split;
-    usz divider;
+    ECSIDivider under;   // the divider under the point
+    ECSIDivider near[2]; // a divider of each direction, by vertical, whose end the point is within a divider's size of
 } ECSIDividerHit;
 
-/// @brief Finds the divider under a point.
+/// @brief Finds the divider under a point, and the dividers whose ends are near it.
 static void ECSILayout_FindDivider(ECSINode *node, ECSIDividerHit *hit)
 {
-    if (node == nullptr || node->type == ECSINodeType_Group || hit->split != nullptr)
+    if (node == nullptr || node->type == ECSINodeType_Group)
     {
         return;
     }
 
+    f32 size = ECSILayout_GetDividerSize();
+
     for (usz i = 0; i + 1 < arrlenu(node->children); i++)
     {
         ECSINode *child = node->children[i];
-        bool over = node->vertical
-                        ? ECSILayout_Contains((SDL_FRect){node->x, child->y + child->height, node->width, ECSILayout_GetDividerSize()}, hit->x, hit->y)
-                        : ECSILayout_Contains((SDL_FRect){child->x + child->width, node->y, ECSILayout_GetDividerSize(), node->height}, hit->x, hit->y);
+        SDL_FRect rect = node->vertical ? (SDL_FRect){node->x, child->y + child->height, node->width, size}
+                                        : (SDL_FRect){child->x + child->width, node->y, size, node->height};
 
-        if (over)
+        // where splits meet, a divider ends on another one, a divider's size away at most
+        SDL_FRect longer = node->vertical ? (SDL_FRect){rect.x - size, rect.y, rect.w + size * 2.0f, rect.h}
+                                          : (SDL_FRect){rect.x, rect.y - size, rect.w, rect.h + size * 2.0f};
+
+        if (hit->under.split == nullptr && ECSILayout_Contains(rect, hit->x, hit->y))
         {
-            hit->split = node;
-            hit->divider = i;
-            return;
+            hit->under = (ECSIDivider){node, i};
+        }
+
+        if (hit->near[node->vertical].split == nullptr && ECSILayout_Contains(longer, hit->x, hit->y))
+        {
+            hit->near[node->vertical] = (ECSIDivider){node, i};
         }
     }
 
@@ -1726,16 +1734,16 @@ ECSINode *ECSILayout_GroupAt(const ECSIRoot *root, f32 x, f32 y)
     return hit.group;
 }
 
-bool ECSILayout_DividerAt(const ECSIRoot *root, f32 x, f32 y, ECSINode **retSplit, usz *retDivider)
+usz ECSILayout_DividersAt(const ECSIRoot *root, f32 x, f32 y, ECSIDivider retDividers[2])
 {
-    SDL_assert(retSplit != nullptr);
-    SDL_assert(retDivider != nullptr);
+    SDL_assert(retDividers != nullptr);
 
-    ECSIDividerHit hit = {x, y, nullptr, 0};
+    ECSIDividerHit hit = {.x = x, .y = y};
     ECSILayout_FindDivider(root == nullptr || root->maximized != nullptr ? nullptr : root->tree, &hit);
-    *retSplit = hit.split;
-    *retDivider = hit.divider;
-    return hit.split != nullptr;
+    retDividers[0] = hit.under;
+    retDividers[1] = hit.under.split == nullptr ? (ECSIDivider){0} : hit.near[!hit.under.split->vertical];
+    return hit.under.split == nullptr ? 0 : hit.near[!hit.under.split->vertical].split == nullptr ? 1
+                                                                                                  : 2;
 }
 
 void ECSILayout_MoveDivider(ECSINode *split, usz divider, f32 x, f32 y)

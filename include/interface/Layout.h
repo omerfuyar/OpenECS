@@ -91,7 +91,15 @@ typedef struct ECSIDrop
     f32 height;
 } ECSIDrop;
 
+/// @brief A divider: the gap between two children of a split.
+typedef struct ECSIDivider
+{
+    ECSINode *split;
+    usz index; // position of the child before the divider
+} ECSIDivider;
+
 /// @brief Function called for each visible group.
+
 typedef void (*ECSILayoutGroupFunction)(ECSINode *group, void *userData);
 
 /// @brief Function that forgets the nodes the window points to, because nodes may have been freed or hidden.
@@ -266,14 +274,13 @@ usz ECSILayout_IndexOf(const ECSINode *group, ECSPanel panel);
 /// @return The group, or nullptr.
 ECSINode *ECSILayout_GroupAt(const ECSIRoot *root, f32 x, f32 y);
 
-/// @brief Finds the divider of a root at a point, between two children of a split. A maximized group hides the dividers.
+/// @brief Finds the dividers of a root at a point: the divider under it, and where splits meet, the divider of the other direction whose end is within a divider's size of it. A maximized group hides the dividers.
 /// @param root The root, or nullptr for none.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
-/// @param retSplit Gets the split.
-/// @param retDivider Gets the position of the child before the divider.
-/// @return true if there is a divider at the point.
-bool ECSILayout_DividerAt(const ECSIRoot *root, f32 x, f32 y, ECSINode **retSplit, usz *retDivider);
+/// @param retDividers Gets the divider under the point, then the one that meets it.
+/// @return How many dividers there are at the point: 0, 1, or 2 where splits meet.
+usz ECSILayout_DividersAt(const ECSIRoot *root, f32 x, f32 y, ECSIDivider retDividers[2]);
 
 /// @brief Moves a divider to a point. Fixed children keep fixed sizes; shared children turn their sizes into shares.
 /// @param split The split.

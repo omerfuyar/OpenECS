@@ -229,9 +229,9 @@ static struct
     u64 hintSince; // when the hint of the focused OS window began to slide, or 0 while no hint slides
     bool hintHeld; // the hint never slides, as in a test
 
-    ECSINode *gripGroup; // lone group whose grip is shown, or nullptr
-    ECSINode *dragSplit; // split whose divider is dragged, or nullptr
-    usz dragDivider;     // the dragged divider follows this child
+    ECSINode *gripGroup;         // lone group whose grip is shown, or nullptr
+    ECSIDivider dragDividers[2]; // the dragged dividers: two where splits meet
+    usz dragDividerCount;        // 0 while no divider is dragged
 
     u64 raises; // counts the OS windows' openings and focus changes, so the one in front is known (ECSIOSWindow.raised)
 
@@ -576,7 +576,7 @@ static void ECSIWindow_Forget(void)
 {
     ECSIWindow_CancelDrag();
     WINDOW.gripGroup = nullptr;
-    WINDOW.dragSplit = nullptr;
+    WINDOW.dragDividerCount = 0;
 
     // a drop that waits on Wayland names a panel and nodes that may be gone, so it is dropped too, and the panel stays where it was
     WINDOW.pending.panel = nullptr;
@@ -3276,7 +3276,9 @@ bool ECSIWindow_PointerDown(f32 x, f32 y)
         return ECSIWindow_PressTitle(osWindow, x, y);
     }
 
-    if (ECSILayout_DividerAt(ECSIWindow_RootOf(osWindow), x, y, &WINDOW.dragSplit, &WINDOW.dragDivider))
+    WINDOW.dragDividerCount = ECSILayout_DividersAt(ECSIWindow_RootOf(osWindow), x, y, WINDOW.dragDividers);
+
+    if (WINDOW.dragDividerCount > 0)
     {
         return true;
     }
@@ -3410,22 +3412,27 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
         WINDOW.dragging = true;
     }
 
-    // the pointer shows a divider can be dragged, and while a panel is dragged
-    ECSINode *split = WINDOW.dragSplit;
-    usz divider = 0;
+    // the pointer shows a divider can be dragged, four ways where splits meet, and while a panel is dragged
+    ECSIDivider dividers[2] = {WINDOW.dragDividers[0], WINDOW.dragDividers[1]};
+    usz count = WINDOW.dragDividerCount;
 
-    if (split == nullptr && WINDOW.dragPanel == nullptr)
+    if (count == 0 && WINDOW.dragPanel == nullptr)
     {
-        ECSILayout_DividerAt(ECSIWindow_RootOf(WINDOW.eventWindow), x, y, &split, &divider);
+        count = ECSILayout_DividersAt(ECSIWindow_RootOf(WINDOW.eventWindow), x, y, dividers);
     }
 
-    ECSIWindow_SetCursor(split != nullptr  ? (split->vertical ? SDL_SYSTEM_CURSOR_NS_RESIZE : SDL_SYSTEM_CURSOR_EW_RESIZE)
+    ECSIWindow_SetCursor(count == 2        ? SDL_SYSTEM_CURSOR_MOVE
+                         : count == 1      ? (dividers[0].split->vertical ? SDL_SYSTEM_CURSOR_NS_RESIZE : SDL_SYSTEM_CURSOR_EW_RESIZE)
                          : WINDOW.dragging ? SDL_SYSTEM_CURSOR_MOVE
                                            : SDL_SYSTEM_CURSOR_DEFAULT);
 
-    if (WINDOW.dragSplit != nullptr)
+    if (WINDOW.dragDividerCount > 0)
     {
-        ECSILayout_MoveDivider(WINDOW.dragSplit, WINDOW.dragDivider, x, y);
+        for (usz i = 0; i < WINDOW.dragDividerCount; i++)
+        {
+            ECSILayout_MoveDivider(WINDOW.dragDividers[i].split, WINDOW.dragDividers[i].index, x, y);
+        }
+
         return true;
     }
 
@@ -3471,7 +3478,7 @@ ECSPanel ECSIWindow_PointerUp(void)
     }
 
     ECSIWindow_CancelDrag();
-    WINDOW.dragSplit = nullptr;
+    WINDOW.dragDividerCount = 0;
     ECSIWindow_SetCursor(SDL_SYSTEM_CURSOR_DEFAULT);
     return clicked;
 }
