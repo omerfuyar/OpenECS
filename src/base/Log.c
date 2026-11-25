@@ -1,6 +1,7 @@
 #include "base/Log.h"
 
 #include "SDL3/SDL.h"
+#include "stb/stbSDL3.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -14,12 +15,24 @@
 /// @brief Longest error kept for ECSILog_GetLastError.
 #define OPENECS_LOG_ERROR_SIZE 1024
 
+/// @brief Most lines that wait for the main loop; more are counted and left out, so a flood of lines cannot grow the memory.
+#define OPENECS_LOG_QUEUE_SIZE 512
+
 static struct
 {
     SDL_IOStream *file;                     // nullptr until the state folder is known
     char *path;                             // of the log file, or nullptr
     char lastError[OPENECS_LOG_ERROR_SIZE]; // the last error or critical message, empty if none
     bool colors;                            // true when standard error is a terminal that shows colours
+
+    // lines that wait for the main loop, which emits them as ecs.logged (DESIGN 14.4)
+    SDL_Mutex *lock;
+    ECSILogLine *queue;      // stb_ds array, guarded by lock
+    usz dropped;             // lines left out since the last take, guarded by lock
+    SDL_AtomicInt waiting;   // whether lines wait, read without the lock
+    SDL_ThreadID mainThread; // lines of the main thread are not queued while it is quiet
+    bool quiet;              // main thread only: a handler of ecs.logged runs
+    SDL_AtomicU32 wakeEvent; // an event that does nothing, which wakes the main loop for a line of another thread
 } LOG = {0};
 
 /// @brief Names of the log levels, as log lines show them.
@@ -32,6 +45,74 @@ static const char *const OPENECS_LOG_LEVELS[SDL_LOG_PRIORITY_COUNT] = {
     [SDL_LOG_PRIORITY_ERROR] = "error",
     [SDL_LOG_PRIORITY_CRITICAL] = "critical",
 };
+
+/// @brief Names of the log levels as ecs.log has them, which ecs.logged gives.
+static const char *const OPENECS_LOG_EVENT_LEVELS[SDL_LOG_PRIORITY_COUNT] = {
+    [SDL_LOG_PRIORITY_TRACE] = "debug",
+    [SDL_LOG_PRIORITY_VERBOSE] = "debug",
+    [SDL_LOG_PRIORITY_DEBUG] = "debug",
+    [SDL_LOG_PRIORITY_INFO] = "info",
+    [SDL_LOG_PRIORITY_WARN] = "warn",
+    [SDL_LOG_PRIORITY_ERROR] = "error",
+    [SDL_LOG_PRIORITY_CRITICAL] = "error",
+};
+
+/// @brief Queues a line for ecs.logged, and wakes the main loop when another thread logs it.
+static void ECSILog_Queue(const char *stamp, SDL_LogPriority priority, const char *message)
+{
+    bool main = SDL_GetCurrentThreadID() == LOG.mainThread;
+
+    if (LOG.lock == nullptr || (main && LOG.quiet))
+    {
+        return;
+    }
+
+    // messages from ECS_Log start with the plugin's name in brackets
+    const char *plugin = "ecs";
+    usz pluginLength = 3;
+    const char *close = message[0] == '[' ? SDL_strstr(message, "] ") : nullptr;
+
+    if (close != nullptr)
+    {
+        plugin = message + 1;
+        pluginLength = (usz)(close - plugin);
+        message = close + 2;
+    }
+
+    SDL_LockMutex(LOG.lock);
+    bool wasEmpty = arrlenu(LOG.queue) == 0;
+
+    if (arrlenu(LOG.queue) >= OPENECS_LOG_QUEUE_SIZE)
+    {
+        LOG.dropped++;
+    }
+    else
+    {
+        ECSILogLine line = {.level = OPENECS_LOG_EVENT_LEVELS[priority], .plugin = SDL_strndup(plugin, pluginLength), .message = SDL_strdup(message)};
+        SDL_strlcpy(line.time, stamp, sizeof(line.time));
+
+        if (line.plugin != nullptr && line.message != nullptr)
+        {
+            arrput(LOG.queue, line);
+        }
+        else
+        {
+            SDL_free(line.plugin);
+            SDL_free(line.message);
+            LOG.dropped++;
+        }
+    }
+
+    SDL_SetAtomicInt(&LOG.waiting, 1);
+    SDL_UnlockMutex(LOG.lock);
+
+    if (!main && wasEmpty)
+    {
+        u32 type = SDL_GetAtomicU32(&LOG.wakeEvent);
+        SDL_Event event = {.type = type};
+        (void)SDL_PushEvent(&event);
+    }
+}
 
 /// @brief Colours of the log levels on a terminal, as ANSI escape codes: dim for the detailed levels, then green, yellow, red and bold red.
 static const char *const OPENECS_LOG_COLORS[SDL_LOG_PRIORITY_COUNT] = {
@@ -96,6 +177,11 @@ static void ECSILog_Output(void *userData, int category, SDL_LogPriority priorit
     }
 
     SDL_free(line);
+
+    if (known)
+    {
+        ECSILog_Queue(stamp, priority, message);
+    }
 }
 
 #pragma endregion Source Only
@@ -119,6 +205,9 @@ bool ECSILog_HasColors(FILE *stream)
 void ECSILog_Initialize(void)
 {
     LOG.colors = ECSILog_HasColors(stderr);
+    LOG.mainThread = SDL_GetCurrentThreadID();
+    LOG.lock = SDL_CreateMutex();
+    SDL_SetAtomicU32(&LOG.wakeEvent, SDL_RegisterEvents(1));
     SDL_SetLogOutputFunction(ECSILog_Output, nullptr);
 
 #ifdef DEBUG
@@ -160,4 +249,53 @@ const char *ECSILog_GetPath(void)
 const char *ECSILog_GetLastError(void)
 {
     return LOG.lastError[0] == '\0' ? nullptr : LOG.lastError;
+}
+
+bool ECSILog_IsWaiting(void)
+{
+    return SDL_GetAtomicInt(&LOG.waiting) != 0;
+}
+
+ECSILogLine *ECSILog_Take(usz *retDropped)
+{
+    *retDropped = 0;
+
+    if (LOG.lock == nullptr)
+    {
+        return nullptr;
+    }
+
+    SDL_LockMutex(LOG.lock);
+    ECSILogLine *lines = LOG.queue;
+    *retDropped = LOG.dropped;
+    LOG.queue = nullptr;
+    LOG.dropped = 0;
+    SDL_SetAtomicInt(&LOG.waiting, 0);
+    SDL_UnlockMutex(LOG.lock);
+    return lines;
+}
+
+void ECSILog_FreeLines(ECSILogLine *lines)
+{
+    for (usz i = 0; i < arrlenu(lines); i++)
+    {
+        SDL_free(lines[i].plugin);
+        SDL_free(lines[i].message);
+    }
+
+    arrfree(lines);
+}
+
+void ECSILog_SetQuiet(bool quiet)
+{
+    LOG.quiet = quiet;
+}
+
+void ECSILog_Terminate(void)
+{
+    usz dropped = 0;
+    ECSILog_FreeLines(ECSILog_Take(&dropped));
+    SDL_Mutex *lock = LOG.lock;
+    LOG.lock = nullptr;
+    SDL_DestroyMutex(lock);
 }

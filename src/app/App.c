@@ -1266,6 +1266,9 @@ ECSIRestart ECSIApp_Stop(void)
     arrfree(APP.waiting);
     ECSILua_Terminate();
 
+    // the lines that wait for ecs.logged are freed before the check for leaks
+    ECSILog_Terminate();
+
     // Debug builds check for leaks here, when OpenECS has freed its memory but SDL still holds its own
     ECSISanitizers_CheckLeaks();
 
