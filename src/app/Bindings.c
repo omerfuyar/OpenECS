@@ -216,13 +216,16 @@ static int ECSIBindings_SettingDeclare(lua_State *state)
     // the choices stay alive in the table on the stack
     const char **choices = nullptr;
 
-    for (int i = 1; lua_istable(state, -2) && lua_rawgeti(state, -2, i) == LUA_TSTRING; i++)
+    if (lua_istable(state, -2))
     {
-        arrput(choices, lua_tostring(state, -1));
-        lua_pop(state, 1);
-    }
+        for (int i = 1; lua_rawgeti(state, -2, i) == LUA_TSTRING; i++)
+        {
+            arrput(choices, lua_tostring(state, -1));
+            lua_pop(state, 1);
+        }
 
-    lua_pop(state, lua_istable(state, -2) ? 1 : 0);
+        lua_pop(state, 1); // the value after the last choice, so the default is on top again
+    }
     arrput(choices, nullptr);
     desc.choices = choices;
 
