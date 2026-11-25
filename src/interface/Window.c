@@ -2658,17 +2658,23 @@ SHUResult ECSIWindow_Initialize(const char *title)
 
     SHU_ReturnResult(ECSIWindow_Open(title), ECSIWindow_Terminate(););
 
-    // the theme gives the colours their values; it is applied once SDL has started, which tells the system's theme
-    static const char *const THEMES[] = {"system", "dark", "light", nullptr};
+    // the theme gives the colours their values; it is applied once SDL has started, which tells the system's theme.
+    // Its choices are "system" and every theme of the settings files, so a theme that the user's file adds is chosen as the core's are
+    const char **themes = nullptr;
+    arrput(themes, "system");
+    ECSISettings_ThemeNames(&themes);
+    arrput(themes, nullptr);
     const ECSSettingDesc theme = {
         .name = "ecs.theme",
         .type = ECSSettingType_Choice,
-        .description = "Colours of the interface: the system's choice of dark or light, dark, or light",
-        .choices = THEMES,
+        .description = "Colours of the interface: the system's choice of dark or light, or a theme",
+        .choices = themes,
         .Changed = ECSIWindow_ApplyTheme,
     };
+    SHUResult declared = ECSISettings_DeclareCore(&theme);
+    arrfree(themes);
 
-    SHU_ReturnResult(ECSISettings_DeclareCore(&theme), ECSIWindow_Terminate(););
+    SHU_ReturnResult(declared, ECSIWindow_Terminate(););
 
     const ECSSettingDesc vsync = {
         .name = "ecs.vsync",

@@ -34,7 +34,11 @@ SHUWUR SHUResult ECSISettings_Initialize(const char *corePath, const ECSValue *p
 /// @return SHUResult_Ok or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSISettings_SetPreset(const ECSValue *presetSettings, const char *presetPath);
 
-/// @brief Builds the theme layer from the theme that ecs.theme chooses: "dark", "light", or with "system" the one the system prefers. Settings whose value in effect may have changed are told. Call it after SDL starts, when ecs.theme changes and when the system's theme changes.
+/// @brief Adds the names of the themes that the settings files hold to an array, in the order of their names.
+/// @param names An stb_ds array of names, owned by the settings.
+void ECSISettings_ThemeNames(const char ***names);
+
+/// @brief Builds the theme layer from the theme that ecs.theme chooses: a theme's name, or with "system" "dark" or "light", as the system prefers. Settings whose value in effect may have changed are told. Call it after SDL starts, when ecs.theme changes and when the system's theme changes.
 void ECSISettings_ApplyTheme(void);
 
 /// @brief Reads a bool setting from the highest layer that sets it with a bool, before it is declared.
