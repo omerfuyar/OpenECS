@@ -29,4 +29,4 @@ Notes for agents and the owner that belong in no other document: why the tools a
 - One task per session; `/clear` between unrelated tasks. `/context` shows what fills the context.
 - Plan mode for work across several files: review the plan before the code.
 - Review in a fresh session or with `/code-review`, not in the session that wrote the code.
-- `.claude/skills/` holds the procedures that only some tasks need: verify, measure, release, submodule-bump, interface-change, pull-requests and review. They load only when a task needs them, so they cost nothing otherwise.
+- `.claude/skills/` holds the procedures that only some tasks need: verify, measure, release, submodule-bump, interface-change, pull-requests, review and audit. They load only when a task needs them, so they cost nothing otherwise.
