@@ -86,6 +86,8 @@ typedef enum ECSIColor
     ECSIColor_Button,
     ECSIColor_ButtonHover,
     ECSIColor_Hover,
+    ECSIColor_Error,
+    ECSIColor_Warning,
     ECSIColor_Count,
 } ECSIColor;
 
@@ -108,6 +110,8 @@ static const ECSSettingDesc OPENECS_WINDOW_SETTINGS[] = {
     {.name = "ecs.colorButton", .type = ECSSettingType_Color, .description = "Colour of buttons and the other controls that are clicked"},
     {.name = "ecs.colorButtonHover", .type = ECSSettingType_Color, .description = "Colour of a button under the pointer"},
     {.name = "ecs.colorHover", .type = ECSSettingType_Color, .description = "Colour of a row or menu entry under the pointer"},
+    {.name = "ecs.colorError", .type = ECSSettingType_Color, .description = "Colour of errors, such as a line of the log or a value that is not valid"},
+    {.name = "ecs.colorWarning", .type = ECSSettingType_Color, .description = "Colour of warnings"},
     {.name = "ecs.windowWidth", .type = ECSSettingType_Integer, .description = "Width of the OS window when it opens, in layout units"},
     {.name = "ecs.windowHeight", .type = ECSSettingType_Integer, .description = "Height of the OS window when it opens, in layout units"},
     {.name = "ecs.font", .type = ECSSettingType_Path, .description = "TrueType font of the core's interface, read when the window opens; a relative path starts at the executable's folder"},
