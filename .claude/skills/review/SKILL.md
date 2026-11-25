@@ -1,6 +1,6 @@
 ---
 name: review
-description: Review an area of OpenECS or OpenECS-std and record improvement recommendations in TODO.md. Use when asked to review, audit or find improvements in the code or design, such as the core's services and events or the ui plugin. Review only; it changes no code.
+description: Review an area of OpenECS or OpenECS-std and record improvement recommendations in TODO.md. Use when asked to review or find improvements in the code or design, such as the core's services and events or the ui plugin; the audit skill finds where the documents and the code differ. Review only; it changes no code.
 ---
 
 # Review an area
