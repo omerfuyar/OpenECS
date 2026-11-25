@@ -54,7 +54,6 @@
 #define OPENECS_KEPT_TEXTS 256
 
 /// @brief Width of the button at the end of a tab row that opens the shown panel's menu, in layout units.
-#define OPENECS_TAB_MENU_WIDTH 18.0f
 /// @brief How far from an OS window's edge the pointer resizes it, when OpenECS draws the title bar, in layout units.
 #define OPENECS_RESIZE_EDGE 6.0f
 /// @brief How long a panel dropped outside its OS window waits for the pointer to enter another one, where the system does not tell where windows are, in nanoseconds.
@@ -229,9 +228,9 @@ static struct
     u64 hintSince; // when the hint of the focused OS window began to slide, or 0 while no hint slides
     bool hintHeld; // the hint never slides, as in a test
 
-    ECSINode *gripGroup; // lone group whose grip is shown, or nullptr
-    ECSINode *dragSplit; // split whose divider is dragged, or nullptr
-    usz dragDivider;     // the dragged divider follows this child
+    ECSINode *gripGroup;         // lone group whose grip is shown, or nullptr
+    ECSIDivider dragDividers[2]; // the dragged dividers: two where splits meet
+    usz dragDividerCount;        // 0 while no divider is dragged
 
     u64 raises; // counts the OS windows' openings and focus changes, so the one in front is known (ECSIOSWindow.raised)
 
@@ -576,7 +575,7 @@ static void ECSIWindow_Forget(void)
 {
     ECSIWindow_CancelDrag();
     WINDOW.gripGroup = nullptr;
-    WINDOW.dragSplit = nullptr;
+    WINDOW.dragDividerCount = 0;
 
     // a drop that waits on Wayland names a panel and nodes that may be gone, so it is dropped too, and the panel stays where it was
     WINDOW.pending.panel = nullptr;
@@ -946,7 +945,8 @@ static f32 ECSIWindow_GetMarksWidth(const ECSINode *group, const ECSIRoot *root)
 /// @brief Gets the width of the end of a group's tab row: its marks, then the button that opens the shown panel's menu.
 static f32 ECSIWindow_GetTabEndWidth(const ECSINode *group, const ECSIRoot *root)
 {
-    return ECSIWindow_Px(OPENECS_MENU_ITEM_PADDING) + ECSIWindow_GetMarksWidth(group, root) + ECSIWindow_Px(OPENECS_TAB_MENU_WIDTH);
+    f32 marks = ECSIWindow_GetMarksWidth(group, root);
+    return marks > 0.0f ? ECSIWindow_Px(OPENECS_MENU_ITEM_PADDING) * 2.0f + marks : 0.0f;
 }
 
 /// @brief Declares the marks that show a group is locked or maximized, inside the open element.
@@ -1242,7 +1242,6 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
 
     if (arrlenu(group->panels) >= 2)
     {
-        usz firstTab = arrlenu(osWindow->tabs);
 
         // the focused panel's tab has a line of the accent along its top
         bool focused = group->panels[group->shown] == ECSILayout_GetFocus();
@@ -1298,34 +1297,24 @@ static void ECSIWindow_DeclareGroup(ECSINode *group, void *userData)
             }
         }
 
-        // the end of the tab row: the marks of a locked or maximized group, then the button that opens the shown panel's menu
+        // the end of the tab row: the marks of a locked or maximized group; a right click on the row opens the shown panel's menu
         ECSIRoot *root = ECSIWindow_RootOf(osWindow);
         f32 endWidth = ECSIWindow_GetTabEndWidth(group, root);
 
-        CLAY_AUTO_ID({
-            .layout = {
-                .sizing = {CLAY_SIZING_FIXED(endWidth), CLAY_SIZING_FIXED(ECSILayout_GetTabRowHeight())},
-                .padding = {ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING), 0, 0, 0},
-                .childGap = ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING),
-                .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
-            },
-            .backgroundColor = WINDOW.colors[ECSIColor_TabRow],
-            .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + group->width - endWidth, group->y}, .zIndex = 1},
-        })
+        if (endWidth > 0.0f)
         {
-            ECSIWindow_DeclareMarks(group, root);
-
-            // three dots, drawn as squares, as a text costs more to draw each frame
-            f32 dot = SDL_max(2.0f, SDL_roundf(ECSIWindow_Px(2.0f)));
-
-            CLAY(CLAY_IDI("TabMenu", (u32)firstTab), {.layout = {.sizing = {CLAY_SIZING_FIXED(ECSIWindow_Px(OPENECS_TAB_MENU_WIDTH)), CLAY_SIZING_GROW(0)}, .childGap = (u16)dot, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}, .layoutDirection = CLAY_TOP_TO_BOTTOM}})
+            CLAY_AUTO_ID({
+                .layout = {
+                    .sizing = {CLAY_SIZING_FIXED(endWidth), CLAY_SIZING_FIXED(ECSILayout_GetTabRowHeight())},
+                    .padding = {ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING), 0, 0, 0},
+                    .childGap = ECSIWindow_Spacing(OPENECS_MENU_ITEM_PADDING),
+                    .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                },
+                .backgroundColor = WINDOW.colors[ECSIColor_TabRow],
+                .floating = {.attachTo = CLAY_ATTACH_TO_ROOT, .offset = {group->x + group->width - endWidth, group->y}, .zIndex = 1},
+            })
             {
-                for (usz i = 0; i < 3; i++)
-                {
-                    CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_FIXED(dot), CLAY_SIZING_FIXED(dot)}}, .backgroundColor = WINDOW.colors[ECSIColor_TextDim]})
-                    {
-                    }
-                }
+                ECSIWindow_DeclareMarks(group, root);
             }
         }
     }
@@ -3183,29 +3172,6 @@ const ECSIDrawnTitleItem *ECSIWindow_GetDrawnTitle(ECSPanel panel, usz *retCount
     return *retCount > 0 ? osWindow->titleItems : nullptr;
 }
 
-ECSPanel ECSIWindow_TabMenuAt(f32 x, f32 y, SDL_FRect *retRect)
-{
-    SDL_assert(retRect != nullptr);
-
-    ECSIOSWindow *osWindow = WINDOW.eventWindow;
-
-    // the button has the number of its row's first tab
-    for (usz i = 0; osWindow != nullptr && i < arrlenu(osWindow->tabs); i++)
-    {
-        if (osWindow->tabs[i].index != 0 || !ECSIWindow_OnElement(osWindow, CLAY_IDI("TabMenu", (u32)i), x, y))
-        {
-            continue;
-        }
-
-        Clay_BoundingBox box = Clay_GetElementData(CLAY_IDI("TabMenu", (u32)i)).boundingBox;
-        *retRect = (SDL_FRect){box.x, box.y, box.width, box.height};
-        ECSINode *group = osWindow->tabs[i].group;
-        return group->panels[group->shown];
-    }
-
-    return nullptr;
-}
-
 bool ECSIWindow_TitleBarAt(f32 x, f32 y)
 {
     ECSIOSWindow *osWindow = WINDOW.eventWindow;
@@ -3276,7 +3242,9 @@ bool ECSIWindow_PointerDown(f32 x, f32 y)
         return ECSIWindow_PressTitle(osWindow, x, y);
     }
 
-    if (ECSILayout_DividerAt(ECSIWindow_RootOf(osWindow), x, y, &WINDOW.dragSplit, &WINDOW.dragDivider))
+    WINDOW.dragDividerCount = ECSILayout_DividersAt(ECSIWindow_RootOf(osWindow), x, y, WINDOW.dragDividers);
+
+    if (WINDOW.dragDividerCount > 0)
     {
         return true;
     }
@@ -3410,22 +3378,27 @@ bool ECSIWindow_PointerMove(f32 x, f32 y)
         WINDOW.dragging = true;
     }
 
-    // the pointer shows a divider can be dragged, and while a panel is dragged
-    ECSINode *split = WINDOW.dragSplit;
-    usz divider = 0;
+    // the pointer shows a divider can be dragged, four ways where splits meet, and while a panel is dragged
+    ECSIDivider dividers[2] = {WINDOW.dragDividers[0], WINDOW.dragDividers[1]};
+    usz count = WINDOW.dragDividerCount;
 
-    if (split == nullptr && WINDOW.dragPanel == nullptr)
+    if (count == 0 && WINDOW.dragPanel == nullptr)
     {
-        ECSILayout_DividerAt(ECSIWindow_RootOf(WINDOW.eventWindow), x, y, &split, &divider);
+        count = ECSILayout_DividersAt(ECSIWindow_RootOf(WINDOW.eventWindow), x, y, dividers);
     }
 
-    ECSIWindow_SetCursor(split != nullptr  ? (split->vertical ? SDL_SYSTEM_CURSOR_NS_RESIZE : SDL_SYSTEM_CURSOR_EW_RESIZE)
+    ECSIWindow_SetCursor(count == 2        ? SDL_SYSTEM_CURSOR_MOVE
+                         : count == 1      ? (dividers[0].split->vertical ? SDL_SYSTEM_CURSOR_NS_RESIZE : SDL_SYSTEM_CURSOR_EW_RESIZE)
                          : WINDOW.dragging ? SDL_SYSTEM_CURSOR_MOVE
                                            : SDL_SYSTEM_CURSOR_DEFAULT);
 
-    if (WINDOW.dragSplit != nullptr)
+    if (WINDOW.dragDividerCount > 0)
     {
-        ECSILayout_MoveDivider(WINDOW.dragSplit, WINDOW.dragDivider, x, y);
+        for (usz i = 0; i < WINDOW.dragDividerCount; i++)
+        {
+            ECSILayout_MoveDivider(WINDOW.dragDividers[i].split, WINDOW.dragDividers[i].index, x, y);
+        }
+
         return true;
     }
 
@@ -3471,7 +3444,7 @@ ECSPanel ECSIWindow_PointerUp(void)
     }
 
     ECSIWindow_CancelDrag();
-    WINDOW.dragSplit = nullptr;
+    WINDOW.dragDividerCount = 0;
     ECSIWindow_SetCursor(SDL_SYSTEM_CURSOR_DEFAULT);
     return clicked;
 }

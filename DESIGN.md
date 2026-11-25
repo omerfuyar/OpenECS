@@ -261,7 +261,7 @@ In order: a module includes only the modules above it (1.5). The modules are in 
 |           | Clipboard  | Texts and typed data on the system's clipboard.                                                                                                                |
 |           | Dialogs    | The system's file dialogs, and the message dialogs that the core draws (7.7).                                                                                  |
 |           | Keys       | Key combinations, the core prefix and the keys after it, and every key binding (7.3 to 7.5, 7.8).                                                              |
-|           | Menus      | The core's bindable functions, and the panel and group menus that offer them (6.8).                                                                            |
+|           | Menus      | The core's bindable functions, and the menus that offer them (6.8).                                                                                            |
 |           | Input      | SDL's input events, focus, pointer routing, key dispatch, the event of the prefix, text input.                                                                 |
 | app       | Session    | Reading presets and sessions, applying them, writing them.                                                                                                     |
 |           | Desktop    | The tools' entries in the system's application launcher (13.9).                                                                                                |
@@ -516,14 +516,14 @@ typedef struct ECSSurface
 ## 6. Layout
 
 - Every OS window holds one **layout tree** of splits, groups and panels. A split divides an area horizontally or vertically, each part with a fixed size, such as a toolbar, or a share of the rest, so resizing keeps proportions. A group holds one or more panels in one place, one shown at a time. A panel type can declare a minimum size, which splits respect.
-- A group with two or more panels shows a **tab row**. The user drags a tab to move its panel, right-clicks it for the panel's menu, and middle-clicks it to close the panel; a right click on the rest of the row opens the group's menu, and dragging it moves the whole group. Tabs reorder by dragging, and the mouse wheel over the row shows the next or the previous tab. A tab shows the panel's title, a mark for unsaved work and a close button.
+- A group with two or more panels shows a **tab row**. The user drags a tab to move its panel, right-clicks it for the panel's menu, and middle-clicks it to close the panel; a right click on the rest of the row opens the shown panel's menu, and dragging the rest of the row moves the whole group. Tabs reorder by dragging, and the mouse wheel over the row shows the next or the previous tab. A tab shows the panel's title, a mark for unsaved work and a close button.
 - A group with one panel shows no tab row. Near the panel's top edge, the core shows a small **grip** with its title, which drags the panel and opens its menu (6.4).
 - Every layout change is a plain function: open, split, move, group, close, pop out, swap, resize a divider, move focus, maximize, switch workspace. The mouse only works out the arguments and calls the same function that a script would call, so a menu entry or a key can always do what dragging does (6.5).
 - While a panel or a group is dragged, the core highlights where it will land: the centre of a panel groups with it, near an edge splits, over a tab row inserts between tabs, near an edge of the OS window docks along that edge, and outside every OS window moves into a new one (6.7). On Wayland, the display system decides where a new OS window appears.
 - A panel that a plugin opens goes to a predictable place, unless the caller names another: the group of the most recently focused panel of its type, or the focused group (6.6).
 - **Maximize** makes one group fill its OS window, and **pop out** moves a panel into a new OS window with a layout of its own. Floating panels inside one OS window are not part of the design. Switching **workspaces** is instant, as nothing is rebuilt; pop-out windows belong to their workspace (6.10).
 - A preset or the user can lock parts of the layout, such as a toolbar, which the user cannot move or close until they unlock it.
-- A panel's menu has the core's entries and those its type adds; a group's menu lists its tabs and acts on the group; the title bar's menus act on the whole tool. Menus offer only what can be done now (6.8).
+- A panel's menu has the core's entries, which act on the panel and its group, and those its type adds; the title bar's menus act on the whole tool. Menus offer only what can be done now (6.8).
 
 ### 6.1 Data
 
@@ -553,6 +553,7 @@ After every operation:
 - The layout tree fills its OS window below the title bar, less a margin of `ecs.dividerSize` layout units at each edge, as wide as the gap between groups, so no group meets the window's edge.
 - If an OS window is too small for all minimums, the last children are clipped.
 - Dragging a divider next to a fixed-size child changes that child's fixed size.
+- Where splits meet, as a divider ends on a divider of the other direction, a press within `ecs.dividerSize` layout units of that end drags both dividers at once.
 
 ### 6.4 Grips and locked groups
 
@@ -596,26 +597,24 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - A press on a tab or a grip starts a drag once the pointer moves `ecs.dragThreshold` layout units. A press on the empty part of a tab row drags the whole group the same way. Escape cancels the drag.
 - A drop that would change nothing is not highlighted and does nothing: a panel on its own group or next to its own tab, a whole group on itself, or a group that fills the OS window on an edge of it.
-- The pointer shows a resize arrow over a divider and while it is dragged, and a move arrow while a panel or group is dragged.
+- The pointer shows a resize arrow over a divider and while it is dragged, a four-way arrow where splits meet (6.3), and a move arrow while a panel or group is dragged.
 - The drop place is highlighted while the panel is dragged.
 - A panel that splits another takes half of the other's place. A panel docked along an edge of the OS window takes a quarter of it.
 
 ### 6.8 Menus
 
 - The core draws its menus itself, inside the OS window, with Clay. They are kept inside the OS window.
-- A right click on a tab or grip, or a click on a grip, opens the panel's menu. A right click on the rest of a tab row opens the group's menu. The panel, or the group's shown panel, gets the focus.
+- A right click on a tab or grip, or a click on a grip, opens the panel's menu. A right click on the rest of a tab row opens the shown panel's menu. Each way opens the same menu. The panel gets the focus.
 - Entries are core functions that act on the focused panel. Each shows the keys that run its function after the prefix (7.5).
 - Entries are short, so menus stay narrow. Menus show only what can be done now, and say what it does now: "Lock" or "Unlock", "Maximize" or "Restore". Close and move are left out for a locked group, pop out for a locked group and for a panel alone in its OS window, restart for a panel that has not failed (14.2), reopen when nothing was closed, a new workspace when the tool has 10, and split when the panel's type is missing.
 - Entries of one kind go into a submenu. An entry with a submenu shows `›`, and pointing at it opens the submenu beside it.
-- The panel's menu: close, restart, maximize, pop out, lock, reopen the last closed panel; the submenus Move (left, right, up, down) and To workspace (each other workspace, by number and name, then a new workspace); then the entries of the panel's type, under a heading with its plugin's name, which a line sets apart.
+- The panel's menu: close, close the group's panels, restart, reload its plugin, maximize, pop out, lock, reopen the last closed panel; the submenus Tabs (each panel of the group, the shown one marked with `•`; choosing one shows it), Move (left, right, up, down) and To workspace (each other workspace, by number and name, then a new workspace); then the entries of the panel's type, under a heading with its plugin's name, which a line sets apart. A group of one panel has no Tabs and no entry that closes the group, which close does.
 - The entries of a type: `ECSPanelType_AddMenuEntry(plugin, type, function)`, or `ecs.panel.addMenuEntry(type, function)` in Lua, adds a service function whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and the key the plugin bound to the same function for the type.
-- The group's menu: the submenu Tabs, which shows any of its panels and marks the shown one with `•`; then maximize, lock, close the group's panels, and reopen.
 - The title bar's menus (6.11) are the tool's menu: what acts on the whole tool is in them, and in no other menu. `ecs.app.menu` opens the first of them below it; with `ecs.titleBar` off, or when the window is too narrow to show them all, it shows one menu near the focused panel's top left corner, whose submenus are the title bar's menus.
 - The title bar's menu Tools holds the functions that plugins add for the whole tool, by their labels, whatever order the plugins load in: `ECSApp_AddMenuEntry(plugin, function)`, or `ecs.app.addMenuEntry(function)` in Lua, adds one of the plugin's own functions, whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and its keys after the prefix. The standard plugins add the settings window, the key list, the panel list, the plugin list, the launcher and the profiler.
 - The menu of workspaces lists each workspace by number and name, marks the current one with `•`, and switches to the one chosen. The title bar's workspaces' menu opens it (6.11), and `ecs.workspace.menu` shows it near the focused panel's top left corner.
 - Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. In the title bar's menus, Left and Right go to the menu beside, when they open or close no submenu. Escape in the first menu, a press outside the menus, or the core prefix (7.4) closes them. While a menu is open, pointer events go to the menus only, and so do key presses after the prefix.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
-- A tab row ends with a `⋮` button, which opens the shown panel's menu below it, so a mouse finds the menu without a right click. A group with one panel has its grip for that (6.4).
 - The wheel over a tab row shows the next tab, a step down or right, or the one before, a step up or left; it stops at the first and the last tab. When the group has the focus, the shown panel gets it. When a group shows another panel, its tab scrolls into view.
 
 ### 6.9 Clay
@@ -1240,7 +1239,7 @@ The settings window is the first-party Lua plugin `settings`, in OpenECS-std (17
 
 ### 12.6 The panel list
 
-The panel list is the first-party Lua plugin `panels`, in OpenECS-std (17.7). It lists the panel types of the tool by plugin, from `ECSPanelType_List` (`ecs.panel.listTypes` in Lua), and opens the one the user chooses. Its design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The panel list.
+The panel list is the first-party Lua plugin `panels`, in OpenECS-std (17.7). It lists the panel types of the tool by plugin, from `ECSPanelType_List` (`ecs.panel.listTypes` in Lua), and opens the one the user chooses. It also gives a blank panel, which holds a place in the layout. Its design is in [OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), in the section The panel list.
 
 ### 12.7 The plugin list
 
