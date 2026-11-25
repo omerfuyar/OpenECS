@@ -29,7 +29,7 @@ Before you propose or change anything, read the Contents of DESIGN.md, then sect
 | `.clang-format` | How clang-format formats the C code (DESIGN.md, section 1.6).                                                                                                                                                                       |
 | `.clang-tidy`   | What clang-tidy checks in the C code: names (DESIGN.md, sections 1.2 and 1.6), how complex functions are, and common bugs.                                                                                                                                               |
 | `.claude/`      | Claude Code's settings, skills and notes: it formats each C file it edits and never edits `dependencies/`; `skills/` holds procedures such as releases, and `notes.md` why the tools are set up as they are.                        |
-| `LICENSE.md`    | OpenECS's license, zlib.                                                                                                                                                                                                            |
+| `LICENSE.md`    | OpenECS's license, 0BSD.                                                                                                                                                                                                             |
 
 ## Current stage
 
