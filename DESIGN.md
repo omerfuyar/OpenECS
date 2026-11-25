@@ -516,7 +516,7 @@ typedef struct ECSSurface
 ## 6. Layout
 
 - Every OS window holds one **layout tree** of splits, groups and panels. A split divides an area horizontally or vertically, each part with a fixed size, such as a toolbar, or a share of the rest, so resizing keeps proportions. A group holds one or more panels in one place, one shown at a time. A panel type can declare a minimum size, which splits respect.
-- A group with two or more panels shows a **tab row**. The user drags a tab to move its panel, right-clicks it for the panel's menu, and middle-clicks it to close the panel; a right click on the rest of the row, or its `⋮`, opens the shown panel's menu, and dragging the rest of the row moves the whole group. Tabs reorder by dragging, and the mouse wheel over the row shows the next or the previous tab. A tab shows the panel's title, a mark for unsaved work and a close button.
+- A group with two or more panels shows a **tab row**. The user drags a tab to move its panel, right-clicks it for the panel's menu, and middle-clicks it to close the panel; a right click on the rest of the row opens the shown panel's menu, and dragging the rest of the row moves the whole group. Tabs reorder by dragging, and the mouse wheel over the row shows the next or the previous tab. A tab shows the panel's title, a mark for unsaved work and a close button.
 - A group with one panel shows no tab row. Near the panel's top edge, the core shows a small **grip** with its title, which drags the panel and opens its menu (6.4).
 - Every layout change is a plain function: open, split, move, group, close, pop out, swap, resize a divider, move focus, maximize, switch workspace. The mouse only works out the arguments and calls the same function that a script would call, so a menu entry or a key can always do what dragging does (6.5).
 - While a panel or a group is dragged, the core highlights where it will land: the centre of a panel groups with it, near an edge splits, over a tab row inserts between tabs, near an edge of the OS window docks along that edge, and outside every OS window moves into a new one (6.7). On Wayland, the display system decides where a new OS window appears.
@@ -604,7 +604,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 6.8 Menus
 
 - The core draws its menus itself, inside the OS window, with Clay. They are kept inside the OS window.
-- A right click on a tab or grip, or a click on a grip, opens the panel's menu. A right click on the rest of a tab row, or a click on its `⋮`, opens the shown panel's menu. Each way opens the same menu. The panel gets the focus.
+- A right click on a tab or grip, or a click on a grip, opens the panel's menu. A right click on the rest of a tab row opens the shown panel's menu. Each way opens the same menu. The panel gets the focus.
 - Entries are core functions that act on the focused panel. Each shows the keys that run its function after the prefix (7.5).
 - Entries are short, so menus stay narrow. Menus show only what can be done now, and say what it does now: "Lock" or "Unlock", "Maximize" or "Restore". Close and move are left out for a locked group, pop out for a locked group and for a panel alone in its OS window, restart for a panel that has not failed (14.2), reopen when nothing was closed, a new workspace when the tool has 10, and split when the panel's type is missing.
 - Entries of one kind go into a submenu. An entry with a submenu shows `›`, and pointing at it opens the submenu beside it.
@@ -615,7 +615,6 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The menu of workspaces lists each workspace by number and name, marks the current one with `•`, and switches to the one chosen. The title bar's workspaces' menu opens it (6.11), and `ecs.workspace.menu` shows it near the focused panel's top left corner.
 - Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. In the title bar's menus, Left and Right go to the menu beside, when they open or close no submenu. Escape in the first menu, a press outside the menus, or the core prefix (7.4) closes them. While a menu is open, pointer events go to the menus only, and so do key presses after the prefix.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
-- A tab row ends with a `⋮` button, which opens the shown panel's menu below it, so a mouse finds the menu without a right click. A group with one panel has its grip for that (6.4).
 - The wheel over a tab row shows the next tab, a step down or right, or the one before, a step up or left; it stops at the first and the last tab. When the group has the focus, the shown panel gets it. When a group shows another panel, its tab scrolls into view.
 
 ### 6.9 Clay

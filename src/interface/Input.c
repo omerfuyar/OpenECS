@@ -614,16 +614,6 @@ static void ECSIInput_PressPointer(const SDL_MouseButtonEvent *button)
         return;
     }
 
-    // the button at the end of a tab row opens the shown panel's menu below it
-    SDL_FRect rect = {0};
-    ECSPanel menuPanel = button->button == SDL_BUTTON_LEFT ? ECSIWindow_TabMenuAt(button->x, button->y, &rect) : nullptr;
-
-    if (menuPanel != nullptr)
-    {
-        ECSIMenus_OpenPanelMenu(menuPanel, rect.x, rect.y + rect.h);
-        return;
-    }
-
     if (ECSIInput_PressTab(button) || (button->button == SDL_BUTTON_LEFT && ECSIWindow_PointerDown(button->x, button->y)))
     {
         return;

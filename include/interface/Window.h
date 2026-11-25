@@ -252,11 +252,6 @@ const ECSIDrawnTitleItem *ECSIWindow_GetTitleBar(usz number, usz *retCount);
 /// @return The parts, valid until the next frame, or nullptr when the window shows no title bar.
 const ECSIDrawnTitleItem *ECSIWindow_GetDrawnTitle(ECSPanel panel, usz *retCount);
 
-/// @brief Finds the button at the end of a tab row, which opens the shown panel's menu, at a point of the event window.
-/// @param retRect Gets the button's rectangle, in layout units.
-/// @return The group's shown panel, or nullptr.
-ECSPanel ECSIWindow_TabMenuAt(f32 x, f32 y, SDL_FRect *retRect);
-
 /// @brief Notes that the pointer left the event window, so nothing in it stays under the pointer.
 void ECSIWindow_PointerLeave(void);
 
