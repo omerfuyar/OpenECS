@@ -642,6 +642,19 @@ bool ECSIColor_ParseHex(const char *text, u32 *retColor)
     return true;
 }
 
+/// @brief Adds a theme's name to the array that userData points to.
+static void ECSISettings_AddThemeName(const char *name, const ECSValue *value, void *userData)
+{
+    (void)value;
+    const char ***names = userData;
+    arrput(*names, name);
+}
+
+void ECSISettings_ThemeNames(const char ***names)
+{
+    ECSIValue_TableForEachField(SETTINGS.themes, ECSISettings_AddThemeName, names);
+}
+
 void ECSISettings_ApplyTheme(void)
 {
     // ecs.theme comes from the layers above the defaults, as its value in effect does, or else from the core's settings file
@@ -653,10 +666,10 @@ void ECSISettings_ApplyTheme(void)
         chosen = ECSValue_GetString(ECSValue_GetTableField(SETTINGS.layers[layers[i]], "ecs.theme"), nullptr);
     }
 
-    // "system", or anything else, follows the system's theme
+    // "system", or a name that no theme has, follows the system's theme
     const char *name = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT ? "light" : OPENECS_SETTINGS_DEFAULT_THEME;
 
-    if (chosen != nullptr && (SDL_strcmp(chosen, "dark") == 0 || SDL_strcmp(chosen, "light") == 0))
+    if (chosen != nullptr && SDL_strcmp(chosen, "system") != 0 && ECSValue_GetTableField(SETTINGS.themes, chosen) != nullptr)
     {
         name = chosen;
     }

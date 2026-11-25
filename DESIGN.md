@@ -1197,8 +1197,20 @@ return {
 
 ### 12.4 Themes
 
-- A theme is a named set of settings, usually the core's colours. The core's settings file holds two, `dark` and `light`, in its `themes` table; the user's settings file can add to them, or add themes.
-- The setting `ecs.theme` chooses one: `system`, the default, follows the system's light or dark mode (`SDL_GetSystemTheme`) and changes with it; `dark` and `light` choose one. A system that does not say gets the dark theme.
+- A theme is a named set of settings, usually the core's colours. The core's settings file holds these, in its `themes` table; the user's settings file can add to them, or add themes:
+
+  | Theme               | Is                                                                                       |
+  | ------------------- | ---------------------------------------------------------------------------------------- |
+  | `dark`, `light`     | Plain greys with a blue accent: what `system` chooses from.                             |
+  | `deepDark`          | Dark, with black behind the panels, for a dark room or a screen whose black is off.      |
+  | `highContrastDark`  | White text on black, light frames and a yellow accent, each text at least 7 to 1.        |
+  | `highContrastLight` | Black text on white, dark frames and a dark blue accent, each text at least 7 to 1.      |
+  | `midnight`          | Dark, with navy greys and a light blue accent.                                           |
+  | `ember`             | Dark, with warm brown greys and an orange accent.                                        |
+  | `forest`            | Dark, with green greys and a green accent.                                               |
+  | `paper`             | Light, with warm, paper-like greys and a brown accent.                                   |
+
+- The setting `ecs.theme` chooses one: `system`, the default, follows the system's light or dark mode (`SDL_GetSystemTheme`) and changes with it, between `dark` and `light`; any theme's name chooses that theme. Its choices are `system`, then every theme of the settings files, by name, so a theme that the user's file adds is chosen as the core's are. A system that does not say, or a name that no theme has, gets the theme that `system` would.
 - The chosen theme is a layer of its own, between the defaults and the preset: a preset or the user can still set a colour, and it wins over every theme.
 - Plugins name a colour of the theme by its name, such as `"accent"` (5.2), so they follow the theme too.
 - The theme's colours have these jobs, which the core and the standard plugins keep, so a tool's parts look alike:
@@ -1218,7 +1230,8 @@ return {
   | `overlay`, `drop`, `placeholder` | Menus, grips and tooltips; the place where a dragged panel lands; a panel whose type is missing or that failed. |
   | `error`, `warning`           | Errors, such as a line of the log or a value that is not valid, and warnings, as text on any of the colours above. |
 
-- The shipped themes keep one order of greys, so areas, headers and controls stand apart without lines: `background` is the darkest, then `tabRow`, then `panel` with `tabShown`, which is the same, so the shown tab opens into its panel. `field` is darker than `panel` in the dark theme and lighter in the light one, so what the user types stands out, and `button` is lighter than `panel` in both. The greys have no tint. `selected` is a muted blue, under text, and `accent` a brighter blue. `text` on `panel` has a contrast of at least 7 to 1, and `textDim`, `accent`, `error` and `warning` at least 4.5 to 1.
+- `dark` and `light` keep one order of greys, so areas, headers and controls stand apart without lines: `background` is the darkest, then `tabRow`, then `panel` with `tabShown`, which is the same, so the shown tab opens into its panel. `field` is darker than `panel` in the dark theme and lighter in the light one, so what the user types stands out, and `button` is lighter than `panel` in both. The greys have no tint. `selected` is a muted blue, under text, and `accent` a brighter blue. `text` on `panel` has a contrast of at least 7 to 1, and `textDim`, `accent`, `error` and `warning` at least 4.5 to 1.
+- The other shipped themes keep the same jobs and the same contrasts, on `panel`, `field` and `tabShown`, and tint their greys; the two of high contrast keep 7 to 1 for every text.
 - The interface is dense, as an editor's is: the font is 13 layout units, a tab row 24 and the title bar 28, and a control is a line of text with 3 units above and below it, so a list shows many rows.
 
 ### 12.5 The settings window
