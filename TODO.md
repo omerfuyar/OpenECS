@@ -91,7 +91,7 @@ From the audit of the documents against the code; paths are OpenECS-std's.
 - **The launcher's search matches an entry's kind.** `DESIGN.md:347` "entries whose tool's name, file or time matches it"; `plugins/launcher/init.lua:64` also matches `preset` or `session`. Add it to DESIGN.
 - **The viewer needs fs, unsaid.** `DESIGN.md:569` names image, ui, audio, mixer and syntax; `plugins/viewer/manifest.lua:8` depends on fs, which `init.lua:65` calls. Add fs (10).
 - **Five manifests describe less than their sections.** net's (`plugins/net/manifest.lua:6`) leaves out TLS and UDP (`DESIGN.md:280`); web's leaves out WebSockets (`:307`); fs's says it moves files, which is `os.rename` (`:295`), and leaves out watching; compress's leaves out tar (`:440`); profiler's leaves out the Functions table (`:596`). Change the manifests.
-- **Two labels differ from DESIGN.** `DESIGN.md:547` "Show in File Manager" and `:581` "Clear on Run"; the code says "Show in file manager" (`plugins/files/init.lua:396`) and "Clear on run" (`plugins/console/init.lua:355`). Change DESIGN, as the other labels capitalize their first word only.
+- **A label differs from DESIGN.** `DESIGN.md:547` "Show in File Manager"; the code says "Show in file manager" (`plugins/files/init.lua:396`). Change DESIGN, as the other labels capitalize their first word only.
 
 ## Examples
 
