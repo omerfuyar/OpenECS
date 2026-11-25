@@ -45,7 +45,8 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 6. **Do not be afraid** to delete things, to propose the opposite, or to change the design when it makes sense.
 7. **Examples are ideas, not constraints.** Think widely and long term.
 8. **Keep one source of truth.** When a decision is made, write it in the one place it belongs and remove it from TODO.md.
-9. **Recommend libraries.** When a trusted, widely used library would make development or maintenance easier, for example for strings or containers, recommend it. Check SDL first; it may already have what is needed.
+9. **Recommend no exceptions.** The owner wants as few exceptions as possible (DESIGN.md, section 0.6, "No exceptions"). When the code and a rule differ, recommend changing the code to follow the rule, not writing an exception into the documents. When a rule needs an exception, redesign the rule. Never offer an exception as the recommended option.
+10. **Recommend libraries.** When a trusted, widely used library would make development or maintenance easier, for example for strings or containers, recommend it. Check SDL first; it may already have what is needed.
 
 ## Boundaries
 

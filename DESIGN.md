@@ -121,6 +121,7 @@ Plugins talk only to the plugin API (2.2). They never receive an SDL, Lua, Clay 
 14. **The core's own tools are plugins.** Rich windows, such as the settings window, are built on the plugin API, which proves that the API is complete.
 15. **Plugins stand alone.** A plugin uses only the libraries it brings, compiled into itself, and never another plugin's. The one exception is the platform the executable loads, SDL3 and SDL3_ttf, which the standard plugins call as they call the core (17.2). Plugins depend on each other only through the services their manifests name in `depends`, so any plugin that no other one names can be left out of a tool on its own (20.1).
 16. **Written for Lua.** Lua is where tools are read and written most, so plugins' functions read well there: functions of one kind share a namespace, such as `parse.json.read`, and a handle's or a struct's functions are its methods, so `a + b` and `connection:send(data)` read as Lua does. An object with a lifetime is a handle, and plain data, such as a vector, is a struct: a table of its fields. C calls the same functions by their full names.
+17. **No exceptions.** A rule holds everywhere it applies. When a case does not fit a rule, the rule or the case changes, so that it fits; the design does not keep an exception for it.
 
 ## 1. Conventions
 
@@ -448,7 +449,7 @@ typedef struct ECSPanelTypeDesc
   - The popup opens below the anchor, with its left edge at the anchor's, or above the anchor if there is no room below.
   - `ECSPopup_Redraw(popup)` asks for it to be drawn again, and `ECSPopup_SetSize(popup, width, height)` resizes it. In Lua: `popup:redraw()` and `popup:setSize(width, height)`.
   - A popup closes when code closes it (`ECSPopup_Close(&popup)`, `popup:close()`); on a press outside every popup, which does nothing else; on Escape, if it is a menu; and when its panel closes, fails or is hidden. Its `Closed` function runs then, and the popup is invalid afterwards.
-  - While a menu is open, key presses go to the newest menu. A popup's events wait, like a panel's, until the current callback returns (8.2).
+  - While a menu is open, key presses go to the newest menu after the core prefix, which comes first (7.4) and closes the menus. A popup's events wait, like a panel's, until the current callback returns (8.2).
   - Popups are SDL popup windows (`SDL_CreatePopupWindow`), each with its own renderer. SDL keeps them inside the display and hides them with their parent. A video driver without popup windows, such as the offscreen driver of the tests, gets them drawn inside the panel's OS window instead, above everything else and kept inside the window.
 - **Pointer.** The pointer's shape is a system shape or an image. The pointer lock uses `SDL_SetWindowRelativeMouseMode`; pressing the core prefix also ends it.
 - **Text input.** A panel says whether it accepts text and where its text cursor is, in its surface pixels: `ECSPanel_SetTextInput(panel, accept, x, y, width, height)`, and in Lua `panel:setTextInput(accept, x, y, width, height)`. The core turns text input on while the focused panel accepts text, and tells the input method where to show its window (`SDL_StartTextInput`, `SDL_SetTextInputArea`).
@@ -558,7 +559,7 @@ After every operation:
 - A grip appears when the pointer is within `ecs.gripZone` layout units of a panel's top edge. It shows the panel's title. While it is shown, pointer events over it go to the core.
 - A locked group shows a lock mark at the end of its tab row and in its grip. Its grip opens the panel's menu, but it cannot be dragged, and pulling it is not a click.
 - A maximized group shows a maximize mark the same way.
-- Locked groups accept no dropped panels. Their panels cannot be dragged, moved with keys or closed by the user.
+- No dropped panel joins a locked group; a panel can split beside it, which changes nothing inside it. Its panels cannot be dragged, moved with keys or closed by the user.
 - `ecs.layout.lock` locks or unlocks the focused group.
 
 ### 6.5 Operations
@@ -612,7 +613,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The title bar's menus (6.11) are the tool's menu: what acts on the whole tool is in them, and in no other menu. `ecs.app.menu` opens the first of them below it; with `ecs.titleBar` off, or when the window is too narrow to show them all, it shows one menu near the focused panel's top left corner, whose submenus are the title bar's menus.
 - The title bar's menu Tools holds the functions that plugins add for the whole tool, by their labels, whatever order the plugins load in: `ECSApp_AddMenuEntry(plugin, function)`, or `ecs.app.addMenuEntry(function)` in Lua, adds one of the plugin's own functions, whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and its keys after the prefix. The standard plugins add the settings window, the key list, the panel list, the plugin list, the launcher and the profiler.
 - The menu of workspaces lists each workspace by number and name, marks the current one with `•`, and switches to the one chosen. The title bar's workspaces' menu opens it (6.11), and `ecs.workspace.menu` shows it near the focused panel's top left corner.
-- Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. In the title bar's menus, Left and Right go to the menu beside, when they open or close no submenu. Escape in the first menu, or a press outside the menus, closes them. While a menu is open, pointer and key events go to the menus only.
+- Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. In the title bar's menus, Left and Right go to the menu beside, when they open or close no submenu. Escape in the first menu, a press outside the menus, or the core prefix (7.4) closes them. While a menu is open, pointer events go to the menus only, and so do key presses after the prefix.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
 - A tab row ends with a `⋮` button, which opens the shown panel's menu below it, so a mouse finds the menu without a right click. A group with one panel has its grip for that (6.4).
 - The wheel over a tab row shows the next tab, a step down or right, or the one before, a step up or left; it stops at the first and the last tab. When the group has the focus, the shown panel gets it. When a group shows another panel, its tab scrolls into view.
@@ -633,7 +634,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - A dragged panel lands in the OS window under the pointer. The core finds it from the windows' places on the screen. Where windows overlap, the one that last opened or got the focus counts as in front, as SDL does not tell the windows' order.
 - On Wayland, an application cannot know where its windows are, and while the button is held only the window that got the press sees the pointer. So a panel dropped outside the window it was dragged from lands where the pointer enters one of the program's windows within 400 ms, and pops out otherwise; a panel alone in its OS window stays in it. The drop place is not marked in the other windows.
 - Each OS window has its own renderer and Clay context. Only the main window's renderer waits for vsync (3.1), so presenting several OS windows does not wait once for each.
-- A pop-out window closes when its last panel leaves it. Its close button closes its panels, after asking about unsaved work (4.5); Cancel keeps the window. Closing the main window quits, after asking about unsaved work; SDL's own quit when the last window closes is off (`SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE`), as it would answer that question.
+- A pop-out window closes when its last panel leaves it. Its close button closes its panels, after asking about unsaved work (4.5); Cancel keeps the window. A window that holds a locked group does not close, and the core tells the user to unlock the group first (6.4). Closing the main window quits, after asking about unsaved work; SDL's own quit when the last window closes is off (`SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE`), as it would answer that question.
 - When the main window's last panel leaves it while pop-out windows have panels, the first pop-out window's tree moves into the main window, so the main window is never empty. When the user closes the last panel of the tool, the program quits, and the tool's last session is removed, so the next start opens the preset.
 
 ### 6.11 Window frame
