@@ -817,6 +817,7 @@ Panels are named by their id (`ECSPanel_GetID`, `panel:getId()`); `ECSLayout_Fin
 | `ecs.layoutChanged`     | nil                                                                                                                                       | Panels are moved, grouped, closed, maximized or locked                    |
 | `ecs.settingChanged`    | `{ name = full name }`                                                                                                                    | A setting's value in effect changes                                       |
 | `ecs.pluginsChanged`    | `{}`                                                                                                                                      | Plugins were enabled or disabled (9.10)                                   |
+| `ecs.logged`            | `{ time = "12:30:05.123", level = "debug"\|"info"\|"warn"\|"error", plugin = name or "ecs", message = text }`                            | A line was logged, by the core, a plugin or SDL, on any thread (14.4)     |
 | `ecs.prefix`            | `{ waiting = true, panel = id, keys = { { key = "M", ["function"] = name, text = what it does now }, ... } }`, then `{ waiting = false }` | The core waits for the key after the prefix, and then waits no more (7.5) |
 
 ## 9. Plugins
@@ -1411,6 +1412,8 @@ When the command line names no preset and no session, OpenECS starts with the fi
 - Each line holds the time, the level, the plugin and the message: `12:30:05.123 warning  [canvas] message`. The core's own lines name `ecs`.
 - Lines go to standard error and to the log file (16). Each start writes the log file anew.
 - On a terminal, the level shows in a colour: the detailed levels dim, info green, warning yellow, error red and critical bold red. The log file, pipes and the setting `NO_COLOR` (no-color.org) get plain text.
+- The core emits each line it writes as the event `ecs.logged` (8.4), so a plugin, such as a console, shows the log to the tool's user; C and Lua subscribe alike. The message has no time, level or plugin: those are the value's fields, and `plugin` is `ecs` for the core's and SDL's lines. Lines of other threads wait in a queue of 512 lines for the main thread, which they wake; the event brings them in the order they were logged, at the start of the next pass that delivers events. When the queue is full, the lines after it are left out of the event, not of the log, and one warning line says how many.
+- A line logged while a handler of `ecs.logged` runs is written, but not emitted again, so a handler that logs, or calls what logs, cannot loop. Lines of other threads logged meanwhile are emitted.
 - On Windows, only Debug builds open a console window. Other builds are Windows GUI programs, so a release opens no console beside its window. Started from a console, such as `cmd.exe`, they write to it; started with their output sent elsewhere, such as into a pipe, they write there.
 
 ## 15. Memory and ownership

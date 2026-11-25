@@ -54,6 +54,7 @@ static const char *const OPENECS_CORE_EVENTS[][2] = {
     {"ecs.layoutChanged", "Panels were moved, grouped, closed, maximized or locked: {}"},
     {"ecs.settingChanged", "A setting's value in effect changed: { name = full name }"},
     {"ecs.pluginsChanged", "Plugins were enabled or disabled: {}"},
+    {"ecs.logged", "A line was logged, by the core, a plugin or SDL, on any thread: { time = \"12:30:05.123\", level = \"debug\"|\"info\"|\"warn\"|\"error\", plugin = name or \"ecs\", message = text }; a line logged while a handler of it runs is not emitted"},
     {"ecs.prefix", "The core waits for the key after the prefix: { waiting = true, panel = id of the focused panel, keys = { { key = \"M\", function = name, text = what it does now }, ... } }; then { waiting = false }"},
 };
 
@@ -151,10 +152,14 @@ static void ECSIEvents_DeliverEmission(void *target, const ECSPanelEvent *event)
 
         if (!subscription->cancelled)
         {
+            // what a handler of ecs.logged logs is written, but not emitted again, so it cannot loop
+            bool logged = SDL_strcmp(emission->name, "ecs.logged") == 0;
+            ECSILog_SetQuiet(logged);
             ECSICallback callback;
             ECSIPlugin_Enter(&callback, subscription->plugin, nullptr, ECSICallbackType_Plugin);
             subscription->Function(subscription->data, emission->name, emission->value);
             (void)ECSIPlugin_Leave(&callback);
+            ECSILog_SetQuiet(false);
         }
     }
 
@@ -408,10 +413,69 @@ void ECSIEvents_Post(ECSIEventDeliverFunction deliver, ECSTimerFunction release,
     arrput(EVENTS.queue, queued);
 }
 
+/// @brief Emits the lines of the log that wait as ecs.logged, each in its own emission, and one line for those that were left out.
+static void ECSIEvents_EmitLog(void)
+{
+    if (!ECSILog_IsWaiting())
+    {
+        return;
+    }
+
+    usz dropped = 0;
+    ECSILogLine *lines = ECSILog_Take(&dropped);
+    char left[96];
+
+    if (dropped > 0)
+    {
+        SDL_Time now = 0;
+        SDL_DateTime time = {0};
+
+        if (SDL_GetCurrentTime(&now))
+        {
+            SDL_TimeToDateTime(now, &time, true);
+        }
+
+        ECSILogLine line = {.level = "warn", .plugin = "ecs", .message = left};
+        SDL_snprintf(line.time, sizeof(line.time), "%02d:%02d:%02d.%03d", time.hour, time.minute, time.second, time.nanosecond / 1000000);
+        SDL_snprintf(left, sizeof(left), "%zu lines of the log are left out here; the log file holds them.", (size_t)dropped);
+        arrput(lines, line);
+    }
+
+    for (usz i = 0; i < arrlenu(lines); i++)
+    {
+        ECSValue *value = nullptr;
+        ECSValue *field = nullptr;
+        bool made = ECSValue_Create(&value) == SHUResult_Ok;
+        const char *names[] = {"time", "level", "plugin", "message"};
+        const char *texts[] = {lines[i].time, lines[i].level, lines[i].plugin, lines[i].message};
+
+        for (usz j = 0; made && j < SDL_arraysize(names); j++)
+        {
+            made = ECSValue_SetTableField(value, names[j], &field) == SHUResult_Ok && ECSValue_SetString(field, texts[j]) == SHUResult_Ok;
+        }
+
+        if (made)
+        {
+            ECSIEvents_EmitCore("ecs.logged", value);
+        }
+
+        ECSValue_Destroy(&value);
+    }
+
+    // the line of those left out is not the queue's to free
+    if (dropped > 0)
+    {
+        arrpop(lines);
+    }
+
+    ECSILog_FreeLines(lines);
+}
+
 void ECSIEvents_Deliver(void)
 {
     SDL_assert(!EVENTS.delivering); // events are never delivered inside another event handler
 
+    ECSIEvents_EmitLog();
     EVENTS.delivering = true;
 
     for (usz i = 0; i < arrlenu(EVENTS.queue); i++)
@@ -433,7 +497,7 @@ void ECSIEvents_Deliver(void)
 
 i32 ECSIEvents_GetWait(void)
 {
-    return arrlenu(EVENTS.queue) > 0 ? 0 : ECSITimers_GetWait();
+    return arrlenu(EVENTS.queue) > 0 || ECSILog_IsWaiting() ? 0 : ECSITimers_GetWait();
 }
 
 void ECSIEvents_Terminate(void)
