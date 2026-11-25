@@ -196,28 +196,30 @@ static ECSPopup ECSIInput_PopupAt(f32 windowX, f32 windowY, f32 *retX, f32 *retY
     return count == 0 ? nullptr : ECSIWindow_PopupAt(windowX, windowY, retX, retY);
 }
 
-/// @brief Gives a press to the popup under the pointer. A press outside every popup closes them.
-/// @return true if a popup is open, so the press goes nowhere else.
+/// @brief Gives a press to the popup under the pointer. A press outside every popup, while a menu is open, closes them.
+/// @return true if the popup under the pointer got the press, or a menu was open, so the press goes nowhere else.
 static bool ECSIInput_PressPopups(const SDL_MouseButtonEvent *button)
 {
-    usz count = 0;
-    ECSIPopups_GetOpen(&count);
     f32 x = 0.0f;
     f32 y = 0.0f;
-    ECSPopup popup = count == 0 ? nullptr : ECSIWindow_PopupAt(button->x, button->y, &x, &y);
+    ECSPopup popup = ECSIInput_PopupAt(button->x, button->y, &x, &y);
 
     if (popup != nullptr)
     {
         INPUT.pointerPopup = popup;
         INPUT.pointerPopupID = popup->id;
         ECSIInput_SendPopupPointer(popup, ECSPanelEventType_PointerDown, x, y, button->button);
-    }
-    else if (count > 0)
-    {
-        ECSIPopups_CloseAll();
+        return true;
     }
 
-    return count > 0;
+    // a press beside a tooltip goes on, as the tooltip takes none
+    if (ECSIPopups_GetMenu() == nullptr)
+    {
+        return false;
+    }
+
+    ECSIPopups_CloseAll();
+    return true;
 }
 
 /// @brief Gives a move of the pointer to the popup that got the press, also outside it, or else to the popup under the pointer.
@@ -301,7 +303,8 @@ static bool ECSIInput_SendMenuKey(const SDL_KeyboardEvent *key)
     return menu != nullptr;
 }
 
-/// @brief Handles a pointer or key event for the popups: one under the pointer, or the one that got the press, gets it. A press outside every popup closes them and does nothing else.
+/// @brief Handles a pointer or key event for the popups: one under the pointer, or the one that got the press, gets it. A press outside every popup, while a menu
+/// is open, closes them and does nothing else.
 /// @return true if the popups used the event.
 static bool ECSIInput_HandlePopups(const SDL_Event *event)
 {

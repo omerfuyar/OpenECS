@@ -229,7 +229,7 @@ function Panel:acceptDrops(types) end
 function Panel:startDrag(type, value) end
 
 ---Opens a popup next to a rectangle of the shown panel: below it, or above it if there is no room below.
----It closes when code closes it, on a press outside every popup, on Escape if it is a menu, and when the panel closes, fails or is hidden.
+---It closes when code closes it, on a press outside every popup while a menu is open, on Escape if it is a menu, and when the panel closes, fails or is hidden.
 ---@param desc ecs.PopupDesc The popup's type, place, size and functions.
 ---A desc without draw or a size above 0 is a misuse (ecs.check).
 ---@return ecs.Popup? popup The popup, which closes, draws again and resizes it; nil if the panel is not shown.
@@ -283,12 +283,12 @@ function Surface:setRow(y, bytes, x) end
 ---@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"|"drop"|"text"
 
 ---@class ecs.PopupDesc
----@field type? "menu"|"tooltip" A menu takes the key presses while it is open, and Escape closes it; a tooltip takes none. "menu" if missing.
+---@field type? "menu"|"tooltip" A menu takes the key presses while it is open, and Escape closes it; a tooltip takes no key presses and no pointer events, which go to what is under it. "menu" if missing.
 ---@field anchor? { x: number, y: number, width: number, height: number } The rectangle of the panel it opens next to, in the panel's surface pixels.
 ---@field width number In layout units.
 ---@field height number In layout units.
 ---@field draw fun(surface: ecs.Surface) Draws the popup; what it leaves out is transparent.
----@field event? fun(event: ecs.PanelEvent) Gets pointer, wheel and key events, with positions in the popup's surface pixels.
+---@field event? fun(event: ecs.PanelEvent) Gets pointer, wheel and key events, with positions in the popup's surface pixels; a tooltip gets none.
 ---@field closed? fun() Says the popup has closed; it is invalid afterwards.
 
 ---A popup of a panel: a handle of type ecs.popup.

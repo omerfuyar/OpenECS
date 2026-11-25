@@ -51,7 +51,8 @@ void ECSIWindow_Focused(SDL_WindowID id);
 /// @param id SDL's id of the window; an unknown id chooses the main window.
 void ECSIWindow_SetEventWindow(SDL_WindowID id);
 
-/// @brief Finds the popup under a point of the event window: the popup whose SDL popup window it is, or the newest popup drawn inside it that holds the point.
+/// @brief Finds the popup under a point of the event window: the popup whose SDL popup window it is, or the newest popup drawn inside it that holds the
+/// point, other than a tooltip.
 /// @param x Horizontal position in layout units.
 /// @param y Vertical position in layout units.
 /// @param retX Gets the point's position in the popup's surface.
