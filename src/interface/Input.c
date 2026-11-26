@@ -1115,7 +1115,7 @@ SHUResult ECSPanel_StartDrag(ECSPanel panel, const char *type, const ECSValue *v
     ECSIInput_EndDataDrag();
     INPUT.dragType = SDL_strdup(type);
     SHUResult result = INPUT.dragType == nullptr ? SHUResult_ErrAllocation : ECSValue_Create(&INPUT.dragValue);
-    result = result || value == nullptr ? result : ECSIValue_Copy(INPUT.dragValue, value);
+    result = result || value == nullptr ? result : ECSValue_Copy(INPUT.dragValue, value);
 
     if (result)
     {

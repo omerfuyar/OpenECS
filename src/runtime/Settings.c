@@ -304,7 +304,7 @@ static SHUResult ECSISettings_Declare(ECSPlugin owner, const ECSSettingDesc *des
             return SHUResult_ErrBadData;
         }
 
-        SHU_ReturnResult(ECSIValue_Copy(setting->defaultValue, defaultValue), ECSISetting_Free(setting););
+        SHU_ReturnResult(ECSValue_Copy(setting->defaultValue, defaultValue), ECSISetting_Free(setting););
     }
 
     shput(SETTINGS.settings, setting->name, setting);
@@ -320,7 +320,7 @@ static void ECSISettings_CopyField(const char *name, const ECSValue *field, void
     if (!copier->result)
     {
         copier->result = ECSValue_SetTableField(copier->target, name, &copy);
-        copier->result = copier->result ? copier->result : ECSIValue_Copy(copy, field);
+        copier->result = copier->result ? copier->result : ECSValue_Copy(copy, field);
     }
 }
 
@@ -493,7 +493,7 @@ static SHUResult ECSISettings_ExplainField(ECSValue *explanation, const char *na
 {
     ECSValue *field = nullptr;
     SHU_ReturnResult(ECSValue_SetTableField(explanation, name, &field));
-    return ECSIValue_Copy(field, value);
+    return ECSValue_Copy(field, value);
 }
 
 /// @brief Adds a text field of an explanation.
@@ -567,7 +567,7 @@ SHUResult ECSISettings_SetPreset(const ECSValue *presetSettings, const char *pre
     SDL_free(SETTINGS.paths[ECSISettingsLayer_Preset]);
     SETTINGS.paths[ECSISettingsLayer_Preset] = SDL_strdup(presetPath);
     SHU_ReturnResult(ECSValue_Create(&SETTINGS.layers[ECSISettingsLayer_Preset]));
-    SHU_ReturnResult(ECSIValue_Copy(SETTINGS.layers[ECSISettingsLayer_Preset], presetSettings));
+    SHU_ReturnResult(ECSValue_Copy(SETTINGS.layers[ECSISettingsLayer_Preset], presetSettings));
     return SETTINGS.paths[ECSISettingsLayer_Preset] == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
 }
 
@@ -682,7 +682,7 @@ void ECSISettings_ApplyTheme(void)
     char *copy = SDL_strdup(name);
     ECSValue *layer = nullptr;
 
-    if (copy == nullptr || ECSValue_Create(&layer) || ECSIValue_Copy(layer, ECSValue_GetTableField(SETTINGS.themes, name)))
+    if (copy == nullptr || ECSValue_Create(&layer) || ECSValue_Copy(layer, ECSValue_GetTableField(SETTINGS.themes, name)))
     {
         SDL_free(copy);
         ECSValue_Destroy(&layer);
@@ -995,7 +995,7 @@ static SHUResult ECSISettings_RemoveField(ECSValue *table, const char *name)
     ECSValue_SetTable(kept);
     ECSISettingsCopier copier = {.target = kept, .result = SHUResult_Ok, .leftOut = name};
     ECSIValue_TableForEachField(table, ECSISettings_CopyOtherField, &copier);
-    SHUResult result = copier.result ? copier.result : ECSIValue_Copy(table, kept);
+    SHUResult result = copier.result ? copier.result : ECSValue_Copy(table, kept);
     ECSValue_Destroy(&kept);
     return result;
 }
@@ -1059,7 +1059,7 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
     // the value in effect is kept, to tell the owner only about a real change
     ECSValue *old = nullptr;
     SHU_ReturnResult(ECSValue_Create(&old));
-    SHUResult result = ECSIValue_Copy(old, setting->value);
+    SHUResult result = ECSValue_Copy(old, setting->value);
 
     // the tool's own part wins over the part for every tool, so a setting it already has is changed there; a reset takes it from both
     ECSValue *tool = (ECSValue *)ECSValue_GetTableField(ECSValue_GetTableField(SETTINGS.userFile, "tools"), SETTINGS.appID);
@@ -1074,7 +1074,7 @@ SHUResult ECSSetting_Set(const char *name, const ECSValue *value)
     else
     {
         result = result ? result : ECSValue_SetTableField(part, name, &field);
-        result = result ? result : ECSIValue_Copy(field, value);
+        result = result ? result : ECSValue_Copy(field, value);
     }
 
     result = result ? result : ECSISettings_BuildLayer(ECSISettingsLayer_User, SETTINGS.userFile);
@@ -1123,7 +1123,7 @@ SHUResult ECSSetting_SetForRun(const char *name, const ECSValue *value)
     // the value in effect is kept, to tell the owner only about a real change
     ECSValue *old = nullptr;
     SHU_ReturnResult(ECSValue_Create(&old));
-    SHUResult result = ECSIValue_Copy(old, setting->value);
+    SHUResult result = ECSValue_Copy(old, setting->value);
     ECSValue *field = nullptr;
 
     if (reset)
@@ -1133,7 +1133,7 @@ SHUResult ECSSetting_SetForRun(const char *name, const ECSValue *value)
     else
     {
         result = result ? result : ECSValue_SetTableField(SETTINGS.layers[ECSISettingsLayer_Run], name, &field);
-        result = result ? result : ECSIValue_Copy(field, value);
+        result = result ? result : ECSValue_Copy(field, value);
     }
 
     // adding or removing a field may move the layer's other fields, which other settings point at, so all resolve again
@@ -1192,7 +1192,7 @@ SHUResult ECSISettings_SetKey(const char *scope, const char *key, const ECSValue
         }
 
         result = result ? result : ECSValue_SetTableField(table, key, &field);
-        result = result ? result : ECSIValue_Copy(field, value);
+        result = result ? result : ECSValue_Copy(field, value);
     }
 
     // the user's keys are merged again: those for every tool, then the tool's own, which win

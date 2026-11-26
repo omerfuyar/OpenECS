@@ -988,7 +988,7 @@ SHUResult ECSISession_Build(ECSValue *retSession)
     // a copy of the file the session came from, so fields the core does not use are kept
     ECSValue *field = nullptr;
     usz current = 0;
-    SHUResult result = ECSIValue_Copy(retSession, info->file);
+    SHUResult result = ECSValue_Copy(retSession, info->file);
     result = result ? result : ECSValue_SetTableField(retSession, "format", &field);
 
     if (!result)
@@ -1019,7 +1019,7 @@ SHUResult ECSISession_Build(ECSValue *retSession)
         if (keys != nullptr)
         {
             result = ECSValue_SetTableField((ECSValue *)ECSValue_GetListItem(field, i), "keys", &copy);
-            result = result ? result : ECSIValue_Copy(copy, keys);
+            result = result ? result : ECSValue_Copy(copy, keys);
         }
     }
 

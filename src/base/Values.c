@@ -125,10 +125,9 @@ void ECSValue_Destroy(ECSValue **value)
     }
 }
 
-SHUResult ECSIValue_Copy(ECSValue *retCopy, const ECSValue *source)
+SHUResult ECSValue_Copy(ECSValue *retCopy, const ECSValue *source)
 {
-    SDL_assert(retCopy != nullptr);
-    SDL_assert(retCopy != source);
+    ECSILog_Check(retCopy != nullptr && retCopy != source, SHUResult_ErrAssertion);
 
     switch (ECSValue_GetType(source))
     {
@@ -161,14 +160,14 @@ SHUResult ECSIValue_Copy(ECSValue *retCopy, const ECSValue *source)
     {
         ECSValue *item = nullptr;
         SHU_ReturnResult(ECSValue_AddListItem(retCopy, &item));
-        SHU_ReturnResult(ECSIValue_Copy(item, source->items[i]));
+        SHU_ReturnResult(ECSValue_Copy(item, source->items[i]));
     }
 
     for (usz i = 0; i < shlenu(source->fields); i++)
     {
         ECSValue *field = nullptr;
         SHU_ReturnResult(ECSValue_SetTableField(retCopy, source->fields[i].key, &field));
-        SHU_ReturnResult(ECSIValue_Copy(field, source->fields[i].value));
+        SHU_ReturnResult(ECSValue_Copy(field, source->fields[i].value));
     }
 
     return SHUResult_Ok;

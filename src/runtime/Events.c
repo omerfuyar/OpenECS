@@ -206,7 +206,7 @@ static SHUResult ECSIEvents_Emit(const char *name, const ECSValue *value)
     usz length = SDL_strlen(name);
     ECSIEmission *emission = SDL_calloc(1, sizeof(ECSIEmission) + length + 1);
 
-    if (emission == nullptr || ECSValue_Create(&emission->value) || (value != nullptr && ECSIValue_Copy(emission->value, value)))
+    if (emission == nullptr || ECSValue_Create(&emission->value) || (value != nullptr && ECSValue_Copy(emission->value, value)))
     {
         if (emission != nullptr)
         {

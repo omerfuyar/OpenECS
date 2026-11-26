@@ -537,7 +537,7 @@ SHUResult ECSIKeys_SetPreset(const ECSValue *keys)
     ECSIKeys_CheckKeys(keys, "the preset");
     KEYS.tablesDirty = true;
     SHU_ReturnResult(ECSValue_Create(&KEYS.presetKeys));
-    return ECSIValue_Copy(KEYS.presetKeys, keys);
+    return ECSValue_Copy(KEYS.presetKeys, keys);
 }
 
 SHUResult ECSIKeys_AddWorkspace(const ECSValue *keys)
@@ -548,7 +548,7 @@ SHUResult ECSIKeys_AddWorkspace(const ECSValue *keys)
     {
         ECSIKeys_CheckKeys(keys, "a workspace");
         SHU_ReturnResult(ECSValue_Create(&copy));
-        SHU_ReturnResult(ECSIValue_Copy(copy, keys), ECSValue_Destroy(&copy););
+        SHU_ReturnResult(ECSValue_Copy(copy, keys), ECSValue_Destroy(&copy););
     }
 
     KEYS.tablesDirty = true;

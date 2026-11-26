@@ -28,12 +28,6 @@ typedef struct ECSIFieldRule
 /// @brief Function called for each named field of a table, by ECSIValue_TableForEachField.
 typedef void (*ECSIValueFieldFunction)(const char *name, const ECSValue *field, void *userData);
 
-/// @brief Makes a value a deep copy of another.
-/// @param retCopy The value to set to the copy.
-/// @param source The value to copy, or nullptr for nil. Must not be inside retCopy.
-/// @return SHUResult_Ok, or SHUResult_ErrAllocation; retCopy holds a partial copy then.
-SHUWUR SHUResult ECSIValue_Copy(ECSValue *retCopy, const ECSValue *source);
-
 /// @brief Checks whether two values are the same: the same type and contents, with fields in any order.
 /// @param first A value, or nullptr for nil.
 /// @param second A value, or nullptr for nil.
