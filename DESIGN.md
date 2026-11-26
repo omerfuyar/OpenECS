@@ -432,6 +432,7 @@ typedef struct ECSPanelTypeDesc
   - The name is matched when the event is delivered, so the event may be declared after the type; a name that nothing declares draws nothing and is no error.
   - The type's plugin hears only what a subscription hears (8.3): the core's events, its own, and those of the plugins its manifest depends on. A name that is declared when the type is registered, by a plugin it does not depend on, is a misuse; one declared later by such a plugin draws nothing.
   - A reloaded plugin (9.11) registers its types again, with the names that its new code gives. A reloaded dependency declares its events again, and the names match them as before.
+  - A hidden panel, such as one in a tab behind another, is drawn only when it is shown. What it sets as it draws, such as its title, stays as it was until then.
 - A panel in a hidden workspace runs only when its timers or events call it.
 
 ### 4.4 Placeholders
