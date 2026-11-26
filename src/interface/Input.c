@@ -655,10 +655,20 @@ static void ECSIInput_MovePointer(const SDL_MouseMotionEvent *motion)
     INPUT.pointerX = motion->x;
     INPUT.pointerY = motion->y;
 
-    // while a panel drags data, the core marks where it can land and the panel gets no moves
+    // while a panel drags data, the core marks where it can land; the panel under the pointer gets the moves, unless it is the one that started the drag, and the focus stays
     if (INPUT.dragType != nullptr)
     {
         ECSIWindow_ShowDataDrag(INPUT.dragType, motion->x, motion->y);
+
+        f32 x = 0.0f;
+        f32 y = 0.0f;
+        ECSPanel over = ECSIWindow_PanelAt(motion->x, motion->y, &x, &y);
+
+        if (over != nullptr && over != ECSIInput_PointerPanel())
+        {
+            ECSIInput_SendPointer(over, ECSPanelEventType_PointerMove, x, y, 0);
+        }
+
         return;
     }
 

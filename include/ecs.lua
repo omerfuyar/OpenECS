@@ -221,7 +221,7 @@ function Panel:setTextInput(accept, x, y, width, height) end
 function Panel:acceptDrops(types) end
 
 ---Starts dragging data from the panel, while a pointer button that was pressed on it is held, usually from its pointerDown or pointerMove event.
----The panel then gets no pointer moves until the release, and still gets its pointerUp. On release, the panel under the pointer that accepts the type gets a drop event. Escape cancels.
+---The panel then gets no pointer moves until the release, and still gets its pointerUp; another panel under the pointer gets them. On release, the panel under the pointer that accepts the type gets a drop event. Escape cancels.
 ---@param type string The type of the data, such as "color".
 ---@param value? any The data: a value as in saved state.
 ---@return true|nil ok true if the drag started.
