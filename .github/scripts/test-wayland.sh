@@ -2,6 +2,7 @@
 # Runs the examples' tests on Wayland, in a headless sway: test.sh, with shuild's --test, inside it, in place of SDL's offscreen driver.
 # There, popups and pop-out windows are windows of their own, which the offscreen driver does not have.
 # Sway tiles the windows, as Hyprland and other tiling compositors do, so a window gets the size sway gives it.
+# So the tests run one at a time: tests that run at once in one sway share its screen and its focus, and their windows get other sizes.
 set -u
 
 runtime=$(mktemp -d)
@@ -29,4 +30,4 @@ if [ -z "$display" ]; then
     exit 1
 fi
 
-XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$display" SDL_VIDEO_DRIVER=wayland "$(dirname "$0")/test.sh" "$@"
+XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$display" SDL_VIDEO_DRIVER=wayland TEST_JOBS=1 "$(dirname "$0")/test.sh" "$@"
