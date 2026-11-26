@@ -8,11 +8,11 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **Linux first.** Linux is the priority. Windows is supported; other platforms are not worked on for now, as each one needs upkeep (DESIGN 19.4).
 - **Bugs** that the owner reports from testing.
-- **Editors that are simpler to build.** What each panel of an editor writes again today, and what an editor needs and writes itself: the plugin history (Standard plugins).
 
 ## Tasks
 
 - **SDL's tray closes the D-Bus connection of notifications.** On Linux, SDL's D-Bus tray calls `SDL_DBus_Quit` when its last tray goes, which closes the connection that SDL's notifications share: their clicks stop coming after notify's last tray goes. At exit, `SDL_CleanupNotifications` then removes a filter from a new connection, which libdbus aborts on; the core makes that a warning for its quit (`ECSIApp_QuitSDL`), so the workaround can go once SDL is fixed. It is SDL's bug, still in its `main`, for the owner to report: SDL takes no contributions written by AI.
+- **The Wayland tests one at a time.** The checks run the tests on Wayland one at a time (DESIGN 19.3): run at once in one headless sway, about a third of them fail, as their windows share its screen and its focus and sway tiles them to other sizes. That run takes about 3.5 minutes here, and 5 in the checks. A sway for each test that runs at once would let them run together, but each test then needs its own `WAYLAND_DISPLAY`, which shuild's `--test` does not give.
 - **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now, and aarch64 waits for 1.0.0 (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
 
 What follows comes from an audit of the documents against what the code does, each checked at the lines it names. "Doc" is the side the item recommends changing when it says so.
@@ -59,7 +59,6 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
 - **fs: more of what a files panel needs.** Moving a file to the system's trash, for the files panel's `delete`; and a file's permissions, such as whether it runs as a program.
-- **history: undo and redo for any tool.** A standard plugin, as every editor needs it. A plugin pushes records, each a label with an undo and a redo function. history gives undo and redo as functions, merges quick changes of one value into one record, and keeps a save point that sets the unsaved mark of the panels it names. A History panel lists the records, and a click on one undoes or redoes until it is the last one done. Open: one history for the tool, or one for each document a tool has open.
 - **The hot standard plugins in C.** Std's plugins should be as fast as they can be, so the ones that run in every frame of every tool are written in C, and the high-level panels that a user opens now and then stay in Lua: files, console, settings, keys, profiler, launcher, plugins, panels and viewer. ui comes first: every panel built with it lays out, measures text and paints through it on each frame it draws, and its `init.lua`, about 5,800 lines, is at Lua's limit of 200 local variables in its main chunk, so a change that adds a top-level local does not load. Its Lua functions stay as they are for Lua plugins, called through the plugin interface as C plugins' are, so a feature still works from C and from Lua alike. Decide the elements' model first, such as what a label may hold, so the rewrite is done once. Measure a tool's frame with the profiler before and after. Open: whether ui's C builds on Clay, which the core uses for its own interface but hides from plugins, so std would carry its own copy; and whether another plugin is hot enough to follow.
 - **ui: a double click on an item.** `tree` and `list` give a click to `onActivate`, so the files panel (29) and the console (31) each time a second click themselves, within 0.4 seconds. They should give a double click to its own handler.
 

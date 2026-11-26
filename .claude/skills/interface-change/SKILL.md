@@ -23,9 +23,8 @@ grep -rn "<name>" src include resources std/plugins std/presets examples ../Open
 
 ## 3. Pull requests, in order
 
-1. OpenECS's pull request moves `std/` and `examples/` to the commits of their branches (the submodule-bump skill), so its checks build them together.
-2. Merge OpenECS's first. The others' checks build OpenECS's `dev`, so they pass only after it.
-3. Then OpenECS-std's, OpenECS-examples' and OpenECS-template's.
-4. Then an OpenECS pull request moves `std/` and `examples/` to their `dev`.
+1. OpenECS's branch moves `std/` and `examples/` to the heads of their branches (the submodule-bump skill), so its checks build them together. The others' checks build OpenECS's branch of the same name.
+2. Open every pull request at once; their checks run together.
+3. Merge OpenECS's first, then OpenECS-std's and OpenECS-examples', then OpenECS-template's, as the pull-requests skill says.
 
 Verify each with the verify skill before pushing.
