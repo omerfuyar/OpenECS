@@ -3624,6 +3624,23 @@ SDL_FRect ECSIWindow_MenuItemRect(usz level, usz index)
     };
 }
 
+void ECSIWindow_MenuRect(usz level, SDL_FRect *retRect, usz *retWindow)
+{
+    SDL_assert(level < OPENECS_MENU_DEPTH);
+    SDL_assert(retRect != nullptr);
+    SDL_assert(retWindow != nullptr);
+
+    *retRect = WINDOW.menus[level].rect;
+    *retWindow = 0;
+    usz count = 0;
+    ECSIRoot *const *roots = ECSILayout_GetRoots(&count);
+
+    for (usz i = 0; i < count && *retWindow == 0; i++)
+    {
+        *retWindow = ECSIWindow_FindByRoot(roots[i]) == WINDOW.menuWindow ? i + 1 : 0;
+    }
+}
+
 bool ECSIWindow_MenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex)
 {
     SDL_assert(retLevel != nullptr);

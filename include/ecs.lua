@@ -537,7 +537,7 @@ function ecs.app.quit() end
 ---@class ecs.plugins
 ecs.plugins = {}
 
----Lists every plugin in the plugin folders, loaded or not.
+---Lists every plugin in the plugin folders, loaded or not; a plugin whose manifest is not valid is reported in the log and left out.
 ---@return ecs.PluginInfo[] plugins
 function ecs.plugins.list() end
 

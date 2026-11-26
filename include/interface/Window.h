@@ -179,6 +179,12 @@ usz ECSIWindow_GetSelectedMenuItem(usz level);
 /// @return The entry's rectangle, in layout units.
 SDL_FRect ECSIWindow_MenuItemRect(usz level, usz index);
 
+/// @brief Gets where a shown menu is, for tests.
+/// @param level The menu's level, below 4.
+/// @param retRect Gets its rectangle, in the layout units of its OS window.
+/// @param retWindow Gets the number of that OS window, as ECSIWindow_Get counts them.
+void ECSIWindow_MenuRect(usz level, SDL_FRect *retRect, usz *retWindow);
+
 /// @brief Finds the menu entry at a point of the event window, in the deepest menu that holds it.
 /// @return true if there is an entry at the point.
 bool ECSIWindow_MenuItemAt(f32 x, f32 y, usz *retLevel, usz *retIndex);
