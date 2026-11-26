@@ -12,7 +12,8 @@
 /// @brief A file dialog waiting for its answer, with copies of everything SDL reads until it answers.
 typedef struct ECSIDialog
 {
-    ECSPlugin plugin; // nullptr for the core
+    ECSIFileDialogView view; // what it shows, which a test reads
+    ECSPlugin plugin;        // nullptr for the core
     ECSDialogDoneFunction Done;
     void *data;
     SDL_DialogFileFilter *filters; // stb_ds array
@@ -26,6 +27,7 @@ static struct
     const ECSIDialogView *dialog;    // the message dialog that waits for an answer, or nullptr
     ECSIDialogStepFunction TestStep; // a running test's step while a dialog waits, or nullptr
     ECSIDialogWaitFunction TestWait;
+    ECSIDialog **waiting; // stb_ds array of the file dialogs that wait for a running test's answer, the oldest first
 } DIALOGS = {0};
 
 static void ECSIDialogs_Free(ECSIDialog *dialog)
@@ -100,6 +102,17 @@ static void SDLCALL ECSIDialogs_Answer(void *userData, const char *const *files,
     }
 }
 
+/// @brief Forgets the file dialogs that wait for a test, which never answer.
+static void ECSIDialogs_FreeWaiting(void)
+{
+    for (usz i = 0; i < arrlenu(DIALOGS.waiting); i++)
+    {
+        ECSIDialogs_Free(DIALOGS.waiting[i]);
+    }
+
+    arrfree(DIALOGS.waiting);
+}
+
 #pragma endregion Source Only
 
 void ECSIDialogs_Initialize(void)
@@ -111,6 +124,7 @@ void ECSIDialogs_Initialize(void)
 void ECSIDialogs_Terminate(void)
 {
     ECSIPanels_SetAsk(nullptr);
+    ECSIDialogs_FreeWaiting();
     SDL_zero(DIALOGS);
 }
 
@@ -148,6 +162,15 @@ SHUResult ECSIDialogs_Show(ECSPlugin plugin, const ECSDialogDesc *desc)
     {
         ECSIDialogs_Free(dialog);
         return SHUResult_ErrAllocation;
+    }
+
+    dialog->view = (ECSIFileDialogView){desc->type, dialog->filters, arrlenu(dialog->filters), location, desc->many};
+
+    // a running test answers the dialog itself, with test.fileDialog
+    if (DIALOGS.TestStep != nullptr)
+    {
+        arrput(DIALOGS.waiting, dialog);
+        return SHUResult_Ok;
     }
 
     SDL_Window *window = ECSIWindow_GetMain();
@@ -245,11 +268,61 @@ void ECSIDialogs_SetTest(ECSIDialogStepFunction Step, ECSIDialogWaitFunction Wai
 {
     DIALOGS.TestStep = Step;
     DIALOGS.TestWait = Wait;
+
+    if (Step == nullptr)
+    {
+        ECSIDialogs_FreeWaiting();
+    }
 }
 
 const ECSIDialogView *ECSIDialogs_Get(void)
 {
     return DIALOGS.dialog;
+}
+
+const ECSIFileDialogView *ECSIDialogs_GetFile(void)
+{
+    return arrlenu(DIALOGS.waiting) > 0 ? &DIALOGS.waiting[0]->view : nullptr;
+}
+
+SHUResult ECSIDialogs_AnswerFile(const char *const *paths, usz count)
+{
+    SDL_assert(paths != nullptr || count == 0);
+
+    if (arrlenu(DIALOGS.waiting) == 0)
+    {
+        return SHUResult_ErrNotFound;
+    }
+
+    ECSIDialog *dialog = DIALOGS.waiting[0];
+
+    for (usz i = 0; i < count; i++)
+    {
+        char *copy = SDL_strdup(paths[i]);
+
+        if (copy == nullptr)
+        {
+            for (usz j = 0; j < arrlenu(dialog->files); j++)
+            {
+                SDL_free(dialog->files[j]);
+            }
+
+            arrsetlen(dialog->files, 0);
+            return SHUResult_ErrAllocation;
+        }
+
+        arrput(dialog->files, copy);
+    }
+
+    arrdel(DIALOGS.waiting, 0);
+
+    if (ECS_RunOnMainThread(ECSIDialogs_Finish, dialog))
+    {
+        ECSIDialogs_Free(dialog);
+        return SHUResult_ErrAllocation;
+    }
+
+    return SHUResult_Ok;
 }
 
 i32 ECSIDialogs_Ask(const char *title, const char *message, const char *const *buttons, usz count)

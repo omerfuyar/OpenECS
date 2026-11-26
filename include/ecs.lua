@@ -306,6 +306,16 @@ function Popup:redraw() end
 ---@param height number The new height, in layout units.
 function Popup:setSize(width, height) end
 
+---@class ecs.PopupItem
+---@field label string
+---@field keys? string Text of the keys that run it.
+---@field enabled? boolean The user can choose it; true if missing.
+---@field chosen? boolean It is the entry that Return runs.
+
+---Says which entries a menu popup shows, in order, and which is chosen, so a test can read them. Call it again when they change.
+---@param items ecs.PopupItem[] The entries.
+function Popup:setItems(items) end
+
 ---@class ecs.PanelEvent
 ---@field type ecs.PanelEventType
 ---@field shift boolean

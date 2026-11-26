@@ -1137,3 +1137,32 @@ bool ECSIMenus_Handle(const SDL_Event *event)
         return false;
     }
 }
+
+bool ECSIMenus_GetItems(ECSPopupItem **retItems)
+{
+    SDL_assert(retItems != nullptr);
+
+    *retItems = nullptr;
+
+    if (arrlenu(MENUS.levels) == 0)
+    {
+        return false;
+    }
+
+    usz deepest = arrlenu(MENUS.levels) - 1;
+    const ECSIMenuEntry *entries = MENUS.levels[deepest].entries;
+    usz selected = ECSIWindow_GetSelectedMenuItem(deepest);
+
+    for (usz i = 0; i < arrlenu(entries); i++)
+    {
+        ECSPopupItem item = {
+            .label = entries[i].label != nullptr ? entries[i].label : "",
+            .keys = entries[i].submenu == nullptr && !entries[i].heading ? entries[i].keys : nullptr,
+            .enabled = !entries[i].heading,
+            .chosen = i == selected,
+        };
+        arrput(*retItems, item);
+    }
+
+    return true;
+}
