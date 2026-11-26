@@ -398,6 +398,8 @@ typedef struct ECSPanelTypeDesc
     bool continuous;         // draw every frame while visible
     f32 minWidth;            // in layout units, 0 for none
     f32 minHeight;
+    const char *const *redrawOn; // names of events that draw every panel of the type again (4.3)
+    usz redrawOnCount;
 
     // required
     ECSPanelCreateFunction Create;       // SHUResult (ECSPanel panel, const ECSValue *savedState, u32 version, void **retState)
@@ -426,6 +428,10 @@ typedef struct ECSPanelTypeDesc
 ### 4.3 When a panel is drawn
 
 - A panel that is not continuous asks to be drawn with `ECSPanel_Redraw`. The core also draws it when its size or scale changes, and draws every panel and popup again, whole, when a setting changes, as any setting may change how they look, such as a colour of the theme.
+- A panel type names events in `redrawOn`, such as `{ "files.changed" }`: each time one of them is delivered, after its subscribers, the core draws every panel of the type again, as `ECSPanel_Redraw` asks, and a hidden one when it is next shown. In Lua it is a list: `redrawOn = { "files.changed" }`. So a plugin whose panels show data that an event says changed keeps no list of its panels.
+  - The name is matched when the event is delivered, so the event may be declared after the type; a name that nothing declares draws nothing and is no error.
+  - The type's plugin hears only what a subscription hears (8.3): the core's events, its own, and those of the plugins its manifest depends on. A name that is declared when the type is registered, by a plugin it does not depend on, is a misuse; one declared later by such a plugin draws nothing.
+  - A reloaded plugin (9.11) registers its types again, with the names that its new code gives. A reloaded dependency declares its events again, and the names match them as before.
 - A panel in a hidden workspace runs only when its timers or events call it.
 
 ### 4.4 Placeholders
@@ -605,6 +611,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 ### 6.8 Menus
 
 - The core draws its menus itself, inside the OS window, with Clay. They are kept inside the OS window.
+- A menu is as wide as its widest entry: its label and keys, with an entry's padding at each end and between them, inside the menu's padding.
 - A right click on a tab or grip, or a click on a grip, opens the panel's menu. A right click on the rest of a tab row opens the shown panel's menu. Each way opens the same menu. The panel gets the focus.
 - Entries are core functions that act on the focused panel. Each shows the keys that run its function after the prefix (7.5).
 - Entries are short, so menus stay narrow. Menus show only what can be done now, and say what it does now: "Lock" or "Unlock", "Maximize" or "Restore". Close and move are left out for a locked group, pop out for a locked group and for a panel alone in its OS window, restart for a panel that has not failed (14.2), reopen when nothing was closed, a new workspace when the tool has 10, and split when the panel's type is missing.
@@ -614,7 +621,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The title bar's menus (6.11) are the tool's menu: what acts on the whole tool is in them, and in no other menu. `ecs.app.menu` opens the first of them below it; with `ecs.titleBar` off, or when the window is too narrow to show them all, it shows one menu near the focused panel's top left corner, whose submenus are the title bar's menus.
 - The title bar's menu Tools holds the functions that plugins add for the whole tool, by their labels, whatever order the plugins load in: `ECSApp_AddMenuEntry(plugin, function)`, or `ecs.app.addMenuEntry(function)` in Lua, adds one of the plugin's own functions, whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and its keys after the prefix. The standard plugins add the settings window, the key list, the panel list, the plugin list, the launcher and the profiler.
 - The menu of workspaces lists each workspace by number and name, marks the current one with `•`, and switches to the one chosen. The title bar's workspaces' menu opens it (6.11), and `ecs.workspace.menu` shows it near the focused panel's top left corner.
-- Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. In the title bar's menus, Left and Right go to the menu beside, when they open or close no submenu. Escape in the first menu, a press outside the menus, or the core prefix (7.4) closes them. While a menu is open, pointer events go to the menus only, and so do key presses after the prefix.
+- A menu opens with its first entry chosen, and the menu of workspaces with the current workspace, so Down chooses the next one. Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. In the title bar's menus, Left and Right go to the menu beside, when they open or close no submenu. Escape in the first menu, a press outside the menus, or the core prefix (7.4) closes them. While a menu is open, pointer events go to the menus only, and so do key presses after the prefix.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
 - The wheel over a tab row shows the next tab, a step down or right, or the one before, a step up or left; it stops at the first and the last tab. When the group has the focus, the shown panel gets it. When a group shows another panel, its tab scrolls into view.
 
@@ -663,7 +670,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - Exactly one panel has keyboard focus. The setting `ecs.focus` chooses whether a click or the pointer's hover gives it; click is the default, and in hover mode only real pointer movement moves focus. Keys move focus to a neighbouring panel too. Pointer events go to the panel under the pointer, or during a drag to the panel where it started.
 - Keys are bound in **keys tables**, which map key combinations to service functions and have one shape wherever they are written: the core's settings file, a preset and the user's settings file. They follow the layers of settings (12), so the user can change any key, and `false` removes a key that a lower layer binds.
-- Plugins bind keys only for their own panel types, which work while such a panel has focus. Presets and the user's settings can also bind keys for a workspace or the whole tool, to any service function: a paint preset binds Ctrl+N to `canvas.new`, so it works even while the palette has focus. The highest layer wins, then the most specific binding: a panel type, a workspace, the whole tool. A key that no binding takes goes to the focused panel, so a panel can run its own key logic, such as modal editing, and its own sequences of keys.
+- Plugins bind keys only for their own panel types, which work while such a panel has focus, one type or all of them. Presets and the user's settings can also bind keys for a workspace or the whole tool, to any service function: a paint preset binds Ctrl+N to `canvas.new`, so it works even while the palette has focus. The highest layer wins, then the most specific binding: a panel type, a plugin, a workspace, the whole tool. A key that no binding takes goes to the focused panel, so a panel can run its own key logic, such as modal editing, and its own sequences of keys.
 - A key press that runs a binding types no text, and while the focused panel takes text, keys without Ctrl, Alt or Super go to it.
 - The core takes one combination for itself, the **core prefix**, Alt+W by default: one more key after it chooses a core action, as tmux's prefix and Vim's Ctrl+W do (7.5). It always wins, and the user can also bind core actions to keys of their own.
 - Bindings follow what a key means on the user's layout, not where it sits; on layouts with non-Latin letters, letter keys count as their English letters (7.3).
@@ -741,12 +748,13 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 7.8 Binding keys
 
-- Keys are bound in keys tables (7.8). A field whose value is the name of a function binds a key combination to it, and `false` removes the key from the layers below. A field named `prefix` holds the keys after the core prefix (7.5). A field named after a panel type holds the keys that work while a panel of that type has focus.
+- Keys are bound in keys tables (7.8). A field whose value is the name of a function binds a key combination to it, and `false` removes the key from the layers below. A field named `prefix` holds the keys after the core prefix (7.5). A field named after a panel type holds the keys that work while a panel of that type has focus, and a field named after a plugin the keys that work while a panel of any of the plugin's types has focus. A plugin's name has no dot (9.2), and a panel type's has one (9.9), so the field's name tells them apart.
 
   ```lua
   keys = {
     ["Ctrl+N"] = "canvas.new",                     -- for the whole tool
     prefix = { G = "canvas.grid" },                -- after the core prefix
+    canvas = { ["Ctrl+Z"] = "canvas.undo" },       -- while any of the canvas plugin's panels has focus
     ["canvas.view"] = { Delete = "canvas.clear" }, -- while a canvas has focus
   }
   ```
@@ -755,16 +763,16 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
   | Layer    | Keys tables                                                                                               |
   | -------- | --------------------------------------------------------------------------------------------------------- |
-  | Defaults | The core's settings file (12.1), and the keys that plugins bind for their panel types and after the prefix |
+  | Defaults | The core's settings file (12.1), and the keys that plugins bind for their panel types, for themselves and after the prefix |
   | Preset   | The preset's `keys`, and each workspace's `keys` (13.2)                                                   |
   | User     | The user's settings file: its `keys` for every tool, and its `keys` for the tool, whose fields win (12.3) |
 
-- A key press runs the binding of the highest layer that binds it. Within a layer, a panel type's keys win over a workspace's, and a workspace's over the whole tool's. A key that the winning binding removes goes to the focused panel.
-- `ECSKey_Bind(plugin, scope, key, function)`, and in Lua `ecs.key.bind(scope, key, function)`, give a default key to a function for one of the plugin's own panel types; with the scope `prefix`, a key after the prefix to one of the plugin's own functions, such as the settings window's `,`. The core's keys after the prefix win over a plugin's, and of two plugins that give the same key, the one loaded last wins. Plugins have no function for other keys.
-- `ECSKey_List(list)`, in Lua `ecs.key.list()`, lists every binding of the keys tables in effect, the plugins' keys for their panel types among the defaults: its key, its function or false, its scope (the whole tool, `prefix` or a panel type), its layer, whether it comes from the current workspace, and whether it is the binding of its key that runs in its scope.
+- A key press runs the binding of the highest layer that binds it. Within a layer, a panel type's keys win over its plugin's, and a plugin's over the whole tool's; of the same scope, the current workspace's keys win over the preset's own. A key that the winning binding removes goes to the focused panel.
+- `ECSKey_Bind(plugin, scope, key, function)`, and in Lua `ecs.key.bind(scope, key, function)`, give a default key to a function for one of the plugin's own panel types; with the plugin's own name as the scope, for all of its panel types, so a tool whose undo works in each of its panels binds it once; with the scope `prefix`, a key after the prefix to one of the plugin's own functions, such as the settings window's `,`. A plugin's key for one of its panel types wins over its key for all of them. The core's keys after the prefix win over a plugin's, and of two plugins that give the same key, the one loaded last wins. Plugins have no function for other keys.
+- `ECSKey_List(list)`, in Lua `ecs.key.list()`, lists every binding of the keys tables in effect, the plugins' keys for their panel types among the defaults: its key, its function or false, its scope (the whole tool, `prefix`, a plugin or a panel type), its layer, whether it comes from the current workspace, and whether it is the binding of its key that runs in its scope. A plugin's binding that runs in its scope may still lose to one for a panel type, while a panel of that type has focus.
 - `ECSKey_Set(scope, key, function)`, in Lua `ecs.key.set(scope, key, function)`, changes a key in the user's settings file, as `ECSSetting_Set` changes a setting (12.2): a function's name binds it, false removes it from the layers below, and nil takes the user's binding away. It changes the tool's own part of the file if that part binds the key in the scope already, and the part for every tool otherwise, and writes the file.
 - `ECSKey_ListFunctions(list)`, in Lua `ecs.key.functions()`, lists the functions a key can run, with their descriptions and owners. So a plugin, such as the standard plugin keys, shows and changes every binding.
-- A key text that is not a key combination, or a table named neither `prefix` nor like a panel type, is reported. Once the session is built, a key that runs a function its owner does not have is reported, if the owner runs (12.1).
+- A key text that is not a key combination is reported. Once the session is built, a key that runs a function its owner does not have is reported, if the owner runs (12.1).
 - A function bound by name takes no arguments, or one argument: the focused panel. Its signature is `void()` or `void(handle<ecs.panel>)`.
 - The core registers its own bindable actions as functions under `ecs`, for example `ecs.layout.focusLeft` and `ecs.layout.maximize`. So keys tables name them like any plugin function.
 - Each of them is also a function of the `ecs` module with the same name, such as `ecs.layout.maximize()`. A key calls it with no arguments, which is the user's action: it acts on the focused panel, and locks stop it (6.4).
@@ -775,7 +783,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - `ECSPanel_AcceptDrops(panel, types, count)`, and in Lua `panel:acceptDrops(types)`, set the types of data a panel accepts, such as `color`. A new call replaces the list. A faulted panel accepts nothing, and a restarted panel sets its list again.
 - `ECSPanel_StartDrag(panel, type, value)`, and in Lua `panel:startDrag(type, value)`, start dragging data while a pointer button that was pressed on the panel is held, usually from its `PointerDown` or `PointerMove` event. The core copies the value.
-- While data is dragged, the panel that started the drag gets no pointer moves. The core outlines every shown panel that accepts the type, and fills the one under the pointer. Escape cancels the drag.
+- While data is dragged, the panel that started the drag gets no pointer moves. Another panel under the pointer gets them, as when no button is held, so a panel that accepts the type can show where the data will land; the focus does not move to it. The core outlines every shown panel that accepts the type, and fills the one under the pointer. Escape cancels the drag.
 - On release, the panel under the pointer gets a `Drop` event if it accepts the type, even the panel that started the drag. The event holds the position and the data, which `ECSDropData_GetType` and `ECSDropData_GetValue` read during the event. A Lua panel's event has the fields `dataType` and `value`. The panel that started the drag still gets its `PointerUp`.
 - Files and text dropped from other applications arrive the same way: files as `file-list`, a list of paths, and text as `text`, a string. The core learns their type only when they are dropped, so it marks no panel before.
 - Data dropped on a panel that does not accept its type is dropped nowhere.
@@ -804,6 +812,7 @@ A plugin can declare its own events, such as `canvas.selectionChanged`, and emit
 - A plugin declares the named events it emits by their local names: `ECSEvent_Declare(plugin, "selectionChanged", description)` declares `canvas.selectionChanged`, whose name starts with the plugin's name. Only the declaring plugin emits it: `ECSEvent_Emit(plugin, name, value)`. The value may be `NULL`; the core copies it.
 - `ECSEvent_Subscribe(plugin, &subscription, name, fn, data)` calls `fn(data, name, value)` for each emission; `ECSEvent_Unsubscribe` ends it. A subscriber hears the core's events, its own, and those of plugins its manifest depends on. The event must be declared first, so a plugin subscribes after its dependencies have loaded.
 - Emissions are queued like every other event (8.2).
+- A panel type that names an event in `redrawOn` draws its panels again at each emission, without a subscription (4.3).
 - When a plugin fails, its events, its subscriptions and the subscriptions to its events are removed.
 - Lua: `ecs.event.declare(name, description)`, `ecs.event.emit(name, value)` and `ecs.event.subscribe(name, callback)`, which returns a subscription with `unsubscribe()`. `callback` gets the name and the value.
 
@@ -848,14 +857,14 @@ plugins/
 return {
   name = "canvas",              -- unique, the folder's name; the prefix of everything it registers
   version = "1.2.0",            -- semantic version
-  api = 3,                      -- plugin API version it was built for
+  api = 4,                      -- plugin API version it was built for
   type = "native",              -- "native" or "lua"
   description = "Paint canvas", -- optional
   depends = { ui = "1.0" },     -- optional; plugin name = minimum version
 }
 ```
 
-- `name`, `version`, `api` and `type` are required, and `name` must be the folder's name. A field of the wrong type, or a field the manifest does not know, is an error too.
+- `name`, `version`, `api` and `type` are required, and `name` must be the folder's name, without a dot, as the names a plugin registers start with it and a dot (9.9). A field of the wrong type, or a field the manifest does not know, is an error too.
 - Versions follow semantic versioning. A dependency's version means "this version, or a later one with the same major number": `"1.2"` accepts 1.2.0 up to, but not including, 2.0.0.
 - Manifests are read as data, without running plugin code (11.2).
 - A manifest describes the plugin to the core. It holds no build settings.

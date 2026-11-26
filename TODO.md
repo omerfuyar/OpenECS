@@ -8,17 +8,11 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **Linux first.** Linux is the priority. Windows is supported; other platforms are not worked on for now, as each one needs upkeep (DESIGN 19.4).
 - **Bugs** that the owner reports from testing.
-- **Editors that are simpler to build.** What each panel of an editor writes again today, and what an editor needs and writes itself: the panel type's `redrawOn`, keys for all of a plugin's panels, and the pointer's moves while data is dragged (Tasks); `ui.panelType` and the plugin history (Standard plugins).
+- **Editors that are simpler to build.** What each panel of an editor writes again today, and what an editor needs and writes itself: `ui.panelType` and the plugin history (Standard plugins).
 
 ## Tasks
 
 - **SDL's tray closes the D-Bus connection of notifications.** On Linux, SDL's D-Bus tray calls `SDL_DBus_Quit` when its last tray goes, which closes the connection that SDL's notifications share: their clicks stop coming after notify's last tray goes. At exit, `SDL_CleanupNotifications` then removes a filter from a new connection, which libdbus aborts on; the core makes that a warning for its quit (`ECSIApp_QuitSDL`), so the workaround can go once SDL is fixed. It is SDL's bug, still in its `main`, for the owner to report: SDL takes no contributions written by AI.
-- **The workspaces' list chooses the first workspace.** The title bar's workspaces' menu and `ecs.workspace.menu` open with the first entry chosen. They should choose the current workspace, so Down goes to the next one; c12_sketch's `test-workspaces.lua` then presses Down once for each step.
-- **Tests still count Down to choose a menu's entry.** c12_sketch's `test-tab-menu.lua` chooses by label with `test.menu` (DESIGN 17.5); `test-workspaces.lua`, c6_keys, s5_files and s7_first_party's tests still press Down a counted number of times, so an entry that is added or hidden breaks them. Choose by label there too.
-- **A menu's keys can reach its right edge.** In the panel menu of a clock in c12_sketch, "Alt+W, M" touches the menu's edge. The menu should be as wide as its widest label and keys, with its padding.
-- **A panel type redraws on events.** Plugins keep a table of their open panels only to redraw them all when one of their events comes, such as std's files, the template's notes and c5_services' tally. A field `redrawOn` of the panel type, in `ECSPanelTypeDesc` and `ecs.PanelTypeDesc`, names events; when one is emitted, every panel of the type is drawn again. The plugins that keep such tables then drop them, in the same piece of work.
-- **Keys for all of a plugin's panels.** `ecs.key.bind` takes one panel type, or `"prefix"`. A tool whose undo, redo and save work in each of its panels binds each key once for each type. A scope of the plugin's own name binds a key in every panel type of the plugin.
-- **While data is dragged, no panel gets the pointer's moves.** DESIGN 7.9 says only the panel that started the drag gets none, but `ECSIInput_MovePointer` (`src/interface/Input.c:665`) gives them to no panel. So a list or a tree that accepts the data cannot show the line where it will land before the release; ui's `onDrop` tells it only then. Give the moves to the panel under the pointer, as 7.9 says.
 - **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now, and aarch64 waits for 1.0.0 (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
 
 What follows comes from an audit of the documents against what the code does, each checked at the lines it names. "Doc" is the side the item recommends changing when it says so.
@@ -110,7 +104,7 @@ The examples of [OpenECS-examples](https://github.com/omerfuyar/OpenECS-examples
 
 ## Template
 
-[OpenECS-template](https://github.com/omerfuyar/OpenECS-template) follows OpenECS's `dev`. From the audit: its manifests name API 3, as `include/OpenECS.h:13` does, and its test passes with a Debug build of OpenECS `b6ddeb9`, but it shows none of the core's last week of features. Its README.md and GUIDE.md change only after the owner reviews the change.
+[OpenECS-template](https://github.com/omerfuyar/OpenECS-template) follows OpenECS's `dev`. From the audit: its manifests name API 4, as `include/OpenECS.h:13` does, and its test passes with a Debug build of OpenECS `b6ddeb9`, but it shows none of the core's last week of features. Its README.md and GUIDE.md change only after the owner reviews the change.
 
 - **README and GUIDE send people to a release, which cannot run the template.** `README.md:5` "Unpack an OpenECS release" and `GUIDE.md:7` "Download the archive from OpenECS's releases"; the template follows `dev` (`CLAUDE.md:30`) and uses what 0.7.0 lacks, such as LuaJIT, whose syntax its `.luarc.json` names. Until 0.8.0, say to build OpenECS's `dev` (OpenECS's README, "Building").
 - **Its text says only Debug builds run tests.** `GUIDE.md:137`, `test.lua:1` and `.github/workflows/checks.yml:43`; every build runs them, and Debug adds the sanitizers (`DESIGN.md:1496`). Fix the three.

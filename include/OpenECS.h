@@ -10,7 +10,7 @@
 #define OPENECS_VERSION "0.8.0-dev"
 
 /// @brief Version of this plugin interface. The core refuses a plugin whose manifest names another version.
-#define OPENECS_API_VERSION 3
+#define OPENECS_API_VERSION 4
 
 #if defined(_WIN32)
 #ifdef OPENECS_CORE
@@ -314,13 +314,15 @@ typedef struct ECSPopupItem
 /// @brief Describes a panel type. Passed to ECSPanelType_Register.
 typedef struct ECSPanelTypeDesc
 {
-    const char *name;       // the local name, such as "view"; the core names the type with the plugin's name, "canvas.view"
-    const char *title;      // default title for tabs and menus
-    u32 stateVersion;       // version of the saved state
-    ECSSurfaceType surface; // ECSSurfaceType_Pixels, or ECSSurfaceType_Gpu to draw with SDL's GPU API
-    bool continuous;        // true: Draw runs every frame while the panel is shown, for animation; false: only when it is shown, resized or asks with ECSPanel_Redraw
-    f32 minWidth;           // in layout units, 0 for none
-    f32 minHeight;          // in layout units, 0 for none
+    const char *name;            // the local name, such as "view"; the core names the type with the plugin's name, "canvas.view"
+    const char *title;           // default title for tabs and menus
+    u32 stateVersion;            // version of the saved state
+    ECSSurfaceType surface;      // ECSSurfaceType_Pixels, or ECSSurfaceType_Gpu to draw with SDL's GPU API
+    bool continuous;             // true: Draw runs every frame while the panel is shown, for animation; false: only when it is shown, resized or asks with ECSPanel_Redraw
+    f32 minWidth;                // in layout units, 0 for none
+    f32 minHeight;               // in layout units, 0 for none
+    const char *const *redrawOn; // names of events, such as "files.changed": each one emitted draws every panel of the type again; nullptr for none
+    usz redrawOnCount;           // number of names in redrawOn
 
     // required
     ECSPanelCreateFunction Create;
@@ -583,7 +585,8 @@ OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFun
 /// @lua none: Lua code runs only on the main thread
 OPENECS_EXPORT SHUWUR SHUResult ECS_RunOnMainThread(ECSTaskFunction function, void *data);
 
-/// @brief Registers a panel type. The core copies the description and its texts.
+/// @brief Registers a panel type. The core copies the description and its texts. Each name in redrawOn is matched when an event is emitted, so the event
+/// may be declared later or never; an event declared now by a plugin that the type's plugin does not depend on is a misuse, as ECSEvent_Subscribe's is.
 /// @param plugin The plugin that provides the panel type.
 /// @param desc Description of the panel type, with its local name; the core adds the plugin's name and a dot.
 /// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the description is invalid, or SHUResult_ErrAllocation.
@@ -850,19 +853,22 @@ OPENECS_EXPORT void ECSHandle_Forget(void *object);
 /// @lua none: Lua frees an object with its provider's free function, or lets go of its handle
 OPENECS_EXPORT void ECSHandle_Free(ECSPlugin plugin, const char *type, void *object);
 
-/// @brief Gives a function a default key: for one of the plugin's panel types, which works while a panel of that type has focus; or, with the scope "prefix", after the core prefix, for one of the plugin's own functions.
-/// The core's keys after the prefix win over a plugin's. Presets and the user's settings can change it. Main thread only.
+/// @brief Gives a function a default key: for one of the plugin's panel types, which works while a panel of that type has focus; with the plugin's
+/// own name, for all of its panel types; or, with the scope "prefix", after the core prefix, for one of the plugin's own functions. A key for a panel
+/// type wins over the same key for the plugin. The core's keys after the prefix win over a plugin's. Presets and the user's settings can change it.
+/// Main thread only.
 /// @param plugin The plugin. It owns the panel type, or the function for "prefix".
-/// @param scope Name of the panel type, such as "canvas.view", or "prefix".
+/// @param scope Name of the panel type, such as "canvas.view", the plugin's name, such as "canvas", or "prefix".
 /// @param key The key combination, such as "Ctrl+E".
 /// @param function Name of the function the key runs. It takes no arguments, or the focused panel: void() or void(handle<ecs.panel>).
-/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the panel type or the function after the prefix is not the plugin's or the key is not a key combination, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the scope is neither the plugin's name nor one of its panel types, the function after the
+/// prefix is not the plugin's, or the key is not a key combination, or SHUResult_ErrAllocation.
 /// @lua ecs.key.bind
 OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *scope, const char *key, const char *function);
 
 /// @brief Lists every key binding of the keys tables in effect (DESIGN 7.8): the core's settings file, the plugins' keys for their panel types, the
 /// preset, the current workspace and the user's settings. Each is a table of its key, as written; its function, or false for a key that the binding
-/// removes; its scope, missing for the whole tool, "prefix" for the keys after the core prefix, or a panel type; its layer, "default", "preset" or
+/// removes; its scope, missing for the whole tool, "prefix" for the keys after the core prefix, a plugin's name for all of its panel types, or a panel type; its layer, "default", "preset" or
 /// "user"; workspace, whether it comes from the current workspace; and active, whether it is the binding of its key that runs in its scope. Main thread only.
 /// @param retList The value to fill with the list.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
@@ -871,7 +877,8 @@ OPENECS_EXPORT SHUWUR SHUResult ECSKey_List(ECSValue *retList);
 
 /// @brief Changes a key in the user's settings file and writes the file (DESIGN 7.8). The tool's own part of the file is changed if it binds the key in
 /// the scope already, and the part for every tool otherwise. Main thread only.
-/// @param scope nullptr for the whole tool, "prefix" for the keys after the core prefix, or a panel type, such as "canvas.view".
+/// @param scope nullptr for the whole tool, "prefix" for the keys after the core prefix, a plugin's name for all of its panel types, such as "canvas",
+/// or a panel type, such as "canvas.view".
 /// @param key A key combination, such as "Ctrl+E".
 /// @param function A function's name binds the key; false removes the key from the layers below; nil takes the user's binding away, so the layers below apply.
 /// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the key is not a key combination, the scope is none of those, or the function none of
@@ -1193,7 +1200,7 @@ OPENECS_EXPORT void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f3
 /// @lua panel:acceptDrops
 OPENECS_EXPORT SHUWUR SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char *const *types, usz count);
 
-/// @brief Starts dragging data from a panel, while a pointer button that was pressed on the panel is held, usually from its PointerDown or PointerMove event. The panel then gets no pointer moves until the release, and still gets its PointerUp. The core marks the panels that accept the type; on release, the one under the pointer gets a Drop event. Escape cancels. Main thread only.
+/// @brief Starts dragging data from a panel, while a pointer button that was pressed on the panel is held, usually from its PointerDown or PointerMove event. The panel then gets no pointer moves until the release, and still gets its PointerUp; another panel under the pointer gets them. The core marks the panels that accept the type; on release, the one under the pointer gets a Drop event. Escape cancels. Main thread only.
 /// @param panel The panel the drag starts from.
 /// @param type The type of the data, such as "color".
 /// @param value The data, or nullptr. The core copies it.

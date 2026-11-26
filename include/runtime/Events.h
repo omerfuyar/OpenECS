@@ -9,6 +9,9 @@
 /// @brief Function that delivers a queued event to its target.
 typedef void (*ECSIEventDeliverFunction)(void *target, const ECSPanelEvent *event);
 
+/// @brief Function that hears each named event after its subscribers, with the plugin that declared it, nullptr for the core's.
+typedef void (*ECSIEventHeardFunction)(const char *name, ECSPlugin owner);
+
 /// @brief Declares the core's named events.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 SHUWUR SHUResult ECSIEvents_Initialize(void);
@@ -21,6 +24,15 @@ void ECSIEvents_EmitCore(const char *name, const ECSValue *value);
 /// @brief Subscribes to a named event like ECSEvent_Subscribe, with a function that releases the data when the subscription is freed.
 /// @param release Function called with the data when the subscription is freed, or nullptr.
 SHUWUR SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscription, const char *name, ECSEventFunction function, ECSTimerFunction release, void *data);
+
+/// @brief Sets the function that hears every named event after its subscribers. Panels is above Events, so App gives it as it starts.
+void ECSIEvents_SetHeard(ECSIEventHeardFunction Heard);
+
+/// @brief Finds who declared a named event.
+/// @param name Name of the event.
+/// @param retOwner The plugin that declared it, or nullptr for the core's.
+/// @return true if the event is declared.
+bool ECSIEvents_FindOwner(const char *name, ECSPlugin *retOwner);
 
 /// @brief Removes a plugin's named events and subscriptions, and the subscriptions to its events.
 /// @param plugin The plugin.

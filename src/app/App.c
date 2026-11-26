@@ -557,6 +557,7 @@ void ECSIApp_Start(const ECSIArguments *arguments)
     // read the preset first, because SDL needs the tool's identity before it starts
     ECSIApp_ExitOnFailure(ECSILua_Initialize(), "starting Lua", nullptr);
     ECSIApp_ExitOnFailure(ECSIEvents_Initialize(), "declaring the core's events", nullptr);
+    ECSIEvents_SetHeard(ECSIPanels_Hear);
     ECSIApp_ExitOnFailure(ECSITasks_Initialize(ECSIApp_EndThread), "preparing worker threads", nullptr);
     ECSIApp_ExitOnFailure(ECSIServices_Initialize(), "preparing services", nullptr);
     ECSIApp_ExitOnFailure(ECSIServices_RegisterCore("ecs.app.quit", (ECSFunction)ECSApp_Quit, "void()", "Quit"), "registering the core's functions", nullptr);

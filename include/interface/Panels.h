@@ -16,6 +16,8 @@ typedef struct ECSIPanelType
     ECSPlugin plugin;
     void *typeData;     // what the Bindings module keeps for a Lua panel type, or nullptr
     char **menuEntries; // stb_ds array of the functions the type adds to its panels' menu
+    char **redrawOn;    // stb_ds array of the type's own copies of desc.redrawOn, which desc no longer points to
+    u32 heard;          // grows with each emission of an event of redrawOn, so every panel of the type draws again
 } ECSIPanelType;
 
 /// @brief A panel: one instance of a panel type, placed in the layout.
@@ -32,6 +34,7 @@ struct ECSIPanel
     bool drawn;     // pixels type: its pixels hold the picture of its last Draw
     f32 drawnScale; // the scale of its last Draw; 0 before the first
     u32 drawnLook;  // the look of its last Draw, which changes with the settings
+    u32 drawnHeard; // its type's heard at its last Draw
     bool unsaved;   // the panel has unsaved work
     f32 x;          // rectangle in layout units, set by the layout
     f32 y;
@@ -68,6 +71,12 @@ void ECSIPanels_SetScale(f32 scale);
 
 /// @brief Draws every panel again, whole, when it is next shown, as a setting that changed may change how it looks.
 void ECSIPanels_RedrawAll(void);
+
+/// @brief Draws every panel again, when it is next shown, whose type names the event in its redrawOn and may hear it: the event is the core's, its
+/// own plugin's, or of a plugin its own depends on. Events calls it after the event's subscribers.
+/// @param name Name of the event.
+/// @param owner The plugin that declared it, or nullptr for the core's.
+void ECSIPanels_Hear(const char *name, ECSPlugin owner);
 
 /// @brief Whether a tab's title or unsaved mark changed since ECSIPanels_ClearTabsChanged, so the interface needs a frame.
 bool ECSIPanels_TabsChanged(void);
