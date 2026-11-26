@@ -62,7 +62,7 @@ The implementation has started. Build it in small milestones, and keep DESIGN.md
 
 - Changing anything that is marked as decided.
 - Adding a dependency.
-- Changing submodules, except moving `std/` and `examples/` to a newer commit of their repository's `dev` (DESIGN.md, section 17.7).
+- Changing submodules, except moving `std/` and `examples/` to a newer commit of their repository's `dev`, or to the head of their branch of the same name (DESIGN.md, section 17.7).
 - Editing a README.md, in any of the project's repositories, or the template's GUIDE.md. They are written for people: show the owner the change you propose, and edit only after the owner reviews it.
 
 **Never**

@@ -5,7 +5,7 @@ description: Move OpenECS's std/ and examples/ submodules to a newer commit of t
 
 # Move the submodules
 
-A submodule names one commit of its repository's `dev`, or of `main` for a release; OpenECS moves it forward in a pull request (DESIGN.md, section 17.7). Never change any other submodule without asking the owner.
+A submodule names one commit of its repository's `dev`, or of `main` for a release, or the head of a branch of the same name until that branch is merged; OpenECS moves it forward in a pull request (DESIGN.md, section 17.7). Never change any other submodule without asking the owner.
 
 1. On an OpenECS branch from `dev`, move each submodule that changed:
 
@@ -15,7 +15,7 @@ A submodule names one commit of its repository's `dev`, or of `main` for a relea
    git submodule update --init --recursive std examples
    ```
 
-   For a branch that is not merged yet, check out that branch's commit instead, and move the submodule again to `dev` once it is merged.
+   For a change that spans the repositories, check out the head of the branch of the same name instead (the pull-requests skill). Merged with a merge commit, that head stays in `dev`, so the submodule needs no second move.
 
 2. Verify with the verify skill: the new commits must build and pass the tests with OpenECS.
 3. Commit with one line per moved submodule that says what it brings, such as `- std/ moves to OpenECS-std's dev: the panels plugin`.

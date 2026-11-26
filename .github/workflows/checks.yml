@@ -2,6 +2,7 @@
 # Windows builds Debug and Release with LLVM-MinGW, and runs the examples' tests, without the analyzer and the sanitizers, which MinGW does not have.
 # The examples are the tests: each one's test runs its preset, so they check the core and the standard plugins together.
 # The Release builds, on Linux and Windows, run only for a release: on pull requests into main, pushes to main and by hand.
+# A change of documents alone, the .md files, skips the builds and tests; Format and Lua (LuaLS) always run, and a run by hand runs everything.
 name: Checks
 
 on:
@@ -20,6 +21,23 @@ permissions:
   contents: read
 
 jobs:
+  # tells the other jobs whether a file other than a document changed: a change of documents alone skips the builds and tests (DESIGN 19.3)
+  changes:
+    name: Changes
+    runs-on: ubuntu-24.04
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Name what changed
+        id: changes
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: .github/scripts/changes.sh
+
   format:
     name: Format
     runs-on: ubuntu-24.04
@@ -37,6 +55,9 @@ jobs:
 
   debug-linux:
     name: Debug (Linux)
+    needs: changes
+    # skipped when only documents changed; it runs when the job changes gives no answer
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -97,10 +118,11 @@ jobs:
           name: debug-linux-logs
           path: build/*.log
 
-  # the Release builds run for a release: on pull requests into main, pushes to main and by hand; a skipped job counts as passed
+  # the Release builds run for a release: on pull requests into main, pushes to main and by hand, unless only documents changed; a skipped job counts as passed
   release-linux:
     name: Release (Linux)
-    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.ref == 'refs/heads/main'
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -139,6 +161,9 @@ jobs:
 
   windows:
     name: Windows
+    needs: changes
+    # skipped when only documents changed; it runs when the job changes gives no answer
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: windows-2025
     defaults:
       run:
