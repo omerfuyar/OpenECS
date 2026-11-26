@@ -8,7 +8,7 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **Linux first.** Linux is the priority. Windows is supported; other platforms are not worked on for now, as each one needs upkeep (DESIGN 19.4).
 - **Bugs** that the owner reports from testing.
-- **Editors that are simpler to build.** What each panel of an editor writes again today, and what an editor needs and writes itself: `ui.panelType` and the plugin history (Standard plugins).
+- **Editors that are simpler to build.** What each panel of an editor writes again today, and what an editor needs and writes itself: the plugin history (Standard plugins).
 
 ## Tasks
 
@@ -60,7 +60,6 @@ The plugins of [OpenECS-std](https://github.com/omerfuyar/OpenECS-std); [its DES
 - **fs.** Watching folders on macOS reads each folder again every half second. FSEvents would tell changes as they happen.
 - **fs: more of what a files panel needs.** Moving a file to the system's trash, for the files panel's `delete`; and a file's permissions, such as whether it runs as a program.
 - **history: undo and redo for any tool.** A standard plugin, as every editor needs it. A plugin pushes records, each a label with an undo and a redo function. history gives undo and redo as functions, merges quick changes of one value into one record, and keeps a save point that sets the unsaved mark of the panels it names. A History panel lists the records, and a click on one undoes or redoes until it is the last one done. Open: one history for the tool, or one for each document a tool has open.
-- **ui.panelType.** Each panel type built with ui gives `event = ui.event`, calls `ui.forget` in `destroy` and `ui.show` in `draw`. `ui.panelType(desc)` would register a panel type whose `view(state)` gives the element tree, and do the rest. Std's panels, the examples and the template then use it, in the same piece of work.
 - **The hot standard plugins in C.** Std's plugins should be as fast as they can be, so the ones that run in every frame of every tool are written in C, and the high-level panels that a user opens now and then stay in Lua: files, console, settings, keys, profiler, launcher, plugins, panels and viewer. ui comes first: every panel built with it lays out, measures text and paints through it on each frame it draws, and its `init.lua`, about 5,800 lines, is at Lua's limit of 200 local variables in its main chunk, so a change that adds a top-level local does not load. Its Lua functions stay as they are for Lua plugins, called through the plugin interface as C plugins' are, so a feature still works from C and from Lua alike. Decide the elements' model first, such as what a label may hold, so the rewrite is done once. Measure a tool's frame with the profiler before and after. Open: whether ui's C builds on Clay, which the core uses for its own interface but hides from plugins, so std would carry its own copy; and whether another plugin is hot enough to follow.
 - **ui: a double click on an item.** `tree` and `list` give a click to `onActivate`, so the files panel (29) and the console (31) each time a second click themselves, within 0.4 seconds. They should give a double click to its own handler.
 
