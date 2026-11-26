@@ -3577,7 +3577,8 @@ void ECSIWindow_ShowMenu(usz level, ECSPanel panel, SDL_FRect anchor, const char
         int keyWidth = 0;
         TTF_GetStringSize(font, lines[2 * i + 1], 0, &labelWidth, nullptr);
         TTF_GetStringSize(font, lines[2 * i] != nullptr ? lines[2 * i] : "", 0, &keyWidth, nullptr);
-        width = SDL_max(width, (f32)(labelWidth + keyWidth) + 3.0f * ECSIWindow_Px(OPENECS_MENU_ITEM_PADDING));
+        // an entry has the padding at both ends, and a gap on each side of the room between its label and its keys
+        width = SDL_max(width, (f32)(labelWidth + keyWidth) + 4.0f * ECSIWindow_Px(OPENECS_MENU_ITEM_PADDING));
     }
 
     menu->itemHeight = (f32)TTF_GetFontHeight(font) + ECSIWindow_Px(6.0f);
