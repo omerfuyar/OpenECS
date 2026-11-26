@@ -123,20 +123,21 @@ The sndio audio target is unavailable on Fedora (but probably not what you shoul
 ##### zypper
 
 ``` shell
-sudo zypper in libunwind-devel libusb-1_0-devel Mesa-libGL-devel libxkbcommon-devel libdrm-devel libgbm-devel pipewire-devel libpulse-devel sndio-devel Mesa-libEGL-devel alsa-devel xwayland-devel wayland-devel wayland-protocols-devel libthai-devel fribidi-devel libXi-devel libXcursor-devel libXi-devel libX11-devel libXext-devel libXfixes-devel libXrandr-devel libXrender-devel libXss-devel libXtst-devel
+sudo zypper in git libunwind-devel libusb-1_0-devel Mesa-libGL-devel libxkbcommon-devel libdrm-devel libgbm-devel pipewire-devel libpulse-devel sndio-devel Mesa-libEGL-devel alsa-devel xwayland-devel wayland-devel wayland-protocols-devel libthai-devel fribidi-devel libXi-devel libXcursor-devel libXi-devel libX11-devel libXext-devel libXfixes-devel libXrandr-devel libXrender-devel libXss-devel libXtst-devel
 ```
 
 ##### pacman
 
 ``` shell
-sudo pacman -S alsa-lib cmake hidapi ibus jack libdecor libthai fribidi libgl libpulse libusb libx11 libxcursor libxext libxfixes libxi libxinerama libxkbcommon libxrandr libxrender libxss libxtst mesa ninja pipewire sndio vulkan-driver vulkan-headers wayland wayland-protocols
+sudo pacman -S git alsa-lib cmake hidapi ibus jack libdecor libthai fribidi libgl libpulse libusb libx11 libxcursor libxext libxfixes libxi libxinerama libxkbcommon libxrandr libxrender libxss libxtst mesa ninja pipewire sndio vulkan-driver vulkan-headers wayland wayland-protocols
 ```
 
 #### Windows
 
-LLVM-MinGW with the UCRT runtime gives the compiler, clang, and CMake and Ninja build SDL. In PowerShell:
+Git clones the repository and its submodules. LLVM-MinGW with the UCRT runtime gives the compiler, clang, and CMake and Ninja build SDL. In PowerShell:
 
 ``` shell
+winget install --exact --id Git.Git
 winget install --exact --id MartinStorsjo.LLVM-MinGW.UCRT
 winget install --exact --id Kitware.CMake
 winget install --exact --id Ninja-build.Ninja
