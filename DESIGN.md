@@ -83,7 +83,7 @@ What depends on the platform stays behind an interface, so porting changes as li
 - **Security.** There is no permission system and no protection against malicious plugins or files.
 - **Accessibility.** The application is not designed with accessibility in mind.
 - **Look and feel.** A theme is a set of core settings (colours, font, sizes) that the core's interface uses and plugins can read (12.4). OpenECS ships a dark and a light theme, and follows the system's choice by default.
-- **Undo and redo.** Each panel or plugin keeps its own history and binds its own keys; the core keeps no global history.
+- **Undo and redo.** The core keeps no history. The standard plugin history keeps them for any tool: a plugin pushes its changes into a history it names, and Ctrl+Z and Ctrl+Y act on the focused panel's ([OpenECS-std DESIGN.md](https://github.com/omerfuyar/OpenECS-std/blob/dev/DESIGN.md), history).
 - **Not in the design:** automatic saving while OpenECS runs, crash recovery, and a library version of OpenECS.
 
 ### 0.5 Architecture
@@ -620,7 +620,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 - The panel's menu: close, close the group's panels, restart, reload its plugin, maximize, pop out, lock, reopen the last closed panel; the submenus Tabs (each panel of the group, the shown one marked with `•`; choosing one shows it), Move (left, right, up, down) and To workspace (each other workspace, by number and name, then a new workspace); then the entries of the panel's type, under a heading with its plugin's name, which a line sets apart. A group of one panel has no Tabs and no entry that closes the group, which close does.
 - The entries of a type: `ECSPanelType_AddMenuEntry(plugin, type, function)`, or `ecs.panel.addMenuEntry(type, function)` in Lua, adds a service function whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and the key the plugin bound to the same function for the type.
 - The title bar's menus (6.11) are the tool's menu: what acts on the whole tool is in them, and in no other menu. `ecs.app.menu` opens the first of them below it; with `ecs.titleBar` off, or when the window is too narrow to show them all, it shows one menu near the focused panel's top left corner, whose submenus are the title bar's menus.
-- The title bar's menu Tools holds the functions that plugins add for the whole tool, by their labels, whatever order the plugins load in: `ECSApp_AddMenuEntry(plugin, function)`, or `ecs.app.addMenuEntry(function)` in Lua, adds one of the plugin's own functions, whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and its keys after the prefix. The standard plugins add the settings window, the key list, the panel list, the plugin list, the launcher and the profiler.
+- The title bar's menu Tools holds the functions that plugins add for the whole tool, by their labels, whatever order the plugins load in: `ECSApp_AddMenuEntry(plugin, function)`, or `ecs.app.addMenuEntry(function)` in Lua, adds one of the plugin's own functions, whose signature is `void(handle<ecs.panel>)` or `void()`. The entry shows the function's description and its keys after the prefix. The standard plugins add the settings window, the key list, the panel list, the plugin list, the launcher, the profiler and the History panel.
 - The menu of workspaces lists each workspace by number and name, marks the current one with `•`, and switches to the one chosen. The title bar's workspaces' menu opens it (6.11), and `ecs.workspace.menu` shows it near the focused panel's top left corner.
 - A menu opens with its first entry chosen, and the menu of workspaces with the current workspace, so Down chooses the next one. Up and Down choose an entry. Right or Enter opens a submenu; Left or Escape closes it. Enter runs an entry. In the title bar's menus, Left and Right go to the menu beside, when they open or close no submenu. Escape in the first menu, a press outside the menus, or the core prefix (7.4) closes them. While a menu is open, pointer events go to the menus only, and so do key presses after the prefix.
 - A tab's close button and a middle click on a tab close its panel; panels of a locked group have no close button.
@@ -1205,7 +1205,7 @@ return {
 }
 ```
 
-- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.5), `keys`, the key list, which also lists the keys after the prefix (7.5), `panels`, the list of panel types (12.6), `plugins`, the list of plugins (12.7), `launcher`, the list of presets and sessions (13.8), so every tool can go to another one, and `profiler`. Each gives its own function a key after the prefix and an entry in the tool's menu (6.8, 7.8); the file names no plugin's function.
+- Like the user's files, the core's settings file can name `plugins` that every tool loads. The shipped file names `settings`, the settings window (12.5), `keys`, the key list, which also lists the keys after the prefix (7.5), `panels`, the list of panel types (12.6), `plugins`, the list of plugins (12.7), `launcher`, the list of presets and sessions (13.8), so every tool can go to another one, `profiler`, and `history`, which undoes and redoes the changes of the panels that keep a history. Each gives its own function a key after the prefix and an entry in the tool's menu (6.8, 7.8). The file binds `Ctrl+Z` to `history.undo`, and `Ctrl+Y` and `Ctrl+Shift+Z` to `history.redo`, for the whole tool, as a plugin binds keys only for its own panels; it names no other plugin's function.
 
 ### 12.4 Themes
 
@@ -1681,7 +1681,7 @@ The core provides the clipboard (text and other typed data), drag and drop with 
 Some plugins are made and shipped together with OpenECS, as the product needs them. They are plugins like any other: they use only the plugin API, the core neither knows nor favours them, and a user can replace any of them with a plugin of the same name.
 
 - Standard plugins, whose services other plugins build on: **draw** draws shapes, lines, triangles, images and text; **ui** gives user-interface elements with layout, such as buttons, sliders, lists and trees; **textgrid** grids of characters for terminals and logs; **image** and **audio** read image and sound files for draw and mixer; **mixer** plays sounds; **net** and **web** give sockets and HTTP that never block; **gltf** and **cglm** serve 3D scenes; **fs** lists and makes folders; and more, which OpenECS-std's DESIGN.md lists.
-- Panels and windows built on ui: **files**, **viewer** and **console** for a tool's files and output; the **settings** window, the **keys** list, the **panels** list, the **launcher** and the **profiler**.
+- Panels and windows built on ui: **files**, **viewer** and **console** for a tool's files and output; the **settings** window, the **keys** list, the **panels** list, the **launcher**, the **profiler** and **history**'s History panel.
 
 ### 20.1 Rules
 

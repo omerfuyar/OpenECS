@@ -3,8 +3,9 @@
 ---@type ecs.SettingsFile
 return {
   -- plugins that every tool loads: the settings window, the list of keys, the list of panel types to open, the list of plugins to enable or disable,
-  -- the launcher, which goes to another tool, and the profiler, which shows where the time goes
-  plugins = { "settings", "keys", "panels", "plugins", "launcher", "profiler" },
+  -- the launcher, which goes to another tool, the profiler, which shows where the time goes, and history, which undoes and redoes the changes of the
+  -- panels that keep a history
+  plugins = { "settings", "keys", "panels", "plugins", "launcher", "profiler", "history" },
 
   -- the key combination before a core action
   ["ecs.prefix"] = "Alt+W",
@@ -58,6 +59,10 @@ return {
       ["W"] = "ecs.workspace.menu",
       ["A"] = "ecs.app.menu",
     },
+    -- undo and redo, for the whole tool: they act on the history of the focused panel, and do nothing in a panel without one
+    ["Ctrl+Z"] = "history.undo",
+    ["Ctrl+Y"] = "history.redo",
+    ["Ctrl+Shift+Z"] = "history.redo",
   },
 
   -- the menus of the title bar that OpenECS draws, after the tool's name, before the plugins' menu Tools; they are the tool's menu, which
