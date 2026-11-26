@@ -1907,7 +1907,13 @@ static int ECSIServices_HandleCollect(lua_State *state)
 
     ECSIHandleType *type = ECSIServices_DropObject(object);
 
+    // LuaJIT runs a finalizer only outside compiled code, and the FFI collects only before or after the C function that Lua calls, never in it,
+    // as when that call's results allocate; so the Destroy may use Lua, such as to release a kept Lua callback, though that call is still noted
+    void **ffiCall = ECSILua_GetFfiCall();
+    void *running = *ffiCall;
+    *ffiCall = nullptr;
     ECSIServices_DestroyObject(type, object);
+    *ffiCall = running;
     return 0;
 }
 
