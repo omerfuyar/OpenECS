@@ -767,7 +767,7 @@ OPENECS_EXPORT const ECSValue *ECSSetting_Get(const char *name);
 /// @param plugin The plugin that provides the function.
 /// @param name The function's local name, such as "play"; the core adds the plugin's name and a dot, so others call it "mixer.play".
 /// @param function The function, cast to ECSFunction. Its real type must match the signature; the core cannot check that.
-/// @param signature The function's signature, such as "int(string, out float)". Types: void (result only), bool, int, int64, float, double, color (ECSColor in C, a colour text in Lua), string, buffer, value, handle<name>, struct<name> (a pointer to the struct; never the result), fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
+/// @param signature The function's signature, such as "int(string, out float)". Types: void (result only), bool, int, int64, float, double, color (ECSColor in C, a colour text in Lua), string, buffer, value, handle<name> (handle<name>? when it may be nil, which is nullptr in C), struct<name> (a pointer to the struct; never the result), fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
 /// @param description One line that says what the function does, which menus show. Lines after it say what its parameters and result are, for the definition files:
 ///                    "@param name text" for a parameter the signature names, and "@return text" for the result. A line that names no such parameter is reported.
 /// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the name or signature is invalid or the name is taken, or SHUResult_ErrAllocation.

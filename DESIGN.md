@@ -1003,6 +1003,7 @@ ecs.service.register({
 | `string`             | text ending in a zero byte                                                                             |
 | `buffer`             | a `SHUSlice`, passed by value                                                                          |
 | `handle<name>`       | a typed handle (10.6)                                                                                  |
+| `handle<name>?`      | a handle parameter that may be nil, `nullptr` in C (10.6)                                              |
 | `struct<name>`       | a struct (10.11): a pointer to it in C, a table in Lua                                                 |
 | `value`              | a generic value (10.3): a `const ECSValue *` in C                                                      |
 | `value<Type>`        | a generic value whose Lua type is `Type`, such as `value<ui.Props>`; for definition files only (10.10) |
@@ -1063,6 +1064,7 @@ A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a str
 - Handles that wait for their finalizer at exit are collected before the handle types are freed.
 - A failed plugin's handles become invalid without their destructor. On exit, the objects of handles that Lua still holds are destroyed before plugins are destroyed.
 - A provider may free an object before its handles are collected, such as with a plugin's `free` function: `ECSHandle_Forget(object)` makes the object's handles invalid without calling the destructor, so using one raises an error. `ECSHandle_Free(plugin, type, object)` makes them invalid and calls the type's destructor, for a plugin's `free` function.
+- A handle parameter refuses nil, so a forgotten handle is an error at the call. A parameter that may be nil says so with `?`, as `void(handle<history.history>? history)`: nil from Lua, or from a generic call such as a test's, gives C `nullptr`, and the definition file names its type `history.history?` (10.10). Only a parameter takes `?`: a result or an `out` handle is nil already when there is no object, so `?` there is a misuse.
 - A handle has methods in Lua, so a plugin writes `connection:send(data)` for `net.send(connection, data)`. A provider names them: `ECSHandle_AddMethod(plugin, "connection", "send", "send")` makes its function `send` the method `send` of its type `connection`, and a Lua plugin calls `ecs.handle.addMethod`. The function must be the provider's, and its first parameter a handle of the type. A method is the function with the handle as its first argument, so it is checked and called as the function is (10.4). C calls the functions.
 - The core cannot find methods by itself: a function's first parameter does not tell whether the function is about the handle, as `send` is, or only takes it, and the method's name often leaves out the type, as `size` does for `draw.imageSize`.
 

@@ -776,7 +776,7 @@ function ecs.struct.new(name, fields) end
 -- Services
 
 ---@class ecs.ServiceFunction
----@field sig string The signature, such as "int(string count, float scale)". Types: void, bool, int, int64, float, double, color, string, buffer, value, handle<name>, struct<name>, fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
+---@field sig string The signature, such as "int(string count, float scale)". Types: void, bool, int, int64, float, double, color, string, buffer, value, handle<name> (handle<name>? when it may be nil), struct<name>, fn<signature>, out before a type, and keep before a callback that the function keeps after it returns.
 ---@field doc? string One line that says what the function does, which menus show. Lines after it say what its parameters and result are: "@param name text" for a parameter the signature names, and "@return text".
 ---@field fn function
 
