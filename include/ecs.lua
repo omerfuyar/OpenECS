@@ -221,7 +221,7 @@ function Panel:setTextInput(accept, x, y, width, height) end
 function Panel:acceptDrops(types) end
 
 ---Starts dragging data from the panel, while a pointer button that was pressed on it is held, usually from its pointerDown or pointerMove event.
----The panel then gets no pointer moves until the release, and still gets its pointerUp; another panel under the pointer gets them. On release, the panel under the pointer that accepts the type gets a drop event. Escape cancels.
+---The panel then gets no pointer moves until the release, and still gets its pointerUp; another panel under the pointer gets them. The panel under the pointer that accepts the type gets dragOver at each move, this panel too, and dragLeave when the data leaves it. On release, it gets dragLeave, then a drop event. Escape cancels, and sends dragLeave.
 ---@param type string The type of the data, such as "color".
 ---@param value? any The data: a value as in saved state.
 ---@return true|nil ok true if the drag started.
@@ -280,7 +280,7 @@ function Surface:getPixel(x, y) end
 ---@param x? integer The first pixel's column; 0 if missing.
 function Surface:setRow(y, bytes, x) end
 
----@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"|"drop"|"text"
+---@alias ecs.PanelEventType "pointerDown"|"pointerUp"|"pointerMove"|"wheel"|"keyDown"|"keyUp"|"focused"|"unfocused"|"shown"|"hidden"|"resized"|"drop"|"text"|"dragOver"|"dragLeave"
 
 ---@class ecs.PopupDesc
 ---@field type? "menu"|"tooltip" A menu takes the key presses while it is open, and Escape closes it; a tooltip takes no key presses and no pointer events, which go to what is under it. "menu" if missing.
@@ -322,16 +322,16 @@ function Popup:setItems(items) end
 ---@field ctrl boolean
 ---@field alt boolean
 ---@field super boolean
----@field x? number For pointer, wheel and drop events.
----@field y? number For pointer, wheel and drop events.
+---@field x? number For pointer, wheel, dragOver and drop events.
+---@field y? number For pointer, wheel, dragOver and drop events.
 ---@field button? integer For pointerDown and pointerUp.
 ---@field scrollX? number For wheel events.
 ---@field scrollY? number For wheel events.
 ---@field key? string SDL's key name, for keyDown and keyUp.
 ---@field width? number For shown and resized.
 ---@field height? number For shown and resized.
----@field dataType? string For drop: the type of the dropped data, such as "color" or "file-list".
----@field value? any For drop: the dropped data.
+---@field dataType? string For dragOver and drop: the type of the data, such as "color" or "file-list".
+---@field value? any For dragOver and drop: the data.
 ---@field text? string For text: the typed text, UTF-8.
 
 ---@class ecs.PanelTypeDesc

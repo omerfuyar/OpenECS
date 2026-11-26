@@ -152,14 +152,16 @@ typedef enum ECSPanelEventType
     ECSPanelEventType_KeyUp,
     ECSPanelEventType_Focused,
     ECSPanelEventType_Unfocused,
-    ECSPanelEventType_Shown,   // the panel became visible
-    ECSPanelEventType_Hidden,  // the panel is no longer visible: another tab, workspace or maximized group is shown
-    ECSPanelEventType_Resized, // the panel's size changed while it is visible
-    ECSPanelEventType_Drop,    // data of a type the panel accepts was dropped on it
-    ECSPanelEventType_Text,    // text typed while the panel has focus and accepts text
+    ECSPanelEventType_Shown,     // the panel became visible
+    ECSPanelEventType_Hidden,    // the panel is no longer visible: another tab, workspace or maximized group is shown
+    ECSPanelEventType_Resized,   // the panel's size changed while it is visible
+    ECSPanelEventType_Drop,      // data of a type the panel accepts was dropped on it
+    ECSPanelEventType_Text,      // text typed while the panel has focus and accepts text
+    ECSPanelEventType_DragOver,  // data of a type the panel accepts is dragged over it, also by the panel itself; sent at each move
+    ECSPanelEventType_DragLeave, // the data that DragOver told of left the panel, or its drag was dropped or cancelled
 } ECSPanelEventType;
 
-/// @brief Handle of dropped data, valid only during the Drop event that carries it. ECSDropData_GetType and ECSDropData_GetValue read it.
+/// @brief Handle of dragged or dropped data, valid only during the DragOver or Drop event that carries it. ECSDropData_GetType and ECSDropData_GetValue read it.
 typedef struct ECSIDropData *ECSDropData;
 
 /// @brief An event sent to a panel. Its type chooses the member of the union that is set.
@@ -201,12 +203,12 @@ typedef struct ECSPanelEvent
             f32 height; // in layout units
         } size;
 
-        // Drop
+        // DragOver and Drop
         struct
         {
             f32 x;            // position in surface pixels
             f32 y;            // position in surface pixels
-            ECSDropData data; // the dropped data
+            ECSDropData data; // the dragged or dropped data
         } drop;
 
         // Text
@@ -1200,7 +1202,7 @@ OPENECS_EXPORT void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f3
 /// @lua panel:acceptDrops
 OPENECS_EXPORT SHUWUR SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char *const *types, usz count);
 
-/// @brief Starts dragging data from a panel, while a pointer button that was pressed on the panel is held, usually from its PointerDown or PointerMove event. The panel then gets no pointer moves until the release, and still gets its PointerUp; another panel under the pointer gets them. The core marks the panels that accept the type; on release, the one under the pointer gets a Drop event. Escape cancels. Main thread only.
+/// @brief Starts dragging data from a panel, while a pointer button that was pressed on the panel is held, usually from its PointerDown or PointerMove event. The panel then gets no pointer moves until the release, and still gets its PointerUp; another panel under the pointer gets them. The core marks the panels that accept the type, and the one under the pointer gets DragOver at each move, the panel itself too, and DragLeave when the data leaves it; on release, it gets DragLeave, then a Drop event. Escape cancels, and sends DragLeave. Main thread only.
 /// @param panel The panel the drag starts from.
 /// @param type The type of the data, such as "color".
 /// @param value The data, or nullptr. The core copies it.
@@ -1241,16 +1243,16 @@ OPENECS_EXPORT void ECSPopup_SetSize(ECSPopup popup, f32 width, f32 height);
 /// @lua popup:setItems
 OPENECS_EXPORT SHUWUR SHUResult ECSPopup_SetItems(ECSPopup popup, const ECSPopupItem *items, usz count);
 
-/// @brief Gets the type of dropped data.
-/// @param data The data of a Drop event.
+/// @brief Gets the type of dragged or dropped data.
+/// @param data The data of a DragOver or Drop event.
 /// @return The type, such as "color". Valid during the event.
-/// @lua none: a Lua panel's drop event has the field dataType.
+/// @lua none: a Lua panel's dragOver and drop events have the field dataType.
 OPENECS_EXPORT const char *ECSDropData_GetType(ECSDropData data);
 
-/// @brief Gets dropped data.
-/// @param data The data of a Drop event.
+/// @brief Gets dragged or dropped data.
+/// @param data The data of a DragOver or Drop event.
 /// @return The value; a nil value if the drag gave none. Valid during the event.
-/// @lua none: a Lua panel's drop event has the field value.
+/// @lua none: a Lua panel's dragOver and drop events have the field value.
 OPENECS_EXPORT const ECSValue *ECSDropData_GetValue(ECSDropData data);
 
 #pragma endregion Core Functions

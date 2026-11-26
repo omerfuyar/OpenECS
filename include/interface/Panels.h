@@ -224,13 +224,14 @@ bool ECSIPanel_Accepts(ECSPanel panel, const char *type);
 /// @param modifiers ECSModifier bits held when it was typed.
 void ECSIPanel_PostText(ECSPanel panel, const char *text, u32 modifiers);
 
-/// @brief Queues a Drop event for a panel's type, with copies of the data, which stay valid until the event is delivered.
+/// @brief Queues a DragOver or Drop event for a panel's type, with copies of the data, which stay valid until the event is delivered.
 /// @param panel Panel that receives the event.
+/// @param eventType ECSPanelEventType_DragOver or ECSPanelEventType_Drop.
 /// @param x Horizontal position in the panel's surface pixels.
 /// @param y Vertical position in the panel's surface pixels.
 /// @param type The data's type.
 /// @param value The data, or nullptr.
-/// @param modifiers ECSModifier bits held when the data was dropped.
-void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const ECSValue *value, u32 modifiers);
+/// @param modifiers ECSModifier bits held when the data was dragged or dropped.
+void ECSIPanel_PostDrop(ECSPanel panel, ECSPanelEventType eventType, f32 x, f32 y, const char *type, const ECSValue *value, u32 modifiers);
 
 #pragma endregion Declarations

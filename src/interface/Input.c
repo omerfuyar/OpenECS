@@ -30,8 +30,10 @@ static struct
     u32 pointerPopupID;
     f32 pointerX; // the pointer's last position in the OS window, in layout units
     f32 pointerY;
-    char *dragType;      // type of the data a panel drags, or nullptr
-    ECSValue *dragValue; // the dragged data
+    char *dragType;         // type of the data a panel drags, or nullptr
+    ECSValue *dragValue;    // the dragged data
+    ECSPanel dragOverPanel; // the panel that accepts the dragged data and got DragOver last, until it gets DragLeave
+    u32 dragOverPanelID;
     char **droppedFiles; // stb_ds array of the files another application drops, until the drop completes
     char *droppedText;   // the text another application drops, until the drop completes, or nullptr
     bool swallowText;    // the last key press ran a binding or the core's keys, so the text it types is dropped
@@ -331,9 +333,50 @@ static bool ECSIInput_HandlePopups(const SDL_Event *event)
     }
 }
 
+/// @brief Sends DragLeave to the panel that got DragOver last, unless it has closed since.
+static void ECSIInput_LeaveDragOver(void)
+{
+    if (INPUT.dragOverPanel != nullptr && ECSILayout_HasPanel(INPUT.dragOverPanel) && INPUT.dragOverPanel->id == INPUT.dragOverPanelID)
+    {
+        ECSPanelEvent event = {.type = ECSPanelEventType_DragLeave, .modifiers = ECSIInput_ConvertModifiers(SDL_GetModState())};
+        ECSIPanel_PostEvent(INPUT.dragOverPanel, &event);
+    }
+
+    INPUT.dragOverPanel = nullptr;
+}
+
+/// @brief Moves dragged data to a position of the event window: the core marks where it can land, the panel under the pointer gets the move unless it
+/// started the drag, and gets DragOver if it accepts the type, even if it started the drag; the panel the data left gets DragLeave. The focus stays.
+static void ECSIInput_MoveDataDrag(f32 x, f32 y)
+{
+    ECSIWindow_ShowDataDrag(INPUT.dragType, x, y);
+
+    ECSPanel over = ECSIWindow_PanelAt(x, y, &x, &y);
+
+    if (over != nullptr && over != ECSIInput_PointerPanel())
+    {
+        ECSIInput_SendPointer(over, ECSPanelEventType_PointerMove, x, y, 0);
+    }
+
+    over = over != nullptr && ECSIPanel_Accepts(over, INPUT.dragType) ? over : nullptr;
+
+    if (over != INPUT.dragOverPanel)
+    {
+        ECSIInput_LeaveDragOver();
+    }
+
+    if (over != nullptr)
+    {
+        INPUT.dragOverPanel = over;
+        INPUT.dragOverPanelID = over->id;
+        ECSIPanel_PostDrop(over, ECSPanelEventType_DragOver, x - over->x, y - over->y, INPUT.dragType, INPUT.dragValue, ECSIInput_ConvertModifiers(SDL_GetModState()));
+    }
+}
+
 /// @brief Ends dragging data, with or without dropping it.
 static void ECSIInput_EndDataDrag(void)
 {
+    ECSIInput_LeaveDragOver();
     SDL_free(INPUT.dragType);
     ECSValue_Destroy(&INPUT.dragValue);
     INPUT.dragType = nullptr;
@@ -347,7 +390,7 @@ static void ECSIInput_Drop(f32 x, f32 y, const char *type, const ECSValue *value
 
     if (panel != nullptr && ECSIPanel_Accepts(panel, type))
     {
-        ECSIPanel_PostDrop(panel, x - panel->x, y - panel->y, type, value, ECSIInput_ConvertModifiers(SDL_GetModState()));
+        ECSIPanel_PostDrop(panel, ECSPanelEventType_Drop, x - panel->x, y - panel->y, type, value, ECSIInput_ConvertModifiers(SDL_GetModState()));
     }
     else
     {
@@ -655,20 +698,9 @@ static void ECSIInput_MovePointer(const SDL_MouseMotionEvent *motion)
     INPUT.pointerX = motion->x;
     INPUT.pointerY = motion->y;
 
-    // while a panel drags data, the core marks where it can land; the panel under the pointer gets the moves, unless it is the one that started the drag, and the focus stays
     if (INPUT.dragType != nullptr)
     {
-        ECSIWindow_ShowDataDrag(INPUT.dragType, motion->x, motion->y);
-
-        f32 x = 0.0f;
-        f32 y = 0.0f;
-        ECSPanel over = ECSIWindow_PanelAt(motion->x, motion->y, &x, &y);
-
-        if (over != nullptr && over != ECSIInput_PointerPanel())
-        {
-            ECSIInput_SendPointer(over, ECSPanelEventType_PointerMove, x, y, 0);
-        }
-
+        ECSIInput_MoveDataDrag(motion->x, motion->y);
         return;
     }
 
@@ -699,9 +731,10 @@ static void ECSIInput_MovePointer(const SDL_MouseMotionEvent *motion)
 /// @brief Handles a release of a mouse button: it drops dragged data, opens a grip's menu, and goes to the panel that got the press.
 static void ECSIInput_ReleasePointer(const SDL_MouseButtonEvent *button)
 {
-    // dragged data lands on the panel under the pointer; the panel it came from still gets its release
+    // dragged data lands on the panel under the pointer, after its DragLeave; the panel it came from still gets its release
     if (INPUT.dragType != nullptr)
     {
+        ECSIInput_LeaveDragOver();
         ECSIInput_Drop(button->x, button->y, INPUT.dragType, INPUT.dragValue);
         ECSIInput_EndDataDrag();
     }
@@ -871,6 +904,8 @@ SHUResult ECSIInput_Initialize(void)
 
 void ECSIInput_Terminate(void)
 {
+    // no panel is left to tell that the drag ends
+    INPUT.dragOverPanel = nullptr;
     ECSIInput_EndDataDrag();
     ECSIInput_ForgetDropped();
 
@@ -1088,6 +1123,6 @@ SHUResult ECSPanel_StartDrag(ECSPanel panel, const char *type, const ECSValue *v
         return result;
     }
 
-    ECSIWindow_ShowDataDrag(INPUT.dragType, INPUT.pointerX, INPUT.pointerY);
+    ECSIInput_MoveDataDrag(INPUT.pointerX, INPUT.pointerY);
     return SHUResult_Ok;
 }

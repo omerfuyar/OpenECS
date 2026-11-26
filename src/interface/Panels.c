@@ -283,7 +283,7 @@ static void ECSIPanel_DeliverEvent(void *target, const ECSPanelEvent *event)
     }
 }
 
-/// @brief Dropped data on its way to a panel; a Drop event's data points to it.
+/// @brief Dragged or dropped data on its way to a panel; a DragOver or Drop event's data points to it.
 struct ECSIDropData
 {
     ECSPanel panel;
@@ -332,7 +332,7 @@ static void ECSIPanel_FreeDrop(void *target)
     SDL_free(data);
 }
 
-/// @brief Delivers a Drop event, then frees its data.
+/// @brief Delivers a DragOver or Drop event, then frees its data.
 static void ECSIPanel_DeliverDrop(void *target, const ECSPanelEvent *event)
 {
     ECSDropData data = target;
@@ -869,7 +869,7 @@ bool ECSIPanel_Accepts(ECSPanel panel, const char *type)
     return false;
 }
 
-void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const ECSValue *value, u32 modifiers)
+void ECSIPanel_PostDrop(ECSPanel panel, ECSPanelEventType eventType, f32 x, f32 y, const char *type, const ECSValue *value, u32 modifiers)
 {
     SDL_assert(panel != nullptr);
     SDL_assert(type != nullptr);
@@ -888,7 +888,7 @@ void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const EC
 
     if (result)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Data of type '%s' is not dropped on '%s': out of memory.", type, panel->title);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Data of type '%s' does not reach '%s': out of memory.", type, panel->title);
 
         if (data != nullptr)
         {
@@ -900,7 +900,7 @@ void ECSIPanel_PostDrop(ECSPanel panel, f32 x, f32 y, const char *type, const EC
         return;
     }
 
-    ECSPanelEvent event = {.type = ECSPanelEventType_Drop, .modifiers = modifiers, .drop = {.x = x, .y = y, .data = data}};
+    ECSPanelEvent event = {.type = eventType, .modifiers = modifiers, .drop = {.x = x, .y = y, .data = data}};
     ECSIEvents_Post(ECSIPanel_DeliverDrop, ECSIPanel_FreeDrop, data, data->value, &event);
 }
 

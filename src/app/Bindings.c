@@ -93,7 +93,7 @@ static struct
 } BINDINGS = {0};
 
 /// @brief Names of the event types in Lua, in the order of ECSPanelEventType.
-static const char *const OPENECS_BINDINGS_EVENT_TYPES[] = {"pointerDown", "pointerUp", "pointerMove", "wheel", "keyDown", "keyUp", "focused", "unfocused", "shown", "hidden", "resized", "drop", "text"};
+static const char *const OPENECS_BINDINGS_EVENT_TYPES[] = {"pointerDown", "pointerUp", "pointerMove", "wheel", "keyDown", "keyUp", "focused", "unfocused", "shown", "hidden", "resized", "drop", "text", "dragOver", "dragLeave"};
 
 /// @brief Names of the setting types in Lua, in the order of ECSSettingType.
 static const char *const OPENECS_BINDINGS_SETTING_TYPES[] = {"bool", "integer", "number", "string", "choice", "key", "list", "table", "color", "path", nullptr};
@@ -1527,6 +1527,7 @@ static void ECSIBindings_PushEvent(lua_State *state, const ECSPanelEvent *event)
         lua_pushnumber(state, (lua_Number)event->size.height);
         lua_setfield(state, -2, "height");
         break;
+    case ECSPanelEventType_DragOver:
     case ECSPanelEventType_Drop:
         lua_pushnumber(state, (lua_Number)event->drop.x);
         lua_setfield(state, -2, "x");
