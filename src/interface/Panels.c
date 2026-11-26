@@ -45,6 +45,13 @@ static void ECSIPanelType_Free(ECSIPanelType *type)
     }
 
     arrfree(type->menuEntries);
+
+    for (usz i = 0; i < arrlenu(type->redrawOn); i++)
+    {
+        SDL_free(type->redrawOn[i]);
+    }
+
+    arrfree(type->redrawOn);
     SDL_free((char *)type->desc.name);
     SDL_free((char *)type->desc.title);
     SDL_free(type);
@@ -586,11 +593,42 @@ void ECSIPanels_RedrawAll(void)
     PANELS.look++;
 }
 
+/// @brief Gets whether a plugin hears an event of another: the core's, its own, or of a plugin it depends on, as a subscription does.
+static bool ECSIPanels_CanHear(ECSPlugin plugin, ECSPlugin owner)
+{
+    return owner == nullptr || owner == plugin || ECSIPlugin_DependsOn(plugin, owner);
+}
+
+void ECSIPanels_Hear(const char *name, ECSPlugin owner)
+{
+    SDL_assert(name != nullptr);
+
+    for (usz i = 0; i < shlenu(PANELS.types); i++)
+    {
+        ECSIPanelType *type = PANELS.types[i].value;
+
+        for (usz j = 0; j < arrlenu(type->redrawOn); j++)
+        {
+            if (SDL_strcmp(type->redrawOn[j], name) == 0 && ECSIPanels_CanHear(type->plugin, owner))
+            {
+                type->heard++;
+                break;
+            }
+        }
+    }
+}
+
+/// @brief Gets its type's heard, which a panel draws again when it changes; 0 for a placeholder.
+static u32 ECSIPanel_TypeHeard(ECSPanel panel)
+{
+    return panel->type == nullptr ? 0 : panel->type->heard;
+}
+
 bool ECSIPanel_WantsFrame(ECSPanel panel)
 {
     SDL_assert(panel != nullptr);
 
-    return panel->needsDraw || panel->drawnScale != PANELS.scale || panel->drawnLook != PANELS.look || (panel->fault == nullptr && panel->type != nullptr && panel->type->desc.continuous);
+    return panel->needsDraw || panel->drawnScale != PANELS.scale || panel->drawnLook != PANELS.look || panel->drawnHeard != ECSIPanel_TypeHeard(panel) || (panel->fault == nullptr && panel->type != nullptr && panel->type->desc.continuous);
 }
 
 /// @brief Calls a pixels panel's Draw, and sends to its texture what it changed.
@@ -621,6 +659,7 @@ static void ECSIPanel_DrawPixels(ECSPanel panel, bool upload, u64 nowTicks, f64 
     panel->drawn = true;
     panel->drawnScale = PANELS.scale;
     panel->drawnLook = PANELS.look;
+    panel->drawnHeard = ECSIPanel_TypeHeard(panel);
 
     // the services that drew into the surface finish, and its Lua handle goes
     ECSIServices_EndSurface(&surface);
@@ -651,6 +690,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         panel->needsDraw = false;
         panel->drawnScale = PANELS.scale;
         panel->drawnLook = PANELS.look;
+        panel->drawnHeard = ECSIPanel_TypeHeard(panel);
         return;
     }
 
@@ -683,6 +723,7 @@ void ECSIPanel_Draw(ECSPanel panel, SDL_Renderer *renderer, u64 nowTicks)
         panel->needsDraw = false;
         panel->drawnScale = PANELS.scale;
         panel->drawnLook = PANELS.look;
+        panel->drawnHeard = ECSIPanel_TypeHeard(panel);
         ECSICallback callback;
         u64 drawStart = ECSIProfile_BeginDraw();
         ECSIPlugin_Enter(&callback, panel->type->plugin, panel, ECSICallbackType_Panel);
@@ -1263,20 +1304,69 @@ SHUResult ECSIPanelType_Register(ECSPlugin plugin, const ECSPanelTypeDesc *desc,
         return SHUResult_ErrAssertion;
     }
 
-    ECSIPanelType *type = SDL_malloc(sizeof(ECSIPanelType));
+    if (desc->redrawOnCount > 0 && desc->redrawOn == nullptr)
+    {
+        (void)ECS_Check(nullptr, false, "Panel type '%s' gives %zu events to redraw on, but no list of them.", desc->name, (size_t)desc->redrawOnCount);
+        SDL_free(fullName);
+        return SHUResult_ErrAssertion;
+    }
+
+    // an event is matched by its name when it is emitted, so it may be declared later; one declared now must be one the plugin hears
+    for (usz i = 0; i < desc->redrawOnCount; i++)
+    {
+        ECSPlugin owner = nullptr;
+        const char *event = desc->redrawOn[i];
+
+        if (event == nullptr)
+        {
+            (void)ECS_Check(nullptr, false, "Panel type '%s' redraws on an event without a name.", desc->name);
+            SDL_free(fullName);
+            return SHUResult_ErrAssertion;
+        }
+
+        if (ECSIEvents_FindOwner(event, &owner) && !ECSIPanels_CanHear(plugin, owner))
+        {
+            (void)ECS_Check(nullptr, false, "Panel type '%s' redraws on '%s', but its plugin's manifest does not depend on '%s'.", desc->name, event, ECSIPlugin_GetName(owner));
+            SDL_free(fullName);
+            return SHUResult_ErrAssertion;
+        }
+    }
+
+    ECSIPanelType *type = SDL_calloc(1, sizeof(ECSIPanelType));
     char *title = SDL_strdup(desc->title == nullptr ? fullName : desc->title);
 
-    if (type == nullptr || title == nullptr)
+    for (usz i = 0; type != nullptr && i < desc->redrawOnCount; i++)
     {
-        SDL_free(type);
-        SDL_free(fullName);
-        SDL_free(title);
+        char *copy = SDL_strdup(desc->redrawOn[i]);
+
+        if (copy != nullptr)
+        {
+            arrput(type->redrawOn, copy);
+        }
+    }
+
+    if (type == nullptr || title == nullptr || arrlenu(type->redrawOn) != desc->redrawOnCount)
+    {
+        if (type != nullptr)
+        {
+            type->desc.name = fullName;
+            type->desc.title = title;
+            ECSIPanelType_Free(type);
+        }
+        else
+        {
+            SDL_free(fullName);
+            SDL_free(title);
+        }
+
         return SHUResult_ErrAllocation;
     }
 
-    *type = (ECSIPanelType){.desc = *desc, .plugin = plugin, .typeData = typeData};
+    char **redrawOn = type->redrawOn;
+    *type = (ECSIPanelType){.desc = *desc, .plugin = plugin, .typeData = typeData, .redrawOn = redrawOn};
     type->desc.name = fullName;
     type->desc.title = title;
+    type->desc.redrawOn = (const char *const *)redrawOn;
     shput(PANELS.types, fullName, type);
 
     return SHUResult_Ok;

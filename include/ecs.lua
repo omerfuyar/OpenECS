@@ -342,6 +342,7 @@ function Popup:setItems(items) end
 ---@field continuous? boolean true: draw runs every frame while the panel is shown, for animation. false, or missing: draw runs only when the panel is shown, resized or asks with panel:redraw().
 ---@field minWidth? number In layout units.
 ---@field minHeight? number In layout units.
+---@field redrawOn? string[] Names of events, such as "files.changed": each one emitted draws every panel of the type again. An event may be declared later or never.
 ---@field create? fun(panel: ecs.Panel, saved: any, version: integer): any Gives the panel's state.
 ---@field destroy? fun(state: any)
 ---@field draw? fun(state: any, surface: ecs.Surface, seconds: number) Seconds since the panel was last drawn.
@@ -354,7 +355,7 @@ ecs.panel = {}
 
 ---Registers a panel type.
 ---@param desc ecs.PanelTypeDesc The type's local name, title, surface and functions.
----A registration that is not valid, such as a second one of a name, is a misuse (ecs.check).
+---A registration that is not valid, such as a second one of a name, or a redrawOn event of a plugin that this one does not depend on, is a misuse (ecs.check).
 function ecs.panel.registerType(desc) end
 
 ---Adds a service function to the panel menu of a type. Its signature is "void(handle<ecs.panel>)" or "void()".
