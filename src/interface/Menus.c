@@ -250,6 +250,24 @@ static ECSIMenuEntry *ECSIMenus_BuildPanelMenu(ECSPanel panel)
     return entries;
 }
 
+/// @brief Highlights an entry, and closes the submenus of the other entries.
+static void ECSIMenus_Select(usz level, usz index)
+{
+    ECSIMenus_CloseFrom(level + 1);
+    ECSIWindow_SelectMenuItem(level, index);
+}
+
+/// @brief Highlights the current workspace's entry in the open menu of workspaces, so Down goes to the next one.
+static void ECSIMenus_SelectCurrentWorkspace(void)
+{
+    usz current = ECSWorkspace_GetCurrent();
+
+    if (current >= 1 && current <= arrlenu(MENUS.entries))
+    {
+        ECSIMenus_Select(0, current - 1);
+    }
+}
+
 /// @brief Builds the menu of workspaces: each one by number and name, with the current one marked; an entry switches to it.
 /// @return stb_ds array of the entries.
 static ECSIMenuEntry *ECSIMenus_BuildWorkspaceMenu(void)
@@ -266,13 +284,6 @@ static ECSIMenuEntry *ECSIMenus_BuildWorkspaceMenu(void)
     }
 
     return entries;
-}
-
-/// @brief Highlights an entry, and closes the submenus of the other entries.
-static void ECSIMenus_Select(usz level, usz index)
-{
-    ECSIMenus_CloseFrom(level + 1);
-    ECSIWindow_SelectMenuItem(level, index);
 }
 
 /// @brief Highlights an entry and opens its submenu beside it, if it has one.
@@ -382,6 +393,11 @@ static void ECSIMenus_OpenTitleMenu(usz item, SDL_FRect rect)
     // the window keeps the menu inside it, so the workspaces' menu at the right opens to the left
     ECSIMenus_Show(entries, nullptr, rect.x, rect.y + rect.h);
     MENUS.titleMenu = (i64)item;
+
+    if (source == OPENECS_WORKSPACES_SOURCE)
+    {
+        ECSIMenus_SelectCurrentWorkspace();
+    }
 }
 
 /// @brief Makes the tooltip of the part of the title bar whose tooltip is due: what its function does, and the keys that run it.
@@ -659,13 +675,14 @@ static void ECSIMenus_ShowTool(void)
     ECSIMenus_Show(ECSIMenus_BuildToolMenu(), focus, x, y);
 }
 
-/// @brief Shows the menu of workspaces near the top left of the focused panel, or of the window without one.
+/// @brief Shows the menu of workspaces near the top left of the focused panel, or of the window without one, with the current workspace highlighted.
 static void ECSIMenus_ShowWorkspaces(void)
 {
     ECSPanel focus = ECSILayout_GetFocus();
     f32 x = (focus != nullptr ? focus->x : 0.0f) + OPENECS_MENU_OFFSET * ECSIPanels_GetScale();
     f32 y = (focus != nullptr ? focus->y : 0.0f) + OPENECS_MENU_OFFSET * ECSIPanels_GetScale();
     ECSIMenus_Show(ECSIMenus_BuildWorkspaceMenu(), focus, x, y);
+    ECSIMenus_SelectCurrentWorkspace();
 }
 
 /// @brief Defines the core's two functions for a workspace number: switching to the workspace, and moving the focused panel to it.
