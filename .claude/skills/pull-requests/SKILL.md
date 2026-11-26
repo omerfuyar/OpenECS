@@ -16,7 +16,7 @@ OpenECS's checks build `std/` and `examples/` at the commits its submodules name
   1. Give its branch the same name in each repository it touches, and push each.
   2. OpenECS's branch moves `std/` and `examples/` to the heads of their branches (the submodule-bump skill), even when it changes nothing else. When a branch gets new commits, move the submodule to its new head too.
   3. Open every pull request at once. Their checks run together.
-  4. Merge std's and the examples' first, then OpenECS's, then the template's. A merge commit keeps each branch's head in its `dev`, so OpenECS's submodules need no second pull request.
+  4. Merge OpenECS's first, then std's and the examples', then the template's. So the checks that run on std's and the examples' `dev` after their merges build an OpenECS's `dev` that has the change. A merge commit keeps each branch's head in its `dev`, so OpenECS's submodules need no second pull request.
 - **A branch that builds on an unmerged one:** once the first merges, merge `dev` into it, with a merge commit, and push.
 
 ## 2. Each pull request

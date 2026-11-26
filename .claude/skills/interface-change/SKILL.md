@@ -25,6 +25,6 @@ grep -rn "<name>" src include resources std/plugins std/presets examples ../Open
 
 1. OpenECS's branch moves `std/` and `examples/` to the heads of their branches (the submodule-bump skill), so its checks build them together. The others' checks build OpenECS's branch of the same name.
 2. Open every pull request at once; their checks run together.
-3. Merge OpenECS-std's and OpenECS-examples' first, then OpenECS's, then OpenECS-template's, as the pull-requests skill says.
+3. Merge OpenECS's first, then OpenECS-std's and OpenECS-examples', then OpenECS-template's, as the pull-requests skill says.
 
 Verify each with the verify skill before pushing.
