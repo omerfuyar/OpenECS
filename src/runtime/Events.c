@@ -71,6 +71,7 @@ static struct
     struct ECSISubscription **subscriptions; // stb_ds array; handles point to them, so each is allocated on its own
     ECSValue *const *watched[2];             // where modules keep values outside the queue (ECSIEvents_WatchValue)
     usz watchedCount;
+    ECSIEventHeardFunction Heard; // hears each named event after its subscribers, or nullptr
 } EVENTS = {0};
 
 /// @brief The declared event of a name, or nullptr; its record moves when events are declared or removed, so it is found again after any of those.
@@ -161,6 +162,14 @@ static void ECSIEvents_DeliverEmission(void *target, const ECSPanelEvent *event)
             (void)ECSIPlugin_Leave(&callback);
             ECSILog_SetQuiet(false);
         }
+    }
+
+    // an event that a subscriber's plugin removed while it was delivered is heard no more
+    named = ECSIEvents_FindNamed(emission->name);
+
+    if (EVENTS.Heard != nullptr && named != nullptr)
+    {
+        EVENTS.Heard(emission->name, named->plugin);
     }
 
     ECSIEvents_FreeEmission(emission);
@@ -288,6 +297,20 @@ SHUResult ECSIEvents_Subscribe(ECSPlugin plugin, ECSSubscription *retSubscriptio
     arrput(EVENTS.named[index].value.subscribers, subscription);
     *retSubscription = subscription;
     return SHUResult_Ok;
+}
+
+void ECSIEvents_SetHeard(ECSIEventHeardFunction Heard)
+{
+    EVENTS.Heard = Heard;
+}
+
+bool ECSIEvents_FindOwner(const char *name, ECSPlugin *retOwner)
+{
+    SDL_assert(name != nullptr && retOwner != nullptr);
+
+    ECSINamedEvent *named = ECSIEvents_FindNamed(name);
+    *retOwner = named == nullptr ? nullptr : named->plugin;
+    return named != nullptr;
 }
 
 void ECSIEvents_RemovePlugin(ECSPlugin plugin)

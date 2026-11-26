@@ -1649,6 +1649,33 @@ static int ECSIBindings_PanelRegisterType(lua_State *state)
     lua_getfield(state, 1, "minWidth");
     lua_getfield(state, 1, "minHeight");
 
+    // the event names stay alive in their table while the type is registered, which copies them
+    const char **redrawOn = nullptr;
+
+    if (lua_getfield(state, 1, "redrawOn") != LUA_TNIL)
+    {
+        if (lua_type(state, -1) != LUA_TTABLE)
+        {
+            ECSILua_Misuse(state, "a panel type's redrawOn must be a list of event names");
+        }
+
+        for (int i = 1; lua_rawgeti(state, -1, i) != LUA_TNIL; i++)
+        {
+            if (lua_type(state, -1) != LUA_TSTRING)
+            {
+                arrfree(redrawOn);
+                ECSILua_Misuse(state, "a panel type's redrawOn must be a list of event names");
+            }
+
+            arrput(redrawOn, lua_tostring(state, -1));
+            lua_pop(state, 1);
+        }
+
+        lua_pop(state, 1);
+    }
+
+    lua_pop(state, 1);
+
     ECSPanelTypeDesc desc = {
         .name = ECSILua_CheckString(state, -7),
         .title = ECSILua_OptString(state, -6, nullptr),
@@ -1657,6 +1684,8 @@ static int ECSIBindings_PanelRegisterType(lua_State *state)
         .continuous = lua_toboolean(state, -3),
         .minWidth = (f32)ECSILua_OptNumber(state, -2, 0.0),
         .minHeight = (f32)ECSILua_OptNumber(state, -1, 0.0),
+        .redrawOn = redrawOn,
+        .redrawOnCount = arrlenu(redrawOn),
         .Create = ECSIBindings_PanelCreate,
         .Destroy = ECSIBindings_PanelDestroy,
         .Draw = ECSIBindings_HasFunction(state, 1, "draw") ? ECSIBindings_PanelDraw : nullptr,
@@ -1669,6 +1698,7 @@ static int ECSIBindings_PanelRegisterType(lua_State *state)
 
     if (type == nullptr)
     {
+        arrfree(redrawOn);
         return luaL_error(state, "out of memory");
     }
 
@@ -1676,6 +1706,7 @@ static int ECSIBindings_PanelRegisterType(lua_State *state)
     type->table = luaL_ref(state, LUA_REGISTRYINDEX);
     type->plugin = plugin;
     SHUResult result = ECSIPanelType_Register(plugin, &desc, type);
+    arrfree(redrawOn);
 
     if (result)
     {

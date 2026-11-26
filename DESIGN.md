@@ -398,6 +398,8 @@ typedef struct ECSPanelTypeDesc
     bool continuous;         // draw every frame while visible
     f32 minWidth;            // in layout units, 0 for none
     f32 minHeight;
+    const char *const *redrawOn; // names of events that draw every panel of the type again (4.3)
+    usz redrawOnCount;
 
     // required
     ECSPanelCreateFunction Create;       // SHUResult (ECSPanel panel, const ECSValue *savedState, u32 version, void **retState)
@@ -426,6 +428,10 @@ typedef struct ECSPanelTypeDesc
 ### 4.3 When a panel is drawn
 
 - A panel that is not continuous asks to be drawn with `ECSPanel_Redraw`. The core also draws it when its size or scale changes, and draws every panel and popup again, whole, when a setting changes, as any setting may change how they look, such as a colour of the theme.
+- A panel type names events in `redrawOn`, such as `{ "files.changed" }`: each time one of them is delivered, after its subscribers, the core draws every panel of the type again, as `ECSPanel_Redraw` asks, and a hidden one when it is next shown. In Lua it is a list: `redrawOn = { "files.changed" }`. So a plugin whose panels show data that an event says changed keeps no list of its panels.
+  - The name is matched when the event is delivered, so the event may be declared after the type; a name that nothing declares draws nothing and is no error.
+  - The type's plugin hears only what a subscription hears (8.3): the core's events, its own, and those of the plugins its manifest depends on. A name that is declared when the type is registered, by a plugin it does not depend on, is a misuse; one declared later by such a plugin draws nothing.
+  - A reloaded plugin (9.11) registers its types again, with the names that its new code gives. A reloaded dependency declares its events again, and the names match them as before.
 - A panel in a hidden workspace runs only when its timers or events call it.
 
 ### 4.4 Placeholders
@@ -804,6 +810,7 @@ A plugin can declare its own events, such as `canvas.selectionChanged`, and emit
 - A plugin declares the named events it emits by their local names: `ECSEvent_Declare(plugin, "selectionChanged", description)` declares `canvas.selectionChanged`, whose name starts with the plugin's name. Only the declaring plugin emits it: `ECSEvent_Emit(plugin, name, value)`. The value may be `NULL`; the core copies it.
 - `ECSEvent_Subscribe(plugin, &subscription, name, fn, data)` calls `fn(data, name, value)` for each emission; `ECSEvent_Unsubscribe` ends it. A subscriber hears the core's events, its own, and those of plugins its manifest depends on. The event must be declared first, so a plugin subscribes after its dependencies have loaded.
 - Emissions are queued like every other event (8.2).
+- A panel type that names an event in `redrawOn` draws its panels again at each emission, without a subscription (4.3).
 - When a plugin fails, its events, its subscriptions and the subscriptions to its events are removed.
 - Lua: `ecs.event.declare(name, description)`, `ecs.event.emit(name, value)` and `ecs.event.subscribe(name, callback)`, which returns a subscription with `unsubscribe()`. `callback` gets the name and the value.
 
@@ -848,7 +855,7 @@ plugins/
 return {
   name = "canvas",              -- unique, the folder's name; the prefix of everything it registers
   version = "1.2.0",            -- semantic version
-  api = 3,                      -- plugin API version it was built for
+  api = 4,                      -- plugin API version it was built for
   type = "native",              -- "native" or "lua"
   description = "Paint canvas", -- optional
   depends = { ui = "1.0" },     -- optional; plugin name = minimum version

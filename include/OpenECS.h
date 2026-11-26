@@ -10,7 +10,7 @@
 #define OPENECS_VERSION "0.8.0-dev"
 
 /// @brief Version of this plugin interface. The core refuses a plugin whose manifest names another version.
-#define OPENECS_API_VERSION 3
+#define OPENECS_API_VERSION 4
 
 #if defined(_WIN32)
 #ifdef OPENECS_CORE
@@ -314,13 +314,15 @@ typedef struct ECSPopupItem
 /// @brief Describes a panel type. Passed to ECSPanelType_Register.
 typedef struct ECSPanelTypeDesc
 {
-    const char *name;       // the local name, such as "view"; the core names the type with the plugin's name, "canvas.view"
-    const char *title;      // default title for tabs and menus
-    u32 stateVersion;       // version of the saved state
-    ECSSurfaceType surface; // ECSSurfaceType_Pixels, or ECSSurfaceType_Gpu to draw with SDL's GPU API
-    bool continuous;        // true: Draw runs every frame while the panel is shown, for animation; false: only when it is shown, resized or asks with ECSPanel_Redraw
-    f32 minWidth;           // in layout units, 0 for none
-    f32 minHeight;          // in layout units, 0 for none
+    const char *name;            // the local name, such as "view"; the core names the type with the plugin's name, "canvas.view"
+    const char *title;           // default title for tabs and menus
+    u32 stateVersion;            // version of the saved state
+    ECSSurfaceType surface;      // ECSSurfaceType_Pixels, or ECSSurfaceType_Gpu to draw with SDL's GPU API
+    bool continuous;             // true: Draw runs every frame while the panel is shown, for animation; false: only when it is shown, resized or asks with ECSPanel_Redraw
+    f32 minWidth;                // in layout units, 0 for none
+    f32 minHeight;               // in layout units, 0 for none
+    const char *const *redrawOn; // names of events, such as "files.changed": each one emitted draws every panel of the type again; nullptr for none
+    usz redrawOnCount;           // number of names in redrawOn
 
     // required
     ECSPanelCreateFunction Create;
@@ -583,7 +585,8 @@ OPENECS_EXPORT SHUWUR SHUResult ECS_RunInBackground(ECSPlugin plugin, ECSTaskFun
 /// @lua none: Lua code runs only on the main thread
 OPENECS_EXPORT SHUWUR SHUResult ECS_RunOnMainThread(ECSTaskFunction function, void *data);
 
-/// @brief Registers a panel type. The core copies the description and its texts.
+/// @brief Registers a panel type. The core copies the description and its texts. Each name in redrawOn is matched when an event is emitted, so the event
+/// may be declared later or never; an event declared now by a plugin that the type's plugin does not depend on is a misuse, as ECSEvent_Subscribe's is.
 /// @param plugin The plugin that provides the panel type.
 /// @param desc Description of the panel type, with its local name; the core adds the plugin's name and a dot.
 /// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the description is invalid, or SHUResult_ErrAllocation.
