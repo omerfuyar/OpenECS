@@ -56,8 +56,10 @@ static struct
     SDL_SpinLock misuseLock; // guards misuses and collecting, as a misuse comes from any thread
 } TEST = {0};
 
-/// @brief test.match: compares by contents and names the path of the first difference.
-static const char OPENECS_TEST_MATCH[] =
+/// @brief The functions of the test table that are written in Lua, which the chunk adds to the table it is given:
+/// test.match compares by contents and names the path of the first difference; test.choose runs a menu's entry with the keys, as the user does.
+static const char OPENECS_TEST_LUA[] =
+    "local test = ...\n"
     "local format = string.format\n"
     "local function show(value)\n"
     "  if type(value) == 'string' then return format('%q', value) end\n"
@@ -81,9 +83,36 @@ static const char OPENECS_TEST_MATCH[] =
     "    end\n"
     "  end\n"
     "end\n"
-    "return function(actual, expected, message)\n"
+    "function test.match(actual, expected, message)\n"
     "  local difference = compare(actual, expected, '')\n"
     "  if difference then error((message and message .. ': ' or '') .. difference, 2) end\n"
+    "end\n"
+    "local function find(label)\n"
+    "  for index, entry in ipairs(test.menu() or {}) do\n"
+    "    if entry.label == label then return index, entry end\n"
+    "  end\n"
+    "end\n"
+    "function test.choose(label)\n"
+    "  if type(label) ~= 'string' then error('test.choose takes the label of an entry', 2) end\n"
+    "  local entries = test.menu()\n"
+    "  if entries == nil then error(format('no menu is open to choose %q', label), 2) end\n"
+    "  local index, entry = find(label)\n"
+    "  if index == nil then\n"
+    "    local labels = {}\n"
+    "    for i, other in ipairs(entries) do labels[i] = format('%q', other.label) end\n"
+    "    error(format('the menu has no entry %q; it has %s', label, table.concat(labels, ', ')), 2)\n"
+    "  end\n"
+    "  if not entry.enabled then error(format('the entry %q is not enabled', label), 2) end\n"
+    "  for _ = 0, #entries do\n"
+    "    if entry.chosen then\n"
+    "      test.key('Return')\n"
+    "      return\n"
+    "    end\n"
+    "    test.key('Down')\n"
+    "    index, entry = find(label)\n"
+    "    if index == nil then error(format('the entry %q went away', label), 2) end\n"
+    "  end\n"
+    "  error(format('Down does not reach the entry %q', label), 2)\n"
     "end\n";
 
 /// @brief Makes an event of the type with every other field zero: a union's initializer sets only the member it names, so a field such as a key's repeat would be what the stack held.
@@ -842,15 +871,18 @@ static int ECSITest_Dialog(lua_State *state)
     return 1;
 }
 
-/// @brief test.menu(): the entries of the open menu that takes the keys, or nil: each one's label, keys, and whether it is enabled and chosen.
+/// @brief test.menu(): the entries of the open menu that takes the keys, or nil: each one's label, keys, and whether it is enabled and chosen,
+/// and the menu's rectangle in its OS window and the number of that window.
 /// The core's menus come first; a menu that a plugin draws gives the entries it set with ECSPopup_SetItems.
 static int ECSITest_Menu(lua_State *state)
 {
     ECSPopupItem *items = nullptr;
     const ECSPopupItem *shown = items;
     usz count = 0;
+    SDL_FRect rect = {0};
+    usz window = 0;
 
-    if (ECSIMenus_GetItems(&items))
+    if (ECSIMenus_GetItems(&items, &rect, &window))
     {
         shown = items;
         count = arrlenu(items);
@@ -867,9 +899,23 @@ static int ECSITest_Menu(lua_State *state)
 
         shown = popup->items;
         count = arrlenu(popup->items);
+
+        // a popup that is not shown yet has no rectangle
+        if (!ECSIWindow_PopupRect(popup, &rect, &window))
+        {
+            window = 0;
+        }
     }
 
-    lua_createtable(state, (int)count, 0);
+    lua_createtable(state, (int)count, 2);
+
+    if (window > 0)
+    {
+        ECSITest_PushRect(state, rect);
+        lua_setfield(state, -2, "rect");
+        lua_pushinteger(state, (lua_Integer)window);
+        lua_setfield(state, -2, "window");
+    }
 
     for (usz i = 0; i < count; i++)
     {
@@ -1121,19 +1167,27 @@ static const luaL_Reg OPENECS_TEST_FUNCTIONS[] = {
     {nullptr, nullptr},
 };
 
-/// @brief Pushes the test table. It also holds match, which is written in Lua.
+/// @brief Pushes the test table. It also holds match and choose, which are written in Lua.
 static SHUResult ECSITest_PushTable(lua_State *state)
 {
     luaL_newlib(state, OPENECS_TEST_FUNCTIONS);
 
-    if (luaL_loadbufferx(state, OPENECS_TEST_MATCH, sizeof(OPENECS_TEST_MATCH) - 1, "=match", "t") != LUA_OK || ECSILua_Call(state, 0, 1))
+    if (luaL_loadbufferx(state, OPENECS_TEST_LUA, sizeof(OPENECS_TEST_LUA) - 1, "=test", "t") != LUA_OK)
     {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "test.match does not load: %s", lua_tostring(state, -1));
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The test's Lua functions do not load: %s", lua_tostring(state, -1));
         lua_pop(state, 2);
         return SHUResult_ErrInternal;
     }
 
-    lua_setfield(state, -2, "match");
+    lua_pushvalue(state, -2);
+
+    if (ECSILua_Call(state, 1, 0))
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "The test's Lua functions do not load: %s", lua_tostring(state, -1));
+        lua_pop(state, 2);
+        return SHUResult_ErrInternal;
+    }
+
     return SHUResult_Ok;
 }
 
