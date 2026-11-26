@@ -123,6 +123,7 @@ typedef struct ECSIParameter
     char *name;                     // the name the signature gives it, or nullptr; only for documentation
     bool out;                       // an output parameter: a pointer in C, an extra result in Lua
     bool keep;                      // a callback that stays valid after the call, until the function that took it releases it
+    bool nullable;                  // a handle parameter that may be nil, nullptr in C: "handle<name>?"
     ECSIHandleType *handle;         // handles: their type, which stays while the core runs, as handle types are never freed
     ECSIStructType *structType;     // structs: their type
     struct ECSISignature *callback; // callbacks: their signature, owned by the parameter
@@ -417,7 +418,7 @@ static usz ECSISignature_ReadWord(const char **cursor, const char **retWord)
     return length;
 }
 
-/// @brief Reads the type of a handle, "<name>", after the word "handle". The type must be registered.
+/// @brief Reads the type of a handle, "<name>", after the word "handle", and a "?" after it, which lets the parameter be nil. The type must be registered.
 static bool ECSISignature_ReadHandle(const char **cursor, ECSIParameter *retParameter)
 {
     const char *start = *cursor + 1;
@@ -438,6 +439,8 @@ static bool ECSISignature_ReadHandle(const char **cursor, ECSIParameter *retPara
 
     SDL_free(name);
     *cursor = end + 1;
+    retParameter->nullable = **cursor == '?';
+    *cursor += retParameter->nullable ? 1 : 0;
     ECSISignature_SkipSpaces(cursor);
     return retParameter->handle != nullptr;
 }
@@ -605,7 +608,7 @@ static void ECSISignature_AddParameter(ECSIText *text, ECSIParameter parameter)
     // a handle names its type, and a callback its signature, between angle brackets
     if (parameter.type == ECSIParameterType_Handle)
     {
-        ECSIText_Add(text, "<%s>", parameter.handle->name);
+        ECSIText_Add(text, "<%s>%s", parameter.handle->name, parameter.nullable ? "?" : "");
     }
     else if (parameter.type == ECSIParameterType_Struct)
     {
@@ -622,7 +625,9 @@ static void ECSISignature_AddParameter(ECSIText *text, ECSIParameter parameter)
 static bool ECSISignature_ReadListedParameter(const char **cursor, ECSISignature *signature)
 {
     ECSIParameter parameter = {0};
-    bool valid = ECSISignature_ReadParameter(cursor, &parameter) && parameter.type != ECSIParameterType_Void && !(parameter.out && parameter.type == ECSIParameterType_Callback);
+    // a result or an output handle is nil already when there is no object, so only a parameter that C reads takes "?"
+    bool valid = ECSISignature_ReadParameter(cursor, &parameter) && parameter.type != ECSIParameterType_Void && !(parameter.out && parameter.type == ECSIParameterType_Callback) &&
+                 !(parameter.out && parameter.nullable);
 
     // a parameter may have a name after its type, such as "float x"
     if (valid && (SDL_isalpha((unsigned char)**cursor) || **cursor == '_'))
@@ -680,7 +685,7 @@ static SHUResult ECSISignature_Parse(const char *text, ECSISignature *retSignatu
     ECSISignature_SkipSpaces(&cursor);
 
     // a callback is a parameter only; it is never an output or a result; a struct comes back as an output, as C passes structs by pointer
-    bool valid = ECSISignature_ReadParameter(&cursor, &retSignature->result) && !retSignature->result.out && retSignature->result.type != ECSIParameterType_Callback &&
+    bool valid = ECSISignature_ReadParameter(&cursor, &retSignature->result) && !retSignature->result.out && !retSignature->result.nullable && retSignature->result.type != ECSIParameterType_Callback &&
                  retSignature->result.type != ECSIParameterType_Struct && *cursor++ == '(';
     ECSISignature_SkipSpaces(&cursor);
 
@@ -1343,7 +1348,7 @@ static void ECSIServices_CheckArgument(lua_State *state, int index, ECSIParamete
     switch (parameter.type)
     {
     case ECSIParameterType_Handle:
-        retSlot->pointer = ECSIServices_CheckHandleOf(state, index, parameter.handle);
+        retSlot->pointer = parameter.nullable && lua_isnoneornil(state, index) ? nullptr : ECSIServices_CheckHandleOf(state, index, parameter.handle);
         break;
     case ECSIParameterType_Bool:
         retSlot->boolean = (u8)(lua_toboolean(state, index) != 0);
@@ -3046,8 +3051,11 @@ static void ECSIFfi_AddCheck(ECSIText *text, ECSIParameter parameter, usz i, int
         ECSIText_Add(text, "  local p%zu = s%zu\n  p%zu.data, p%zu.size = bytes%zu, length%zu\n", i, i, i, i, i, i);
         break;
     case ECSIParameterType_Handle:
+        // a handle that may be nil passes nil as nullptr; any other value is checked as a handle
+        ECSIText_Add(text, "  local p%zu = nil\n", i);
+        ECSIText_Add(text, parameter.nullable ? "  if a%zu ~= nil then\n" : "  do\n", i);
         ECSIText_Add(text, "  if not istype(C%zu, a%zu) then H.typeError(%d, M%zu, a%zu) end\n", i, i, argument, i, i);
-        ECSIText_Add(text, "  local p%zu = a%zu.ecsObject\n  if p%zu == nil then H.argError(%d, 'the object of this handle is gone') end\n", i, i, i, argument);
+        ECSIText_Add(text, "  p%zu = a%zu.ecsObject\n  if p%zu == nil then H.argError(%d, 'the object of this handle is gone') end\n  end\n", i, i, i, argument);
         break;
     case ECSIParameterType_Struct:
         // a struct is passed as it is, and a table of its fields is read
@@ -3712,7 +3720,7 @@ static void ECSIDefinition_AddLuaType(ECSIText *text, ECSIParameter parameter)
     {
         // a plugin's handle type is a class of its definitions, with its methods
         i32 core = ECSIDefinition_FindCoreHandle(parameter.handle);
-        ECSIText_Add(text, "%s", core >= 0 ? OPENECS_CORE_HANDLES[core].luaClass : parameter.handle->name);
+        ECSIText_Add(text, "%s%s", core >= 0 ? OPENECS_CORE_HANDLES[core].luaClass : parameter.handle->name, parameter.nullable ? "?" : "");
     }
     else if (parameter.type == ECSIParameterType_Value && parameter.luaType != nullptr)
     {
