@@ -8,12 +8,11 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **Linux first.** Linux is the priority. Windows is supported; other platforms are not worked on for now, as each one needs upkeep (DESIGN 19.4).
 - **Bugs** that the owner reports from testing.
-- **Editors that are simpler to build.** What each panel of an editor writes again today, and what an editor needs and writes itself: the pointer's moves while data is dragged (Tasks); `ui.panelType` and the plugin history (Standard plugins).
+- **Editors that are simpler to build.** What each panel of an editor writes again today, and what an editor needs and writes itself: `ui.panelType` and the plugin history (Standard plugins).
 
 ## Tasks
 
 - **SDL's tray closes the D-Bus connection of notifications.** On Linux, SDL's D-Bus tray calls `SDL_DBus_Quit` when its last tray goes, which closes the connection that SDL's notifications share: their clicks stop coming after notify's last tray goes. At exit, `SDL_CleanupNotifications` then removes a filter from a new connection, which libdbus aborts on; the core makes that a warning for its quit (`ECSIApp_QuitSDL`), so the workaround can go once SDL is fixed. It is SDL's bug, still in its `main`, for the owner to report: SDL takes no contributions written by AI.
-- **While data is dragged, no panel gets the pointer's moves.** DESIGN 7.9 says only the panel that started the drag gets none, but `ECSIInput_MovePointer` (`src/interface/Input.c:665`) gives them to no panel. So a list or a tree that accepts the data cannot show the line where it will land before the release; ui's `onDrop` tells it only then. Give the moves to the panel under the pointer, as 7.9 says.
 - **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now, and aarch64 waits for 1.0.0 (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
 
 What follows comes from an audit of the documents against what the code does, each checked at the lines it names. "Doc" is the side the item recommends changing when it says so.

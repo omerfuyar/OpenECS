@@ -1200,7 +1200,7 @@ OPENECS_EXPORT void ECSPanel_SetTextInput(ECSPanel panel, bool accept, f32 x, f3
 /// @lua panel:acceptDrops
 OPENECS_EXPORT SHUWUR SHUResult ECSPanel_AcceptDrops(ECSPanel panel, const char *const *types, usz count);
 
-/// @brief Starts dragging data from a panel, while a pointer button that was pressed on the panel is held, usually from its PointerDown or PointerMove event. The panel then gets no pointer moves until the release, and still gets its PointerUp. The core marks the panels that accept the type; on release, the one under the pointer gets a Drop event. Escape cancels. Main thread only.
+/// @brief Starts dragging data from a panel, while a pointer button that was pressed on the panel is held, usually from its PointerDown or PointerMove event. The panel then gets no pointer moves until the release, and still gets its PointerUp; another panel under the pointer gets them. The core marks the panels that accept the type; on release, the one under the pointer gets a Drop event. Escape cancels. Main thread only.
 /// @param panel The panel the drag starts from.
 /// @param type The type of the data, such as "color".
 /// @param value The data, or nullptr. The core copies it.
