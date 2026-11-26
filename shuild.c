@@ -23,6 +23,24 @@ static const SHUFlagChoice BUILD_TYPES[] = {
 };
 #define BuildType_String(buildType) BUILD_TYPES[(buildType)].name
 
+typedef enum TestState
+{
+    TestState_Waiting,
+    TestState_Running,
+    TestState_Ended,
+} TestState;
+
+/// @brief A test of an example, and what came of it.
+typedef struct Test
+{
+    char *path;          // with forward slashes, as the test gets it
+    char *log;           // its output
+    const char *example; // its example's name; the tests of one example run one after another
+    TestState state;
+    i64 process;
+    int code; // its exit code, -1 when it did not end by itself or could not start
+} Test;
+
 /// @brief What the build does and where it goes, in groups, as shuild keeps its own state.
 static struct
 {
@@ -34,6 +52,7 @@ static struct
         bool noStd;        // do not build the standard plugins, from std/
         bool examples;     // also build the examples, from examples/
         SHUFlagList tests; // run the tests of the examples it names, or of every example, after the build
+        const char *jobs;  // how many tests run at once
         bool help;         // print the help, and build nothing
     } FLAGS;
 
@@ -48,13 +67,16 @@ static struct
 
     bool windows; // the compiler compiles for Windows
 
-    // the examples' tests that ran, and those that failed
+    // the examples' tests, in the order they are printed, and how many failed
     struct
     {
-        int run;
+        Test *list;
+        int count;
+        int capacity;
         int failed;
+        int jobs; // how many run at once
     } TESTS;
-} CONFIG = {.FLAGS = {.type = BuildType_Debug, .compiler = SHUM_HOST_WINDOWS || SHUM_HOST_MACOS ? "clang" : "gcc"}};
+} CONFIG = {.FLAGS = {.type = BuildType_Debug, .compiler = SHUM_HOST_WINDOWS || SHUM_HOST_MACOS ? "clang" : "gcc", .jobs = "0"}};
 
 // the flags, which shuild reads and prints the help of
 static const SHUFlag FLAGS[] = {
@@ -64,6 +86,9 @@ static const SHUFlag FLAGS[] = {
     SHU_FLAG_LIST("-t", "--test", "EXAMPLE", &CONFIG.FLAGS.tests,
                   "Build with the examples, then run the tests of the examples named, such as c12_sketch,\n"
                   "or of every example. Prints pass or FAIL for each, and fails when a test fails or its output has a sanitizer's report"),
+    SHU_FLAG_STRING("-j", "--jobs", "N", &CONFIG.FLAGS.jobs,
+                    "How many tests run at once, up to 64; 0, the default, runs as many as the computer has processors.\n"
+                    "The tests of one example run one after another"),
     SHU_FLAG_STRING("-c", "--compiler", "CC", &CONFIG.FLAGS.compiler,
                     "The compiler: gcc (default for linux), clang, or on Windows LLVM-MinGW's clang (default for windows).\n"
                     "A cross compiler, such as x86_64-w64-mingw32-gcc, builds for its system into build/TYPE-SYSTEM/"),
@@ -169,6 +194,28 @@ static void CheckArguments(void)
     {
         CONFIG.FLAGS.examples = true;
     }
+
+    // 0, the default, is the number of processors; Windows waits for 64 processes at most
+    char *end = NULL;
+    long jobs = strtol(CONFIG.FLAGS.jobs, &end, 10);
+
+    if (*end != '\0' || jobs < 0 || jobs > 64)
+    {
+        SHU_UtilFail("-j takes a number from 0 to 64, not " SHUM_LOG_VALUE("%s"), CONFIG.FLAGS.jobs);
+    }
+
+    if (jobs == 0)
+    {
+#if SHUM_HOST_WINDOWS
+        SYSTEM_INFO info = {0};
+        GetSystemInfo(&info);
+        jobs = (long)info.dwNumberOfProcessors;
+#else
+        jobs = sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+    }
+
+    CONFIG.TESTS.jobs = (int)SHUMax(1L, SHUMin(jobs, 64L));
 }
 
 /// @brief Names the build's folders from the configured compiler, and configures shuild's cache.
@@ -959,9 +1006,8 @@ static void Shuild_Definitions(void)
     WriteLuaConfig("examples/", up, "");
 }
 
-/// @brief Runs a file of an example, if it is a test: a Lua file whose name starts with test (DESIGN 17.5). Prints pass or FAIL, and the output of a test that fails.
-/// A test fails when the program fails, or when its output has a sanitizer's report.
-static void RunTest(const char *path, SHUFileType type, void *data)
+/// @brief Adds a file of an example to the tests, if it is a test: a Lua file whose name starts with test (DESIGN 17.5).
+static void FindTest(const char *path, SHUFileType type, void *data)
 {
     const char *name = path + strlen(path);
 
@@ -983,27 +1029,17 @@ static void RunTest(const char *path, SHUFileType type, void *data)
         *c = *c == '\\' ? '/' : *c;
     }
 
-    (void)data;
-    char *log = SHU_UtilFormat("%stest.log", CONFIG.DIRS.output);
-    bool passed = SHU_UtilRunTry("\"%s\" --test %s > %s 2>&1", SHU_UtilGetPath(SHU_UtilFormat("%sbin/OpenECS", CONFIG.DIRS.output)), test, log) == 0;
-
-    SHUSlice output = SHU_UtilReadFile(log);
-    passed = passed && strstr(output.data, "Sanitizer") == NULL && strstr(output.data, "runtime error:") == NULL;
-
-    CONFIG.TESTS.run++;
-
-    if (passed)
+    if (CONFIG.TESTS.count == CONFIG.TESTS.capacity)
     {
-        printf("pass %s\n", test);
-    }
-    else
-    {
-        CONFIG.TESTS.failed++;
-        printf("FAIL %s\n%s\n", test, (char *)output.data);
+        CONFIG.TESTS.capacity = CONFIG.TESTS.capacity == 0 ? 64 : CONFIG.TESTS.capacity * 2;
+        CONFIG.TESTS.list = realloc(CONFIG.TESTS.list, sizeof(Test) * (usz)CONFIG.TESTS.capacity);
+        SHU_AssertNullPointer(CONFIG.TESTS.list);
     }
 
-    fflush(stdout);
-    free(output.data);
+    // each test writes its own log, named after its example and its file, such as tests/c3_ui/test_c.log
+    const char *example = *(const char **)data;
+    char *log = SHU_UtilFormat("%stests/%s%.*s.log", CONFIG.DIRS.output, example, (int)(strlen(name) - strlen(".lua")), name);
+    CONFIG.TESTS.list[CONFIG.TESTS.count++] = (Test){.path = test, .log = log, .example = example, .process = -1};
 }
 
 /// @brief Tells whether the command line asks for an example's tests: it names the example, or names none.
@@ -1028,31 +1064,183 @@ static bool IsTested(const char *path)
     return named;
 }
 
-/// @brief Runs the test of each example of the folder that the command line asks for.
-static void RunExampleTests(const char *path, SHUFileType type, void *data)
+/// @brief Adds the tests of each example of the folder that the command line asks for.
+static void FindExampleTests(const char *path, SHUFileType type, void *data)
 {
+    (void)data;
+
     if (type == SHUFileType_Directory && IsTested(path))
     {
-        SHU_UtilListDirectory(path, false, RunTest, data);
+        // the example's name, with a separator at its end, such as c3_ui/
+        const char *example = path + strlen(path) - 1;
+
+        while (example > path && example[-1] != '/' && example[-1] != SHUM_PATH_SEPARATOR)
+        {
+            example--;
+        }
+
+        SHU_UtilCreateDirectory(SHU_UtilFormat("%stests/%s", CONFIG.DIRS.output, example));
+        SHU_UtilListDirectory(path, false, FindTest, &example);
     }
 }
 
+/// @brief Starts a test with the shell, its output going to its log.
+/// @return Its process, or -1 when it cannot start.
+static i64 StartTest(const Test *test)
+{
+    char *command = SHU_UtilFormat("\"%s\" --test %s > %s 2>&1", SHU_UtilGetPath(SHU_UtilFormat("%sbin/OpenECS", CONFIG.DIRS.output)), test->path, test->log);
+
+#if SHUM_HOST_WINDOWS
+    // cmd keeps the quotes of the program's path, as system's cmd does
+    const char *shell = getenv("COMSPEC") != NULL ? getenv("COMSPEC") : "cmd.exe";
+    return (i64)_spawnl(_P_NOWAIT, shell, shell, "/c", command, NULL);
+#else
+    pid_t pid = fork();
+
+    if (pid == 0)
+    {
+        execl("/bin/sh", "sh", "-c", command, (char *)NULL);
+        _exit(127);
+    }
+
+    return pid > 0 ? (i64)pid : -1;
+#endif
+}
+
+/// @brief Waits until one of the running tests ends.
+/// @return The index of the test, and its exit code in retCode, -1 when it did not end by itself.
+static int WaitForTest(int *retCode)
+{
+#if SHUM_HOST_WINDOWS
+    // Windows waits for 64 processes at most, which CheckArguments keeps -j under
+    HANDLE handles[MAXIMUM_WAIT_OBJECTS];
+    int indices[MAXIMUM_WAIT_OBJECTS];
+    DWORD count = 0;
+
+    for (int i = 0; i < CONFIG.TESTS.count; i++)
+    {
+        if (CONFIG.TESTS.list[i].state == TestState_Running)
+        {
+            indices[count] = i;
+            handles[count++] = (HANDLE)(intptr_t)CONFIG.TESTS.list[i].process;
+        }
+    }
+
+    DWORD ended = WaitForMultipleObjects(count, handles, FALSE, INFINITE);
+    int index = indices[ended < WAIT_OBJECT_0 + count ? ended - WAIT_OBJECT_0 : 0];
+    int status = 0;
+    *retCode = _cwait(&status, (intptr_t)CONFIG.TESTS.list[index].process, _WAIT_CHILD) == -1 ? -1 : status;
+
+    return index;
+#else
+    while (true)
+    {
+        int status = 0;
+        pid_t pid = waitpid(-1, &status, 0);
+
+        if (pid == -1 && errno == EINTR)
+        {
+            continue;
+        }
+
+        if (pid == -1)
+        {
+            SHU_UtilFail("the tests cannot be waited for: %s", strerror(errno));
+        }
+
+        for (int i = 0; i < CONFIG.TESTS.count; i++)
+        {
+            if (CONFIG.TESTS.list[i].state == TestState_Running && CONFIG.TESTS.list[i].process == (i64)pid)
+            {
+                *retCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+                return i;
+            }
+        }
+    }
+#endif
+}
+
+/// @brief Starts the tests that can start: at most -j run at once, and the tests of one example run one after another, in order,
+/// as they share its folder.
+static void StartTests(int *running)
+{
+    for (int i = 0; i < CONFIG.TESTS.count && *running < CONFIG.TESTS.jobs; i++)
+    {
+        Test *test = &CONFIG.TESTS.list[i];
+        Test *previous = i > 0 ? &CONFIG.TESTS.list[i - 1] : NULL;
+
+        if (test->state != TestState_Waiting || (previous != NULL && previous->example == test->example && previous->state != TestState_Ended))
+        {
+            continue;
+        }
+
+        test->process = StartTest(test);
+        test->state = test->process < 0 ? TestState_Ended : TestState_Running;
+        test->code = test->process < 0 ? -1 : 0;
+        *running += test->state == TestState_Running;
+    }
+}
+
+/// @brief Prints pass or FAIL for a test that ended, and the output of a test that fails.
+/// A test fails when the program fails, or when its output has a sanitizer's report.
+static void PrintTest(const Test *test)
+{
+    SHUSlice output = SHU_UtilReadFile(test->log);
+    bool passed = test->code == 0 && strstr(output.data, "Sanitizer") == NULL && strstr(output.data, "runtime error:") == NULL;
+
+    if (passed)
+    {
+        printf("pass %s\n", test->path);
+    }
+    else
+    {
+        CONFIG.TESTS.failed++;
+        printf("FAIL %s, its log is %s\n%s\n", test->path, test->log, (char *)output.data);
+    }
+
+    fflush(stdout);
+    free(output.data);
+}
+
 // the examples are the tests: each test of bin/examples/, or of the examples the command line names, runs with the build, on SDL's offscreen driver
-// unless SDL_VIDEO_DRIVER names another (DESIGN 17.5)
+// unless SDL_VIDEO_DRIVER names another (DESIGN 17.5); -j tests run at once, and each is printed in order, once it and those before it ended
 static void RunTests(void)
 {
     char *examples = SHU_UtilFormat("%sbin/examples/", CONFIG.DIRS.output);
-    SHU_UtilListDirectory(examples, false, RunExampleTests, NULL);
+    SHU_UtilListDirectory(examples, false, FindExampleTests, NULL);
 
-    if (CONFIG.TESTS.run == 0)
+    if (CONFIG.TESTS.count == 0)
     {
         SHU_UtilFail("no test is found in " SHUM_LOG_PATH("%s") ".", examples);
     }
 
-    if (CONFIG.TESTS.failed > 0)
+    int running = 0;
+    int printed = 0;
+
+    while (printed < CONFIG.TESTS.count)
     {
-        SHU_UtilFail("%d of %d tests failed.", CONFIG.TESTS.failed, CONFIG.TESTS.run);
+        StartTests(&running);
+
+        // a test that cannot start has ended already, so nothing is waited for
+        if (running > 0 && CONFIG.TESTS.list[printed].state != TestState_Ended)
+        {
+            int code = -1;
+            Test *test = &CONFIG.TESTS.list[WaitForTest(&code)];
+            test->code = code;
+            test->state = TestState_Ended;
+            running--;
+        }
+
+        while (printed < CONFIG.TESTS.count && CONFIG.TESTS.list[printed].state == TestState_Ended)
+        {
+            PrintTest(&CONFIG.TESTS.list[printed++]);
+        }
     }
 
-    SHU_UtilLog("all %d tests passed.", CONFIG.TESTS.run);
+    if (CONFIG.TESTS.failed > 0)
+    {
+        SHU_UtilFail("%d of %d tests failed.", CONFIG.TESTS.failed, CONFIG.TESTS.count);
+    }
+
+    SHU_UtilLog("all %d tests passed.", CONFIG.TESTS.count);
 }
