@@ -318,6 +318,10 @@ static bool ECSIManifest_Check(const char *name, const char *path, const ECSValu
     {
         ECSIManifest_Report(path, "'name' must have no dot, as the plugin's names are '%s.' and a local name", name);
     }
+    else if (SDL_strcmp(name, "prefix") == 0)
+    {
+        ECSIManifest_Report(path, "'name' must not be 'prefix', as a plugin's name is the scope of keys for its panels and 'prefix' is the scope of the keys after the prefix");
+    }
     else if (!ECSIValue_IsVersion(ECSValue_GetString(ECSValue_GetTableField(file, "version"), nullptr)))
     {
         ECSIManifest_Report(path, "'version' must be a version text, such as \"1.2.0\"");

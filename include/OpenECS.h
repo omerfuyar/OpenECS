@@ -505,7 +505,7 @@ OPENECS_EXPORT void ECSPath_Free(char *path);
 /// @lua ecs.plugin.register
 OPENECS_EXPORT SHUWUR SHUResult ECSPlugin_Register(ECSPlugin plugin, const ECSPluginDesc *desc);
 
-/// @brief Lists every plugin in the plugin folders (DESIGN 9.3), loaded or not: for each, a table of its name, version, description, enabled, failed, and depends, a list of the names it depends on. Main thread only.
+/// @brief Lists every plugin in the plugin folders (DESIGN 9.3), loaded or not; a plugin whose manifest is not valid is reported in the log and left out. For each, a table of its name, version, description, enabled, failed, and depends, a list of the names it depends on. Main thread only.
 /// @param retList The value to fill with the list.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 /// @lua ecs.plugins.list

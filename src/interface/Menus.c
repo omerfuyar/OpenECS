@@ -1155,9 +1155,11 @@ bool ECSIMenus_Handle(const SDL_Event *event)
     }
 }
 
-bool ECSIMenus_GetItems(ECSPopupItem **retItems)
+bool ECSIMenus_GetItems(ECSPopupItem **retItems, SDL_FRect *retRect, usz *retWindow)
 {
     SDL_assert(retItems != nullptr);
+    SDL_assert(retRect != nullptr);
+    SDL_assert(retWindow != nullptr);
 
     *retItems = nullptr;
 
@@ -1169,6 +1171,7 @@ bool ECSIMenus_GetItems(ECSPopupItem **retItems)
     usz deepest = arrlenu(MENUS.levels) - 1;
     const ECSIMenuEntry *entries = MENUS.levels[deepest].entries;
     usz selected = ECSIWindow_GetSelectedMenuItem(deepest);
+    ECSIWindow_MenuRect(deepest, retRect, retWindow);
 
     for (usz i = 0; i < arrlenu(entries); i++)
     {
