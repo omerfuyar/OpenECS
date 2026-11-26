@@ -1020,7 +1020,7 @@ ecs.service.register({
 
 A generic value (`ECSValue` in C) is nil, a boolean, an integer, a number, a string, a buffer, a handle, or a table (a list or named fields). Saved state, settings, plugin events and generic calls use values. From Lua, a whole number is an integer, and any other number a number (11.7).
 
-- A plugin fills a value that the core gives it, with `ECSValue_SetInteger`, `ECSValue_SetTableField` and so on. To pass a value of its own, a plugin makes it with `ECSValue_Create` and destroys it with `ECSValue_Destroy`.
+- A plugin fills a value that the core gives it, with `ECSValue_SetInteger`, `ECSValue_SetTableField` and so on. To pass a value of its own, a plugin makes it with `ECSValue_Create` and destroys it with `ECSValue_Destroy`. `ECSValue_Copy` makes a value a deep copy of another, so a plugin passes on a value it was given, such as dropped data.
 - Getters take a fallback, returned when the value has another type or is missing: `ECSValue_GetInteger(ECSValue_GetTableField(state, "document"), 0)`. So saved state from an older or edited file never needs extra checks.
 - Each part of a value is allocated on its own with SDL's allocator. Values are small and short-lived, so they need no arena.
 - A table is a list and named fields together. From Lua, integer keys from 1 up to the first missing one are the list, and text keys are the fields. Other keys are reported and skipped.

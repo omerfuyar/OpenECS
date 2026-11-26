@@ -744,6 +744,12 @@ OPENECS_EXPORT SHUWUR SHUResult ECSValue_AddListItem(ECSValue *table, ECSValue *
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
 OPENECS_EXPORT SHUWUR SHUResult ECSValue_SetTableField(ECSValue *table, const char *name, ECSValue **retField);
 
+/// @brief Makes a value a deep copy of another, such as a dropped value that a plugin passes on.
+/// @param retCopy The value to set to the copy.
+/// @param source The value to copy, or nullptr for nil. Must not be retCopy, or inside it.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, or SHUResult_ErrAllocation; retCopy holds a partial copy then.
+OPENECS_EXPORT SHUWUR SHUResult ECSValue_Copy(ECSValue *retCopy, const ECSValue *source);
+
 /// @brief Declares a setting. Its value in effect comes from the highest settings layer that sets it with the right type; otherwise it is the default. Main thread only.
 /// @param plugin The plugin that owns the setting.
 /// @param desc Description of the setting, with its local name; the core adds the plugin's name and a dot. The core copies it.

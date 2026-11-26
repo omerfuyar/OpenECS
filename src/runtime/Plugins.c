@@ -1034,7 +1034,7 @@ void ECSIPlugins_RestoreStates(const ECSValue *states)
         {
             ECSValue_Destroy(&plugin->keptState);
 
-            if (ECSValue_Create(&plugin->keptState) || ECSIValue_Copy(plugin->keptState, ECSValue_GetTableField(entry, "state")))
+            if (ECSValue_Create(&plugin->keptState) || ECSValue_Copy(plugin->keptState, ECSValue_GetTableField(entry, "state")))
             {
                 ECSValue_Destroy(&plugin->keptState);
             }
@@ -1079,7 +1079,7 @@ SHUResult ECSIPlugins_SaveStates(ECSValue *states)
 
         SHU_ReturnResult(ECSValue_Create(&saved));
 
-        if (plugin->keptState != nullptr ? ECSIValue_Copy(saved, plugin->keptState) : ECSIPlugin_CallSave(plugin, saved))
+        if (plugin->keptState != nullptr ? ECSValue_Copy(saved, plugin->keptState) : ECSIPlugin_CallSave(plugin, saved))
         {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Plugin '%s' could not save its state.", plugin->name);
             ECSValue_Destroy(&saved);
@@ -1094,7 +1094,7 @@ SHUResult ECSIPlugins_SaveStates(ECSValue *states)
             result = ECSValue_SetTableField(entry, "state", &field);
         }
 
-        result = result ? result : ECSIValue_Copy(field, saved);
+        result = result ? result : ECSValue_Copy(field, saved);
         result = result ? result : ECSValue_SetTableField(entry, "stateVersion", &field);
 
         if (!result)

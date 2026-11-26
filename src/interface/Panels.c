@@ -390,7 +390,7 @@ SHUResult ECSIPanel_Create(ECSPanel *retPanel, const char *typeName, const ECSVa
 
     if (savedState != nullptr)
     {
-        SHU_ReturnResult(ECSIValue_Copy(panel->savedState, savedState), ECSIPanel_Destroy(&panel););
+        SHU_ReturnResult(ECSValue_Copy(panel->savedState, savedState), ECSIPanel_Destroy(&panel););
     }
 
     panel->id = ++PANELS.nextPanelID;
@@ -549,7 +549,7 @@ SHUResult ECSIPanel_Save(ECSPanel panel, ECSValue *retSaved)
             result = ECSValue_SetTableField(retSaved, "state", &field);
         }
 
-        result = result ? result : ECSIValue_Copy(field, state);
+        result = result ? result : ECSValue_Copy(field, state);
     }
 
     ECSValue_Destroy(&saved);
@@ -877,7 +877,7 @@ void ECSIPanel_PostDrop(ECSPanel panel, ECSPanelEventType eventType, f32 x, f32 
     ECSDropData data = SDL_calloc(1, sizeof(*data));
     SHUResult result = data == nullptr ? SHUResult_ErrAllocation : SHUResult_Ok;
     result = result ? result : ECSValue_Create(&data->value);
-    result = result || value == nullptr ? result : ECSIValue_Copy(data->value, value);
+    result = result || value == nullptr ? result : ECSValue_Copy(data->value, value);
 
     if (!result)
     {
