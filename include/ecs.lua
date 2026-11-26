@@ -644,19 +644,21 @@ function ecs.session.listSessions() end
 ---@class ecs.key
 ecs.key = {}
 
----Gives a function a default key: for one of the plugin's panel types, or, with the scope "prefix", after the core prefix for one of the plugin's own functions.
+---Gives a function a default key: for one of the plugin's panel types; with the plugin's own name, for all of its panel types; or, with the scope
+---"prefix", after the core prefix for one of the plugin's own functions. A key for a panel type wins over the same key for the plugin.
 ---The core's keys after the prefix win over a plugin's. Presets and the user's settings can change it.
----@param scope string One of the plugin's panel types, by its full name, such as "canvas.view", or "prefix".
+---@param scope string One of the plugin's panel types, by its full name, such as "canvas.view", the plugin's name, such as "canvas", or "prefix".
 ---@param key string A key combination, such as "Ctrl+E".
 ---@param functionName string A service function, such as "canvas.clear".
----A panel type, or a function after the prefix, that is not the plugin's, or a text that is not a key combination, is a misuse (ecs.check).
+---A scope that is neither the plugin's name nor one of its panel types, a function after the prefix that is not the plugin's, or a text that is not
+---a key combination, is a misuse (ecs.check).
 function ecs.key.bind(scope, key, functionName) end
 
 ---A key binding of the keys tables in effect, as ecs.key.list gives it.
 ---@class ecs.KeyBinding
 ---@field key string The key combination, as written.
 ---@field function string|false The function it runs, or false for a key that it removes from the layers below.
----@field scope string? nil for the whole tool, "prefix" for the keys after the core prefix, or a panel type.
+---@field scope string? nil for the whole tool, "prefix" for the keys after the core prefix, a plugin's name for all of its panel types, or a panel type.
 ---@field layer "default"|"preset"|"user"
 ---@field workspace boolean It comes from the current workspace's keys.
 ---@field active boolean It is the binding of its key that runs in its scope.
@@ -675,7 +677,8 @@ function ecs.key.list() end
 
 ---Changes a key in the user's settings file and writes the file. The tool's own part of the file is changed if it binds the key in the scope already,
 ---and the part for every tool otherwise.
----@param scope string? nil for the whole tool, "prefix" for the keys after the core prefix, or a panel type, such as "canvas.view".
+---@param scope string? nil for the whole tool, "prefix" for the keys after the core prefix, a plugin's name for all of its panel types, such as
+---"canvas", or a panel type, such as "canvas.view".
 ---@param key string A key combination, such as "Ctrl+E".
 ---@param functionName string|false|nil A function's name binds the key; false removes it from the layers below; nil takes the user's binding away.
 ---@return true|nil ok true if the key is set and written.
@@ -906,7 +909,8 @@ function ecs.dialog.showMessage(title, message, buttons) end
 ---@field height? number A pop-out window's height, in layout units.
 
 ---A keys table: a key combination runs the function it names, and false removes a key that a lower layer binds.
----prefix holds the keys after the core prefix, and a field named after a panel type the keys that work while such a panel has focus.
+---prefix holds the keys after the core prefix, a field named after a panel type the keys that work while such a panel has focus, and a field named
+---after a plugin the keys that work while a panel of any of its types has focus.
 ---@class ecs.Keys
 ---@field prefix? table<string, string|false>
 ---@field [string] string|false|table<string, string|false>

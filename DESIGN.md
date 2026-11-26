@@ -663,7 +663,7 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 - Exactly one panel has keyboard focus. The setting `ecs.focus` chooses whether a click or the pointer's hover gives it; click is the default, and in hover mode only real pointer movement moves focus. Keys move focus to a neighbouring panel too. Pointer events go to the panel under the pointer, or during a drag to the panel where it started.
 - Keys are bound in **keys tables**, which map key combinations to service functions and have one shape wherever they are written: the core's settings file, a preset and the user's settings file. They follow the layers of settings (12), so the user can change any key, and `false` removes a key that a lower layer binds.
-- Plugins bind keys only for their own panel types, which work while such a panel has focus. Presets and the user's settings can also bind keys for a workspace or the whole tool, to any service function: a paint preset binds Ctrl+N to `canvas.new`, so it works even while the palette has focus. The highest layer wins, then the most specific binding: a panel type, a workspace, the whole tool. A key that no binding takes goes to the focused panel, so a panel can run its own key logic, such as modal editing, and its own sequences of keys.
+- Plugins bind keys only for their own panel types, which work while such a panel has focus, one type or all of them. Presets and the user's settings can also bind keys for a workspace or the whole tool, to any service function: a paint preset binds Ctrl+N to `canvas.new`, so it works even while the palette has focus. The highest layer wins, then the most specific binding: a panel type, a plugin, a workspace, the whole tool. A key that no binding takes goes to the focused panel, so a panel can run its own key logic, such as modal editing, and its own sequences of keys.
 - A key press that runs a binding types no text, and while the focused panel takes text, keys without Ctrl, Alt or Super go to it.
 - The core takes one combination for itself, the **core prefix**, Alt+W by default: one more key after it chooses a core action, as tmux's prefix and Vim's Ctrl+W do (7.5). It always wins, and the user can also bind core actions to keys of their own.
 - Bindings follow what a key means on the user's layout, not where it sits; on layouts with non-Latin letters, letter keys count as their English letters (7.3).
@@ -741,12 +741,13 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
 ### 7.8 Binding keys
 
-- Keys are bound in keys tables (7.8). A field whose value is the name of a function binds a key combination to it, and `false` removes the key from the layers below. A field named `prefix` holds the keys after the core prefix (7.5). A field named after a panel type holds the keys that work while a panel of that type has focus.
+- Keys are bound in keys tables (7.8). A field whose value is the name of a function binds a key combination to it, and `false` removes the key from the layers below. A field named `prefix` holds the keys after the core prefix (7.5). A field named after a panel type holds the keys that work while a panel of that type has focus, and a field named after a plugin the keys that work while a panel of any of the plugin's types has focus. A plugin's name has no dot (9.2), and a panel type's has one (9.9), so the field's name tells them apart.
 
   ```lua
   keys = {
     ["Ctrl+N"] = "canvas.new",                     -- for the whole tool
     prefix = { G = "canvas.grid" },                -- after the core prefix
+    canvas = { ["Ctrl+Z"] = "canvas.undo" },       -- while any of the canvas plugin's panels has focus
     ["canvas.view"] = { Delete = "canvas.clear" }, -- while a canvas has focus
   }
   ```
@@ -755,16 +756,16 @@ On release, the matching operation is called. In small panels, the edge bands sh
 
   | Layer    | Keys tables                                                                                               |
   | -------- | --------------------------------------------------------------------------------------------------------- |
-  | Defaults | The core's settings file (12.1), and the keys that plugins bind for their panel types and after the prefix |
+  | Defaults | The core's settings file (12.1), and the keys that plugins bind for their panel types, for themselves and after the prefix |
   | Preset   | The preset's `keys`, and each workspace's `keys` (13.2)                                                   |
   | User     | The user's settings file: its `keys` for every tool, and its `keys` for the tool, whose fields win (12.3) |
 
-- A key press runs the binding of the highest layer that binds it. Within a layer, a panel type's keys win over a workspace's, and a workspace's over the whole tool's. A key that the winning binding removes goes to the focused panel.
-- `ECSKey_Bind(plugin, scope, key, function)`, and in Lua `ecs.key.bind(scope, key, function)`, give a default key to a function for one of the plugin's own panel types; with the scope `prefix`, a key after the prefix to one of the plugin's own functions, such as the settings window's `,`. The core's keys after the prefix win over a plugin's, and of two plugins that give the same key, the one loaded last wins. Plugins have no function for other keys.
-- `ECSKey_List(list)`, in Lua `ecs.key.list()`, lists every binding of the keys tables in effect, the plugins' keys for their panel types among the defaults: its key, its function or false, its scope (the whole tool, `prefix` or a panel type), its layer, whether it comes from the current workspace, and whether it is the binding of its key that runs in its scope.
+- A key press runs the binding of the highest layer that binds it. Within a layer, a panel type's keys win over its plugin's, and a plugin's over the whole tool's; of the same scope, the current workspace's keys win over the preset's own. A key that the winning binding removes goes to the focused panel.
+- `ECSKey_Bind(plugin, scope, key, function)`, and in Lua `ecs.key.bind(scope, key, function)`, give a default key to a function for one of the plugin's own panel types; with the plugin's own name as the scope, for all of its panel types, so a tool whose undo works in each of its panels binds it once; with the scope `prefix`, a key after the prefix to one of the plugin's own functions, such as the settings window's `,`. A plugin's key for one of its panel types wins over its key for all of them. The core's keys after the prefix win over a plugin's, and of two plugins that give the same key, the one loaded last wins. Plugins have no function for other keys.
+- `ECSKey_List(list)`, in Lua `ecs.key.list()`, lists every binding of the keys tables in effect, the plugins' keys for their panel types among the defaults: its key, its function or false, its scope (the whole tool, `prefix`, a plugin or a panel type), its layer, whether it comes from the current workspace, and whether it is the binding of its key that runs in its scope. A plugin's binding that runs in its scope may still lose to one for a panel type, while a panel of that type has focus.
 - `ECSKey_Set(scope, key, function)`, in Lua `ecs.key.set(scope, key, function)`, changes a key in the user's settings file, as `ECSSetting_Set` changes a setting (12.2): a function's name binds it, false removes it from the layers below, and nil takes the user's binding away. It changes the tool's own part of the file if that part binds the key in the scope already, and the part for every tool otherwise, and writes the file.
 - `ECSKey_ListFunctions(list)`, in Lua `ecs.key.functions()`, lists the functions a key can run, with their descriptions and owners. So a plugin, such as the standard plugin keys, shows and changes every binding.
-- A key text that is not a key combination, or a table named neither `prefix` nor like a panel type, is reported. Once the session is built, a key that runs a function its owner does not have is reported, if the owner runs (12.1).
+- A key text that is not a key combination is reported. Once the session is built, a key that runs a function its owner does not have is reported, if the owner runs (12.1).
 - A function bound by name takes no arguments, or one argument: the focused panel. Its signature is `void()` or `void(handle<ecs.panel>)`.
 - The core registers its own bindable actions as functions under `ecs`, for example `ecs.layout.focusLeft` and `ecs.layout.maximize`. So keys tables name them like any plugin function.
 - Each of them is also a function of the `ecs` module with the same name, such as `ecs.layout.maximize()`. A key calls it with no arguments, which is the user's action: it acts on the focused panel, and locks stop it (6.4).
@@ -855,7 +856,7 @@ return {
 }
 ```
 
-- `name`, `version`, `api` and `type` are required, and `name` must be the folder's name. A field of the wrong type, or a field the manifest does not know, is an error too.
+- `name`, `version`, `api` and `type` are required, and `name` must be the folder's name, without a dot, as the names a plugin registers start with it and a dot (9.9). A field of the wrong type, or a field the manifest does not know, is an error too.
 - Versions follow semantic versioning. A dependency's version means "this version, or a later one with the same major number": `"1.2"` accepts 1.2.0 up to, but not including, 2.0.0.
 - Manifests are read as data, without running plugin code (11.2).
 - A manifest describes the plugin to the core. It holds no build settings.

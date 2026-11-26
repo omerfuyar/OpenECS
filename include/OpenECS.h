@@ -850,19 +850,22 @@ OPENECS_EXPORT void ECSHandle_Forget(void *object);
 /// @lua none: Lua frees an object with its provider's free function, or lets go of its handle
 OPENECS_EXPORT void ECSHandle_Free(ECSPlugin plugin, const char *type, void *object);
 
-/// @brief Gives a function a default key: for one of the plugin's panel types, which works while a panel of that type has focus; or, with the scope "prefix", after the core prefix, for one of the plugin's own functions.
-/// The core's keys after the prefix win over a plugin's. Presets and the user's settings can change it. Main thread only.
+/// @brief Gives a function a default key: for one of the plugin's panel types, which works while a panel of that type has focus; with the plugin's
+/// own name, for all of its panel types; or, with the scope "prefix", after the core prefix, for one of the plugin's own functions. A key for a panel
+/// type wins over the same key for the plugin. The core's keys after the prefix win over a plugin's. Presets and the user's settings can change it.
+/// Main thread only.
 /// @param plugin The plugin. It owns the panel type, or the function for "prefix".
-/// @param scope Name of the panel type, such as "canvas.view", or "prefix".
+/// @param scope Name of the panel type, such as "canvas.view", the plugin's name, such as "canvas", or "prefix".
 /// @param key The key combination, such as "Ctrl+E".
 /// @param function Name of the function the key runs. It takes no arguments, or the focused panel: void() or void(handle<ecs.panel>).
-/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the panel type or the function after the prefix is not the plugin's or the key is not a key combination, or SHUResult_ErrAllocation.
+/// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the scope is neither the plugin's name nor one of its panel types, the function after the
+/// prefix is not the plugin's, or the key is not a key combination, or SHUResult_ErrAllocation.
 /// @lua ecs.key.bind
 OPENECS_EXPORT SHUWUR SHUResult ECSKey_Bind(ECSPlugin plugin, const char *scope, const char *key, const char *function);
 
 /// @brief Lists every key binding of the keys tables in effect (DESIGN 7.8): the core's settings file, the plugins' keys for their panel types, the
 /// preset, the current workspace and the user's settings. Each is a table of its key, as written; its function, or false for a key that the binding
-/// removes; its scope, missing for the whole tool, "prefix" for the keys after the core prefix, or a panel type; its layer, "default", "preset" or
+/// removes; its scope, missing for the whole tool, "prefix" for the keys after the core prefix, a plugin's name for all of its panel types, or a panel type; its layer, "default", "preset" or
 /// "user"; workspace, whether it comes from the current workspace; and active, whether it is the binding of its key that runs in its scope. Main thread only.
 /// @param retList The value to fill with the list.
 /// @return SHUResult_Ok, or SHUResult_ErrAllocation.
@@ -871,7 +874,8 @@ OPENECS_EXPORT SHUWUR SHUResult ECSKey_List(ECSValue *retList);
 
 /// @brief Changes a key in the user's settings file and writes the file (DESIGN 7.8). The tool's own part of the file is changed if it binds the key in
 /// the scope already, and the part for every tool otherwise. Main thread only.
-/// @param scope nullptr for the whole tool, "prefix" for the keys after the core prefix, or a panel type, such as "canvas.view".
+/// @param scope nullptr for the whole tool, "prefix" for the keys after the core prefix, a plugin's name for all of its panel types, such as "canvas",
+/// or a panel type, such as "canvas.view".
 /// @param key A key combination, such as "Ctrl+E".
 /// @param function A function's name binds the key; false removes the key from the layers below; nil takes the user's binding away, so the layers below apply.
 /// @return SHUResult_Ok, SHUResult_ErrAssertion, a misuse, if the key is not a key combination, the scope is none of those, or the function none of

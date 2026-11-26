@@ -314,6 +314,10 @@ static bool ECSIManifest_Check(const char *name, const char *path, const ECSValu
     {
         ECSIManifest_Report(path, "'name' must be the name of its folder, '%s'", name);
     }
+    else if (SDL_strchr(name, '.') != nullptr)
+    {
+        ECSIManifest_Report(path, "'name' must have no dot, as the plugin's names are '%s.' and a local name", name);
+    }
     else if (!ECSIValue_IsVersion(ECSValue_GetString(ECSValue_GetTableField(file, "version"), nullptr)))
     {
         ECSIManifest_Report(path, "'version' must be a version text, such as \"1.2.0\"");

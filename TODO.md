@@ -8,7 +8,7 @@ What the owner wants worked on, in no fixed order. Each one is described further
 
 - **Linux first.** Linux is the priority. Windows is supported; other platforms are not worked on for now, as each one needs upkeep (DESIGN 19.4).
 - **Bugs** that the owner reports from testing.
-- **Editors that are simpler to build.** What each panel of an editor writes again today, and what an editor needs and writes itself: the panel type's `redrawOn`, keys for all of a plugin's panels, and the pointer's moves while data is dragged (Tasks); `ui.panelType` and the plugin history (Standard plugins).
+- **Editors that are simpler to build.** What each panel of an editor writes again today, and what an editor needs and writes itself: the panel type's `redrawOn` and the pointer's moves while data is dragged (Tasks); `ui.panelType` and the plugin history (Standard plugins).
 
 ## Tasks
 
@@ -17,7 +17,6 @@ What the owner wants worked on, in no fixed order. Each one is described further
 - **Tests still count Down to choose a menu's entry.** c12_sketch's `test-tab-menu.lua` chooses by label with `test.menu` (DESIGN 17.5); `test-workspaces.lua`, c6_keys, s5_files and s7_first_party's tests still press Down a counted number of times, so an entry that is added or hidden breaks them. Choose by label there too.
 - **A menu's keys can reach its right edge.** In the panel menu of a clock in c12_sketch, "Alt+W, M" touches the menu's edge. The menu should be as wide as its widest label and keys, with its padding.
 - **A panel type redraws on events.** Plugins keep a table of their open panels only to redraw them all when one of their events comes, such as std's files, the template's notes and c5_services' tally. A field `redrawOn` of the panel type, in `ECSPanelTypeDesc` and `ecs.PanelTypeDesc`, names events; when one is emitted, every panel of the type is drawn again. The plugins that keep such tables then drop them, in the same piece of work.
-- **Keys for all of a plugin's panels.** `ecs.key.bind` takes one panel type, or `"prefix"`. A tool whose undo, redo and save work in each of its panels binds each key once for each type. A scope of the plugin's own name binds a key in every panel type of the plugin.
 - **While data is dragged, no panel gets the pointer's moves.** DESIGN 7.9 says only the panel that started the drag gets none, but `ECSIInput_MovePointer` (`src/interface/Input.c:665`) gives them to no panel. So a list or a tree that accepts the data cannot show the line where it will land before the release; ui's `onDrop` tells it only then. Give the moves to the panel under the pointer, as 7.9 says.
 - **Releases for other platforms.** The release workflow has entries for Linux on aarch64 and macOS, commented out; they are not worked on for now, and aarch64 waits for 1.0.0 (DESIGN 19.4). macOS would need libffi's configuration for it, and its own linker flags.
 
