@@ -1,18 +1,20 @@
 # OpenECS
 
-OpenECS (Editor Composition System, I started it as an Entity Component System engine and somehow got here) is the empty shell of an editor style application, written in C. It provides panels that can be split, grouped into tabs, docked, maximized and moved into their own windows, and workspaces that hold them. It also provides plugins in C and Lua, keybindings, settings, saving and restoring sessions, and operating-system features such as the clipboard, drag and drop and dialogs. It builds and runs on Linux & Windows, I don't have a Mac, so that will not be close for sure.
+OpenECS (Editor Composition System, I started it as an Entity Component System engine and somehow got here) is the empty shell of an editor style application, written in C. It may also be considered as an application development platform.
 
-OpenECS does nothing specific to any domain. Plugins decide what each panel shows and does. A preset names plugins to be used and arrangement of a tool. So the same executable becomes a text editor, a paint program, a log viewer etc.
+It provides panels that can be split, grouped into tabs, docked, maximized, pop out to their own windows and workspaces that hold them. It also provides plugins in C and Lua, keybindings, settings, saving and restoring sessions, and operating-system features such as the clipboard, drag and drop and dialogs. It builds and runs on Linux & Windows, I don't have a Mac, so MacOS support will not be soon for sure.
 
-Anyone who needs a frontend for their backend (like a game engine and/or its editor) or wants to build tools (like a media player, 3D modeller or something) can give this program a chance.
+OpenECS does nothing domain specific. `Plugins` decide what each panel shows and does. `Preset` names plugins to be used and arrangement of panels to define a tool. So the same executable becomes a text editor, a paint program, a log viewer etc.
+
+Anyone who needs a frontend for their backend application (like a game engine) or wants to build cross platform tools (like a media player, 3D modeller or something) can use OpenECS.
 
 The [standard plugins](https://github.com/omerfuyar/OpenECS-std) give plugins for UI, networking, maths, etc. So a panel starts from more than just a frame buffer.
 
-## Template and examples for OpenECS
+The [examples repo](https://github.com/omerfuyar/OpenECS-examples) shows capabilities of OpenECS and its std plugins one by one while explaining how to use them as well.
 
-Apparently, there will be no presets to start with in this repo. You can use [OpenECS-template](https://github.com/omerfuyar/OpenECS-template) to build your own. See the repo for more detail.
+The [template repo](https://github.com/omerfuyar/OpenECS-template) provides a blank preset to build your own application on top of OpenECS.
 
-See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples from simple to more complex preset structures.
+See the [guide](GUIDE.md) to learn more about how to use OpenECS.
 
 ## Documents
 
@@ -23,7 +25,7 @@ See [examples](https://github.com/omerfuyar/OpenECS-examples) for more examples 
 
 ## Usage
 
-Download the archive for your system from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it and run `OpenECS` in it. The Linux build needs glibc 2.38 or later, such as Ubuntu 24.04 or Fedora 39. The Windows build needs Windows 10 or later, and opens no console window: its log is `%APPDATA%\OpenECS\OpenECS.log`, and started from a terminal, it writes there too. Its `lib/` folder holds the import libraries that a C plugin links on Windows.
+Download the archive for your system from [Releases](https://github.com/omerfuyar/OpenECS/releases), unpack it and run `OpenECS` in it. The Linux build needs glibc 2.38 or later, such as Ubuntu 24.04 or Fedora 39. The Windows build needs Windows 10 or later.
 
 ### Command line
 
@@ -44,18 +46,6 @@ Options:
   -v, --version           Print the version and exit
   -h, --help              Print this help and exit
 ```
-
-### Examples
-
-The `examples/` folder shows how to write plugins, from simple to more advanced: `c1_hello` to `c13_workers` the plugin interface, then `s1_terminal` and on the standard plugins. Its [README](https://github.com/omerfuyar/OpenECS-examples) says how to read and run them:
-
-``` shell
-./OpenECS --fresh --preset examples/c1_hello/preset.lua
-```
-
-| `c3_ui`: controls of the ui plugin                                                                                                                   | `s9_gpu_model`: a glTF model with its own shaders                                       |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| ![The controls of c3_ui: a button, tabs, a checkbox, a switch, a slider, a selector, a dropdown, a number field and a list](docs/screenshots/ui.png) | ![The torus of s9_gpu_model, lit and shaded on the GPU](docs/screenshots/gpu-model.png) |
 
 ### Writing plugins
 
