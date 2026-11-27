@@ -202,8 +202,9 @@ typedef struct ECSIPopupView
 /// @brief The GPU device that every OS window's renderer and every GPU panel shares. An offscreen renderer owns it, so it outlives the OS windows and the plugins, which release their GPU objects first.
 typedef struct ECSIGpu
 {
-    SDL_Renderer *owner;   // the offscreen GPU renderer that made the device
-    SDL_GPUDevice *device; // nullptr without a GPU renderer
+    SDL_Renderer *owner;    // the offscreen GPU renderer that made the device
+    SDL_GPUDevice *device;  // nullptr without a GPU renderer
+    bool cannotPresentSaid; // the warning that an OS window cannot present on the GPU was logged
 } ECSIGpu;
 
 static struct
@@ -1822,9 +1823,11 @@ static SDL_Renderer *ECSIWindow_CreateRenderer(SDL_Window *window)
 {
     SDL_Renderer *renderer = WINDOW.gpu.device != nullptr ? SDL_CreateGPURenderer(WINDOW.gpu.device, window) : nullptr;
 
-    if (renderer == nullptr && WINDOW.gpu.device != nullptr)
+    // said once: each popup is a transparent window, which SDL's GPU API cannot present to, so a tool would say it at every tooltip
+    if (renderer == nullptr && WINDOW.gpu.device != nullptr && !WINDOW.gpu.cannotPresentSaid)
     {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The GPU cannot present to a window (%s); it uses SDL's default renderer, and shows copies of GPU panels.", SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "The GPU cannot present to a window (%s); it uses SDL's default renderer, and shows copies of GPU panels. Said once.", SDL_GetError());
+        WINDOW.gpu.cannotPresentSaid = true;
     }
 
     return renderer != nullptr ? renderer : SDL_CreateRenderer(window, nullptr);
